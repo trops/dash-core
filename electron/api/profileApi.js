@@ -22,6 +22,10 @@ const {
   PROFILE_PUBLISH_WIDGET,
   PROFILE_PREVIEW_LOAD,
   PROFILE_APPLY_LOAD,
+  PROFILE_SAVE_ACCOUNT,
+  PROFILE_LIST_ACCOUNT,
+  PROFILE_PREVIEW_LOAD_ACCOUNT,
+  PROFILE_DELETE_ACCOUNT,
 } = require("../events");
 
 const profileApi = {
@@ -90,6 +94,22 @@ const profileApi = {
    */
   applyLoad: (appId, token, choices) =>
     ipcRenderer.invoke(PROFILE_APPLY_LOAD, { appId, token, choices }),
+  /**
+   * Save to the user's account (same options as saveFile, plus asNew).
+   * Resolves { success, account: { accountId, revision, savedAt } } — or
+   * { conflict: { revision, updatedOn, updatedAt, missing } } when another
+   * computer saved it since.
+   */
+  saveToAccount: (appId, profileId, options) =>
+    ipcRenderer.invoke(PROFILE_SAVE_ACCOUNT, { appId, profileId, options }),
+  /** { profiles: [{ id, name, revision, updatedAt, updatedOn, linkedTo }] } */
+  listAccount: (appId) => ipcRenderer.invoke(PROFILE_LIST_ACCOUNT, { appId }),
+  /** Like previewLoad, for a profile in the account; then applyLoad. */
+  previewLoadFromAccount: (appId, accountId) =>
+    ipcRenderer.invoke(PROFILE_PREVIEW_LOAD_ACCOUNT, { appId, accountId }),
+  /** Remove a profile from the account (profiles here stay). */
+  deleteFromAccount: (appId, accountId) =>
+    ipcRenderer.invoke(PROFILE_DELETE_ACCOUNT, { appId, accountId }),
 };
 
 module.exports = profileApi;

@@ -29,8 +29,60 @@ export function publishText(item) {
   }`;
 }
 
+/** When and where a profile was last saved, e.g. "on Mac Mini, Oct 27, 9:00 AM". */
+export function savedWhenText({ updatedOn, updatedAt, savedAt } = {}) {
+  const at = updatedAt || savedAt;
+  const when = at
+    ? new Date(at).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+  return [updatedOn ? `on ${updatedOn}` : null, when]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** Why a save to the account was refused, in a sentence. */
+export function conflictText(conflict) {
+  if (conflict.missing) {
+    return "This profile isn't in your account any more. Save again to add it back as a new profile.";
+  }
+  const where = savedWhenText(conflict);
+  return `Your account has a newer copy of this profile${
+    where ? `, saved ${where}` : ""
+  }. Load it from your account to use it here, or replace it with this computer's.`;
+}
+
+/** What was already published when a save was refused after publishing. */
+export function publishedBeforeText(published) {
+  const list = (published || []).map(
+    (p) => `${p.name} (${p.package} ${p.version})`,
+  );
+  return list.length
+    ? ` Already published to your account: ${list.join(", ")}.`
+    : "";
+}
+
 /** The "Saved" notice for the Profiles screen. */
 export function savedNoticeText(res) {
+  if (res.account) {
+    let text = "Saved to your account.";
+    const published = (res.published || []).map(
+      (p) => `${p.name} (${p.package} ${p.version})`,
+    );
+    if (published.length) {
+      text += ` Published: ${published.join(", ")}.`;
+    }
+    if (res.secretsLeftOut) {
+      text += ` ${plural(res.secretsLeftOut, "key")} typed into widgets ${
+        res.secretsLeftOut === 1 ? "isn't" : "aren't"
+      } included.`;
+    }
+    return text;
+  }
   const parts = String(res.filePath || "").split(/[\\/]/);
   const file = parts.pop();
   const folder = parts.pop();
@@ -66,7 +118,15 @@ export function leftOutText(res) {
  *
  * Mounted only while open (it opens inside the Settings modal).
  */
-export const SaveProfileModal = ({ appId, profile, onClose, onSaved }) => {
+export const SaveProfileModal = ({
+  appId,
+  profile,
+  onClose,
+  onSaved,
+  // "file" (a .dashprofile) or "account" (kept in the registry account).
+  to = "file",
+}) => {
+  const toAccount = to === "account";
   const { muted, strong, hairline } = useConfigTokens();
   const { ensureAuthed, authGate, isAuthGateOpen } = useRegistryAuthGate();
   const [options, setOptions] = useState({
@@ -84,6 +144,11 @@ export const SaveProfileModal = ({ appId, profile, onClose, onSaved }) => {
   const [confirm, setConfirm] = useState(null);
   const [confirmed, setConfirmed] = useState(() => new Set());
   const [reload, setReload] = useState(0);
+  // The account copy was removed: the next save adds it as new.
+  const [asNew, setAsNew] = useState(false);
+  // The newer account revision the user may choose to replace ("keep this
+  // computer's") — set when a save was refused.
+  const [replaceRevision, setReplaceRevision] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -118,11 +183,19 @@ export const SaveProfileModal = ({ appId, profile, onClose, onSaved }) => {
     setError(null);
     let res;
     try {
-      res = await window.mainApi?.profiles?.saveFile?.(appId, profile.id, {
+      const api = window.mainApi?.profiles;
+      const chosen = {
         ...options,
         skipPublic: [...skipPublic],
         confirmPersonalPaths: [...confirmed],
-      });
+      };
+      res = toAccount
+        ? await api?.saveToAccount?.(appId, profile.id, {
+            ...chosen,
+            asNew,
+            replaceRevision,
+          })
+        : await api?.saveFile?.(appId, profile.id, chosen);
     } catch (e) {
       res = { success: false, error: e?.message };
     } finally {
@@ -133,6 +206,14 @@ export const SaveProfileModal = ({ appId, profile, onClose, onSaved }) => {
       return;
     }
     if (res && res.canceled) return;
+    if (res && res.conflict) {
+      if (res.conflict.missing) setAsNew(true);
+      else setReplaceRevision(res.conflict.revision);
+      setError(conflictText(res.conflict) + publishedBeforeText(res.published));
+      // What was published changes the plan.
+      if ((res.published || []).length) setReload((n) => n + 1);
+      return;
+    }
     if (res && res.needsConfirmation) {
       setConfirm(res.needsConfirmation);
       setError(res.error);
@@ -171,7 +252,13 @@ export const SaveProfileModal = ({ appId, profile, onClose, onSaved }) => {
         ? "Sign in first"
         : blockers.length
           ? "Fix the items above first"
-          : "Save…";
+          : toAccount
+            ? asNew
+              ? "Save as new to my account"
+              : replaceRevision != null
+                ? "Replace the account's copy"
+                : "Save to my account"
+            : "Save…";
   const close = () => {
     if (!saving) onClose();
   };
@@ -188,7 +275,11 @@ export const SaveProfileModal = ({ appId, profile, onClose, onSaved }) => {
         isOpen
         // Not closed while publishing (it would go on unseen).
         setIsOpen={close}
-        title={`Save ${profile.name}`}
+        title={
+          toAccount
+            ? `Save ${profile.name} to your account`
+            : `Save ${profile.name}`
+        }
         confirmLabel={confirmLabel}
         onConfirm={save}
         onCancel={close}
@@ -198,10 +289,9 @@ export const SaveProfileModal = ({ appId, profile, onClose, onSaved }) => {
           data-testid="save-profile"
         >
           <span className={`${muted} max-w-prose`}>
-            Everything in this profile goes to your registry account — private
-            unless you already made it public — and the file lists it. Load the
-            file on another computer to get the same setup. Keys and passwords
-            are never included.
+            {toAccount
+              ? "Everything in this profile goes to your registry account — private unless you already made it public — and the profile is kept there too. Sign in on another computer and load it from your account to get the same setup. Keys and passwords are never included."
+              : "Everything in this profile goes to your registry account — private unless you already made it public — and the file lists it. Load the file on another computer to get the same setup. Keys and passwords are never included."}
           </span>
 
           {plan && plan.signInRequired ? (

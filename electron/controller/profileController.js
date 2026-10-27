@@ -9,6 +9,7 @@
 const { getFileContents } = require("../utils/file");
 const { getAppFilePath } = require("../utils/appPaths");
 const profileStore = require("../profile/profileStore");
+const profileAccount = require("../profile/profileAccount");
 
 // Everything that exists now — written into Default when the first extra
 // profile is created, so Default keeps holding all of it.
@@ -93,6 +94,16 @@ async function signedInUsername() {
   }
 }
 
+// The signed-in username if it's known without asking the registry.
+function storedUsername() {
+  try {
+    const auth = require("./registryAuthController");
+    return (auth.getStoredUsername && auth.getStoredUsername()) || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 function botControllerOrNull() {
   try {
     return require("./botController");
@@ -127,9 +138,14 @@ function rememberOpened(appId, read, win = null) {
 const profileController = {
   listProfiles(appId) {
     try {
+      // Each profile kept in the signed-in user's account says so:
+      // { accountId, revision, savedAt, updatedOn }.
+      const links = profileAccount.allLinks(appId, storedUsername());
       return {
         success: true,
-        profiles: profileStore.list(appId),
+        profiles: profileStore
+          .list(appId)
+          .map((p) => ({ ...p, account: links[p.id] || null })),
         activeProfileId: profileStore.getActiveProfileId(appId),
       };
     } catch (e) {
@@ -170,7 +186,12 @@ const profileController = {
 
   deleteProfile(appId, profileId) {
     try {
-      return profileStore.remove(appId, profileId);
+      const res = profileStore.remove(appId, profileId);
+      // The account copy stays in the account; this computer forgets it.
+      if (res && res.success !== false) {
+        profileAccount.forgetProfile(appId, profileId);
+      }
+      return res;
     } catch (e) {
       return fail(e);
     }
@@ -342,6 +363,130 @@ const profileController = {
   },
 
   /**
+   * Save a profile to the user's account (step 2): the same review and
+   * publishing as saving to a file, then kept in the account instead of a
+   * file. Refused, with `conflict`, when another computer saved it since —
+   * nothing is published then. `options.asNew` adds it as a new account
+   * profile (its account copy was removed).
+   */
+  async saveProfileToAccount(win, appId, profileId, options = {}) {
+    try {
+      const { executeSave } = require("../profile/profileSaveV2");
+      const {
+        filePath: _ignored,
+        skipPublic,
+        confirmPersonalPaths,
+        asNew,
+        replaceRevision,
+        ...what
+      } = options || {};
+      return await executeSave(win, appId, profileId, what, {
+        target: "account",
+        asNew: asNew === true,
+        replaceRevision: profileAccount.revisionOf(replaceRevision),
+        skipPublic: Array.isArray(skipPublic) ? skipPublic.map(String) : [],
+        confirmPersonalPaths: Array.isArray(confirmPersonalPaths)
+          ? confirmPersonalPaths.map(String)
+          : [],
+      });
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
+   * The profiles in the user's account, each with the profile here it's
+   * linked to (if any).
+   */
+  async listAccountProfiles(appId) {
+    try {
+      const res = await profileAccount.listRemote();
+      if (!res.success) return res;
+      const owner = await signedInUsername();
+      const local = profileStore.list(appId);
+      return {
+        success: true,
+        profiles: res.profiles.map((p) => {
+          const localId = profileAccount.profileFor(appId, owner, p.id);
+          const here = localId ? local.find((l) => l.id === localId) : null;
+          return {
+            ...p,
+            linkedTo: here ? { id: here.id, name: here.name } : null,
+          };
+        }),
+      };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
+   * Fetch a profile from the account and say what loading it would do —
+   * the same preview as a file. Nothing changes yet.
+   */
+  async previewLoadFromAccount(win, appId, accountId) {
+    try {
+      const res = await profileAccount.getRemote(accountId);
+      if (!res.success) return res;
+      const v2 = require("../profile/profileLoadV2");
+      // Untrusted, like a file: parsed and checked the same way.
+      const parsed = v2.parseProfileV2(
+        Buffer.from(JSON.stringify(res.profile.manifest || null)),
+      );
+      if (parsed.error) return { success: false, error: parsed.error };
+      const owner = await signedInUsername();
+      const linkedProfileId = profileAccount.profileFor(
+        appId,
+        owner,
+        accountId,
+      );
+      const plan = await v2.planLoadV2(
+        appId,
+        parsed.manifest,
+        {},
+        {
+          linkedProfileId,
+        },
+      );
+      return {
+        ...plan,
+        fromAccount: true,
+        token: rememberOpened(
+          appId,
+          {
+            v2: parsed.manifest,
+            account: {
+              accountId,
+              revision: res.profile.revision,
+              savedAt: res.profile.updatedAt,
+              updatedOn: res.profile.updatedOn,
+            },
+            owner,
+            linkedProfileId,
+          },
+          win,
+        ),
+      };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /** Remove a profile from the account. Profiles here aren't touched. */
+  async deleteAccountProfile(appId, accountId) {
+    try {
+      const res = await profileAccount.deleteRemote(accountId);
+      if (!res.success) return res;
+      const owner = await signedInUsername();
+      const linked = profileAccount.profileFor(appId, owner, accountId);
+      if (linked) profileAccount.clearLink(appId, owner, linked);
+      return { success: true };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
    * Pick a .dashprofile (an open dialog — never a path from the renderer)
    * and say what loading it would do. Nothing changes yet.
    */
@@ -417,11 +562,38 @@ const profileController = {
               BrowserWindow.getAllWindows()[0] ||
               null;
         const { applyLoadV2 } = require("../profile/profileLoadV2");
+        const { linkedProfileId: _notFromRenderer, ...chosen } = picked;
+        const fromAccount = entry.read.account || null;
         const result = await applyLoadV2(win, appId, entry.read.v2, {
-          ...picked,
+          ...chosen,
           defaultItems,
+          linkedProfileId: fromAccount ? entry.read.linkedProfileId : null,
         });
-        if (result.success) openedFiles.delete(token);
+        if (result.success) {
+          openedFiles.delete(token);
+          // Loaded from the account: the profile here is linked to it —
+          // unless another profile here holds that copy or this one is
+          // linked to a different copy (a load never moves a link; e.g.
+          // Default's copy loads as its own profile, Default stays linked).
+          const owner = entry.read.owner;
+          if (
+            fromAccount &&
+            result.profile &&
+            profileAccount.shouldLinkAfterLoad(
+              appId,
+              owner,
+              result.profile.id,
+              fromAccount.accountId,
+            )
+          ) {
+            profileAccount.setLink(
+              appId,
+              owner,
+              result.profile.id,
+              fromAccount,
+            );
+          }
+        }
         return result;
       }
       const result = await applyLoad(appId, entry.read, {
