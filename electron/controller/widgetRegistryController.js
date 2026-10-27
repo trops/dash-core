@@ -491,6 +491,23 @@ function writeWidgetMetadataVersion(pkgJsonPath, dashJsonPath, version) {
   }
 }
 
+/**
+ * The package.json fields publishing needs, for a widget that only has a
+ * dash.json (registry-installed and Widget Builder widgets). dash.json's
+ * name may already carry a scope (`@ai-built/x`): only the package name is
+ * kept, so it publishes as `@<scope>/x` — never `@<scope>/@ai-built/x`.
+ */
+function packageJsonFromDashJson(dashJson, scope, packageId, fallbackAuthor) {
+  const m = String(dashJson.name || "").match(/^@[^/]+\/(.+)$/);
+  const bareName = m ? m[1] : dashJson.name || "";
+  return {
+    name: bareName ? `@${scope}/${bareName}` : packageId,
+    version: dashJson.version || "1.0.0",
+    description: dashJson.description || "",
+    author: dashJson.author || fallbackAuthor || "",
+  };
+}
+
 // ─── Orchestration ───────────────────────────────────────────────────────────
 
 /**
@@ -550,12 +567,12 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       // Registry-installed widgets only have dash.json — synthesize
       // the fields the publish flow needs from it.
       const dashJson = JSON.parse(fs.readFileSync(dashJsonPath, "utf8"));
-      pkgJson = {
-        name: dashJson.name ? `@${callerScope}/${dashJson.name}` : packageId,
-        version: dashJson.version || "1.0.0",
-        description: dashJson.description || "",
-        author: dashJson.author || profile?.displayName || "",
-      };
+      pkgJson = packageJsonFromDashJson(
+        dashJson,
+        callerScope,
+        packageId,
+        profile?.displayName,
+      );
     } else {
       return {
         success: false,
@@ -927,4 +944,5 @@ module.exports = {
   inspectWidgetPackage,
   scanWidgetDefaults,
   writeWidgetMetadataVersion,
+  packageJsonFromDashJson,
 };

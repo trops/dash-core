@@ -19,6 +19,7 @@ const {
   PROFILE_SET_MEMBERSHIP,
   PROFILE_PREVIEW_SAVE,
   PROFILE_SAVE_FILE,
+  PROFILE_PUBLISH_WIDGET,
 } = require("../events");
 
 const profileApi = {
@@ -61,6 +62,20 @@ const profileApi = {
   /** Save to a .dashprofile file; the main process shows the save dialog. */
   saveFile: (appId, profileId, options) =>
     ipcRenderer.invoke(PROFILE_SAVE_FILE, { appId, profileId, options }),
+  /**
+   * Publish one of the profile's widgets to the signed-in user's account
+   * (from the Save dialog). Resolves { success, status: "published" |
+   * "needs-confirmation" | "failed", publishedAs, version,
+   * dashboardsSwitched, error, findings }.
+   * options: { confirmPersonalPaths }
+   */
+  publishWidget: (appId, profileId, packageName, options) =>
+    ipcRenderer.invoke(PROFILE_PUBLISH_WIDGET, {
+      appId,
+      profileId,
+      packageName,
+      options,
+    }),
 };
 
 module.exports = profileApi;

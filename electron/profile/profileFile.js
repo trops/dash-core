@@ -126,8 +126,10 @@ function classifyWidget(dep, installed, info) {
   const versions = info.versions || [];
   const latest = info.latestVersion || versions[0] || null;
   base.registryVersion = latest;
+  // Published from here (PR 4b) counts as the registry's code.
   const localBuild =
     !!installed &&
+    installed.installSource !== "registry" &&
     (installed.copiedFromFolder ||
       installed.installSource === "local" ||
       installed.installSource === "url");
@@ -288,6 +290,7 @@ async function lookupRegistryPackage(pkg) {
   return {
     latestVersion: body.latestVersion || null,
     versions: (body.versions || []).map((v) => v.version).filter(Boolean),
+    visibility: body.visibility || null,
   };
 }
 
