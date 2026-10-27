@@ -326,6 +326,16 @@ export const SaveProfileModal = ({ appId, profile, onClose, onSaved }) => {
           </span>
         ) : null}
 
+        {counts && counts.secretsLeftOut ? (
+          <span className={`${muted} max-w-prose`}>
+            {counts.secretsLeftOut === 1
+              ? "1 key typed into a widget isn't included"
+              : `${counts.secretsLeftOut} keys typed into widgets aren't included`}{" "}
+            — the other computer asks for{" "}
+            {counts.secretsLeftOut === 1 ? "it" : "them"}.
+          </span>
+        ) : null}
+
         {stillBundled.length ? (
           <span className={`${muted} max-w-prose`}>
             {plural(stillBundled.length, "widget")} will be included in the file

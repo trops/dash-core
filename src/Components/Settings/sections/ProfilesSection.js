@@ -560,6 +560,10 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
                 (res.providersToSetUp || []).length
                   ? ` Set up on this Mac: ${res.providersToSetUp.join(", ")}.`
                   : ""
+              }${
+                (res.secretsToEnter || []).length
+                  ? ` Add ${plural(res.secretsToEnter.length, "key")} in widget settings.`
+                  : ""
               }`,
             );
             if ((res.problems || []).length) setError(res.problems.join(" "));

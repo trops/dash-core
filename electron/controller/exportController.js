@@ -97,6 +97,10 @@ function safeMcpConfig(config) {
   for (const field of SAFE_MCP_CONFIG_FIELDS) {
     if (field in config) out[field] = config[field];
   }
+  // Arguments and addresses can carry a key (`--token=…`, `?key=…`).
+  const { redactArgs, redactUrl } = require("../profile/secretFields");
+  if (Array.isArray(out.args)) out.args = redactArgs(out.args);
+  if (typeof out.url === "string") out.url = redactUrl(out.url);
   // Which env vars it had, never their values.
   if (config.staticEnv && typeof config.staticEnv === "object") {
     out.staticEnvKeys = Object.keys(config.staticEnv);
@@ -109,7 +113,9 @@ function safeMcpConfig(config) {
 function safeWsConfig(config) {
   if (!config || typeof config !== "object") return config;
   const out = {};
-  if ("url" in config) out.url = config.url;
+  if ("url" in config) {
+    out.url = require("../profile/secretFields").redactUrl(config.url);
+  }
   if ("subprotocols" in config) out.subprotocols = config.subprotocols;
   if (config.headers && typeof config.headers === "object") {
     out.headerNames = Object.keys(config.headers);
@@ -195,8 +201,21 @@ async function exportEverythingForApplication(win, appId, options = {}) {
     );
     const provResult = providerController.listProviders(win, appId);
 
+    // Secret widget settings (keys typed into a widget) stay here.
+    let registry = null;
+    try {
+      registry = require("../widgetRegistry").getWidgetRegistry();
+    } catch (_e) {
+      registry = null; // names alone still catch the obvious ones
+    }
+    const { blankSecretsInDashboards } = require("../profile/secretFields");
+    const workspaces = blankSecretsInDashboards(
+      wsResult?.workspaces || [],
+      registry,
+    ).workspaces;
+
     const files = buildBundleFiles({
-      workspaces: wsResult?.workspaces || [],
+      workspaces,
       themes: themeResult?.themes || {},
       menuItems: menuResult?.menuItems || [],
       providers: provResult?.providers || [],

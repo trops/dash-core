@@ -33,6 +33,28 @@ const {
   BUNDLE_SCHEMA_VERSION,
 } = require("./exportController");
 
+test("tokens in provider arguments and addresses are removed", () => {
+  const [p] = stripProviderCredentials([
+    {
+      name: "Custom",
+      type: "custom",
+      providerClass: "mcp",
+      mcpConfig: {
+        transport: "stdio",
+        command: "npx",
+        args: ["server", "--token=LEAK-1", "--api-key", "LEAK-2"],
+        url: "https://h/mcp?key=LEAK-3",
+      },
+      wsConfig: { url: "wss://u:LEAK-4@h/ws?access_token=LEAK-5" },
+    },
+  ]);
+  const text = JSON.stringify(p);
+  for (const leak of ["LEAK-1", "LEAK-2", "LEAK-3", "LEAK-4", "LEAK-5"]) {
+    assert.ok(!text.includes(leak), leak + " leaked");
+  }
+  assert.deepEqual(p.mcpConfig.args, ["server", "--token=", "--api-key", ""]);
+});
+
 test("stripProviderCredentials drops the credentials field", () => {
   const input = [
     {

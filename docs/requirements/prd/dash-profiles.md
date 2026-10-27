@@ -160,6 +160,13 @@ computer.
    - Providers aren't created (one without its key would look set up but fail): the preview and the result list the ones
      to set up on this Mac.
    - The profile records `link: { revision, savedAt, loadedAt, loadedFrom, dashboardHashes }` for sync.
+   - **Secrets (hotfix, 2026-10-27, `electron/profile/secretFields.js`):** a key typed into a widget is stored in plain
+     text in the dashboard. Saving keeps the setting but blanks its value — settings the widget declares `type: "secret"`
+     or `"password"` (read with the safe `.dash.js` parser), or whose name says so (apiKey, accessToken, password,
+     clientSecret…; not "sortKey" or "author"). The manifest lists them (`secretsToEnter`); loading shows "Enter on this
+     Mac: dashboard › widget › setting" unless this Mac already has the value, compares dashboards without them, and a
+     dashboard taken from the file keeps this Mac's values. Provider arguments and URLs have token-like values
+     redacted (`--token=…`, `--api-key …`, `?key=…`, URL passwords). Export Everything gets both fixes.
    - **Fast follow** (user): the Save dialog offers private publishing for everything in the profile — dashboards, bots,
      themes as well as widgets — opt-in like widgets.
 6. **dash-electron** picks up the new version.

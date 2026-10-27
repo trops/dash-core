@@ -167,6 +167,7 @@ function buildProfileFiles({
   providers = [],
   settings = null,
   widgets = [],
+  secretsLeftOut = [],
   revision = 1,
   createdOn = null,
   appVersion = null,
@@ -193,6 +194,8 @@ function buildProfileFiles({
       bundledWidgets: widgets.filter((w) => w.source === "bundled").length,
     },
     dashboardHashes,
+    // Secret settings left out — the loading computer asks for them.
+    secretsToEnter: secretsLeftOut,
   };
   const json = (v) => Buffer.from(JSON.stringify(v, null, 2), "utf8");
   const files = {
@@ -344,7 +347,15 @@ async function gatherProfile(appId, profileId, options = {}, deps = {}) {
     );
   };
 
-  const dashboards = keep("dashboards", d.workspaceFile(appId), (w) => w.id);
+  // Secret widget settings (keys typed into a widget) keep their name but
+  // not their value: the other computer asks for them.
+  const registry = d.widgetRegistry();
+  const { blankSecretsInDashboards } = require("./secretFields");
+  const { workspaces: dashboards, blanked: secretsLeftOut } =
+    blankSecretsInDashboards(
+      keep("dashboards", d.workspaceFile(appId), (w) => w.id),
+      registry,
+    );
 
   // Folders and themes the dashboards use come along, so nothing on the
   // other computer ends up uncategorized or unstyled.
@@ -394,7 +405,6 @@ async function gatherProfile(appId, profileId, options = {}, deps = {}) {
   }
 
   // Widgets: every package the dashboards use, checked by exact version.
-  const registry = d.widgetRegistry();
   const {
     collectDependencyRefsFromWorkspace,
     buildWidgetDependencies,
@@ -473,6 +483,7 @@ async function gatherProfile(appId, profileId, options = {}, deps = {}) {
     settings,
     widgets,
     installedOf,
+    secretsLeftOut,
     appVersion: d.appVersion(),
   };
 }
@@ -519,6 +530,7 @@ function summarize(gathered) {
       providers: gathered.providers.length,
       widgets: gathered.widgets.length,
       bundledWidgets: bundled.length,
+      secretsLeftOut: (gathered.secretsLeftOut || []).length,
     },
     widgets: gathered.widgets,
     bundledBytes,
