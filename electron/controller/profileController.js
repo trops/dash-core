@@ -80,6 +80,19 @@ function allItems(appId, botController) {
   };
 }
 
+// The registry username of the signed-in user, or null.
+async function signedInUsername() {
+  try {
+    const auth = require("./registryAuthController");
+    const cached = auth.getStoredUsername && auth.getStoredUsername();
+    if (cached) return cached;
+    const profile = await auth.getRegistryProfile();
+    return (profile && profile.username) || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 function botControllerOrNull() {
   try {
     return require("./botController");
@@ -243,7 +256,60 @@ const profileController = {
       } catch (_e) {
         signedIn = false;
       }
-      return { success: true, ...summarize(gathered), signedIn };
+      const summary = summarize(gathered);
+      // Signed in: which of the widgets going into the file could be
+      // published to the user's account instead (PR 4b).
+      let username = null;
+      let publishPlan = [];
+      if (signedIn) {
+        username = await signedInUsername();
+        if (username) {
+          const { planPublish } = require("../profile/profilePublish");
+          const { lookupRegistryPackage } = require("../profile/profileFile");
+          publishPlan = await planPublish(
+            summary.widgets,
+            username,
+            lookupRegistryPackage,
+          );
+        }
+      }
+      return { success: true, ...summary, signedIn, username, publishPlan };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
+   * Publish one of a profile's widgets to the user's account (PR 4b). The
+   * plan is worked out again here — never taken from the renderer — so
+   * only a widget the plan allows is published, as the plan says.
+   */
+  async publishWidget(win, appId, profileId, packageName, options = {}) {
+    try {
+      const { gatherProfile, summarize } = require("../profile/profileFile");
+      const {
+        planPublish,
+        publishWidget,
+      } = require("../profile/profilePublish");
+      const { lookupRegistryPackage } = require("../profile/profileFile");
+      const username = await signedInUsername();
+      if (!username) {
+        return { success: false, error: "Sign in to publish to your account." };
+      }
+      const gathered = await gatherProfile(appId, profileId, {});
+      const plan = await planPublish(
+        summarize(gathered).widgets,
+        username,
+        lookupRegistryPackage,
+      );
+      const row = plan.find((r) => r.package === packageName);
+      if (!row || !row.publishable) {
+        return { success: false, error: `${packageName} can't be published.` };
+      }
+      const result = await publishWidget(win, appId, row, {
+        confirmPersonalPaths: !!(options && options.confirmPersonalPaths),
+      });
+      return { success: result.status === "published", ...result };
     } catch (e) {
       return fail(e);
     }

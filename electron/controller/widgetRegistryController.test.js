@@ -38,10 +38,41 @@ const fnStart = controllerSource.indexOf(
 );
 const fnEnd = controllerSource.indexOf("// ─── Orchestration", fnStart);
 const fnSource = controllerSource.substring(fnStart, fnEnd);
-const { writeWidgetMetadataVersion } = new Function(
+const { writeWidgetMetadataVersion, packageJsonFromDashJson } = new Function(
   "require",
-  `const fs = require("fs"); ${fnSource} return { writeWidgetMetadataVersion };`,
+  `const fs = require("fs"); ${fnSource} return { writeWidgetMetadataVersion, packageJsonFromDashJson };`,
 )(require);
+
+test("dash.json-only widget: a scoped name publishes under the user's scope once", () => {
+  // Widget Builder widgets keep `@ai-built/x` in dash.json; the registry
+  // rejected `@trops/@ai-built/x` ("name must be kebab-case").
+  const pkg = packageJsonFromDashJson(
+    {
+      name: "@ai-built/calculatorwidget",
+      version: "1.2.0",
+      author: "AI Assistant",
+    },
+    "trops",
+    "@ai-built/calculatorwidget",
+    "John",
+  );
+  assert.strictEqual(pkg.name, "@trops/calculatorwidget");
+  assert.strictEqual(pkg.version, "1.2.0");
+  assert.strictEqual(pkg.author, "AI Assistant");
+  // A bare name gets the scope added; no name falls back to the package id.
+  assert.strictEqual(
+    packageJsonFromDashJson({ name: "clock" }, "trops", "clock").name,
+    "@trops/clock",
+  );
+  assert.strictEqual(
+    packageJsonFromDashJson({}, "trops", "@trops/x", "John").name,
+    "@trops/x",
+  );
+  assert.strictEqual(
+    packageJsonFromDashJson({}, "trops", "x", "John").author,
+    "John",
+  );
+});
 
 function makeTmpPkgDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "dash-widget-ver-"));

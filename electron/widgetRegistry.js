@@ -1810,6 +1810,23 @@ class WidgetRegistry {
   }
 
   /**
+   * Record where an installed widget's code now comes from — "registry"
+   * once this exact code has been published (dash-profiles PR 4b), so a
+   * profile save references it instead of copying it into the file.
+   */
+  markInstallSource(widgetName, installSource, version = null) {
+    const w = this.widgets.get(widgetName);
+    if (!w) return false;
+    this.widgets.set(widgetName, {
+      ...w,
+      installSource,
+      ...(version ? { version } : {}),
+    });
+    this.saveRegistry();
+    return true;
+  }
+
+  /**
    * Uninstall a widget
    * @param {string} widgetName - Name of the widget to remove
    */

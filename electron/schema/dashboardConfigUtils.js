@@ -1177,6 +1177,105 @@ function remapLayoutPackageScopes(
 }
 
 /**
+ * Point every widget of one package at another package — the same code
+ * published under a new name (dash-profiles PR 4b: `@ai-built/pipeline`
+ * published as `@trops/pipeline`). Unlike remapLayoutPackageScopes this
+ * is for one package only, and it also rewrites event wiring: listener
+ * strings are `${component}[${itemId}].${event}`, and a widget's
+ * component id carries the package's scope.
+ *
+ * Pure: returns `{ workspace, changed }`; the input isn't modified.
+ *
+ * @param {Object} workspace
+ * @param {string} fromPkg  e.g. "@ai-built/pipeline"
+ * @param {string} toPkg    e.g. "@trops/pipeline"
+ */
+function repointLayoutPackage(workspace, fromPkg, toPkg) {
+  const split = (pkg) => {
+    const m = String(pkg || "").match(/^@?([^/]+)\/(.+)$/);
+    return m ? { scope: m[1], name: m[2] } : null;
+  };
+  const from = split(fromPkg);
+  const to = split(toPkg);
+  if (!workspace || !from || !to) return { workspace, changed: 0 };
+  const fromIds = new Set([
+    `@${from.scope}/${from.name}`,
+    `${from.scope}/${from.name}`,
+  ]);
+  const toId = `@${to.scope}/${to.name}`;
+  let changed = 0;
+
+  const repointComponent = (component) => {
+    if (typeof component !== "string") return component;
+    const parts = component.split(".");
+    if (parts.length !== 3) return component;
+    if (parts[0] !== from.scope || parts[1] !== from.name) return component;
+    return `${to.scope}.${to.name}.${parts[2]}`;
+  };
+  const repointEvent = (eventString) => {
+    if (typeof eventString !== "string") return eventString;
+    const m = eventString.match(/^([^[]+)(\[[^\]]+\]\..+)$/);
+    if (!m) return eventString;
+    const next = repointComponent(m[1]);
+    return next === m[1] ? eventString : `${next}${m[2]}`;
+  };
+  const repointItem = (item) => {
+    if (!item || typeof item !== "object") return item;
+    const next = { ...item };
+    let touched = false;
+    for (const key of ["packageId", "_sourcePackage"]) {
+      if (fromIds.has(item[key])) {
+        next[key] = toId;
+        touched = true;
+      }
+    }
+    // `componentName` wins over `component` when a layout loads, so both
+    // move. `uuid` stays: widget data is stored under it.
+    for (const key of ["component", "componentName"]) {
+      const value = repointComponent(item[key]);
+      if (value !== item[key]) {
+        next[key] = value;
+        touched = true;
+      }
+    }
+    if (touched && item.type === "widget" && item.workspace === from.scope) {
+      next.workspace = to.scope;
+    }
+    if (item.listeners && typeof item.listeners === "object") {
+      const listeners = {};
+      for (const [handler, events] of Object.entries(item.listeners)) {
+        listeners[handler] = Array.isArray(events)
+          ? events.map((e) => {
+              const r = repointEvent(e);
+              if (r !== e) touched = true;
+              return r;
+            })
+          : events;
+      }
+      next.listeners = listeners;
+    }
+    if (Array.isArray(item.items)) next.items = item.items.map(repointItem);
+    if (Array.isArray(item.layout)) next.layout = item.layout.map(repointItem);
+    if (touched) changed += 1;
+    return next;
+  };
+
+  const next = { ...workspace };
+  if (Array.isArray(next.layout)) next.layout = next.layout.map(repointItem);
+  if (Array.isArray(next.sidebarLayout)) {
+    next.sidebarLayout = next.sidebarLayout.map(repointItem);
+  }
+  if (Array.isArray(next.pages)) {
+    next.pages = next.pages.map((page) =>
+      page && Array.isArray(page.layout)
+        ? { ...page, layout: page.layout.map(repointItem) }
+        : page,
+    );
+  }
+  return { workspace: next, changed };
+}
+
+/**
  * Defense-in-depth guard: throw if any layout item in `workspace`
  * still references a local-only scope (e.g. `@ai-built/...`).
  *
@@ -1286,5 +1385,6 @@ module.exports = {
   checkApiCompatibility,
   stripPersonalizationFromWorkspace,
   remapLayoutPackageScopes,
+  repointLayoutPackage,
   assertNoLocalScopes,
 };

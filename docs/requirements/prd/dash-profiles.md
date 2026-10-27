@@ -1,6 +1,6 @@
 # PRD: Dash Profiles
 
-**Status:** In Progress (PR 4a: save to file)
+**Status:** In Progress (PR 4b: publish from Save)
 **Last Updated:** 2026-10-26
 **Owner:** trops
 **Related PRDs:** [Dashboard Marketplace](./dashboard-marketplace.md), [Bot Teams](./bot-teams.md)
@@ -111,8 +111,27 @@ computer.
    - New installs record `installSource` (registry / url / local) so a local build of a published version is detected.
    - Each save records `link: { revision, savedAt, dashboardHashes }` on the profile.
    - General › Backup now points to profiles; Export Everything could not be loaded back.
-   - **4b** (user decision): when signed in, Save offers to publish those widgets privately to your account instead (already
-     published ones keep their visibility), and this computer's dashboards switch to the published package.
+   - **4b** (`electron/profile/profilePublish.js`), user decisions:
+     - Signed in, the Save dialog lists the widgets going into the file that the user can publish under their name
+       (`@ai-built/*` or their own scope). **Nothing is ticked by default**; nothing is ever published except from this dialog.
+     - Never over an existing registry version (the registry would silently replace it): the patch number goes up until free.
+       First publish is private; later ones keep the package's visibility (publishing without one would make it public).
+     - The plan is recomputed in the main process; the renderer only names the package.
+     - After `@ai-built/x` publishes as `@user/x`, the published package is installed and **every dashboard on this computer**
+       that used it points at `@user/x` (same code and version): component ids, `packageId`, `_sourcePackage` and event-wiring
+       strings (`repointLayoutPackage` in `schema/dashboardConfigUtils.js`). The `@ai-built` copy stays installed.
+     - Personal paths in the widget's files: the dialog shows them and publishes only after "Publish anyway".
+     - A failed publish leaves the widget in the file; a failed install after publishing leaves dashboards on the local copy.
+     - The dialog closes once the file is saved, so each outcome goes to the "Saved" notice: what was published (and how
+       many dashboards switched), and for each failure, why it went into the file instead (including the registry's reasons).
+     - Live test (2026-10-27) caught three bugs, all fixed in 4b:
+       - A layout item's `componentName` wins over `component` when it loads, so it's repointed too (and `workspace`).
+         `uuid` is kept because widget data is stored under it.
+       - A publish failure was invisible (the dialog closed on save).
+       - Widgets with only a `dash.json` named `@ai-built/x` (every Widget Builder widget) published as `@user/@ai-built/x`,
+         which the registry rejects (`packageJsonFromDashJson` keeps just the package name).
+     - A published package must still pass the publish checks (e.g. no hard-coded colors). Older `@ai-built` widgets that
+       fail them stay in the file, with the reason shown.
 5. **Load from file.** Create-or-replace with the difference preview, plus the sync groundwork: `revision` and dashboard hashes.
 6. **dash-electron** picks up the new version.
 
@@ -154,7 +173,10 @@ auto-save.
 - `electron/profile/profileContents.test.js`: contents with inProfile/alsoIn; unticking never deletes; duplicate.
 - `electron/profile/profileFile.test.js`: widget classification (6 cases), no secrets in the zip, bundled folder without
   node_modules, revision counts up, Default-only writes no profiles.json.
-- `src/Components/Settings/sections/SaveProfileModal.test.js`: counts, widget status text, options, save and cancel.
+- `src/Components/Settings/sections/SaveProfileModal.test.js`: counts, widget status text, options, save and cancel; publish
+  section (off by default, publish then save, personal-paths confirm, failure still saves, signed out).
+- `electron/profile/profilePublish.test.js`: free versions, the publish plan, repointing incl. event wiring, publish + install +
+  switch with fakes, failures change nothing.
 - `src/Components/Settings/sections/ProfilesSection.test.js`: active marker, Delete guards, ticks, the untick and switch confirms.
 
 ---
@@ -163,5 +185,6 @@ auto-save.
 
 - 2026-10-26: Created. Plan approved; PR 1 (profile storage) merged in dash-core v0.1.834.
 - 2026-10-26: PR 2: profiles became id lists (user decision), plus switching and bots per profile. Merged in v0.1.835.
+- 2026-10-26: PR 4b: publish from Save (opt-in ticks; every dashboard on this computer switches to the published package).
 - 2026-10-26: PR 4a: save to file, with exact-version registry checks (user: make sure the registry copy is up to date).
 - 2026-10-26: PR 3: profiles UI; `profile:duplicate | list-contents | set-membership` IPC.
