@@ -71,6 +71,9 @@ const preview = {
     { name: "Slack", type: "slack", ready: true },
   ],
   settings: { theme: "ocean", checkForUpdatesOnLaunch: true },
+  secretsToEnter: [
+    { dashboard: "Home Assistant", widget: "Lights", field: "accessToken" },
+  ],
 };
 
 function mount(overrides = {}, p = preview) {
@@ -117,6 +120,11 @@ test("replacing: warns, lists what changes, and picks the newer copy", () => {
   // "Already here" rows aren't listed one by one.
   expect(screen.queryByText("Home Assistant")).toBeNull();
   expect(screen.getByText(/New bots arrive paused/)).toBeInTheDocument();
+  // Keys typed into widgets aren't in the file: listed to enter here.
+  expect(screen.getByText("Enter on this Mac")).toBeInTheDocument();
+  expect(
+    screen.getByText("Home Assistant › Lights › accessToken"),
+  ).toBeInTheDocument();
   expect(
     screen.getByText(
       /Set these up on this Mac after loading: Home Assistant\./,

@@ -555,6 +555,80 @@ describe("applyLoad", () => {
     assert.deepEqual(calls.settings[0], { theme: "ocean", other: 1 });
   });
 
+  it("keys typed into widgets: compared without them, kept on this Mac, listed when missing", async () => {
+    const appId = newAppId();
+    const withKey = {
+      ...ha,
+      layout: [
+        {
+          id: 1,
+          uuid: "w1",
+          component: "trops.ha.Lights",
+          userPrefs: { room: "Kitchen", accessToken: "TOKEN-1" },
+        },
+      ],
+    };
+    // What a saved file holds: the setting, no value, and the list.
+    const fileCopy = {
+      ...withKey,
+      layout: [
+        {
+          ...withKey.layout[0],
+          userPrefs: { room: "Kitchen", accessToken: "" },
+        },
+      ],
+    };
+    const zip = new AdmZip(
+      profileZip({
+        profile: {
+          ...macMini,
+          items: { ...macMini.items, dashboards: ["101"] },
+        },
+        dashboards: [fileCopy],
+      }),
+    );
+    const manifest = JSON.parse(zip.readAsText("manifest.json"));
+    manifest.secretsToEnter = [
+      {
+        dashboardId: 101,
+        dashboard: "Home Assistant",
+        item: "layout/w1",
+        component: "Lights",
+        title: null,
+        field: "accessToken",
+      },
+    ];
+    zip.updateFile("manifest.json", Buffer.from(JSON.stringify(manifest)));
+    const read = readProfileZip(zip.toBuffer());
+
+    // An empty Mac: listed to enter.
+    const fresh = planLoad(appId, read, fakeComputer().deps);
+    assert.deepEqual(fresh.secretsToEnter, [
+      { dashboard: "Home Assistant", widget: "Lights", field: "accessToken" },
+    ]);
+
+    // This Mac has the key: the same dashboard, nothing to enter.
+    const here = fakeComputer({ workspaces: [withKey] });
+    const plan = planLoad(appId, read, here.deps);
+    assert.equal(plan.items.dashboards[0].state, "same");
+    assert.deepEqual(plan.secretsToEnter, []);
+
+    // Taking the file's copy over this Mac's keeps this Mac's key.
+    const edited = {
+      ...fileCopy,
+      name: "HA (edited)",
+      updatedAt: "2026-10-27T00:00:00Z",
+    };
+    const zip2 = new AdmZip(zip.toBuffer());
+    zip2.updateFile("dashboards.json", Buffer.from(JSON.stringify([edited])));
+    const read2 = readProfileZip(zip2.toBuffer());
+    const c = fakeComputer({ workspaces: [withKey] });
+    await applyLoad(appId, read2, { useFile: { dashboards: ["101"] } }, c.deps);
+    const written = c.disk["workspaces.json"][0];
+    assert.equal(written.name, "HA (edited)");
+    assert.equal(written.layout[0].userPrefs.accessToken, "TOKEN-1");
+  });
+
   it("a dashboard keeps this Mac's lead: the file's isn't added, this Mac's doesn't leave", async () => {
     const appId = newAppId();
     store.create(appId, "Mac Mini", {

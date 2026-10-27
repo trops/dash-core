@@ -286,6 +286,24 @@ export const LoadProfileModal = ({ appId, preview, onClose, onLoaded }) => {
           </span>
         ) : null}
 
+        {(preview.secretsToEnter || []).length ? (
+          <div
+            className={`flex flex-col gap-1 rounded-lg border p-3 ${hairline}`}
+            data-testid="load-profile-secrets"
+          >
+            <span className="font-medium">Enter on this Mac</span>
+            <span className={`${muted} max-w-prose`}>
+              Keys and passwords typed into widgets aren't in the file. Add them
+              in each widget's settings after loading:
+            </span>
+            {preview.secretsToEnter.map((s, i) => (
+              <span key={i}>
+                {s.dashboard} › {s.widget} › {s.field}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         {preview.settings ? (
           <Checkbox
             label="Also use its app theme and update setting"

@@ -51,6 +51,13 @@ const JSON_FILES = {
 
 const KINDS = ["dashboards", "bots", "folders", "themes"];
 
+const {
+  blankDashboardSecrets,
+  secretFieldLookup,
+  restoreSecrets,
+  hasSecretValue,
+} = require("./secretFields");
+
 // Theme keys that would reach an object's prototype.
 const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
@@ -539,6 +546,13 @@ function planLoad(appId, read, deps = {}) {
     : { mode: "create", profileId: null, name };
 
   const here = localRecords(appId, d);
+  const registry = d.widgetRegistry();
+  // Files never carry secret values, so dashboards compare without them.
+  const secretFieldsFor = secretFieldLookup(registry);
+  const comparable = (kind, rec) =>
+    kind === "dashboards"
+      ? blankDashboardSecrets(rec, secretFieldsFor).workspace
+      : rec;
   // A dashboard has one lead: this Mac's, when it has one.
   const fileDashboards = new Set(read.profile.items.dashboards);
   const localLeads = new Map(
@@ -579,7 +593,10 @@ function planLoad(appId, read, deps = {}) {
           : ["Default"];
       const row = { id, name: recordName(kind, id, rec), alsoIn };
       if (!mine) rows.push({ ...row, state: "new" });
-      else if (recordHash(kind, mine) === recordHash(kind, rec)) {
+      else if (
+        recordHash(kind, comparable(kind, mine)) ===
+        recordHash(kind, comparable(kind, rec))
+      ) {
         rows.push({ ...row, state: "same" });
       } else
         rows.push({ ...row, state: "changed", ...newerCopy(kind, mine, rec) });
@@ -604,7 +621,42 @@ function planLoad(appId, read, deps = {}) {
     items[kind] = rows;
   }
 
-  const registry = d.widgetRegistry();
+  // Secret settings the file left out, unless this Mac already has them.
+  const localDashboards = new Map(
+    (here.dashboards || []).map((w) => [String(w.id), w]),
+  );
+  const secretsToEnter = (
+    Array.isArray(read.manifest.secretsToEnter)
+      ? read.manifest.secretsToEnter
+      : []
+  )
+    .filter(
+      (e) =>
+        e &&
+        e.dashboardId != null &&
+        typeof e.field === "string" &&
+        fileDashboards.has(String(e.dashboardId)),
+    )
+    .filter((e) => {
+      const mine = localDashboards.get(String(e.dashboardId));
+      return !mine || !hasSecretValue(mine, e.item, e.field);
+    })
+    .map((e) => ({
+      dashboard: String(e.dashboard || "Untitled"),
+      widget: String(e.title || e.component || "Widget"),
+      field: e.field,
+    }))
+    // The top-level layout mirrors a page: the same setting once.
+    .filter(
+      (e, i, all) =>
+        all.findIndex(
+          (o) =>
+            o.dashboard === e.dashboard &&
+            o.widget === e.widget &&
+            o.field === e.field,
+        ) === i,
+    );
+
   const dashboardsText = (here.dashboards || []).map((w) => ({
     id: w.id,
     text: JSON.stringify(w),
@@ -655,6 +707,7 @@ function planLoad(appId, read, deps = {}) {
     widgets,
     providers,
     settings,
+    secretsToEnter,
   };
 }
 
@@ -780,7 +833,9 @@ async function applyLoad(appId, read, choices = {}, deps = {}) {
     }
   }
 
-  // 2. Dashboards, folders, themes — written as they are, ids kept.
+  // 2. Dashboards, folders, themes — written as they are, ids kept (a
+  //    dashboard over this Mac's copy keeps the secrets this Mac has).
+  const secretLookup = secretFieldLookup(registry);
   const defaultItems = store.hasProfiles(appId)
     ? undefined
     : choices.defaultItems;
@@ -802,7 +857,15 @@ async function applyLoad(appId, read, choices = {}, deps = {}) {
     let touched = false;
     for (const row of plan.items[kind]) {
       if (!takes(kind, row)) continue;
-      upsert(list, row, recs.get(row.id));
+      const incoming = recs.get(row.id);
+      const mine = list.find((x) => String(x.id) === row.id);
+      upsert(
+        list,
+        row,
+        kind === "dashboards" && mine
+          ? restoreSecrets(incoming, mine, secretLookup)
+          : incoming,
+      );
       touched = true;
     }
     if (touched) d.writeAppFile(appId, fileName, list);
@@ -897,6 +960,7 @@ async function applyLoad(appId, read, choices = {}, deps = {}) {
     replaced: replacing,
     counts,
     widgetsInstalled: installed,
+    secretsToEnter: plan.secretsToEnter,
     providersToSetUp: plan.providers.filter((p) => !p.ready).map((p) => p.name),
     problems,
   };

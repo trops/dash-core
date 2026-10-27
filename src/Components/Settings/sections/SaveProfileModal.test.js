@@ -305,3 +305,15 @@ describe("Publish to your account (PR 4b)", () => {
     expect(screen.queryByTestId("save-profile-publish")).toBeNull();
   });
 });
+
+test("keys typed into widgets: says they aren't included", async () => {
+  mount({
+    previewSave: jest.fn().mockResolvedValue({
+      ...preview,
+      counts: { ...preview.counts, secretsLeftOut: 2 },
+    }),
+  });
+  expect(
+    await screen.findByText(/2 keys typed into widgets aren't included/),
+  ).toBeInTheDocument();
+});

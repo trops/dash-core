@@ -223,6 +223,7 @@ describe("gatherProfile + saveProfileToFile", () => {
           component: "Pipeline",
           packageId: "@ai-built/pipeline",
           selectedProviders: { ha: "home" },
+          userPrefs: { label: "Pipes", apiKey: "SECRET5" },
         },
         { id: 2, component: "ChatClaudeCodeWidget", packageId: "@trops/chat" },
       ],
@@ -326,12 +327,29 @@ describe("gatherProfile + saveProfileToFile", () => {
       .filter((e) => e.entryName.endsWith(".json"))
       .map((e) => e.getData().toString("utf8"))
       .join("");
-    for (const secret of ["SECRET", "SECRET2", "SECRET3", "SECRET4"]) {
+    for (const secret of [
+      "SECRET",
+      "SECRET2",
+      "SECRET3",
+      "SECRET4",
+      "SECRET5",
+    ]) {
       assert.ok(!text.includes(secret), `${secret} leaked`);
     }
     const manifest = JSON.parse(zip.readAsText("manifest.json"));
     assert.equal(manifest.name, "Mac Mini");
     assert.equal(manifest.appVersion, "9.9.9");
+    // A key typed into a widget: the setting travels, its value doesn't.
+    const kitchen = JSON.parse(zip.readAsText("dashboards.json"))[0];
+    assert.deepEqual(kitchen.layout[0].userPrefs, {
+      label: "Pipes",
+      apiKey: "",
+    });
+    assert.deepEqual(
+      manifest.secretsToEnter.map((s) => [s.dashboard, s.component, s.field]),
+      [["Kitchen", "Pipeline", "apiKey"]],
+    );
+    assert.equal(res.counts.secretsLeftOut, 1);
 
     // The save is recorded; the next one counts up.
     store._resetCache();
