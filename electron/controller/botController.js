@@ -86,6 +86,7 @@ const {
 } = require("../registry/packageRef");
 const { validateBotDefinition } = require("../bots/botSchema");
 const { botUpdatePatch } = require("../bots/botUpdate");
+const { remixOrigin, checkRemix, checkRemixAll } = require("../registry/remix");
 const { unassignTeam, isOnTeam } = require("../bots/teams");
 const {
   TEAM_SERVER,
@@ -1777,6 +1778,32 @@ const botController = {
    * Publish a bot or team to the registry under the user's username. The
    * package is rebuilt here; only the publish fields come from the dialog.
    */
+  /**
+   * Whether a bot (or a dashboard's team) being published is a copy of
+   * someone else's package and may be: every member's original is checked
+   * (one that doesn't allow remixes stops the publish), and the credit is
+   * the one this was published with before, if any.
+   */
+  _remixCheck(opts, username) {
+    if (opts.kind === "team") {
+      const settings = this._store.getTeamSettings(opts.workspaceId) || {};
+      const credited = remixOrigin(
+        "bot-team",
+        { remixedFrom: settings.remixedFrom },
+        username,
+      );
+      const origins = [credited];
+      for (const bot of this._store.list()) {
+        if (isOnTeam(bot, opts.workspaceId)) {
+          origins.push(remixOrigin("bot-team", bot, username));
+        }
+      }
+      return checkRemixAll(origins, undefined, credited);
+    }
+    const bot = this._store.get(opts.botId);
+    return checkRemix(bot ? remixOrigin("bot", bot, username) : null);
+  },
+
   async publish(opts = {}) {
     const meta = (opts && opts.meta) || {};
     const errors = checkPublishMeta(meta);
@@ -1797,6 +1824,10 @@ const botController = {
       description: meta.description || "",
       version: meta.version,
     };
+    // A bot or team installed from someone else's package is published as a
+    // remix of it, credited — unless its author doesn't allow remixes.
+    const remix = await this._remixCheck(opts, identity.username);
+    if (remix.error) return { success: false, error: remix.error };
     const visibility = meta.visibility === "public" ? "public" : "private";
     const manifest = registryManifestFor(pkg, {
       scope: identity.username,
@@ -1808,6 +1839,10 @@ const botController = {
       appOrigin: this._appId,
       author: identity.displayName,
     });
+    if (remix.remixedFrom) manifest.remixedFrom = remix.remixedFrom;
+    if (typeof meta.allowRemix === "boolean") {
+      manifest.allowRemix = meta.allowRemix;
+    }
     const result = await zipAndPublish(publishFiles(pkg, manifest), manifest);
     if (!result || !result.success) {
       return {
@@ -1832,6 +1867,14 @@ const botController = {
       at: published.at,
     });
     const record = registryRef ? { published, registryRef } : { published };
+    // A remix remembers its original: a later publish — even under another
+    // name — is still a remix of it (and checked against it).
+    if (remix.remixedFrom) {
+      record.remixedFrom = {
+        package: `${remix.remixedFrom.scope}/${remix.remixedFrom.name}`,
+        version: remix.remixedFrom.version,
+      };
+    }
     if (opts.kind === "team") {
       this._store.setTeamSettings(opts.workspaceId, record);
     } else {

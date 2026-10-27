@@ -65,6 +65,10 @@ async function getPackageInfo(pkg, opts = {}) {
       .map((v) => v && v.version)
       .filter(Boolean),
     visibility: body.visibility || null,
+    // Whether it may be remixed (registry 1.9.0+; older answers say nothing).
+    ...(typeof body.allowRemix === "boolean"
+      ? { allowRemix: body.allowRemix }
+      : {}),
   };
 }
 

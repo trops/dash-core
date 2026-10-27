@@ -4,6 +4,7 @@
  * dashboards use each theme, search / chips, Duplicate's copy, and theme
  * colours as inline values for previews. Pure.
  */
+import { remixSourceOf } from "../../utils/remixSource";
 
 const nameOf = (key, theme) => (theme && theme.name) || key;
 
@@ -64,13 +65,17 @@ export function canPublishTheme(theme, raw) {
 /**
  * A copy of a raw (stored) theme for Duplicate: a new `theme-<time>` key (as
  * the creation wizard makes), "<name> (Copy)", and no registry metadata — the
- * copy is the user's own, so it can be published.
+ * copy can be published. A copy of someone else's theme stays credited to it
+ * (`remixedFrom`): publishing it is a remix, which its author may not allow.
  */
 export function duplicateTheme(raw, key, now = Date.now()) {
   const newKey = `theme-${now}`;
   const copy = JSON.parse(JSON.stringify(raw || {}));
+  const source = remixSourceOf(raw);
   delete copy._registryMeta;
   delete copy.registryRef;
+  if (source) copy.remixedFrom = source;
+  else delete copy.remixedFrom;
   return {
     key: newKey,
     theme: { ...copy, id: newKey, name: `${nameOf(key, raw)} (Copy)` },

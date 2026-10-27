@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext } from "react";
+import { AllowRemixOption, allowRemixOption } from "./AllowRemixOption";
 import {
   ThemeContext,
   FontAwesomeIcon,
@@ -62,6 +63,8 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
   const [username, setUsername] = useState(null);
   const [bump, setBump] = useState("patch");
   const [visibility, setVisibility] = useState("public");
+  // "Allow remixes": null follows the visibility until the user chooses.
+  const [allowRemix, setAllowRemix] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [result, setResult] = useState(null);
   const [packageInfo, setPackageInfo] = useState(null);
@@ -238,6 +241,7 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
     try {
       const options = {
         visibility,
+        ...allowRemixOption(allowRemix),
         ...(bump && bump !== "none" ? { bump } : {}),
         ...(confirmPersonalPaths ? { confirmPersonalPaths: true } : {}),
       };
@@ -600,6 +604,13 @@ export const PublishWidgetModal = ({ isOpen, setIsOpen, appId, widget }) => {
                       })}
                     </div>
                   </div>
+
+                  <AllowRemixOption
+                    visibility={visibility}
+                    value={allowRemix}
+                    onChange={setAllowRemix}
+                    disabled={isPublishing}
+                  />
                 </>
               )}
 

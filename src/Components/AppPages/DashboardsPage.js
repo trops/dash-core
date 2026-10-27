@@ -31,6 +31,7 @@ import { dashboardSummary } from "./dashboardSummary";
 import { useApprovalsByDashboard } from "./useApprovalsByDashboard";
 import { exportedText } from "./exportedText";
 import { saveErrorText } from "../../utils/saveErrorText";
+import { remixSourceOf } from "../../utils/remixSource";
 
 const UNCATEGORIZED = "Uncategorized";
 // Empty, so it takes the select's placeholder place ("No folder" once).
@@ -200,6 +201,11 @@ const DashboardDetailPanel = ({
       } = copy._dashboardConfig;
       copy._dashboardConfig = origin;
     }
+    // A copy of someone else's dashboard stays credited to it: publishing
+    // the copy is a remix, which its author may not allow.
+    const source = remixSourceOf(ws);
+    if (source) copy.remixedFrom = source;
+    else delete copy.remixedFrom;
     save({
       ...copy,
       id: Date.now(),

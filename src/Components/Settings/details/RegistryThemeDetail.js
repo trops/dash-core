@@ -1,4 +1,5 @@
 import React, { useState, useContext } from "react";
+import { remixCreditText } from "../../../utils/remixSource";
 import {
   ThemeContext,
   Button,
@@ -262,6 +263,11 @@ export const RegistryThemeDetail = ({
               <span className="text-sm opacity-60">
                 by {pkg.author || "Unknown"}
               </span>
+              {remixCreditText(pkg.remixedFrom) ? (
+                <span className="text-sm opacity-60" data-testid="remix-credit">
+                  {`· ${remixCreditText(pkg.remixedFrom)}`}
+                </span>
+              ) : null}
               {pkg.version && (
                 <span
                   className={`text-xs px-2 py-0.5 rounded ${currentTheme["bg-primary-medium"]} opacity-70`}

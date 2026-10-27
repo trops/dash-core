@@ -62,6 +62,7 @@ const {
   EXACT_VERSION,
   planPackagePublish,
 } = require("../registry/registryPackages");
+const { remixOrigin, checkRemix } = require("../registry/remix");
 
 const configFilename = "workspaces.json";
 
@@ -720,6 +721,9 @@ async function processDashboardConfig(
 
           // Without the publisher's record of where their copy came from.
           const themeData = withoutRegistryRef({ ...bundledTheme.data });
+          // Nor what the publisher's copy said about publishing it (a
+          // `lastPublishedVersion` would make it look published from here).
+          delete themeData._registryMeta;
           if (bundledTheme.registryPackage) {
             themeData._registryMeta = {
               source: "dashboard-import",
@@ -927,6 +931,10 @@ async function processDashboardConfig(
   // (Set to undefined rather than deleted, so an update in place doesn't
   // keep the old one; it isn't written.)
   workspace.registryRef = options.registryRef || undefined;
+  // An install is the registry's package (or the file's), not a copy of
+  // something: whatever the publisher's copy recorded stays theirs. Updating
+  // the user's own remix in place keeps what it's a remix of.
+  workspace.remixedFrom = existing ? existing.remixedFrom : undefined;
 
   // Save workspace to workspaces.json
   const workspaceController = require("./workspaceController");
@@ -1670,15 +1678,28 @@ async function prepareDashboardForPublish(
       const parsed = ref && normalizePackageRef(ref.package);
       return !!parsed && isOwnScope(parsed.scope);
     })();
+    // Someone else's dashboard is published as a remix of it, credited —
+    // unless its author doesn't allow remixes. One imported from a file
+    // (nothing to credit) still can't be published.
+    // (A remix published before is the user's own package now, but still
+    // a remix of the same original — remixOrigin reads what it recorded.)
+    let remixedFrom = null;
+    const origin = remixOrigin("dashboard", workspace);
+    if (origin) {
+      const check = await checkRemix(origin);
+      if (check.error) return { success: false, error: check.error };
+      remixedFrom = check.remixedFrom;
+    }
     if (
       workspace._dashboardConfig &&
       workspace._dashboardConfig.shareable === false &&
-      !fromOwnAccount
+      !fromOwnAccount &&
+      !remixedFrom
     ) {
       return {
         success: false,
         error:
-          "This dashboard was imported and cannot be published. Only dashboards you created can be shared.",
+          "This dashboard was imported and cannot be published. Only dashboards you created — or remixes of registry dashboards that allow them — can be shared.",
       };
     }
 
@@ -2078,6 +2099,9 @@ async function prepareDashboardForPublish(
       packageName: headlessPlan ? headlessPlan.name : undefined,
       version: nextVersion,
       widgetPermissions,
+      // A remix credits its original; "Allow remixes" when the user chose.
+      remixedFrom,
+      allowRemix: options.allowRemix,
     });
 
     // 9. Where the package zip goes: the user picks, or (headless) a temp
@@ -2165,6 +2189,15 @@ async function prepareDashboardForPublish(
             });
             if (registryRef) nextWorkspace.registryRef = registryRef;
             else delete nextWorkspace.registryRef;
+            // A remix remembers its original: a later publish — even under
+            // another name — is still a remix of it (and checked against it).
+            if (remixedFrom) {
+              nextWorkspace.remixedFrom = {
+                package: `${remixedFrom.scope}/${remixedFrom.name}`,
+                version: remixedFrom.version,
+              };
+            }
+
             workspaceController.saveWorkspaceForApplication(
               win,
               appId,
@@ -2447,6 +2480,7 @@ function publishDashboardHeadless(
       authorId: options.authorId,
       componentConfigs: options.componentConfigs,
       includeBots: options.includeBots === true,
+      allowRemix: options.allowRemix,
       headless: true,
     },
     widgetRegistry,

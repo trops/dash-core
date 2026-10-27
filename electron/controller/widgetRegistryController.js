@@ -21,6 +21,7 @@ const {
   getRegistryProfile,
 } = require("./registryAuthController");
 const widgetRegistryModule = require("../widgetRegistry");
+const { remixOrigin, checkRemix } = require("../registry/remix");
 const { dynamicWidgetLoader } = require("../dynamicWidgetLoader");
 const { findWidgetsDir, compileWidget } = require("../widgetCompiler");
 const {
@@ -557,9 +558,40 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       };
     }
 
+    // 2b. A remix (dash-electron's Widget Builder records `remixedFrom` in
+    //     dash.json) or
+    //     someone else's widget installed from the registry is published as
+    //     a remix of the original, credited — unless its author doesn't
+    //     allow remixes. Checked before anything is written.
+    const dashJsonPath = path.join(widget.path, "dash.json");
+    let remixedFrom = null;
+    {
+      let dash = {};
+      try {
+        if (fs.existsSync(dashJsonPath)) {
+          dash = JSON.parse(fs.readFileSync(dashJsonPath, "utf8")) || {};
+        }
+      } catch (_e) {
+        dash = {};
+      }
+      const remix = await checkRemix(
+        remixOrigin(
+          "widget",
+          {
+            remixedFrom: dash.remixedFrom,
+            packageId: widget.packageId || packageId,
+            version: widget.version,
+            installSource: widget.installSource,
+          },
+          callerScope,
+        ),
+      );
+      if (remix.error) return { success: false, error: remix.error };
+      remixedFrom = remix.remixedFrom;
+    }
+
     // 3. Read package.json (or fall back to dash.json for registry-installed widgets)
     const pkgJsonPath = path.join(widget.path, "package.json");
-    const dashJsonPath = path.join(widget.path, "dash.json");
     let pkgJson;
     if (fs.existsSync(pkgJsonPath)) {
       pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
@@ -770,6 +802,12 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       authorName: options.authorName || authorOverride || undefined,
       appOrigin: appId,
     });
+    // Remixes (registry 1.9.0): the original this copies, and whether this
+    // one may be remixed (sent only when the user chose).
+    if (remixedFrom) manifest.remixedFrom = remixedFrom;
+    if (typeof options.allowRemix === "boolean") {
+      manifest.allowRemix = options.allowRemix;
+    }
 
     // 7. Zip the widget directory to a temp file. When the caller
     //    supplied `defaultsOverride`, stage a copy of the package

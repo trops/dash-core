@@ -119,10 +119,24 @@ describe("duplicateTheme (NAV-009 AC3)", () => {
       name: "Bravo (Copy)",
       primary: "sky",
       dark: { "bg-primary-dark": "bg-sky-900" },
+      // Still credited to the theme it copies (publishing it is a remix).
+      remixedFrom: { package: "@trops/bravo", version: "1.0.0" },
     });
     // A real copy — editing it leaves the original alone.
     theme.dark["bg-primary-dark"] = "x";
     expect(raw.dark["bg-primary-dark"]).toBe("bg-sky-900");
+  });
+
+  it("a copy of the user's own published theme has nothing to credit", () => {
+    const own = {
+      name: "Mine",
+      _registryMeta: {
+        packageName: "trops/mine",
+        lastPublishedVersion: "1.2.0",
+      },
+      registryRef: { package: "@trops/mine", origin: "published" },
+    };
+    expect(duplicateTheme(own, "Mine", 1).theme.remixedFrom).toBeUndefined();
   });
 
   it("names an unnamed theme after its key", () => {
