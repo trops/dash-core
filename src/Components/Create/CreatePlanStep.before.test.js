@@ -55,12 +55,19 @@ function setup({
     registryAuth: { getProfile: jest.fn().mockResolvedValue({ id: "me" }) },
   };
   const refreshProviders = jest.fn().mockResolvedValue();
-  render(
+  const view = render(
     <AppContext.Provider value={{ providers, refreshProviders }}>
       <CreatePlanStep prompt="a brief" />
     </AppContext.Provider>,
   );
-  return { calls, refreshProviders };
+  // The app's providers change (one was made in the Connect window).
+  const withProviders = (next) =>
+    view.rerender(
+      <AppContext.Provider value={{ providers: next, refreshProviders }}>
+        <CreatePlanStep prompt="a brief" />
+      </AppContext.Provider>,
+    );
+  return { calls, refreshProviders, withProviders };
 }
 
 afterEach(() => {
@@ -261,4 +268,70 @@ describe("removedText (4d-3)", () => {
       "Nothing was left to remove. Couldn't remove: x: busy.",
     );
   });
+});
+
+test("a provider you have can stand in for what the plan needs", async () => {
+  setup({
+    providers: {
+      Slack: { name: "Slack", type: "slack", providerClass: "mcp" },
+      "Work Mail": {
+        name: "Work Mail",
+        type: "custom",
+        providerClass: "mcp",
+      },
+    },
+  });
+  await screen.findByTestId("plan-card");
+  expect(
+    screen.getByText("Connect Gmail, approve 1 install & build"),
+  ).toBeInTheDocument();
+  const pick = screen.getByLabelText("Or use one you have");
+  fireEvent.change(pick, { target: { value: "Work Mail" } });
+  // Gmail is covered: only the install is left.
+  await waitFor(() =>
+    expect(screen.getByText("Approve 1 install & build")).toBeInTheDocument(),
+  );
+  expect(
+    screen
+      .getAllByTestId("checklist-item")
+      .map((e) => e.textContent)
+      .join(" "),
+  ).not.toMatch(/Connect Gmail/);
+});
+
+test("a provider made in the Connect window is the one the plan uses — no loop", async () => {
+  const { withProviders } = setup({
+    providers: { Slack: { name: "Slack", type: "slack" } },
+  });
+  await screen.findByTestId("plan-card");
+  const gmail = screen
+    .getAllByTestId("checklist-item")
+    .find((e) => /Connect Gmail/.test(e.textContent));
+  fireEvent.click(
+    gmail.querySelector("button") ||
+      screen.getByRole("button", { name: "Connect new" }),
+  );
+  await screen.findByTestId("providers-section");
+  // Made there: a custom MCP server, its own type.
+  withProviders({
+    Slack: { name: "Slack", type: "slack" },
+    mine: { name: "My Gmail", type: "custom", providerClass: "mcp" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  await waitFor(() =>
+    expect(screen.getByText("Approve 1 install & build")).toBeInTheDocument(),
+  );
+});
+
+test("a provider the catalog doesn't know: asks which kind, never guesses an API key", async () => {
+  setup();
+  await screen.findByTestId("plan-card");
+  window.mainApi.mcp.getCatalog = jest.fn().mockResolvedValue({ catalog: [] });
+  const gmail = screen
+    .getAllByTestId("checklist-item")
+    .find((e) => /Connect Gmail/.test(e.textContent));
+  fireEvent.click(gmail.querySelector("button"));
+  expect(await screen.findByTestId("providers-section")).toHaveTextContent(
+    "gmail:null",
+  );
 });

@@ -86,12 +86,9 @@ test("the plan goes where Where says, says so, and keeps its one bot", async () 
   expect(screen.getByTestId("plan-expect-bot")).toHaveTextContent(
     "It's checked, then saved paused.",
   );
-  // Build stays in view: What to expect comes after it.
+  // Build stays in view: pinned below the plan.
   const build = screen.getByRole("button", { name: "Build" });
-  expect(
-    build.compareDocumentPosition(screen.getByTestId("plan-expect")) &
-      Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
+  expect(screen.getByTestId("plan-build-bar")).toContainElement(build);
   fireEvent.click(build);
   await waitFor(() =>
     expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
