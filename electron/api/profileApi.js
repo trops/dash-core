@@ -26,6 +26,7 @@ const {
   PROFILE_LIST_ACCOUNT,
   PROFILE_PREVIEW_LOAD_ACCOUNT,
   PROFILE_DELETE_ACCOUNT,
+  PROFILE_SYNC_STATUS,
 } = require("../events");
 
 const profileApi = {
@@ -110,6 +111,13 @@ const profileApi = {
   /** Remove a profile from the account (profiles here stay). */
   deleteFromAccount: (appId, accountId) =>
     ipcRenderer.invoke(PROFILE_DELETE_ACCOUNT, { appId, accountId }),
+  /**
+   * Each profile here kept in the account, compared with it: { signedIn,
+   * profiles: [{ profileId, name, active, accountId, state, changes,
+   * account: { revision, updatedOn, updatedAt } }] }. state: "in-sync" |
+   * "account-newer" | "local-changed" | "both".
+   */
+  syncStatus: (appId) => ipcRenderer.invoke(PROFILE_SYNC_STATUS, { appId }),
 };
 
 module.exports = profileApi;

@@ -14,6 +14,53 @@ const secondaryBtnClass =
 const primaryBtnClass =
   "px-3 py-2 text-sm font-medium rounded bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white";
 
+const plural = (n, noun) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+
+/** "2 dashboards, 1 bot" — what changed here, from syncStatus. */
+export function changesText(changes = {}) {
+  return [
+    ["dashboards", "dashboard"],
+    ["bots", "bot"],
+    ["themes", "theme"],
+    ["folders", "folder"],
+  ]
+    .filter(([k]) => changes[k] > 0)
+    .map(([k, noun]) => plural(changes[k], noun))
+    .join(", ");
+}
+
+function whenText(at) {
+  if (!at) return null;
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** One out-of-sync profile, in a sentence. */
+export function profileSyncText(row) {
+  const acct = row.account || {};
+  const where = acct.updatedOn
+    ? ` on ${acct.updatedOn}`
+    : " on another computer";
+  const when = whenText(acct.updatedAt);
+  if (row.state === "account-newer") {
+    return `Updated${where}${when ? ` · ${when}` : ""}`;
+  }
+  if (row.state === "local-changed") {
+    const what = changesText(row.changes);
+    return `You changed ${what || "it"} here`;
+  }
+  const what = changesText(row.changes);
+  return `Changed here (${what || "some items"}) and${where}${
+    when ? ` · ${when}` : ""
+  }`;
+}
+
 /**
  * AppUpdatesModal — top-level "updates available" prompt the app shell
  * pops on launch (and optionally from a manual "Check for updates"
@@ -48,11 +95,35 @@ const primaryBtnClass =
  *     decides whether to re-pop later (the app shell typically marks
  *     "shown for this session" so the same launch doesn't nag).
  */
+/** The dialog's one-line summary of what has updates. */
+export function updatesSummary(widgets = [], dashboards = [], profiles = []) {
+  const w = widgets.length;
+  const d = dashboards.length;
+  const s = (n) => (n === 1 ? "" : "s");
+  const registry =
+    w > 0 && d > 0
+      ? `${w} widget package${s(w)} and ${d} dashboard${s(d)} have newer versions on the registry.`
+      : w > 0
+        ? `${w} widget package${s(w)} have newer versions on the registry.`
+        : d > 0
+          ? `${d} dashboard${s(d)} have newer versions on the registry.`
+          : "";
+  const p = profiles.length;
+  const account = p
+    ? `${plural(p, "profile")} ${p === 1 ? "isn't" : "aren't"} in step with your account.`
+    : "";
+  return [registry, account].filter(Boolean).join(" ");
+}
+
 export const AppUpdatesModal = ({
   isOpen,
   setIsOpen,
   widgetUpdates = [],
   dashboardUpdates = [],
+  // Profiles kept in the account that are out of sync (useProfileSync).
+  profileUpdates = [],
+  // (row, "save" | "load" | "keep") — opens Settings › Profiles to do it.
+  onProfileAction,
   isChecking = false,
   hasChecked = false,
   needsAuth = false,
@@ -106,7 +177,8 @@ export const AppUpdatesModal = ({
     setIsUpdatingWidgets(false);
   }, [isOpen]);
 
-  const totalUpdates = widgetUpdates.length + dashboardUpdates.length;
+  const totalUpdates =
+    widgetUpdates.length + dashboardUpdates.length + profileUpdates.length;
   // The sign-in is needed once the registry refused an update (the hook
   // flips needsAuth); signed out alone isn't enough, public packages
   // update without one.
@@ -346,6 +418,79 @@ export const AppUpdatesModal = ({
             </div>
           </div>
         )}
+
+        {profileUpdates.length > 0 && (
+          <div data-testid="app-updates-modal-profiles-section">
+            <div className="flex items-center gap-2 px-1 mb-2 text-xs uppercase tracking-wide text-gray-400">
+              <FontAwesomeIcon icon="user" className="text-xs" />
+              <span>Profiles in your account ({profileUpdates.length})</span>
+            </div>
+            <div className="flex flex-col rounded border border-gray-700 bg-gray-800 max-h-64 overflow-y-auto">
+              {profileUpdates.map((p) => {
+                const act = (action) => {
+                  setIsOpen(false);
+                  if (typeof onProfileAction === "function") {
+                    onProfileAction(p, action);
+                  }
+                };
+                return (
+                  <div
+                    key={p.profileId}
+                    className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700 last:border-b-0"
+                    data-testid={`app-updates-modal-profile-row-${p.profileId}`}
+                  >
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-sm text-gray-200 truncate">
+                        {p.name}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {profileSyncText(p)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {p.state === "account-newer" && (
+                        <button
+                          type="button"
+                          onClick={() => act("load")}
+                          className={secondaryBtnClass}
+                        >
+                          Load
+                        </button>
+                      )}
+                      {p.state === "local-changed" && (
+                        <button
+                          type="button"
+                          onClick={() => act("save")}
+                          className={secondaryBtnClass}
+                        >
+                          Save
+                        </button>
+                      )}
+                      {p.state === "both" && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => act("keep")}
+                            className={secondaryBtnClass}
+                          >
+                            Keep this computer's
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => act("load")}
+                            className={secondaryBtnClass}
+                          >
+                            Use the account's
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -495,11 +640,11 @@ export const AppUpdatesModal = ({
             <div className="text-xs text-gray-400 mt-1">
               {needsSignIn && widgetUpdates.length > 0
                 ? `Sign in to the registry to install ${widgetUpdates.length} widget package update${widgetUpdates.length === 1 ? "" : "s"}.`
-                : widgetUpdates.length > 0 && dashboardUpdates.length > 0
-                  ? `${widgetUpdates.length} widget package${widgetUpdates.length === 1 ? "" : "s"} and ${dashboardUpdates.length} dashboard${dashboardUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`
-                  : widgetUpdates.length > 0
-                    ? `${widgetUpdates.length} widget package${widgetUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`
-                    : `${dashboardUpdates.length} dashboard${dashboardUpdates.length === 1 ? "" : "s"} have newer versions on the registry.`}
+                : updatesSummary(
+                    widgetUpdates,
+                    dashboardUpdates,
+                    profileUpdates,
+                  )}
             </div>
           )}
         </div>

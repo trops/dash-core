@@ -15,6 +15,7 @@ import {
   ThemeContext,
 } from "@trops/dash-react";
 import { useRegistryAuth } from "../../hooks/useRegistryAuth";
+import { openProfileSync } from "../Settings/sections/profileIntent";
 
 /**
  * OnboardingModal — Phase 3A of the MVP launch audit.
@@ -131,6 +132,14 @@ export const OnboardingModal = ({
   const handleSkip = useCallback(async () => {
     await markCompletedAndClose("dismissed");
     if (onDismiss) onDismiss();
+  }, [markCompletedAndClose, onDismiss]);
+
+  // A new computer: bring a profile saved from another one (Settings ›
+  // Profiles opens to the account's list, which asks to sign in first).
+  const handleLoadProfile = useCallback(async () => {
+    await markCompletedAndClose("load-profile");
+    if (onDismiss) onDismiss();
+    openProfileSync({ action: "pick" });
   }, [markCompletedAndClose, onDismiss]);
 
   const handleInstall = useCallback(async () => {
@@ -290,6 +299,7 @@ export const OnboardingModal = ({
           <WelcomeBody
             onInstall={handleInstall}
             onSkip={handleSkip}
+            onLoadProfile={handleLoadProfile}
             textMuted={textMuted}
           />
         )}
@@ -328,7 +338,7 @@ export const OnboardingModal = ({
   );
 };
 
-function WelcomeBody({ onInstall, onSkip, textMuted }) {
+function WelcomeBody({ onInstall, onSkip, onLoadProfile, textMuted }) {
   return (
     <>
       <div className="flex items-center gap-3 mb-2">
@@ -359,6 +369,18 @@ function WelcomeBody({ onInstall, onSkip, textMuted }) {
           hoverTextColor="hover:text-white"
           hoverBackgroundColor="hover:bg-gray-600"
           data-testid="onboarding-skip-button"
+        />
+        <Button
+          onClick={onLoadProfile}
+          title="Load a profile from my account"
+          textSize="text-sm"
+          padding="py-2 px-4"
+          backgroundColor="bg-gray-700"
+          textColor="text-gray-300"
+          hoverTextColor="hover:text-white"
+          hoverBackgroundColor="hover:bg-gray-600"
+          icon="user"
+          data-testid="onboarding-load-profile-button"
         />
         <Button
           onClick={onInstall}

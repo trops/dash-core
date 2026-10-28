@@ -46,6 +46,8 @@ function defaultDeps() {
   return {
     // Profiles kept in the account (step 2).
     account: () => require("./profileAccount"),
+    digest: (appId, profileId) =>
+      require("./profileDigest").profileDigest(appId, profileId),
     gather: (appId, profileId, options) =>
       require("./profileFile").gatherProfile(appId, profileId, options),
     username: async () => {
@@ -720,6 +722,9 @@ async function executeSave(
       revision: put.saved.revision,
       savedAt: put.saved.updatedAt || manifest.createdAt,
       updatedOn: put.saved.updatedOn || manifest.createdOn,
+      // What it holds now (after publishing): later changes are counted
+      // from here.
+      digest: d.digest(appId, profileId),
     });
     return {
       success: true,

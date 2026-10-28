@@ -309,6 +309,26 @@ Mac's / use the account's).
        it replaces only the revision the user saw — so Default, which a load never replaces, can always be saved again.
        A refusal after publishing says what was published. Registry text is checked before it's stored or shown.
 
+   - **S3 — knowing when you're out of sync** (`electron/profile/profileDigest.js`, `useProfileSync`, the updates dialog):
+     - Each account save and load records the profile's digest in its link: a fingerprint per dashboard, bot, theme and
+       folder it holds (published content + widget settings and provider choices + name, folder, theme). Opening a
+       dashboard or a bot run doesn't change it.
+     - `profile:sync-status` compares each linked profile with the account: **account newer** (revision differs),
+       **changed here** (digest differs, counted per kind), **both**, or in step. Copies no longer in the account aren't
+       listed.
+     - It runs with the other update checks: at launch (the updates dialog pops when `checkForUpdatesOnLaunch` is on,
+       and "Remind me later" works the same), after signing in, and from "Check for updates". The dialog's
+       **Profiles in your account** section says "Updated on laptop · Oct 27, 9:00 AM" → **Load**, "You changed 2
+       dashboards here" → **Save**, or both → **Keep this computer's** / **Use the account's** (the whole profile; user
+       decision). Each opens Settings › Profiles straight into that Save or Load dialog; "keep" replaces only the account
+       revision shown.
+     - **Default is replaced in place by its own account copy** (user decision, 2026-10-27): loading the copy Default is
+       linked to replaces what Default holds, and Default keeps its name. Any other copy of Default (a file, someone
+       else's) still loads as its own profile.
+     - Replacing a profile now lists what leaves it ("Leaves this profile (stays on this computer): Office, Mailer").
+     - The Welcome screen of a new install offers **Load a profile from my account**.
+     - New IPC: `profile:sync-status`.
+
 ---
 
 ## Implementation Notes
@@ -358,6 +378,7 @@ Mac's / use the account's).
 
 ## Revision History
 
+- 2026-10-27: S2 merged (core v0.1.847, registry v1.10.1, electron v0.0.1040). S3: out-of-sync check; Default replaced in place by its own account copy (user decision).
 - 2026-10-27: Step 2 planned and approved; S1 (registry v1.10.0) merged; S2 save to / load from the account.
 - 2026-10-27: v2 planned (registry as source of truth); 7a package identity.
 - 2026-10-26: Created. Plan approved; PR 1 (profile storage) merged in dash-core v0.1.834.

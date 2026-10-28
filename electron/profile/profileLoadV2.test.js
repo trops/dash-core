@@ -214,9 +214,9 @@ function computer(overrides = {}) {
         { id: "default", name: "Default" },
         { id: "home", name: "Home" },
       ],
-      put: (appId, p) => {
+      put: (appId, p, opts) => {
         saved = { ...p, id: p.id || "new-id" };
-        calls.push(["put", saved]);
+        calls.push(["put", saved, opts]);
         return saved;
       },
       getActiveProfileId: () => "home",
@@ -330,26 +330,109 @@ describe("planLoadV2", () => {
     assert.equal(replace.target.profileId, "x");
   });
 
-  it("from the account: the profile linked to it is the one replaced, whatever its name — never Default", async () => {
+  it("from the account: the profile linked to it is the one replaced, whatever its name — Default in place", async () => {
     const d = computer();
     d.store.list = () => [
-      { id: "default", name: "Default" },
-      { id: "x", name: "Mac Mini" },
-      { id: "y", name: "Renamed here" },
+      { id: "default", name: "Default", items: { dashboards: [], bots: [] } },
+      { id: "x", name: "Mac Mini", items: { dashboards: [], bots: [] } },
+      { id: "y", name: "Renamed here", items: { dashboards: [], bots: [] } },
     ];
     const linked = await planLoadV2("app", manifest(), d, {
       linkedProfileId: "y",
     });
     assert.equal(linked.target.mode, "replace");
     assert.equal(linked.target.profileId, "y");
+    // Default's own account copy replaces Default (user, 2026-10-27).
     const toDefault = await planLoadV2(
       "app",
       manifest({ profileId: "default", name: "Default" }),
       d,
       { linkedProfileId: "default" },
     );
-    assert.equal(toDefault.target.mode, "create");
-    assert.match(toDefault.target.name, /^Default \(from laptop\)/);
+    assert.equal(toDefault.target.mode, "replace");
+    assert.equal(toDefault.target.profileId, "default");
+    assert.equal(toDefault.target.name, "Default");
+    // Any other copy of Default still loads as its own profile.
+    const fromFile = await planLoadV2(
+      "app",
+      manifest({ profileId: "default", name: "Default" }),
+      d,
+    );
+    assert.equal(fromFile.target.mode, "create");
+    assert.match(fromFile.target.name, /^Default \(from laptop\)/);
+  });
+
+  it("loading Default's own account copy replaces Default (only then)", async () => {
+    const d = computer();
+    d.store.list = () => [
+      { id: "default", name: "Default", items: { dashboards: [], bots: [] } },
+      { id: "home", name: "Home" },
+    ];
+    const res = await applyLoadV2(
+      null,
+      "app",
+      manifest({ profileId: "default", name: "Default" }),
+      { linkedProfileId: "default" },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    const put = d.calls.find((c) => c[0] === "put");
+    assert.equal(put[1].id, "default");
+    assert.equal(put[2].replaceDefault, true);
+    const d2 = computer();
+    await applyLoadV2(null, "app", manifest(), {}, d2);
+    assert.equal(d2.calls.find((c) => c[0] === "put")[2].replaceDefault, false);
+  });
+
+  it("replacing: what the profile holds that the loaded one doesn't is listed as leaving", async () => {
+    const d = computer();
+    d.workspaceFile().push({ id: 13, name: "Office", layout: [] });
+    d.allBots().push(
+      { id: "m1", name: "Mailer" },
+      { id: "l1", name: "Office lead", role: "lead", workspaceId: 13 },
+    );
+    d.store.list = () => [
+      {
+        id: "default",
+        name: "Default",
+        items: { dashboards: ["11", "12", "13"], bots: ["m1", "l1"] },
+      },
+      { id: "home", name: "Home" },
+    ];
+    const plan = await planLoadV2(
+      "app",
+      manifest({ profileId: "default", name: "Default" }),
+      d,
+      { linkedProfileId: "default" },
+    );
+    // Default is the only profile holding them: they'd be hidden.
+    assert.deepEqual(plan.leaving, [
+      { kind: "dashboard", name: "Office", hidden: true },
+      { kind: "bot", name: "Mailer", hidden: true },
+    ]);
+    d.store.list = () => [
+      {
+        id: "default",
+        name: "Default",
+        items: { dashboards: ["11", "12", "13"], bots: ["m1"] },
+      },
+      { id: "home", name: "Home", items: { dashboards: ["13"], bots: [] } },
+    ];
+    const again = await planLoadV2(
+      "app",
+      manifest({ profileId: "default", name: "Default" }),
+      d,
+      { linkedProfileId: "default" },
+    );
+    assert.equal(again.leaving.find((l) => l.name === "Office").hidden, false);
+    assert.equal(again.leaving.find((l) => l.name === "Mailer").hidden, true);
+    // Creating a profile takes nothing out of anything.
+    const created = await planLoadV2(
+      "app",
+      manifest({ name: "Brand new" }),
+      computer(),
+    );
+    assert.deepEqual(created.leaving, []);
   });
 
   it("a team whose dashboard isn't available isn't either; an unreachable registry is said", async () => {

@@ -1071,6 +1071,15 @@ const DashboardStageInner = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── Listen for "open Settings › Profiles to save or load one" ───
+  // Dispatched by the updates dialog's profile actions (profileIntent.js);
+  // the Profiles screen takes what to do from the intent.
+  useEffect(() => {
+    const handler = () => openAppSettingsRef.current("profiles");
+    window.addEventListener("dash:open-profile-sync", handler);
+    return () => window.removeEventListener("dash:open-profile-sync", handler);
+  }, []);
+
   // ─── Listen for external "open workspace" requests ──────────────
   // Fired by: Dash.js notification click, MCP state-changed for
   // create_dashboard, etc. Any code that wants to switch the active

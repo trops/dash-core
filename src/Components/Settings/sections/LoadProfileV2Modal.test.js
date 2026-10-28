@@ -5,7 +5,7 @@
 import React from "react";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { LoadProfileV2Modal, rowText } from "./LoadProfileV2Modal";
+import { LoadProfileV2Modal, leavingText, rowText } from "./LoadProfileV2Modal";
 
 const appId = "@test/app";
 
@@ -197,6 +197,20 @@ describe("LoadProfileV2Modal", () => {
     );
     expect(rowText({ name: "X", action: "unavailable", reason: "Gone" })).toBe(
       "X · Gone",
+    );
+  });
+});
+
+describe("leavingText", () => {
+  it("says what stays in other profiles and what gets hidden", () => {
+    expect(leavingText([])).toBeNull();
+    expect(
+      leavingText([
+        { name: "Office", hidden: false },
+        { name: "Mailer", hidden: true },
+      ]),
+    ).toBe(
+      "Leaves this profile (still in your other profiles): Office. Not in any other profile, so hidden until you tick it back in Settings › Profiles (it stays on this computer): Mailer.",
     );
   });
 });

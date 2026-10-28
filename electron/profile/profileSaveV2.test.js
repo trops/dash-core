@@ -170,6 +170,7 @@ function deps(overrides = {}) {
   const d = {
     calls,
     username: async () => USER,
+    digest: () => ({ dashboards: { 1: "0123456789abcdef" } }),
     gather: async () => gathered(),
     isOwnScope: (scope, user) =>
       String(scope).toLowerCase() === String(user).toLowerCase(),
@@ -608,6 +609,8 @@ describe("executeSave to the account", () => {
       revision: 1,
       savedAt: "t",
       updatedOn: "here",
+      // What it holds now: later changes are counted from here.
+      digest: { dashboards: { 1: "0123456789abcdef" } },
     });
     assert.equal(res.account.revision, 1);
   });

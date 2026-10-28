@@ -217,15 +217,17 @@ const profileStore = {
 
   /**
    * Create or replace a profile with a given id and lists — loading a
-   * profile file. Default can't be replaced. The first time profiles are
-   * written, Default's lists come from `defaultItems`.
+   * profile file. Default can't be replaced, except by its own copy from
+   * the user's account (`replaceDefault`; it keeps its name). The first
+   * time profiles are written, Default's lists come from `defaultItems`.
    */
-  put(appId, { id, name, items, link }, { defaultItems } = {}) {
+  put(appId, { id, name, items, link }, { defaultItems, replaceDefault } = {}) {
     let store = readStore(appId);
-    const clean = cleanName(name);
-    if (id === DEFAULT_PROFILE_ID) {
+    const isDefault = id === DEFAULT_PROFILE_ID;
+    if (isDefault && !replaceDefault) {
       throw new Error("The Default profile can't be replaced");
     }
+    const clean = isDefault ? DEFAULT_PROFILE_NAME : cleanName(name);
     if (store.profiles.some((p) => p.id !== id && sameName(p.name, clean))) {
       throw new Error(`A profile named "${clean}" already exists`);
     }

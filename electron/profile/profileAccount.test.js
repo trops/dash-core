@@ -123,6 +123,21 @@ describe("links", () => {
     );
   });
 
+  it("after a load: in step only when everything loaded", () => {
+    const from = { accountId: "a1", revision: 4, updatedOn: "laptop" };
+    const digest = { dashboards: {} };
+    assert.deepEqual(account.linkAfterLoad(from, [], digest), {
+      ...from,
+      digest,
+    });
+    // Something didn't load: no revision, so it reads as not in step.
+    assert.equal(
+      account.linkAfterLoad(from, ["Kitchen: not shared with you"], digest)
+        .revision,
+      null,
+    );
+  });
+
   it("a damaged or crafted file links nothing", () => {
     const d = deps();
     fs.writeFileSync(path.join(dir, "profileAccounts.json"), "{nope");

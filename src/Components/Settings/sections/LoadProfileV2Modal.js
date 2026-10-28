@@ -21,6 +21,29 @@ const KINDS = [
 
 const rowId = (row) => `${row.kind}:${row.package}`;
 
+/**
+ * What replacing takes out of the profile. It stays on this computer; what
+ * no other profile holds is hidden until it's ticked back in Settings ›
+ * Profiles — said plainly.
+ */
+export function leavingText(leaving) {
+  const all = leaving || [];
+  const hidden = all.filter((l) => l.hidden).map((l) => l.name);
+  const elsewhere = all.filter((l) => !l.hidden).map((l) => l.name);
+  const parts = [];
+  if (elsewhere.length) {
+    parts.push(
+      `Leaves this profile (still in your other profiles): ${elsewhere.join(", ")}.`,
+    );
+  }
+  if (hidden.length) {
+    parts.push(
+      `Not in any other profile, so hidden until you tick it back in Settings › Profiles (it stays on this computer): ${hidden.join(", ")}.`,
+    );
+  }
+  return parts.length ? parts.join(" ") : null;
+}
+
 function savedText(file) {
   const parts = [];
   if (file.owner) parts.push(`@${file.owner}`);
@@ -171,8 +194,18 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
               <AlertBanner
                 variant="warning"
                 size="compact"
-                message={`This will replace your "${preview.target.name}" profile with the file's. Dashboards and bots it no longer holds stay on this Mac.`}
+                message={`This will replace your "${preview.target.name}" profile with ${
+                  preview.fromAccount ? "your account's copy" : "the file's"
+                }. Dashboards and bots it no longer holds stay on this computer.`}
               />
+            ) : null}
+            {!asNew && leavingText(preview.leaving) ? (
+              <span
+                className={`${muted} max-w-prose`}
+                data-testid="load-leaving"
+              >
+                {leavingText(preview.leaving)}
+              </span>
             ) : null}
             <Checkbox
               label="Load as a new profile instead"
@@ -182,7 +215,7 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
           </div>
         ) : null}
 
-        {preview.fromDefault ? (
+        {preview.fromDefault && preview.target.profileId !== "default" ? (
           <span className={`${muted} max-w-prose`}>
             Your Default profile isn't changed — this loads as a profile of its
             own.
