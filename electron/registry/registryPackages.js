@@ -81,7 +81,10 @@ function bumpPatch(version) {
 /** The first version at or after `version` that isn't in `taken`. */
 function freeVersion(version, taken) {
   const have = new Set(taken || []);
-  let v = /^\d+\.\d+\.\d+/.test(String(version || "")) ? version : "1.0.0";
+  // Only the release part: a build made here ("1.0.4-local.2", from an
+  // in-place edit) publishes as 1.0.4 — never a "local" version.
+  const core = String(version || "").match(/^\d+\.\d+\.\d+/);
+  let v = core ? core[0] : "1.0.0";
   // Never below what's published: start past the newest taken version.
   for (const t of have) {
     if (isNewerVersion(t, v)) v = t;

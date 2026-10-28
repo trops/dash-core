@@ -27,6 +27,8 @@ const {
   PROFILE_PREVIEW_LOAD_ACCOUNT,
   PROFILE_DELETE_ACCOUNT,
   PROFILE_SYNC_STATUS,
+  PROFILE_PLAN_BUILT_PUBLISH,
+  PROFILE_PUBLISH_BUILT,
 } = require("../events");
 
 const profileApi = {
@@ -118,6 +120,22 @@ const profileApi = {
    * "account-newer" | "local-changed" | "both".
    */
   syncStatus: (appId) => ipcRenderer.invoke(PROFILE_SYNC_STATUS, { appId }),
+  /**
+   * A widget just built: can it be published, as what, and is it public
+   * already — { publishable, publishAs, version, exists, visibility,
+   * reason } or { signInRequired }.
+   */
+  planBuiltPublish: (appId, packageName) =>
+    ipcRenderer.invoke(PROFILE_PLAN_BUILT_PUBLISH, { appId, packageName }),
+  /**
+   * Publish it (private unless options.visibility is "public"); an
+   * @ai-built widget becomes the user's and dashboards switch to it.
+   * Resolves { success, status: "published" | "needs-confirmation" |
+   * "failed", publishedAs, version, dashboardsSwitched, findings, error }.
+   * options: { visibility, confirmPersonalPaths }
+   */
+  publishBuilt: (appId, packageName, options) =>
+    ipcRenderer.invoke(PROFILE_PUBLISH_BUILT, { appId, packageName, options }),
 };
 
 module.exports = profileApi;

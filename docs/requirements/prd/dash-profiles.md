@@ -411,6 +411,23 @@ Mac's / use the account's).
        saves are v3).
    - **Slice 2 — publish prompt** after **Install** in the Widget Builder (US-5). No prompts for dashboards, themes or bots;
      publishing them is for sharing, from their menus as today.
+     - The Builder's success screen shows "Publish it? Publishing is how it gets to your other computers, and to anyone
+       you share it with." with **Private — only you** (default) / **Public — anyone can install it** (user, 2026-10-28)
+       and **Publish to my account**; **Done** is "not now". A widget already public starts public; public adds "Each
+       version you publish stays in the registry."
+     - It uses the profile save review's publish path: the version is the next one the registry doesn't have, an
+       `@ai-built` widget becomes `@user/name`, is installed and every dashboard here switches to it (so a profile
+       lists it); the personal-folder check asks first. Picking a version by hand stays on the Widgets page.
+     - Shown only for the user's own widgets (`@ai-built` or their scope); signed out, it offers Sign in.
+     - `electron/profile/publishBuilt.js`, `PublishBuiltWidget` (exported), IPC `profile:plan-built-publish` and
+       `profile:publish-built` (handlers in dash-electron).
+     - Review fixes: a build made here ("1.0.4-local.2", from an in-place edit) publishes as 1.0.4, never a "local"
+       version (the profile review's publish too); a widget already public stays public — no Private choice (making a
+       package private hides every version, so that's the Widgets page); "Publishes as a new version of @user/x" when
+       the name is already theirs; the published package is what the Builder places in the cell, and open dashboards are
+       re-read after the switch (`dash:workspaces-changed`); "published, but installing it here failed" counts as
+       published (never published twice); the account out of reach or the name taken says why; "Publish anyway" not
+       ticked says so.
    - **Slice 3 — auto-save** (S4 of step 2, now small and safe): Manually (default) / When I make changes / Every day at a
      time, for profiles already in the account. Triggers: saving a dashboard, theme, folder or bot, installing, removing,
      updating or publishing a widget; it waits 30 seconds to batch them, and checks once at launch. Daily saves at that
