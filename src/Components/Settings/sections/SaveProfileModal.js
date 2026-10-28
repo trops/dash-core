@@ -10,23 +10,16 @@ import { useRegistryAuthGate } from "../../../hooks/useRegistryAuthGate";
 
 const plural = (n, noun) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
-const KIND_LABEL = {
-  widget: "Widget",
-  theme: "Theme",
-  dashboard: "Dashboard",
-  bot: "Bot",
-  team: "Team",
-};
-
-/** What publishing does to one item, in a few words. */
-export function publishText(item) {
-  if (item.action === "remix") {
-    return `Your remix, published privately${item.package ? ` (credits ${item.package})` : ""}`;
-  }
-  if (!item.package) return "New — published privately to your account";
-  return `Changed — published as a new version of ${item.package}${
-    item.public ? " (public)" : ""
-  }`;
+/** What the profile holds, e.g. "2 dashboards · 1 bot · 4 widgets". */
+export function countsText(counts = {}) {
+  return [
+    plural(counts.dashboards || 0, "dashboard"),
+    counts.bots ? plural(counts.bots, "bot") : null,
+    counts.themes ? plural(counts.themes, "theme") : null,
+    plural(counts.widgets || 0, "widget"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** When and where a profile was last saved, e.g. "on Mac Mini, Oct 27, 9:00 AM". */
@@ -56,42 +49,20 @@ export function conflictText(conflict) {
   }. Load it from your account to use it here, or replace it with this computer's.`;
 }
 
-/** What was already published when a save was refused after publishing. */
-export function publishedBeforeText(published) {
-  const list = (published || []).map(
-    (p) => `${p.name} (${p.package} ${p.version})`,
-  );
-  return list.length
-    ? ` Already published to your account: ${list.join(", ")}.`
-    : "";
-}
-
 /** The "Saved" notice for the Profiles screen. */
 export function savedNoticeText(res) {
+  let text;
   if (res.account) {
-    let text = "Saved to your account.";
-    const published = (res.published || []).map(
-      (p) => `${p.name} (${p.package} ${p.version})`,
-    );
-    if (published.length) {
-      text += ` Published: ${published.join(", ")}.`;
-    }
-    if (res.secretsLeftOut) {
-      text += ` ${plural(res.secretsLeftOut, "key")} typed into widgets ${
-        res.secretsLeftOut === 1 ? "isn't" : "aren't"
-      } included.`;
-    }
-    return text;
+    text = "Saved to your account.";
+  } else {
+    const parts = String(res.filePath || "").split(/[\\/]/);
+    const file = parts.pop();
+    const folder = parts.pop();
+    text = `Saved "${file}"${folder ? ` in ${folder}` : ""}.`;
   }
-  const parts = String(res.filePath || "").split(/[\\/]/);
-  const file = parts.pop();
-  const folder = parts.pop();
-  const published = (res.published || []).map(
-    (p) => `${p.name} (${p.package} ${p.version})`,
-  );
-  let text = `Saved "${file}"${folder ? ` in ${folder}` : ""}.`;
-  if (published.length) {
-    text += ` Published to your account: ${published.join(", ")}.`;
+  const unpublished = (res.unpublished || []).length;
+  if (unpublished) {
+    text += ` ${plural(unpublished, "widget")} went in at the version you last published.`;
   }
   if (res.secretsLeftOut) {
     text += ` ${plural(res.secretsLeftOut, "key")} typed into widgets ${
@@ -111,10 +82,11 @@ export function leftOutText(res) {
 }
 
 /**
- * Save a profile (dash-profiles v2): everything it holds goes to the
- * user's registry account — what changed is published (private when new),
- * the rest is referenced as it is — and the file lists them. The dialog
- * shows the plan first; the save itself asks where to write the file.
+ * Save a profile (dash-profiles v3): the setup — dashboards, folders,
+ * themes, bots, app settings — goes in as it is, and each widget by the
+ * version the registry has. Nothing is published; a widget with changes
+ * that aren't published, or one the registry doesn't have, is listed with
+ * a Publish button. The save itself asks where to write the file.
  *
  * Mounted only while open (it opens inside the Settings modal).
  */
@@ -132,16 +104,13 @@ export const SaveProfileModal = ({
   const toAccount = to === "account";
   const { muted, strong, hairline } = useConfigTokens();
   const { ensureAuthed, authGate, isAuthGateOpen } = useRegistryAuthGate();
-  const [options, setOptions] = useState({
-    bots: true,
-    providers: true,
-    settings: true,
-  });
+  const [options, setOptions] = useState({ bots: true, settings: true });
   const [plan, setPlan] = useState(null);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
-  // The user's public items not to release now ("<kind>:<key>").
-  const [skipPublic, setSkipPublic] = useState(() => new Set());
+  // The widget being published from the review, and what was published.
+  const [publishing, setPublishing] = useState(null);
+  const [published, setPublished] = useState([]);
   // A widget whose files mention this computer's folders: shown, then
   // confirmed before it's published.
   const [confirm, setConfirm] = useState(null);
@@ -156,13 +125,12 @@ export const SaveProfileModal = ({
   useEffect(() => {
     let alive = true;
     setPlan(null);
-    setError(null);
     Promise.resolve(
       window.mainApi?.profiles?.previewSave?.(appId, profile.id, options),
     )
       .then((res) => {
         if (!alive) return;
-        if (res && (res.success || res.signInRequired)) setPlan(res);
+        if (res && res.success) setPlan(res);
         else setError(res?.error || "Couldn't read this profile.");
       })
       .catch(
@@ -180,25 +148,60 @@ export const SaveProfileModal = ({
     if (ok) setReload((n) => n + 1);
   }, [ensureAuthed]);
 
+  const needsSignIn = toAccount && plan && !plan.username;
+  const blockers = (plan && plan.blockers) || [];
+  const busy = saving || !!publishing;
+
+  async function publish(pkg) {
+    if (busy) return;
+    setPublishing(pkg);
+    setError(null);
+    let res;
+    try {
+      res = await window.mainApi?.profiles?.publishWidget?.(
+        appId,
+        profile.id,
+        pkg,
+        { confirmPersonalPaths: confirmed.has(pkg) },
+      );
+    } catch (e) {
+      res = { success: false, error: e?.message };
+    } finally {
+      setPublishing(null);
+    }
+    if (res && res.success) {
+      setConfirm(null);
+      setPublished([
+        ...published,
+        `${res.publishedAs || pkg}${res.version ? ` ${res.version}` : ""}`,
+      ]);
+      setReload((n) => n + 1);
+      return;
+    }
+    if (res && res.status === "needs-confirmation") {
+      setConfirm({ package: pkg, findings: res.findings || [] });
+      setError(
+        `${pkg}'s files mention folders on this computer — check them, then publish again.`,
+      );
+      return;
+    }
+    setError(res?.error || `Couldn't publish ${pkg}.`);
+  }
+
   async function save() {
-    if (saving || !plan || !plan.success || plan.blockers.length) return;
+    if (busy || !plan || needsSignIn || blockers.length) return;
     setSaving(true);
     setError(null);
     let res;
     try {
       const api = window.mainApi?.profiles;
-      const chosen = {
-        ...options,
-        skipPublic: [...skipPublic],
-        confirmPersonalPaths: [...confirmed],
-      };
       res = toAccount
         ? await api?.saveToAccount?.(appId, profile.id, {
-            ...chosen,
+            ...options,
             asNew,
             replaceRevision,
           })
-        : await api?.saveFile?.(appId, profile.id, chosen);
+        : await api?.saveFile?.(appId, profile.id, options);
     } catch (e) {
       res = { success: false, error: e?.message };
     } finally {
@@ -212,34 +215,22 @@ export const SaveProfileModal = ({
     if (res && res.conflict) {
       if (res.conflict.missing) setAsNew(true);
       else setReplaceRevision(res.conflict.revision);
-      setError(conflictText(res.conflict) + publishedBeforeText(res.published));
-      // What was published changes the plan.
-      if ((res.published || []).length) setReload((n) => n + 1);
-      return;
-    }
-    if (res && res.needsConfirmation) {
-      setConfirm(res.needsConfirmation);
-      setError(res.error);
+      setError(conflictText(res.conflict));
       return;
     }
     setError(res?.error || "Couldn't save the profile.");
-    // Something may have been published before the failure: show the
-    // current state.
-    setReload((n) => n + 1);
   }
 
-  const items = (plan && plan.items) || [];
-  const toPublish = items.filter(
-    (i) => i.action === "publish" || i.action === "remix",
+  const widgets = (plan && plan.widgets) || [];
+  const attention = widgets.filter(
+    (w) => w.action === "unpublished" || w.action === "not-in-registry",
   );
-  const referenced = items.filter((i) => i.action === "reference");
-  const leftOut = items.filter((i) => i.action === "leave-out");
-  const blockers = (plan && plan.blockers) || [];
+  const listed = widgets.filter((w) => w.action === "listed");
   const option = (key, label) => (
     <Checkbox
       label={label}
       checked={options[key]}
-      disabled={saving}
+      disabled={busy}
       onChange={(checked) => {
         setError(null);
         setOptions({ ...options, [key]: checked });
@@ -248,35 +239,31 @@ export const SaveProfileModal = ({
   );
   // The dialog's button says what's missing (it can't be disabled).
   const confirmLabel = saving
-    ? "Publishing and saving…"
-    : !plan
-      ? "Checking…"
-      : plan.signInRequired
-        ? "Sign in first"
-        : blockers.length
-          ? "Fix the items above first"
-          : toAccount
-            ? asNew
-              ? "Save as new to my account"
-              : replaceRevision != null
-                ? "Replace the account's copy"
-                : "Save to my account"
-            : "Save…";
+    ? "Saving…"
+    : publishing
+      ? "Publishing…"
+      : !plan
+        ? "Checking…"
+        : needsSignIn
+          ? "Sign in first"
+          : blockers.length
+            ? "Fix the items above first"
+            : toAccount
+              ? asNew
+                ? "Save as new to my account"
+                : replaceRevision != null
+                  ? "Replace the account's copy"
+                  : "Save to my account"
+              : "Save…";
   const close = () => {
-    if (!saving) onClose();
-  };
-  const toggleSkip = (id, release) => {
-    const next = new Set(skipPublic);
-    if (release) next.delete(id);
-    else next.add(id);
-    setSkipPublic(next);
+    if (!busy) onClose();
   };
 
   return (
     <>
       <ConfirmationModal
         isOpen
-        // Not closed while publishing (it would go on unseen).
+        // Not closed while publishing or saving (it would go on unseen).
         setIsOpen={close}
         title={
           toAccount
@@ -293,38 +280,31 @@ export const SaveProfileModal = ({
         >
           <span className={`${muted} max-w-prose`}>
             {toAccount
-              ? "Everything in this profile goes to your registry account — private unless you already made it public — and the profile is kept there too. Sign in on another computer and load it from your account to get the same setup. Keys and passwords are never included."
-              : "Everything in this profile goes to your registry account — private unless you already made it public — and the file lists it. Load the file on another computer to get the same setup. Keys and passwords are never included."}
+              ? "Your setup — dashboards, folders, themes, bots and settings — is kept in your registry account as it is, with each widget by the version the registry has. Sign in on another computer and load it from your account to get the same setup. Nothing is published, and keys and passwords typed into widgets are left out."
+              : "Your setup — dashboards, folders, themes, bots and settings — goes in the file as it is, with each widget by the version the registry has. Load the file on another computer to get the same setup. Nothing is published, and keys and passwords typed into widgets are left out."}
           </span>
 
-          {plan && plan.signInRequired ? (
+          {needsSignIn ? (
             <div className="flex flex-col gap-2" data-testid="save-sign-in">
-              <span>Sign in to the registry to save a profile.</span>
+              <span>
+                Sign in to the registry to keep this profile in your account.
+              </span>
               <div className="self-start">
                 <Button2 title="Sign in" size="sm" onClick={signIn} />
               </div>
             </div>
           ) : null}
 
-          {plan && plan.success ? (
+          {plan ? (
             <span data-testid="save-profile-counts">
-              {[
-                `${plural(plan.counts.publish, "item")} to publish`,
-                `${plan.counts.reference} up to date`,
-                plan.counts.leaveOut
-                  ? `${plan.counts.leaveOut} left out`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+              {countsText(plan.counts)}
             </span>
-          ) : !plan && !error ? (
+          ) : !error ? (
             <span className={muted}>Checking what goes in…</span>
           ) : null}
 
           <div className="flex flex-col gap-2">
             {option("bots", "Bots")}
-            {option("providers", "Providers (without their keys)")}
             {option("settings", "App settings (theme, update check)")}
           </div>
 
@@ -336,56 +316,49 @@ export const SaveProfileModal = ({
                 message="Fix these before saving:"
               />
               {blockers.map((b) => (
-                <span key={`${b.kind}:${b.key}`}>
-                  {`${KIND_LABEL[b.kind] || b.kind} ${b.name}: ${b.reason}`}
-                </span>
+                <span key={b.key}>{`${b.name}: ${b.reason}`}</span>
               ))}
             </div>
           ) : null}
 
-          {toPublish.length ? (
+          {attention.length ? (
             <div
-              className={`flex flex-col gap-2 rounded-lg border p-3 ${hairline}`}
-              data-testid="save-publish"
+              className={`flex flex-col gap-3 rounded-lg border p-3 ${hairline}`}
+              data-testid="save-widgets"
             >
-              <span className="font-medium">Published to your account</span>
-              {toPublish.map((i) => {
-                const id = `${i.kind}:${i.key}`;
-                return (
-                  <div key={id} className="flex flex-col gap-0.5">
-                    <span>{`${KIND_LABEL[i.kind] || i.kind}: ${i.name}`}</span>
-                    <span className={muted}>{publishText(i)}</span>
-                    {i.public ? (
-                      <Checkbox
-                        label="Release this as a new public version"
-                        checked={!skipPublic.has(id)}
-                        disabled={saving}
-                        onChange={(on) => toggleSkip(id, on)}
+              <span className="font-medium">Widgets to check</span>
+              {attention.map((w) => (
+                <div key={w.package} className="flex flex-col gap-1">
+                  <div className="flex flex-row flex-wrap items-center gap-2">
+                    <span>{w.package}</span>
+                    {w.publishable ? (
+                      <Button2
+                        title={
+                          publishing === w.package ? "Publishing…" : "Publish"
+                        }
+                        size="sm"
+                        onClick={() => publish(w.package)}
                       />
                     ) : null}
                   </div>
-                );
-              })}
+                  <span className={`${muted} max-w-prose`}>{w.note}</span>
+                </div>
+              ))}
             </div>
           ) : null}
 
-          {referenced.length ? (
-            <span className={muted} data-testid="save-referenced">
-              {`Up to date in the registry: ${referenced
-                .map((i) => i.name)
+          {listed.length ? (
+            <span className={muted} data-testid="save-listed">
+              {`In the registry: ${listed
+                .map((w) => `${w.package} ${w.version}`)
                 .join(", ")}.`}
             </span>
           ) : null}
 
-          {leftOut.length ? (
-            <div className="flex flex-col gap-1" data-testid="save-left-out">
-              <span className="font-medium">Left out</span>
-              {leftOut.map((i) => (
-                <span key={`${i.kind}:${i.key}`} className={muted}>
-                  {`${KIND_LABEL[i.kind] || i.kind} ${i.name}: ${i.reason}`}
-                </span>
-              ))}
-            </div>
+          {published.length ? (
+            <span data-testid="save-published">
+              {`Published to your account: ${published.join(", ")}.`}
+            </span>
           ) : null}
 
           {confirm ? (
@@ -413,7 +386,7 @@ export const SaveProfileModal = ({
             </div>
           ) : null}
 
-          {plan && plan.success && plan.secretsLeftOut ? (
+          {plan && plan.secretsLeftOut ? (
             <span className={`${muted} max-w-prose`}>
               {plan.secretsLeftOut === 1
                 ? "1 key typed into a widget isn't included"

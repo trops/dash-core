@@ -1,7 +1,7 @@
 # PRD: Dash Profiles
 
-**Status:** In Progress (PR 5: load from file)
-**Last Updated:** 2026-10-26
+**Status:** In Progress (v3: the profile is your setup)
+**Last Updated:** 2026-10-28
 **Owner:** trops
 **Related PRDs:** [Dashboard Marketplace](./dashboard-marketplace.md), [Bot Teams](./bot-teams.md)
 
@@ -11,8 +11,14 @@
 
 A profile is a named, separate setup inside Dash, like a Chrome profile. Examples are "Work Laptop" and "Mac Mini". Each profile has its
 own dashboards, folders, themes and bots. A computer can hold several profiles and switch between them, with one active at a time. You
-can save a profile to a file and load it on another computer. Later, you'll also be able to keep it in your registry account, where Dash
-tells you when a copy is out of sync and can save it automatically.
+can save a profile to a file or keep it in your registry account, and load it on another computer. Dash tells you when the account
+copy is out of sync and can save it automatically.
+
+**What a profile is (user, 2026-10-28):** your setup — like the settings, palettes and workspaces Photoshop keeps for you, while
+Adobe ships Photoshop itself. **Widgets are the only items**: they're code, listed in the profile by name and version, and their
+authors publish new versions. **Everything else is setup**, kept in the profile itself: dashboards (pages, layout, names, folders,
+themes, each widget's settings), themes, folders, bots and teams (instructions, tools, triggers, providers, schedules) and app
+settings. Saving a profile never publishes anything.
 
 ---
 
@@ -48,11 +54,13 @@ Home Assistant.
 
 **US-2: Save a profile to a file.** As a user, I can save the active profile as a `.dashprofile` file and pick which dashboards go in.
 
-- Acceptance:
-  - The file holds the chosen dashboards with their widget settings, the widgets they use, their themes, folders and bots/teams, the
-    provider list, and app settings.
-  - Registry widgets are referenced by name and version. Widgets with no registry source (`@ai-built`, local) are included in the file.
-  - The file never contains keys, tokens or OAuth state. Chat history and other stored widget data are not included.
+- Acceptance (v3):
+  - The file holds my setup — the chosen dashboards with their widget settings, their themes and folders, my bots and teams, the
+    provider list and app settings — and the widgets they use, by name and version.
+  - Saving never publishes. A widget with changes I haven't published goes in at the version I last published, and the save says
+    so. A widget the registry doesn't have (never published, `@ai-built`) is listed with **Publish…** or **Leave out**.
+  - The file never contains keys, tokens or OAuth state, or any widget code. Chat history and other stored widget data are not
+    included.
 
 **US-3: Load a profile without losing anything.** As a user, I can load a `.dashprofile` file on another computer.
 
@@ -72,7 +80,15 @@ computer.
   - Dash checks on launch, on sign-in and from "Check for updates", and tells me when the account copy and this computer differ, the
     same way it does for widget updates.
   - I can turn on auto-save to my account: Manually / When I make changes / Every day at a time I choose.
-  - Auto-save never overwrites a newer copy saved from another computer.
+  - Auto-save never overwrites a newer copy saved from another computer, and never publishes anything.
+
+**US-5 (v3): Publishing is part of building a widget, not of saving a profile.** As a user who builds a widget, I'm asked to
+publish it when I install it from the Widget Builder (a new build or an AI edit), with a line on why it matters.
+
+- Acceptance:
+  - "Publish Smart Lights? Publishing is how it gets to your other computers, and to anyone you share it with." **Publish…**
+    opens the normal publish screen; **Not now** closes it. Draft autosaves don't ask.
+  - Changing a dashboard, theme, folder, bot or a widget's settings never asks: that's setup, and the profile carries it.
 
 ---
 
@@ -340,6 +356,70 @@ Mac's / use the account's).
        setting cleared elsewhere is cleared here, a blanked key or password still isn't. Known limits: a folder or
        theme the account copy has none for isn't cleared here, and team members are matched by name.
 
+9. **v3: the profile is your setup** (user, 2026-10-28; replaces v2's "publish everything on save"). v2 made every
+   dashboard, theme and bot a registry package, so saving a profile had to publish whatever had changed — which pulled in
+   public releases, personal-folder checks and per-save change tracking. The user's model: **widgets are the real items
+   (code); the rest are config files.** So:
+   - **Items — widgets only:** `"@scope/name": "1.2.3"`, as the registry has it. The author publishes; the profile records
+     which version you have. A dashboard or bot installed from the registry is setup too — it keeps a note of where it came
+     from (`from: { package, version }`) so its author's updates are still offered (taking one replaces your edits, as
+     updates do today).
+   - **Setup — stored in the profile:** dashboards (records as they are: pages, layout, name, folder, theme, each widget's
+     settings — secret values blanked, listed in `secretsToEnter`), themes, folders, bots and teams (instructions, tools,
+     triggers, providers, schedule — never approvals already granted, sessions, run history or run state), providers without keys,
+     app settings.
+   - **Slice 1 — format, save, load, sync check:**
+     - **Format (`schemaVersion: 3`)**, the same JSON for a file and for the account: `{ kind, schemaVersion, profileId,
+       name, owner, revision, createdAt, createdOn, appVersion, widgets: { pkg: version }, setup: "<gzip+base64>",
+       providers, settings: { app }, secretsToEnter, leftOut, unpublished }`. `setup` holds `{ dashboards, themes,
+       folders, bots }`, compressed so layouts stay well under the account's 350 KB per profile (no registry change); a
+       profile still over it is refused with a clear message, never saved in part. Loading caps the unpacked size and
+       checks it like any untrusted file.
+     - **Save never publishes.** Each widget a saved dashboard uses: the exact version is in the registry → listed; built
+       or changed here (a local build of a published version, or newer than the registry) → the newest version the user
+       published is listed, and the review says "Smart Lights: the profile has 1.2.0 — you have changes you haven't
+       published"; not in the registry at all (`@ai-built`, never published) → **Publish…** (the normal publish screen,
+       then the review refreshes) or **Leave out** (its dashboards still go; the widget shows as missing there, and the
+       review says which dashboards use it). The registry can't be reached → the save stops and says so.
+     - Gone from save: publishing dashboards, themes, bots and teams; public releases. The review's **Publish** button
+       (the user's own widgets: `@ai-built` or their scope) publishes that one widget — the personal-folder check
+       stays with it — then the review is checked again.
+     - Provider names and types always go in (never keys): the setup's widgets and bots need them on the other
+       computer, and a profile can only connect to providers it lists. The save offers Bots and App settings.
+     - Needs the registry: dash-registry #120 accepts `schemaVersion: 3` in the account (v2 still accepted).
+     - Implementation: `electron/profile/profileSetup.js` (format, pack/unpack, checks, `setupHash`),
+       `profileSaveV3.js`, `profileLoadV3.js` (v1's keep-the-ids load with v2's target, keeping in step, provider
+       mapping and leaving list), `profileDigest.js` (setup hashes + widget versions). `profileSaveV2.js` removed.
+     - Review fixes: this Mac's bots on the profile's dashboards (leads, teams) stay in it; a bot using a provider
+       this Mac doesn't have yet loads without it and the notice says to add it once set up (a bot can't be saved
+       with an unknown connection); keys typed, blank or missing compare the same (digest and load); a results
+       widget keeps pointing at this Mac's bot; copies compare without their ids and with provider names mapped; a
+       bot's widget triggers follow its dashboard's id; repeated ids in a profile are dropped; a profile's bot
+       never lands on this Mac's Dash team; a bot that fails to save isn't left in the profile; "load as new"
+       loads what the preview ticked and says the records are shared; a folder another profile uses shows as not
+       renamed.
+     - **Load:** widgets install at their versions (today's v2 installer); dashboards, themes, folders and bots are
+       restored with their ids kept, as v1 files were (this computer's keys kept, bots arrive paused, this Mac's lead for
+       a dashboard kept). The preview lists added / changed / leaving per kind, widgets to install or update, providers
+       to set up and keys to enter. Default's rules, "Load as a new profile", the account links and keeping in step
+       (loading a profile's own account copy into its linked profile: the account's copy wins, except keys) stay as they
+       are.
+     - **Out of sync** compares the setup (a hash per dashboard, bot, theme and folder, without volatile fields), the
+       widget versions and the app settings with what the last save or load recorded. Unpublished widget edits don't
+       count as "changed here"; publishing a new version does.
+     - **Older profiles still load:** v1 files and v2 files and account copies, with their own loaders (read only — new
+       saves are v3).
+   - **Slice 2 — publish prompt** after **Install** in the Widget Builder (US-5). No prompts for dashboards, themes or bots;
+     publishing them is for sharing, from their menus as today.
+   - **Slice 3 — auto-save** (S4 of step 2, now small and safe): Manually (default) / When I make changes / Every day at a
+     time, for profiles already in the account. Triggers: saving a dashboard, theme, folder or bot, installing, removing,
+     updating or publishing a widget; it waits 30 seconds to batch them, and checks once at launch. Daily saves at that
+     time if anything changed (or on the next launch if Dash was closed). Never publishes; stops (and the updates dialog
+     shows the choice) when another computer saved since; Settings › Profiles shows "Last saved to your account: today
+     9:00 AM" and any error. Settings in `profileAutoSave.json` (per signed-in user, per profile), timer in
+     `electron/profile/profileAutoSave.js`. Step 2's "auto-save holds public releases" no longer applies — nothing is
+     released by a profile save.
+
 ---
 
 ## Implementation Notes
@@ -389,6 +469,7 @@ Mac's / use the account's).
 
 ## Revision History
 
+- 2026-10-28: v3 planned (user): widgets are the only items; dashboards, themes, folders, bots and teams are setup kept in the profile; saving never publishes; publish prompt in the Widget Builder; auto-save revised. Electron v0.0.1041 shipped the sync-status handler; core v0.1.849 the sync-load fix.
 - 2026-10-27: S3 merged (core v0.1.848). Sync-load fix: the account's copy wins when loaded into its linked profile.
 - 2026-10-27: S2 merged (core v0.1.847, registry v1.10.1, electron v0.0.1040). S3: out-of-sync check; Default replaced in place by its own account copy (user decision).
 - 2026-10-27: Step 2 planned and approved; S1 (registry v1.10.0) merged; S2 save to / load from the account.

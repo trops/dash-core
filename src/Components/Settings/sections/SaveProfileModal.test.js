@@ -1,14 +1,14 @@
 /**
- * Save a profile (dash-profiles v2): the review (what's published, what's
- * up to date, what's left out and why, what blocks), the user's public
- * items held back on request, and the save.
+ * Save a profile (dash-profiles v3): the review (what the profile holds,
+ * widgets in the registry, widgets to check — unpublished changes or not
+ * in the registry — with Publish), never publishing on save, and the save.
  */
 import React from "react";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   SaveProfileModal,
-  publishText,
+  countsText,
   savedNoticeText,
   leftOutText,
 } from "./SaveProfileModal";
@@ -18,68 +18,53 @@ const profile = { id: "p-mini", name: "Mac Mini" };
 
 const plan = {
   success: true,
+  schemaVersion: 3,
   username: "trops",
-  counts: { publish: 3, reference: 2, leaveOut: 1, blocked: 0 },
+  counts: {
+    dashboards: 2,
+    bots: 1,
+    themes: 0,
+    folders: 1,
+    widgets: 2,
+    unpublished: 1,
+    notInRegistry: 1,
+  },
   secretsLeftOut: 1,
   blockers: [],
-  items: [
+  widgets: [
+    { package: "@trops/chat", version: "0.0.9", action: "listed" },
     {
-      kind: "widget",
-      key: "@trops/chat",
-      name: "@trops/chat",
-      action: "reference",
-      package: "@trops/chat",
-      version: "0.0.9",
+      package: "@trops/calendar",
+      version: "2.0.0",
+      here: "2.1.0",
+      action: "unpublished",
+      note: "You have 2.1.0 here, not published — the profile has 2.0.0.",
     },
     {
-      kind: "dashboard",
-      key: "1",
-      name: "Home Lab",
-      action: "reference",
-      package: "@trops/home-lab",
-      version: "1.0.3",
-    },
-    {
-      kind: "dashboard",
-      key: "2",
-      name: "Kitchen Sink",
-      action: "publish",
-      package: "@trops/kitchen-sink",
-      version: "1.0.0",
-      public: true,
-    },
-    {
-      kind: "dashboard",
-      key: "3",
-      name: "New One",
-      action: "publish",
-      package: null,
-    },
-    {
-      kind: "dashboard",
-      key: "6",
-      name: "Alice Edited",
-      action: "remix",
-      package: "@alice/edited",
-    },
-    {
-      kind: "dashboard",
-      key: "7",
-      name: "Carol Edited",
-      action: "leave-out",
-      reason: "The author of @carol/locked doesn't allow remixes.",
+      package: "@ai-built/pipeline",
+      action: "not-in-registry",
+      publishable: true,
+      note: "Not in the registry — Home will show it as missing on the other computer. Publish it to include it.",
     },
   ],
 };
 
-function mount(overrides = {}) {
+function mount(overrides = {}, props = {}) {
   window.mainApi = {
     profiles: {
       previewSave: jest.fn().mockResolvedValue(plan),
       saveFile: jest.fn().mockResolvedValue({
         success: true,
         filePath: "/d/Mac Mini.dashprofile",
-        published: [],
+      }),
+      saveToAccount: jest
+        .fn()
+        .mockResolvedValue({ success: true, account: {} }),
+      publishWidget: jest.fn().mockResolvedValue({
+        success: true,
+        status: "published",
+        publishedAs: "@trops/pipeline",
+        version: "0.1.0",
       }),
       ...overrides,
     },
@@ -95,6 +80,7 @@ function mount(overrides = {}) {
       profile={profile}
       onClose={onClose}
       onSaved={onSaved}
+      {...props}
     />,
   );
   return { onSaved, onClose };
@@ -104,45 +90,80 @@ afterEach(() => {
   delete window.mainApi;
 });
 
-describe("SaveProfileModal (v2)", () => {
-  test("reviews what's published, up to date, and left out", async () => {
+describe("SaveProfileModal (v3)", () => {
+  test("reviews what goes in, and the widgets to check", async () => {
     mount();
-    await screen.findByTestId("save-profile-counts");
-    expect(screen.getByTestId("save-profile-counts")).toHaveTextContent(
-      "3 items to publish · 2 up to date · 1 left out",
+    expect(await screen.findByTestId("save-profile-counts")).toHaveTextContent(
+      "2 dashboards · 1 bot · 2 widgets",
     );
-    const publish = screen.getByTestId("save-publish");
-    expect(publish).toHaveTextContent("Dashboard: Kitchen Sink");
-    expect(publish).toHaveTextContent("Dashboard: New One");
-    expect(publish).toHaveTextContent(
-      "Your remix, published privately (credits @alice/edited)",
+    const check = screen.getByTestId("save-widgets");
+    expect(check).toHaveTextContent("@trops/calendar");
+    expect(check).toHaveTextContent("You have 2.1.0 here, not published");
+    expect(check).toHaveTextContent("@ai-built/pipeline");
+    expect(screen.getByTestId("save-listed")).toHaveTextContent(
+      "In the registry: @trops/chat 0.0.9.",
     );
-    expect(screen.getByTestId("save-referenced")).toHaveTextContent(
-      "Up to date in the registry: @trops/chat, Home Lab.",
-    );
-    expect(screen.getByTestId("save-left-out")).toHaveTextContent(
-      "Dashboard Carol Edited: The author of @carol/locked doesn't allow remixes.",
-    );
+    // Only a widget the user can publish gets the button.
+    expect(screen.getAllByRole("button", { name: "Publish" })).toHaveLength(1);
     expect(
       screen.getByText(/1 key typed into a widget isn't included/),
     ).toBeInTheDocument();
   });
 
-  test("a public item is released unless unticked", async () => {
-    mount();
-    const box = await screen.findByLabelText(
-      "Release this as a new public version",
-    );
-    expect(box).toBeChecked();
-    fireEvent.click(box);
+  test("saving never publishes", async () => {
+    const { onSaved } = mount();
+    await screen.findByTestId("save-profile-counts");
     fireEvent.click(screen.getByRole("button", { name: "Save…" }));
-    await waitFor(() =>
-      expect(window.mainApi.profiles.saveFile).toHaveBeenCalledWith(
-        appId,
-        "p-mini",
-        expect.objectContaining({ skipPublic: ["dashboard:2"] }),
-      ),
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(window.mainApi.profiles.saveFile).toHaveBeenCalledWith(
+      appId,
+      "p-mini",
+      { bots: true, settings: true },
     );
+    expect(window.mainApi.profiles.publishWidget).not.toHaveBeenCalled();
+  });
+
+  test("Publish publishes that widget, then the review is checked again", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Publish" }));
+    expect(await screen.findByTestId("save-published")).toHaveTextContent(
+      "Published to your account: @trops/pipeline 0.1.0.",
+    );
+    expect(window.mainApi.profiles.publishWidget).toHaveBeenCalledWith(
+      appId,
+      "p-mini",
+      "@ai-built/pipeline",
+      { confirmPersonalPaths: false },
+    );
+    await waitFor(() =>
+      expect(window.mainApi.profiles.previewSave).toHaveBeenCalledTimes(2),
+    );
+  });
+
+  test("a widget whose files mention this computer's folders is confirmed, then published", async () => {
+    const publishWidget = jest
+      .fn()
+      .mockResolvedValueOnce({
+        success: false,
+        status: "needs-confirmation",
+        findings: [{ file: "a.js", match: "/Users/me" }],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        publishedAs: "@trops/pipeline",
+        version: "0.1.0",
+      });
+    mount({ publishWidget });
+    fireEvent.click(await screen.findByRole("button", { name: "Publish" }));
+    expect(await screen.findByTestId("save-confirm-paths")).toHaveTextContent(
+      "a.js: /Users/me",
+    );
+    fireEvent.click(screen.getByLabelText("Publish anyway"));
+    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await screen.findByTestId("save-published");
+    expect(publishWidget.mock.calls[1][3]).toEqual({
+      confirmPersonalPaths: true,
+    });
   });
 
   test("something blocking: listed, and nothing is saved", async () => {
@@ -154,56 +175,52 @@ describe("SaveProfileModal (v2)", () => {
             kind: "widget",
             key: "@trops/x",
             name: "@trops/x",
-            reason: "Checks failed",
+            reason: "Couldn't check @trops/x with the registry — try again.",
           },
         ],
       }),
     });
     expect(await screen.findByTestId("save-blockers")).toHaveTextContent(
-      "Widget @trops/x: Checks failed",
+      "@trops/x: Couldn't check",
     );
-    // The button says what's missing.
     fireEvent.click(
       screen.getByRole("button", { name: "Fix the items above first" }),
     );
     expect(window.mainApi.profiles.saveFile).not.toHaveBeenCalled();
   });
 
-  test("signed out: asks to sign in", async () => {
-    mount({
-      previewSave: jest
-        .fn()
-        .mockResolvedValue({ success: false, signInRequired: true }),
-    });
-    expect(await screen.findByTestId("save-sign-in")).toHaveTextContent(
-      "Sign in to the registry to save a profile.",
+  test("the account needs sign-in; a file doesn't", async () => {
+    mount(
+      {
+        previewSave: jest.fn().mockResolvedValue({ ...plan, username: null }),
+      },
+      { to: "account" },
     );
+    expect(await screen.findByTestId("save-sign-in")).toHaveTextContent(
+      "Sign in to the registry to keep this profile in your account.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sign in first" }));
+    expect(window.mainApi.profiles.saveToAccount).not.toHaveBeenCalled();
   });
 
-  test("a widget whose files mention this computer's folders is confirmed, then saved", async () => {
-    const saveFile = jest
-      .fn()
-      .mockResolvedValueOnce({
-        success: false,
-        needsConfirmation: {
-          package: "@ai-built/pipeline",
-          findings: [{ file: "a.js", match: "/Users/me" }],
-        },
-        error: "Check it",
-      })
-      .mockResolvedValueOnce({ success: true, filePath: "/d/x.dashprofile" });
-    const { onSaved } = mount({ saveFile });
-    await screen.findByTestId("save-profile-counts");
-    fireEvent.click(screen.getByRole("button", { name: "Save…" }));
-    expect(await screen.findByTestId("save-confirm-paths")).toHaveTextContent(
-      "a.js: /Users/me",
+  test("a newer copy in the account: offers to replace it", async () => {
+    mount(
+      {
+        saveToAccount: jest.fn().mockResolvedValueOnce({
+          success: false,
+          conflict: { revision: 7, updatedOn: "laptop" },
+        }),
+      },
+      { to: "account" },
     );
-    fireEvent.click(screen.getByLabelText("Publish anyway"));
-    fireEvent.click(screen.getByRole("button", { name: "Save…" }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(saveFile.mock.calls[1][2].confirmPersonalPaths).toEqual([
-      "@ai-built/pipeline",
-    ]);
+    await screen.findByTestId("save-profile-counts");
+    fireEvent.click(screen.getByRole("button", { name: "Save to my account" }));
+    expect(
+      await screen.findByRole("button", { name: "Replace the account's copy" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/newer copy of this profile, saved on laptop/),
+    ).toBeInTheDocument();
   });
 
   test("the options change what's planned", async () => {
@@ -214,39 +231,35 @@ describe("SaveProfileModal (v2)", () => {
       expect(window.mainApi.profiles.previewSave).toHaveBeenLastCalledWith(
         appId,
         "p-mini",
-        { bots: false, providers: true, settings: true },
+        { bots: false, settings: true },
       ),
     );
   });
 });
 
 describe("texts", () => {
-  test("publishText", () => {
-    expect(publishText({ action: "publish", package: null })).toBe(
-      "New — published privately to your account",
+  test("countsText", () => {
+    expect(countsText({ dashboards: 1, bots: 0, themes: 2, widgets: 3 })).toBe(
+      "1 dashboard · 2 themes · 3 widgets",
     );
-    expect(
-      publishText({ action: "publish", package: "@trops/x", public: true }),
-    ).toBe("Changed — published as a new version of @trops/x (public)");
   });
 
   test("savedNoticeText and leftOutText", () => {
     expect(
       savedNoticeText({
         filePath: "/Users/me/Desktop/Mac Mini.dashprofile",
-        published: [
-          { name: "Home Lab", package: "@trops/home-lab", version: "1.0.4" },
-        ],
+        unpublished: [{ package: "@trops/calendar" }],
         secretsLeftOut: 2,
       }),
     ).toBe(
-      'Saved "Mac Mini.dashprofile" in Desktop. Published to your account: Home Lab (@trops/home-lab 1.0.4). 2 keys typed into widgets aren\'t included.',
+      'Saved "Mac Mini.dashprofile" in Desktop. 1 widget went in at the version you last published. 2 keys typed into widgets aren\'t included.',
     );
+    expect(savedNoticeText({ account: {} })).toBe("Saved to your account.");
     expect(
       leftOutText({
-        leftOut: [{ name: "Work", reason: "Imported from a file." }],
+        leftOut: [{ name: "@ai-built/x", reason: "Not in the registry." }],
       }),
-    ).toBe("Not in the profile: Work — Imported from a file.");
+    ).toBe("Not in the profile: @ai-built/x — Not in the registry.");
     expect(leftOutText({})).toBeNull();
   });
 });

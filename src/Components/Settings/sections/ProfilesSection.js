@@ -163,7 +163,7 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
   const [loadPreview, setLoadPreview] = useState(null);
   // A v2 profile (packages from the registry) has its own preview.
   const LoadModal =
-    loadPreview && loadPreview.schemaVersion === 2
+    loadPreview && loadPreview.schemaVersion >= 2
       ? LoadProfileV2Modal
       : LoadProfileModal;
 
@@ -675,6 +675,14 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
               setNotice(
                 (n) =>
                   `${n} ${plural(res.botsPaused.length, "bot")} arrived paused — turn them on when you're ready.`,
+              );
+            }
+            for (const w of res.botsWaiting || []) {
+              setNotice(
+                (n) =>
+                  `${n} ${w.bot}: add ${w.providers.join(", ")} to it once ${
+                    w.providers.length === 1 ? "it's" : "they're"
+                  } set up here.`,
               );
             }
             if ((res.problems || []).length) setError(res.problems.join(" "));

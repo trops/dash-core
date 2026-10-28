@@ -367,6 +367,7 @@ describe("profiles out of sync with the account", () => {
     expect(changesText({ dashboards: 1, folders: 2, total: 3 })).toBe(
       "1 dashboard, 2 folders",
     );
+    expect(changesText({ widgets: 1, total: 1 })).toBe("1 widget");
     expect(profileSyncText(rows[2])).toBe(
       "Changed here (1 theme) and on laptop",
     );

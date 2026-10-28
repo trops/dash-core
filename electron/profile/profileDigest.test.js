@@ -34,7 +34,8 @@ function computer(overrides = {}) {
           {
             id: 1,
             uuid: "u1",
-            component: "trops.home.Lights",
+            component: "Lights",
+            packageId: "@trops/home",
             userPrefs: { room: "Kitchen" },
           },
         ],
@@ -49,7 +50,23 @@ function computer(overrides = {}) {
       { id: "b3", name: "Elsewhere" },
       { id: "dt", system: "dash-team", name: "Dash team" },
     ],
+    widgets: {
+      "@trops/home": {
+        version: "1.0.0",
+        installSource: "registry",
+        componentNames: ["Lights"],
+      },
+    },
     ...overrides,
+  };
+  const registry = {
+    getWidget: (p) => state.widgets[p] || null,
+    getWidgets: () =>
+      Object.entries(state.widgets).map(([k, v]) => ({
+        name: k,
+        packageId: k,
+        ...v,
+      })),
   };
   return {
     state,
@@ -62,6 +79,7 @@ function computer(overrides = {}) {
       themeFile: () => state.themes,
       folderFile: () => state.folders,
       allBots: () => state.bots,
+      widgetRegistry: () => registry,
     },
   };
 }
@@ -90,7 +108,14 @@ describe("profileDigest", () => {
     const { deps, state } = computer();
     const before = profileDigest(appId, "mini", deps);
     state.workspaces[0] = { ...state.workspaces[0], lastOpened: Date.now() };
-    state.bots[1] = { ...state.bots[1], lastRunAt: Date.now(), runs: 4 };
+    // A run saves the bot's conversation and edit time; approving a tool
+    // here adds to its allowed tools — none is part of the profile.
+    state.bots[1] = {
+      ...state.bots[1],
+      session: { engine: "cli", state: "x" },
+      updatedAt: new Date().toISOString(),
+      allowedTools: ["slack.post"],
+    };
     assert.equal(
       digestChanges(before, profileDigest(appId, "mini", deps)).total,
       0,
@@ -144,7 +169,78 @@ describe("profileDigest", () => {
         bots: {},
         themes: {},
         folders: {},
+        widgets: {},
       },
+    );
+  });
+
+  it("a key typed into a widget isn't a change (the profile never has it)", () => {
+    const { deps, state } = computer();
+    const withKey = (apiKey) => ({
+      ...state.workspaces[0],
+      layout: [
+        {
+          ...state.workspaces[0].layout[0],
+          userPrefs: { room: "Kitchen", apiKey },
+        },
+      ],
+    });
+    // Missing or null before it's typed: still not a change.
+    for (const start of [undefined, null, ""]) {
+      state.workspaces[0] = withKey(start);
+      if (start === undefined) {
+        delete state.workspaces[0].layout[0].userPrefs.apiKey;
+      }
+      const was = profileDigest(appId, "mini", deps);
+      state.workspaces[0] = withKey("sk-123");
+      assert.equal(
+        digestChanges(was, profileDigest(appId, "mini", deps)).total,
+        0,
+        String(start),
+      );
+    }
+    state.workspaces[0] = withKey("");
+    const before = profileDigest(appId, "mini", deps);
+    state.workspaces[0] = {
+      ...withKey("SECRET"),
+      layout: [
+        {
+          ...withKey("SECRET").layout[0],
+          userPrefs: { room: "Kitchen", apiKey: "SECRET" },
+        },
+      ],
+    };
+    assert.equal(
+      digestChanges(before, profileDigest(appId, "mini", deps)).total,
+      0,
+    );
+  });
+
+  it("widgets: a new registry version is a change; edits built here aren't", () => {
+    const { deps, state } = computer();
+    const before = profileDigest(appId, "mini", deps);
+    assert.deepEqual(Object.keys(before.widgets), ["@trops/home"]);
+    // Updated (or published and installed) from the registry: a change.
+    state.widgets["@trops/home"] = {
+      ...state.widgets["@trops/home"],
+      version: "1.1.0",
+    };
+    const updated = profileDigest(appId, "mini", deps);
+    assert.equal(digestChanges(before, updated).widgets, 1);
+    // Built here, then built again: not a change.
+    state.widgets["@trops/home"] = {
+      ...state.widgets["@trops/home"],
+      installSource: "local",
+      version: "1.1.1",
+    };
+    const built = profileDigest(appId, "mini", deps);
+    state.widgets["@trops/home"] = {
+      ...state.widgets["@trops/home"],
+      version: "1.1.2",
+    };
+    assert.equal(
+      digestChanges(built, profileDigest(appId, "mini", deps)).total,
+      0,
     );
   });
 });

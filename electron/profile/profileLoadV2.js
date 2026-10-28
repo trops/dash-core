@@ -1261,6 +1261,7 @@ async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
 }
 
 module.exports = {
+  itemRow,
   parseProfileV2,
   isProfileV2,
   planLoadV2,

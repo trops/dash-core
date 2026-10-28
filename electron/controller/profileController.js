@@ -135,6 +135,54 @@ function rememberOpened(appId, read, win = null) {
   return token;
 }
 
+// What a save takes from the renderer: whether bots and app settings go
+// in. Providers always do (names and types, never keys) — the setup's
+// widgets and bots need them on the other computer.
+function saveOptions(options) {
+  const o = options || {};
+  return {
+    bots: o.bots !== false,
+    settings: o.settings !== false,
+    providers: true,
+  };
+}
+
+/** A v3 or v2 profile's JSON, checked: `{ read }` or `{ error }`. */
+function openProfileJson(bytes) {
+  const {
+    jsonSchemaVersion,
+    parseProfileV3,
+  } = require("../profile/profileSetup");
+  if (jsonSchemaVersion(bytes) === 3) {
+    const parsed = parseProfileV3(bytes);
+    return parsed.error ? parsed : { read: { v3: parsed.manifest } };
+  }
+  const parsed = require("../profile/profileLoadV2").parseProfileV2(bytes);
+  return parsed.error ? parsed : { read: { v2: parsed.manifest } };
+}
+
+/** The load preview of an opened v3 or v2 profile. */
+function planOpened(
+  appId,
+  opened,
+  { linkedProfileId = null, sync = false } = {},
+) {
+  if (opened.read.v3) {
+    return require("../profile/profileLoadV3").planLoadV3(
+      appId,
+      opened.read.v3,
+      {},
+      { linkedProfileId, sync },
+    );
+  }
+  return require("../profile/profileLoadV2").planLoadV2(
+    appId,
+    opened.read.v2,
+    {},
+    { linkedProfileId },
+  );
+}
+
 const profileController = {
   listProfiles(appId) {
     try {
@@ -283,14 +331,15 @@ const profileController = {
   },
 
   /**
-   * What "Save" would do (dash-profiles v2): each item referenced,
-   * published, published as a remix, or left out (with why), and what
-   * blocks the save. Nothing is published yet.
+   * What "Save" would write (dash-profiles v3): the setup as it is, and
+   * each widget listed at the version the registry has, listed at the
+   * version last published (changes here not published), or not in the
+   * registry. Nothing is published.
    */
   async previewSave(appId, profileId, options = {}) {
     try {
-      const { planSave } = require("../profile/profileSaveV2");
-      return await planSave(appId, profileId, options);
+      const { planSave } = require("../profile/profileSaveV3");
+      return await planSave(appId, profileId, saveOptions(options));
     } catch (e) {
       return fail(e);
     }
@@ -333,61 +382,34 @@ const profileController = {
   },
 
   /**
-   * Save a profile (dash-profiles v2): publish what changed, then write the
-   * file (a save dialog picks where). `options`: what goes in (bots,
-   * providers, settings) and the user's choices in the review —
-   * `skipPublic` (their public items not to release now) and
-   * `confirmPersonalPaths` (widgets whose files mention this computer's
-   * folders, checked).
+   * Save a profile to a file (dash-profiles v3; a save dialog picks where —
+   * never a path from the renderer). `options`: what goes in (bots, app
+   * settings). Nothing is published.
    */
   async saveProfileFile(win, appId, profileId, options = {}) {
     try {
-      const { executeSave } = require("../profile/profileSaveV2");
-      // Where to write is always the user's choice in the save dialog —
-      // never a path from the renderer.
-      const {
-        filePath: _ignored,
-        skipPublic,
-        confirmPersonalPaths,
-        ...what
-      } = options || {};
-      return await executeSave(win, appId, profileId, what, {
-        skipPublic: Array.isArray(skipPublic) ? skipPublic.map(String) : [],
-        confirmPersonalPaths: Array.isArray(confirmPersonalPaths)
-          ? confirmPersonalPaths.map(String)
-          : [],
-      });
+      const { executeSave } = require("../profile/profileSaveV3");
+      return await executeSave(win, appId, profileId, saveOptions(options));
     } catch (e) {
       return fail(e);
     }
   },
 
   /**
-   * Save a profile to the user's account (step 2): the same review and
-   * publishing as saving to a file, then kept in the account instead of a
-   * file. Refused, with `conflict`, when another computer saved it since —
-   * nothing is published then. `options.asNew` adds it as a new account
-   * profile (its account copy was removed).
+   * Save a profile to the user's account (step 2, v3): the same as a file,
+   * kept in the account instead. Refused, with `conflict`, when another
+   * computer saved it since. `options.asNew` adds it as a new account
+   * profile (its account copy was removed); `replaceRevision` replaces the
+   * newer copy the user was shown ("keep this computer's").
    */
   async saveProfileToAccount(win, appId, profileId, options = {}) {
     try {
-      const { executeSave } = require("../profile/profileSaveV2");
-      const {
-        filePath: _ignored,
-        skipPublic,
-        confirmPersonalPaths,
-        asNew,
-        replaceRevision,
-        ...what
-      } = options || {};
-      return await executeSave(win, appId, profileId, what, {
+      const { executeSave } = require("../profile/profileSaveV3");
+      const { asNew, replaceRevision } = options || {};
+      return await executeSave(win, appId, profileId, saveOptions(options), {
         target: "account",
         asNew: asNew === true,
         replaceRevision: profileAccount.revisionOf(replaceRevision),
-        skipPublic: Array.isArray(skipPublic) ? skipPublic.map(String) : [],
-        confirmPersonalPaths: Array.isArray(confirmPersonalPaths)
-          ? confirmPersonalPaths.map(String)
-          : [],
       });
     } catch (e) {
       return fail(e);
@@ -428,33 +450,29 @@ const profileController = {
     try {
       const res = await profileAccount.getRemote(accountId);
       if (!res.success) return res;
-      const v2 = require("../profile/profileLoadV2");
       // Untrusted, like a file: parsed and checked the same way.
-      const parsed = v2.parseProfileV2(
+      const opened = openProfileJson(
         Buffer.from(JSON.stringify(res.profile.manifest || null)),
       );
-      if (parsed.error) return { success: false, error: parsed.error };
+      if (opened.error) return { success: false, error: opened.error };
       const owner = await signedInUsername();
       const linkedProfileId = profileAccount.profileFor(
         appId,
         owner,
         accountId,
       );
-      const plan = await v2.planLoadV2(
-        appId,
-        parsed.manifest,
-        {},
-        {
-          linkedProfileId,
-        },
-      );
+      const plan = await planOpened(appId, opened, {
+        linkedProfileId,
+        // Into the profile it's linked to: keeping it in step.
+        sync: !!linkedProfileId,
+      });
       return {
         ...plan,
         fromAccount: true,
         token: rememberOpened(
           appId,
           {
-            v2: parsed.manifest,
+            ...opened.read,
             account: {
               accountId,
               revision: res.profile.revision,
@@ -569,16 +587,13 @@ const profileController = {
         return { success: false, error: "The file is too big." };
       }
       const bytes = fs.readFileSync(file);
-      // A v2 profile (JSON: packages from the registry) or a v1 zip.
-      const v2 = require("../profile/profileLoadV2");
-      if (v2.isProfileV2(bytes)) {
-        const parsed = v2.parseProfileV2(bytes);
-        if (parsed.error) return { success: false, error: parsed.error };
-        const plan = await v2.planLoadV2(appId, parsed.manifest);
-        return {
-          ...plan,
-          token: rememberOpened(appId, { v2: parsed.manifest }, win),
-        };
+      // A v3 or v2 profile (JSON) or a v1 zip.
+      const { jsonSchemaVersion } = require("../profile/profileSetup");
+      if (jsonSchemaVersion(bytes) !== null) {
+        const opened = openProfileJson(bytes);
+        if (opened.error) return { success: false, error: opened.error };
+        const plan = await planOpened(appId, opened);
+        return { ...plan, token: rememberOpened(appId, opened.read, win) };
       }
       const read = readProfileZip(bytes);
       if (read.error) return { success: false, error: read.error };
@@ -607,7 +622,7 @@ const profileController = {
         ? undefined
         : currentItems(appId, bots);
       const { defaultItems: _ignored, ...picked } = choices || {};
-      if (entry.read && entry.read.v2) {
+      if (entry.read && (entry.read.v2 || entry.read.v3)) {
         const { BrowserWindow } = require("electron");
         const win =
           entry.win && !entry.win.isDestroyed()
@@ -615,14 +630,16 @@ const profileController = {
             : BrowserWindow.getFocusedWindow() ||
               BrowserWindow.getAllWindows()[0] ||
               null;
-        const { applyLoadV2 } = require("../profile/profileLoadV2");
         const {
           linkedProfileId: _notFromRenderer,
           syncLinked: _notFromRendererEither,
           ...chosen
         } = picked;
         const fromAccount = entry.read.account || null;
-        const result = await applyLoadV2(win, appId, entry.read.v2, {
+        const apply = entry.read.v3
+          ? (...a) => require("../profile/profileLoadV3").applyLoadV3(...a)
+          : (...a) => require("../profile/profileLoadV2").applyLoadV2(...a);
+        const result = await apply(win, appId, entry.read.v3 || entry.read.v2, {
           ...chosen,
           defaultItems,
           linkedProfileId: fromAccount ? entry.read.linkedProfileId : null,

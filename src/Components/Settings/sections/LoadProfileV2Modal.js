@@ -16,6 +16,7 @@ const KINDS = [
   { kind: "bot", title: "Bots", noun: "bot" },
   { kind: "team", title: "Teams", noun: "team" },
   { kind: "theme", title: "Themes", noun: "theme" },
+  { kind: "folder", title: "Folders", noun: "folder" },
   { kind: "widget", title: "Widgets", noun: "widget" },
 ];
 
@@ -73,10 +74,24 @@ export function rowText(row) {
 }
 
 /**
- * Load a v2 profile (dash-profiles v2): everything comes from the registry
- * at the versions the profile lists. The preview says what's installed,
- * updated, already here or kept, and which providers to use, map or set up;
- * nothing changes until the user confirms.
+ * A changed item's choice: a widget by version; setup (a dashboard,
+ * folder, theme or bot — v3) by "the profile's copy".
+ */
+export function choiceLabel(row) {
+  if (row.action === "update") {
+    return row.version
+      ? `${row.name} — update to ${row.version}`
+      : `${row.name} — use the profile's copy`;
+  }
+  return `${row.name} — use the profile's ${row.version || "copy"}`;
+}
+
+/**
+ * Load a v2 or v3 profile: widgets (and, in v2, everything else) come
+ * from the registry at the versions the profile lists; a v3 profile's
+ * setup — dashboards, folders, themes, bots — comes as it is. The preview
+ * says what's new, updated, already here or kept, and which providers to
+ * use, map or set up; nothing changes until the user confirms.
  *
  * Mounted only while open (it opens inside the Settings modal).
  */
@@ -212,6 +227,16 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
               checked={asNew}
               onChange={setAsNew}
             />
+            {asNew && preview.schemaVersion === 3 ? (
+              <span
+                className={`${muted} max-w-prose`}
+                data-testid="load-as-new-shared"
+              >
+                Dashboards and bots already on this computer are shared: the new
+                profile holds the same ones, so a change to one shows in both
+                profiles.
+              </span>
+            ) : null}
           </div>
         ) : null}
 
@@ -253,13 +278,13 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
                 <div key={rowId(row)} className="flex flex-col">
                   {row.action === "update" ? (
                     <Checkbox
-                      label={`${row.name} — update to ${row.version}`}
+                      label={choiceLabel(row)}
                       checked={!keep.has(rowId(row))}
                       onChange={(on) => toggle(keep, setKeep, rowId(row), !on)}
                     />
                   ) : row.action === "keep" ? (
                     <Checkbox
-                      label={`${row.name} — use the profile's ${row.version}`}
+                      label={choiceLabel(row)}
                       checked={take.has(rowId(row))}
                       onChange={(on) => toggle(take, setTake, rowId(row), on)}
                     />
