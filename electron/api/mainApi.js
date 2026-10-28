@@ -103,6 +103,11 @@ function createMainApi(extensions = {}) {
     // the "app:get-version" handler (dash-electron public/electron.js).
     app: {
       getVersion: () => ipcRenderer.invoke("app:get-version"),
+      // macOS: open System Settings › Privacy & Security › Local Network
+      // (a server on the local network was blocked). The address is fixed
+      // in the main process — the renderer never names one.
+      openLocalNetworkSettings: () =>
+        ipcRenderer.invoke("app:open-local-network-settings"),
     },
 
     shell: {

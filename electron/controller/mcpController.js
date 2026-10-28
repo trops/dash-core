@@ -27,7 +27,11 @@ const {
   markReadOnlyTools,
 } = require("../mcp/catalogReadOnly");
 const { serverKey, parseServerKey } = require("../utils/mcpServerKey");
-const { describeStartFailure, StderrTail } = require("../utils/mcpStartError");
+const {
+  describeStartFailure,
+  describeNetworkFailure,
+  StderrTail,
+} = require("../utils/mcpStartError");
 const { connectedServersFromMap } = require("../bots/toolSources");
 const { applyPathScopeToCredentials } = require("../utils/mcpScopeResolver");
 const { readEnforceFlag, readJitFlag } = require("../utils/securityFlags");
@@ -908,7 +912,20 @@ const mcpController = {
 
         // Detect Node v24+ ESM compatibility errors and provide actionable message
         let errorMessage = error.message;
-        if (isNodeEsmError(error.message)) {
+        // A remote server that couldn't be reached: why, in plain words
+        // (fetch only says "fetch failed"), and what fixes it.
+        let fix = null;
+        const network =
+          mcpConfig && mcpConfig.transport === "streamable_http"
+            ? describeNetworkFailure(
+                error,
+                interpolate(mcpConfig.url, credentials),
+              )
+            : null;
+        if (network) {
+          errorMessage = network.message;
+          fix = network.fix || null;
+        } else if (isNodeEsmError(error.message)) {
           errorMessage =
             "This MCP server is incompatible with your system Node.js version. " +
             "Install Node.js v22 (LTS) using nvm and restart the app.";
@@ -929,6 +946,7 @@ const mcpController = {
           resources: [],
           status: STATUS.ERROR,
           error: errorMessage,
+          ...(fix ? { fix } : {}),
           workspaceId: workspaceId || null,
           serverName,
         });
@@ -936,6 +954,7 @@ const mcpController = {
         return {
           error: true,
           message: errorMessage,
+          ...(fix ? { fix } : {}),
           serverName,
           status: STATUS.ERROR,
         };
@@ -1021,7 +1040,18 @@ const mcpController = {
         `[mcpController] OAuth authorization failed for ${serverName}:`,
         error,
       );
-      return { error: true, message: error.message };
+      // Couldn't reach it at all: why, in plain words.
+      const network = describeNetworkFailure(
+        error,
+        interpolate(mcpConfig && mcpConfig.url, credentials),
+      );
+      return network
+        ? {
+            error: true,
+            message: network.message,
+            ...(network.fix ? { fix: network.fix } : {}),
+          }
+        : { error: true, message: error.message };
     }
   },
 

@@ -27,6 +27,10 @@ const schema = {
   },
 };
 
+afterEach(() => {
+  delete window.mainApi;
+});
+
 describe("buildMcpConfig for a built-in provider", () => {
   it("returns the saved config unchanged", () => {
     expect(
@@ -244,6 +248,55 @@ describe("CustomMcpServerForm editing a signed-in OAuth provider", () => {
     fireEvent.click(screen.getByRole("button", { name: "Fetch Tools" }));
     expect(dashApi.mcpStartServer.mock.calls[0][0]).toBe("SF Work");
     expect(dashApi.mcpStopServer.mock.calls[0][0]).toBe("SF Work");
+  });
+
+  it("a server macOS blocked on the local network: says so, with the way to fix it", () => {
+    const dashApi = {
+      mcpGetServerStatus: jest.fn((name, ok) =>
+        ok(null, { status: "disconnected" }),
+      ),
+      mcpStartServer: jest.fn((name, cfg, creds, ok) =>
+        ok(null, {
+          error: true,
+          message:
+            "This Mac blocked Dash from reaching 10.0.0.107:9583 on your local network. Allow Dash in System Settings › Privacy & Security › Local Network, then try again.",
+          fix: "local-network",
+        }),
+      ),
+      mcpStopServer: jest.fn(),
+    };
+    window.mainApi = { app: { openLocalNetworkSettings: jest.fn() } };
+    renderEdit({ dashApi });
+    fireEvent.click(next());
+    fireEvent.click(next());
+    fireEvent.click(screen.getByRole("button", { name: "Fetch Tools" }));
+    expect(
+      screen.getByText(
+        /This Mac blocked Dash from reaching 10\.0\.0\.107:9583/,
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Local Network settings" }),
+    );
+    expect(window.mainApi.app.openLocalNetworkSettings).toHaveBeenCalled();
+  });
+
+  it("any other failure: no Local Network button", () => {
+    const dashApi = {
+      mcpGetServerStatus: jest.fn((name, ok) =>
+        ok(null, { status: "disconnected" }),
+      ),
+      mcpStartServer: jest.fn((name, cfg, creds, ok) =>
+        ok(null, { error: true, message: "Nothing is answering at a:1" }),
+      ),
+      mcpStopServer: jest.fn(),
+    };
+    renderEdit({ dashApi });
+    fireEvent.click(next());
+    fireEvent.click(next());
+    fireEvent.click(screen.getByRole("button", { name: "Fetch Tools" }));
+    expect(screen.getByText("Nothing is answering at a:1")).toBeInTheDocument();
+    expect(screen.queryByTestId("mcp-local-network-fix")).toBeNull();
   });
 
   it("after a failed Authorize, the old sign-in no longer counts", () => {
