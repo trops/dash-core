@@ -21,6 +21,7 @@ import {
   leftOutText,
 } from "./SaveProfileModal";
 import { AccountProfilesModal } from "./AccountProfilesModal";
+import { takeProfileIntent } from "./profileIntent";
 import { LoadProfileModal } from "./LoadProfileModal";
 import { LoadProfileV2Modal } from "./LoadProfileV2Modal";
 
@@ -152,6 +153,11 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
   const [saveTo, setSaveTo] = useState("file");
   // "Load from my account…" is open.
   const [accountOpen, setAccountOpen] = useState(false);
+  // Saving over the account's newer copy (from the updates dialog).
+  const [saveReplace, setSaveReplace] = useState(null);
+  // What the updates dialog asked for (profileIntent.js), done once the
+  // profiles are listed.
+  const [intent, setIntent] = useState(() => takeProfileIntent());
   const [notice, setNotice] = useState(null);
   // What loading the picked file would do (the Load dialog is open).
   const [loadPreview, setLoadPreview] = useState(null);
@@ -189,6 +195,57 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
   useEffect(() => {
     loadProfiles();
   }, [loadProfiles]);
+
+  // Already open when the updates dialog asks: take it now.
+  useEffect(() => {
+    const onAsk = () => {
+      const next = takeProfileIntent();
+      if (next) setIntent(next);
+    };
+    window.addEventListener("dash:open-profile-sync", onAsk);
+    return () => window.removeEventListener("dash:open-profile-sync", onAsk);
+  }, []);
+
+  useEffect(() => {
+    if (!intent || !profiles.length) return;
+    const asked = intent;
+    setIntent(null);
+    if (asked.action === "pick") {
+      setAccountOpen(true);
+      return;
+    }
+    const p = profiles.find((x) => x.id === asked.profileId);
+    if (!p) {
+      setError("That profile isn't on this computer any more.");
+      return;
+    }
+    setNameForm(null);
+    setSelectedId(p.id);
+    setNotice(null);
+    if (asked.action === "save") {
+      setSaveTo("account");
+      setSaveReplace(asked.replaceRevision ?? null);
+      setSaving(p);
+    } else if (asked.accountId) {
+      loadFromAccount(asked.accountId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent, profiles]);
+
+  // The Load preview for a profile in the account (as "Load from my
+  // account…" does after picking it).
+  async function loadFromAccount(accountId) {
+    setError(null);
+    let res;
+    try {
+      res = await profilesApi()?.previewLoadFromAccount?.(appId, accountId);
+    } catch (e) {
+      res = { success: false, error: e?.message };
+    }
+    if (res && res.success) setLoadPreview(res);
+    else
+      setError(res?.error || "Couldn't load that profile from your account.");
+  }
 
   useEffect(() => {
     if (selectedId) loadContents(selectedId);
@@ -487,6 +544,7 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
                 onClick={() => {
                   setNotice(null);
                   setSaveTo("account");
+                  setSaveReplace(null);
                   setSaving(selected);
                 }}
                 testId="profile-save-account"
@@ -644,6 +702,7 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
           appId={appId}
           profile={saving}
           to={saveTo}
+          replaceRevision={saveTo === "account" ? saveReplace : null}
           onClose={() => setSaving(null)}
           onSaved={(res) => {
             setSaving(null);

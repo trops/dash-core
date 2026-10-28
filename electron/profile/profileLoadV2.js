@@ -414,7 +414,9 @@ function itemRow(kind, pkg, version, local, info, extra = {}) {
  * changes nothing.
  *
  * `linkedProfileId`: the profile here linked to the account copy being
- * loaded (profileAccount.js) — it's the one replaced, unless it's Default.
+ * loaded (profileAccount.js) — it's the one replaced, Default included
+ * (user decision, 2026-10-27: Default's own account copy replaces it in
+ * place; any other copy of Default still loads as its own profile).
  */
 async function planLoadV2(
   appId,
@@ -433,7 +435,11 @@ async function planLoadV2(
     ? `Default (from ${manifest.createdOn || "another computer"})`.slice(0, 60)
     : manifest.name;
   const others = profiles.filter((p) => p.id !== DEFAULT_PROFILE_ID);
+  const linkedDefault =
+    linkedProfileId === DEFAULT_PROFILE_ID &&
+    profiles.find((p) => p.id === DEFAULT_PROFILE_ID);
   const existing =
+    linkedDefault ||
     (linkedProfileId && others.find((p) => p.id === linkedProfileId)) ||
     (!fromDefault && others.find((p) => p.id === manifest.profileId)) ||
     others.find((p) => sameName(p.name, name)) ||
@@ -573,9 +579,60 @@ async function planLoadV2(
         };
   });
 
+  // Replacing: what the profile holds now that the profile being loaded
+  // doesn't — it leaves the profile (it stays on this computer).
+  const leaving = [];
+  if (existing) {
+    const explicit = d.store.hasProfiles(appId);
+    const holds = (kind, all) =>
+      explicit
+        ? new Set((existing.items && existing.items[kind]) || [])
+        : new Set(all.map((x) => String(x.id)));
+    const matched = (kind) =>
+      new Set(
+        rows
+          .filter((r) => r.kind === kind && r.localId != null)
+          .map((r) => String(r.localId)),
+      );
+    // Held by no other profile: it'll be in none, so hidden until it's
+    // ticked back in Settings › Profiles.
+    const inOther = (kind, id) =>
+      explicit &&
+      profiles.some(
+        (p) =>
+          p.id !== existing.id &&
+          ((p.items && p.items[kind]) || []).map(String).includes(String(id)),
+      );
+    const heldDash = holds("dashboards", workspaces || []);
+    const keptDash = matched("dashboard");
+    for (const w of workspaces || []) {
+      if (w && heldDash.has(String(w.id)) && !keptDash.has(String(w.id))) {
+        leaving.push({
+          kind: "dashboard",
+          name: w.name || w.label || "Untitled",
+          hidden: !inOther("dashboards", w.id),
+        });
+      }
+    }
+    const heldBots = holds("bots", bots);
+    const keptBots = matched("bot");
+    for (const b of bots) {
+      // A dashboard's own bots go with it.
+      if (b.workspaceId != null || b.role === "lead") continue;
+      if (heldBots.has(String(b.id)) && !keptBots.has(String(b.id))) {
+        leaving.push({
+          kind: "bot",
+          name: b.name || "Untitled bot",
+          hidden: !inOther("bots", b.id),
+        });
+      }
+    }
+  }
+
   return {
     success: true,
     schemaVersion: 2,
+    leaving,
     file: {
       name: manifest.name,
       owner: manifest.owner || null,
@@ -1001,8 +1058,12 @@ async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
       },
     },
     // What Default holds if this load starts profiles (taken by the caller
-    // before anything was written).
-    { defaultItems: choices.defaultItems },
+    // before anything was written). Default is replaced only by its own
+    // account copy (the plan targets it only then).
+    {
+      defaultItems: choices.defaultItems,
+      replaceDefault: replacing && plan.target.profileId === DEFAULT_PROFILE_ID,
+    },
   );
 
   // Installing adds what's new to the profile in use too; when that's not

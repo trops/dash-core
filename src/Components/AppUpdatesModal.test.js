@@ -49,7 +49,12 @@ afterEach(() => {
 import React from "react";
 import { render, fireEvent, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { AppUpdatesModal } from "./AppUpdatesModal";
+import {
+  AppUpdatesModal,
+  changesText,
+  profileSyncText,
+  updatesSummary,
+} from "./AppUpdatesModal";
 
 const widgetUpdates = [
   {
@@ -299,5 +304,77 @@ describe("AppUpdatesModal — close clears transient run-result state", () => {
     expect(
       screen.getByTestId("app-updates-modal-uptodate"),
     ).toBeInTheDocument();
+  });
+});
+
+describe("profiles out of sync with the account", () => {
+  const rows = [
+    {
+      profileId: "mini",
+      name: "Mac Mini",
+      accountId: "a1",
+      state: "account-newer",
+      changes: { total: 0 },
+      account: { revision: 4, updatedOn: "laptop", updatedAt: null },
+    },
+    {
+      profileId: "work",
+      name: "Work",
+      accountId: "a2",
+      state: "local-changed",
+      changes: { dashboards: 2, bots: 1, total: 3 },
+      account: { revision: 2 },
+    },
+    {
+      profileId: "default",
+      name: "Default",
+      accountId: "a3",
+      state: "both",
+      changes: { themes: 1, total: 1 },
+      account: { revision: 9, updatedOn: "laptop" },
+    },
+  ];
+
+  it("lists each with what happened and offers what fits", () => {
+    const onProfileAction = jest.fn();
+    const setIsOpen = jest.fn();
+    render(
+      <AppUpdatesModal
+        isOpen
+        setIsOpen={setIsOpen}
+        hasChecked
+        profileUpdates={rows}
+        onProfileAction={onProfileAction}
+      />,
+    );
+    expect(screen.getByText("3 updates available")).toBeInTheDocument();
+    expect(screen.getByText("Updated on laptop")).toBeInTheDocument();
+    expect(
+      screen.getByText("You changed 2 dashboards, 1 bot here"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Load"));
+    expect(onProfileAction).toHaveBeenLastCalledWith(rows[0], "load");
+    expect(setIsOpen).toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByText("Save"));
+    expect(onProfileAction).toHaveBeenLastCalledWith(rows[1], "save");
+    fireEvent.click(screen.getByText("Keep this computer's"));
+    expect(onProfileAction).toHaveBeenLastCalledWith(rows[2], "keep");
+    fireEvent.click(screen.getByText("Use the account's"));
+    expect(onProfileAction).toHaveBeenLastCalledWith(rows[2], "load");
+  });
+
+  it("says it in words", () => {
+    expect(changesText({ dashboards: 1, folders: 2, total: 3 })).toBe(
+      "1 dashboard, 2 folders",
+    );
+    expect(profileSyncText(rows[2])).toBe(
+      "Changed here (1 theme) and on laptop",
+    );
+    expect(updatesSummary([], [], rows)).toBe(
+      "3 profiles aren't in step with your account.",
+    );
+    expect(updatesSummary([{}], [], [rows[0]])).toBe(
+      "1 widget package have newer versions on the registry. 1 profile isn't in step with your account.",
+    );
   });
 });

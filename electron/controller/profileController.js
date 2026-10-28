@@ -472,6 +472,60 @@ const profileController = {
     }
   },
 
+  /**
+   * The out-of-sync check (step 2, S3): each profile here kept in the
+   * signed-in user's account, compared with the account. `state`:
+   * "in-sync", "account-newer" (another computer saved it since),
+   * "local-changed" (changed here since it was last saved or loaded —
+   * `changes` counts what) or "both". Copies no longer in the account
+   * aren't listed.
+   */
+  async syncStatus(appId) {
+    try {
+      const owner = await signedInUsername();
+      if (!owner) return { success: true, signedIn: false, profiles: [] };
+      const links = profileAccount.allLinks(appId, owner);
+      const local = profileStore.list(appId);
+      const linked = local.filter((p) => links[p.id]);
+      if (!linked.length)
+        return { success: true, signedIn: true, profiles: [] };
+      const remote = await profileAccount.listRemote();
+      if (!remote.success) return remote;
+      const {
+        profileDigest,
+        compareWithAccount,
+      } = require("../profile/profileDigest");
+      const active = profileStore.getActiveProfileId(appId);
+      const profiles = [];
+      for (const p of linked) {
+        const link = links[p.id];
+        const there = remote.profiles.find((r) => r.id === link.accountId);
+        if (!there) continue;
+        const { state, changes } = compareWithAccount(
+          { ...link, revision: profileAccount.revisionOf(link.revision) },
+          there.revision,
+          profileDigest(appId, p.id),
+        );
+        profiles.push({
+          profileId: p.id,
+          name: p.name,
+          active: p.id === active,
+          accountId: link.accountId,
+          state,
+          changes,
+          account: {
+            revision: there.revision,
+            updatedOn: there.updatedOn,
+            updatedAt: there.updatedAt,
+          },
+        });
+      }
+      return { success: true, signedIn: true, profiles };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
   /** Remove a profile from the account. Profiles here aren't touched. */
   async deleteAccountProfile(appId, accountId) {
     try {
@@ -590,7 +644,15 @@ const profileController = {
               appId,
               owner,
               result.profile.id,
-              fromAccount,
+              profileAccount.linkAfterLoad(
+                fromAccount,
+                result.problems,
+                // What it holds now: later changes are counted from here.
+                require("../profile/profileDigest").profileDigest(
+                  appId,
+                  result.profile.id,
+                ),
+              ),
             );
           }
         }

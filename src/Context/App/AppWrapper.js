@@ -5,6 +5,7 @@ import { deepCopy } from "@trops/dash-react";
 import { useInstalledWidgets } from "../../hooks/useInstalledWidgets";
 import { useAppUpdates } from "../../hooks/useAppUpdates";
 import { AppUpdatesModal } from "../../Components/AppUpdatesModal";
+import { openProfileSync } from "../../Components/Settings/sections/profileIntent";
 
 /**
  * Broadcasts the AppContext (providers, settings) so components rendered
@@ -376,6 +377,18 @@ export const AppWrapper = ({ children, credentials = null, dashApi }) => {
         }}
         widgetUpdates={appUpdates.widgetUpdates}
         dashboardUpdates={appUpdates.dashboardUpdates}
+        profileUpdates={appUpdates.profileUpdates}
+        onProfileAction={(row, action) =>
+          // Settings › Profiles opens to the Save or Load dialog for it;
+          // "keep" saves over the account's newer copy (the one shown).
+          openProfileSync({
+            profileId: row.profileId,
+            accountId: row.accountId,
+            action: action === "load" ? "load" : "save",
+            replaceRevision:
+              action === "keep" ? (row.account || {}).revision : null,
+          })
+        }
         isChecking={appUpdates.isChecking}
         hasChecked={appUpdates.hasChecked}
         needsAuth={appUpdates.needsAuth}

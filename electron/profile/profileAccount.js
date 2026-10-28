@@ -128,6 +128,11 @@ function setLink(appId, owner, profileId, link, deps = {}) {
     revision: revisionOf(link.revision),
     savedAt: text(link.savedAt, 40),
     updatedOn: text(link.updatedOn),
+    // What the profile held at that save or load (profileDigest.js): how
+    // the out-of-sync check tells what changed here since.
+    digest: link.digest
+      ? require("./profileDigest").cleanDigest(link.digest)
+      : null,
   };
   writeLinks(appId, owner, links, d);
   return links[profileId];
@@ -178,6 +183,22 @@ function shouldLinkAfterLoad(appId, owner, profileId, accountId, deps = {}) {
   if (holder && holder !== profileId) return false;
   const own = getLink(appId, owner, profileId, deps);
   return !own || own.accountId === accountId;
+}
+
+/**
+ * The link to record after loading an account copy: its revision and what
+ * the profile holds now. When something didn't load (`problems`), there's
+ * no revision — it isn't in step with the account yet, so the check keeps
+ * offering Load and a save warns before replacing the account's copy
+ * (which still has what's missing here).
+ */
+function linkAfterLoad(fromAccount, problems, digest) {
+  const partial = Array.isArray(problems) && problems.length > 0;
+  return {
+    ...fromAccount,
+    revision: partial ? null : fromAccount.revision,
+    digest,
+  };
 }
 
 function newAccountId() {
@@ -324,6 +345,7 @@ module.exports = {
   forgetProfile,
   profileFor,
   shouldLinkAfterLoad,
+  linkAfterLoad,
   newAccountId,
   listRemote,
   getRemote,

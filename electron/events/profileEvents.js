@@ -24,6 +24,8 @@ const PROFILE_SAVE_ACCOUNT = "profile:save-account";
 const PROFILE_LIST_ACCOUNT = "profile:list-account";
 const PROFILE_PREVIEW_LOAD_ACCOUNT = "profile:preview-load-account";
 const PROFILE_DELETE_ACCOUNT = "profile:delete-account";
+// The out-of-sync check (S3).
+const PROFILE_SYNC_STATUS = "profile:sync-status";
 
 module.exports = {
   PROFILE_LIST,
@@ -44,4 +46,5 @@ module.exports = {
   PROFILE_LIST_ACCOUNT,
   PROFILE_PREVIEW_LOAD_ACCOUNT,
   PROFILE_DELETE_ACCOUNT,
+  PROFILE_SYNC_STATUS,
 };

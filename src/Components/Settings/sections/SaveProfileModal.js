@@ -125,6 +125,9 @@ export const SaveProfileModal = ({
   onSaved,
   // "file" (a .dashprofile) or "account" (kept in the registry account).
   to = "file",
+  // Opened to replace the account's newer copy ("keep this computer's",
+  // from the updates dialog): the revision that copy has.
+  replaceRevision: replaceInitially = null,
 }) => {
   const toAccount = to === "account";
   const { muted, strong, hairline } = useConfigTokens();
@@ -148,7 +151,7 @@ export const SaveProfileModal = ({
   const [asNew, setAsNew] = useState(false);
   // The newer account revision the user may choose to replace ("keep this
   // computer's") — set when a save was refused.
-  const [replaceRevision, setReplaceRevision] = useState(null);
+  const [replaceRevision, setReplaceRevision] = useState(replaceInitially);
 
   useEffect(() => {
     let alive = true;
@@ -420,6 +423,13 @@ export const SaveProfileModal = ({
             </span>
           ) : null}
 
+          {!error && replaceRevision != null ? (
+            <AlertBanner
+              variant="warning"
+              size="compact"
+              message="Your account has a newer copy of this profile. Saving replaces it with this computer's."
+            />
+          ) : null}
           {error ? (
             <AlertBanner variant="error" size="compact" message={error} />
           ) : null}

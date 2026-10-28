@@ -214,5 +214,15 @@ describe("profileStore", () => {
       () => store.put(appId, { id: "p-other", name: "mac mini", items: {} }),
       /already exists/,
     );
+    // Default's own account copy replaces it in place; it stays "Default".
+    const def = store.put(
+      appId,
+      { id: "default", name: "Whatever", items: { dashboards: [7] } },
+      { replaceDefault: true },
+    );
+    assert.equal(def.id, "default");
+    assert.equal(def.name, "Default");
+    assert.deepEqual(store.members(appId, "dashboards", "default"), ["7"]);
+    assert.equal(store.list(appId).length, 2);
   });
 });

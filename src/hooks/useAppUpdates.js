@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWidgetUpdates } from "./useWidgetUpdates";
+import { useProfileSync } from "./useProfileSync";
 
 /**
  * useAppUpdates — combines widget + dashboard update checks behind one
@@ -39,6 +40,8 @@ export function useAppUpdates({
 } = {}) {
   // ── Widget updates — defer to the dedicated hook ─────────────────
   const widget = useWidgetUpdates(installedWidgets, onWidgetUpdated);
+  // ── Profiles kept in the account that are out of sync ────────────
+  const profiles = useProfileSync(appId);
 
   // ── Dashboard updates ────────────────────────────────────────────
   const [dashboardUpdates, setDashboardUpdates] = useState([]);
@@ -78,15 +81,20 @@ export function useAppUpdates({
 
   // ── Combined surface ─────────────────────────────────────────────
   const totalUpdates = useMemo(
-    () => widget.packagesWithUpdates.length + dashboardUpdates.length,
-    [widget.packagesWithUpdates, dashboardUpdates],
+    () =>
+      widget.packagesWithUpdates.length +
+      dashboardUpdates.length +
+      profiles.profileUpdates.length,
+    [widget.packagesWithUpdates, dashboardUpdates, profiles.profileUpdates],
   );
 
-  const isChecking = widget.isChecking || isCheckingDashboards;
+  const isChecking =
+    widget.isChecking || isCheckingDashboards || profiles.isChecking;
   // hasChecked flips true once BOTH checks have completed at least
   // once. Lets the modal say "you're up to date" definitively rather
   // than during an in-flight check.
-  const hasChecked = !widget.isChecking && hasCheckedDashboards;
+  const hasChecked =
+    !widget.isChecking && hasCheckedDashboards && profiles.hasChecked;
 
   // Manual re-check trigger — re-runs BOTH the widget registry
   // check (force-refreshing the cache) AND the dashboard check.
@@ -98,8 +106,12 @@ export function useAppUpdates({
   // popover-driven and modal-triggered rechecks symmetrical with
   // the auto-pop check.
   const recheck = useCallback(async () => {
-    await Promise.all([widget.recheck(), checkDashboardUpdates()]);
-  }, [widget, checkDashboardUpdates]);
+    await Promise.all([
+      widget.recheck(),
+      checkDashboardUpdates(),
+      profiles.recheck(),
+    ]);
+  }, [widget, checkDashboardUpdates, profiles]);
 
   // Kick off the initial dashboard check once appId is available.
   // One-shot — same gating pattern useWidgetUpdates uses.
@@ -114,6 +126,7 @@ export function useAppUpdates({
   const baseReturn = {
     widgetUpdates: widget.packagesWithUpdates,
     dashboardUpdates,
+    profileUpdates: profiles.profileUpdates,
     totalUpdates,
     isChecking,
     hasChecked,
