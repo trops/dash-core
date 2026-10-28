@@ -168,9 +168,38 @@ test("a paused Planner says so", async () => {
   };
   render(<CreatePlanStep prompt="x" />);
   expect(
-    await screen.findByText(/Can't plan right now: the Planner is paused/),
+    await screen.findByText(
+      /The Planner is paused\. Turn it on in the Bots page › Dash team/,
+    ),
   ).toBeInTheDocument();
   expect(window.mainApi.bots.run).not.toHaveBeenCalled();
+  expect(screen.queryByTestId("planner-busy")).toBeNull();
+});
+
+test("a busy Planner says it's busy — never 'turn it on' — and can be stopped", async () => {
+  const stop = jest.fn().mockResolvedValue({});
+  window.mainApi = {
+    bots: {
+      listDashTeam: jest.fn().mockResolvedValue([team[0]]),
+      onStream: jest.fn(() => 1),
+      removeListener: jest.fn(),
+      run: jest.fn().mockResolvedValue({
+        skipped: true,
+        reason: "a run is already in progress",
+      }),
+      stop,
+    },
+  };
+  render(<CreatePlanStep prompt="x" />);
+  expect(
+    await screen.findByText(
+      /The Planner is still working on an earlier request — it may be waiting/,
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Turn the Planner on/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Stop the Planner" }));
+  await waitFor(() => expect(stop).toHaveBeenCalledWith(team[0].id));
+  await waitFor(() => expect(screen.queryByTestId("planner-busy")).toBeNull());
 });
 
 test("Enter sends a typed reply", async () => {

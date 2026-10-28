@@ -27,6 +27,7 @@ import {
   shortTime,
 } from "./contactsList";
 import { DASH_TEAM_CONTACT, openDashTeam } from "./dashTeamContact";
+import { DashTeamApprovals } from "./DashTeamApprovals";
 
 /**
  * BotContacts — the Bots dock panel (bot-teams PRD TEAM-015): your bots as a
@@ -317,6 +318,11 @@ export const BotContacts = ({
         </div>
       </div>
       <div className={`flex-1 min-h-0 overflow-y-auto px-2 pb-4 ${strong}`}>
+        {/* The Dash team's approvals: its bots aren't in this list, but
+            their runs wait on these (QA 2026-10-28). */}
+        <div className="mx-2 mt-1 mb-2">
+          <DashTeamApprovals compact />
+        </div>
         {waitingId ? (
           <div
             className={`mx-2 mt-1 mb-2 rounded-lg border px-3 py-2.5 flex flex-row items-center gap-3 ${statusTokens.warning.bg} ${statusTokens.warning.border}`}

@@ -461,7 +461,9 @@ const botController = {
           ? "this bot is over its budget"
           : null;
       },
-      resolveTools: (bot) => this._resolveTools(bot),
+      // The run's options too: a planning hand-off (adviseOnly) gets no
+      // build tools.
+      resolveTools: (bot, runOpts) => this._resolveTools(bot, runOpts),
       callTool: (serverName, toolName, args, o) =>
         this._callTool(serverName, toolName, args, o),
       // Paused at the permission gate when: globally/individually paused, or
@@ -2440,6 +2442,9 @@ const botController = {
       continueSession: !!opts.continueSession,
       // A plan build's own team runs: no prompts (the plan was the consent).
       approvalPolicy: opts.approvalPolicy || undefined,
+      // A hand-off while the user is still planning: answers only — none
+      // of the tools that change things (no approvals to wait on).
+      ...(opts.adviseOnly ? { adviseOnly: true } : {}),
       emit: (event) => {
         if (!alreadyRunning) this._events.onRunEvent(botId, event);
         this._broadcast(BOT_STREAM, { botId, event });
@@ -3820,11 +3825,16 @@ const botController = {
       return fail(`The ${target.name} is busy with another request.`);
     }
     const caller = this._store.get(callerId);
+    // While the user is still planning nothing gets built or placed: the
+    // asked role answers, with its read tools only. Building happens when
+    // the user presses Build (the plan build, which is their consent) — so
+    // a hand-off never waits on an approval nobody can see.
     const record = await this._reviewedRun(target, request, () =>
       this._run(target.id, {
-        prompt: request,
+        prompt: `${request}\n\n(Answer only: you can't build, install or place anything here. That happens when the user presses Build on the plan.)`,
         trigger: "ask",
         via: `dash-team:${(caller && caller.role) || "planner"}`,
+        adviseOnly: true,
       }),
     );
     if (!record || record.skipped) {
@@ -3873,7 +3883,14 @@ const botController = {
     if (isDashTeam(bot)) {
       // Inside a Create plan, its memory too — that plan's bucket only (4e-1).
       const memory = runOpts && runOpts.planId ? MEMORY_TOOLS : [];
-      const tools = [...roleToolsFor(bot.role), ...memory];
+      // Asked by the Planner while the user plans: no tools that change
+      // things (build_widget, place_widget).
+      const roleTools = roleToolsFor(bot.role).filter(
+        (t) =>
+          !(runOpts && runOpts.adviseOnly) ||
+          serverForTool(t.name) !== ROLE_BUILD_SERVER,
+      );
+      const tools = [...roleTools, ...memory];
       this._allowedByBot.set(bot.id, {});
       return {
         tools,

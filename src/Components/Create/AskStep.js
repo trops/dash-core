@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button, Button3, ChatComposer, ChatMessage } from "@trops/dash-react";
-import { runTeamRole } from "../../utils/teamRoles";
+import { runTeamRole, stopTeamRole, teamSkipText } from "../../utils/teamRoles";
+import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { askTeamLead } from "../../utils/leadAsk";
 import { useTeamLeads } from "../AiAssistant/components/RecipientPicker";
 import { leadLabel } from "../AiAssistant/leadMessages";
@@ -54,6 +55,8 @@ export const AskStep = ({
     recentId ? [] : [{ who: "you", text: question }],
   );
   const [busy, setBusy] = useState(!recentId);
+  // The Planner didn't answer because it's still busy: offer to stop it.
+  const [plannerBusy, setPlannerBusy] = useState(false);
   const [soFar, setSoFar] = useState("");
   const [reply, setReply] = useState("");
   const [loaded, setLoaded] = useState(!recentId);
@@ -130,13 +133,17 @@ export const AskStep = ({
       setSoFar("");
     }
     if (res.skipped) {
-      note(
-        to
-          ? res.reason
-          : `Can't answer right now: ${res.reason}. Turn the Planner on in the Bots page › Dash team.`,
+      const why = teamSkipText(
+        res.reason,
+        to ? to.leadName || "lead" : "Planner",
       );
+      if (!to) setPlannerBusy(why.busy);
+      // A lead's reason is already written for the user ("… is paused —
+      // resume it in the Bots view"); only busy needs saying differently.
+      note(to && !why.busy ? res.reason : why.text);
       return;
     }
+    if (!to) setPlannerBusy(false);
     if (res.status === "failed") {
       note(
         to
@@ -317,6 +324,25 @@ export const AskStep = ({
               </ChatMessage>
             ),
           )}
+          <DashTeamApprovals compact />
+          {plannerBusy ? (
+            <div
+              className="flex flex-row flex-wrap items-center gap-2 text-sm"
+              data-testid="planner-busy"
+            >
+              <span className={muted}>
+                The Planner is still working on an earlier request.
+              </span>
+              <Button3
+                title="Stop the Planner"
+                size="sm"
+                onClick={async () => {
+                  await stopTeamRole("planner");
+                  setPlannerBusy(false);
+                }}
+              />
+            </div>
+          ) : null}
           {busy ? (
             <ChatMessage role="reply" label={replyLabel} streaming>
               <span className="whitespace-pre-wrap">
