@@ -26,6 +26,9 @@ const PROFILE_PREVIEW_LOAD_ACCOUNT = "profile:preview-load-account";
 const PROFILE_DELETE_ACCOUNT = "profile:delete-account";
 // The out-of-sync check (S3).
 const PROFILE_SYNC_STATUS = "profile:sync-status";
+// Publishing a widget just built (v3, the Widget Builder's prompt).
+const PROFILE_PLAN_BUILT_PUBLISH = "profile:plan-built-publish";
+const PROFILE_PUBLISH_BUILT = "profile:publish-built";
 
 module.exports = {
   PROFILE_LIST,
@@ -47,4 +50,6 @@ module.exports = {
   PROFILE_PREVIEW_LOAD_ACCOUNT,
   PROFILE_DELETE_ACCOUNT,
   PROFILE_SYNC_STATUS,
+  PROFILE_PLAN_BUILT_PUBLISH,
+  PROFILE_PUBLISH_BUILT,
 };

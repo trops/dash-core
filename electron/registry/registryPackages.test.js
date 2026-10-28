@@ -100,6 +100,16 @@ describe("nextFreeVersion", () => {
     assert.equal(nextFreeVersion("1.0.3", "unreachable"), "1.0.3");
     assert.equal(nextFreeVersion(null, "unreachable"), "1.0.0");
   });
+  it("a build made here publishes as its release version, never '-local'", () => {
+    assert.equal(
+      nextFreeVersion("1.0.4-local.2", { versions: ["1.0.3"] }),
+      "1.0.4",
+    );
+    assert.equal(
+      nextFreeVersion("1.0.4-local.2", { versions: ["1.0.4"] }),
+      "1.0.5",
+    );
+  });
 });
 
 describe("kindConflict", () => {

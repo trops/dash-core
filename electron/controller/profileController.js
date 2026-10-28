@@ -693,6 +693,36 @@ const profileController = {
   },
 
   /**
+   * A widget just built in the Widget Builder (v3): can it be published,
+   * as what, and is it public already.
+   */
+  async planBuiltPublish(appId, packageName) {
+    try {
+      const { planBuiltPublish } = require("../profile/publishBuilt");
+      return await planBuiltPublish(String(packageName || ""));
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
+   * Publish a widget just built: private unless "public" is asked for; the
+   * version and name are worked out here, never taken from the renderer.
+   */
+  async publishBuilt(win, appId, packageName, options = {}) {
+    try {
+      const { publishBuilt } = require("../profile/publishBuilt");
+      const o = options || {};
+      return await publishBuilt(win, appId, String(packageName || ""), {
+        visibility: o.visibility === "public" ? "public" : "private",
+        confirmPersonalPaths: o.confirmPersonalPaths === true,
+      });
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
    * Make a profile active and bring the bots in line: the new profile's
    * bots are scheduled, the old profile's stop. The caller reloads the
    * window so every list re-reads.

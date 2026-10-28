@@ -53,6 +53,7 @@ async function planPublish(widgets, username, lookup) {
       rows.push({
         package: w.package,
         publishable: false,
+        why: "not-yours",
         reason: "Published by someone else — it stays in the file",
       });
       continue;
@@ -64,6 +65,7 @@ async function planPublish(widgets, username, lookup) {
         package: w.package,
         publishAs,
         publishable: false,
+        why: "unreachable",
         reason: "Couldn't reach your account right now — it stays in the file",
       });
       continue;
@@ -73,6 +75,8 @@ async function planPublish(widgets, username, lookup) {
         package: w.package,
         publishAs,
         publishable: false,
+        why: "name-taken",
+        takenBy: info.type,
         reason: `${publishAs} is already the name of a ${info.type} you published — it stays in the file`,
       });
       continue;

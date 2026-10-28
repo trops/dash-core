@@ -1080,6 +1080,20 @@ const DashboardStageInner = ({
     return () => window.removeEventListener("dash:open-profile-sync", handler);
   }, []);
 
+  // ─── Listen for "dashboards changed on disk" ─────────────────────
+  // Publishing a widget from the Widget Builder switches this computer's
+  // dashboards to the published package (main process): re-read them, or
+  // the next save would write the old package back.
+  const loadWorkspacesRef = useRef(null);
+  loadWorkspacesRef.current = loadWorkspaces;
+  useEffect(() => {
+    const handler = () => {
+      if (loadWorkspacesRef.current) loadWorkspacesRef.current();
+    };
+    window.addEventListener("dash:workspaces-changed", handler);
+    return () => window.removeEventListener("dash:workspaces-changed", handler);
+  }, []);
+
   // ─── Listen for external "open workspace" requests ──────────────
   // Fired by: Dash.js notification click, MCP state-changed for
   // create_dashboard, etc. Any code that wants to switch the active
