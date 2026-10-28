@@ -27,9 +27,10 @@ describe("botController — Bots view backend", () => {
       ctrl,
       /run\(botId, prompt, \{ continueConversation = false, planId = null \} = \{\}\)/,
     );
+    // The options themselves are tested in userRun.test.js.
     assert.match(
       ctrl,
-      /trigger: continueConversation \? "reply" : "manual",\s*continueSession: !!continueConversation/,
+      /userRunOptions\(this\._store\.get\(botId\), \{[\s\S]*?continueConversation,\s*planId: inPlan \? planId : null,/,
     );
   });
 

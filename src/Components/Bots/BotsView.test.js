@@ -151,28 +151,24 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
     expect(screen.queryByRole("tab")).toBeNull();
   });
 
-  it("clicking a bot shows its summary; Activity opens its tabs beside the diagram; × goes back", () => {
+  it("clicking a bot opens its conversation beside the diagram; × goes back to its summary", () => {
     setup({ mode: null });
     fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
-    const side = screen.getByRole("complementary", { name: "Selected bot" });
-    expect(within(side).getByText("Inbox Watch")).toBeInTheDocument();
-    expect(
-      within(side).getByRole("button", { name: "Run now" }),
-    ).toBeInTheDocument();
-    fireEvent.click(within(side).getByRole("button", { name: "Activity" }));
-    // The bot page, on Activity (NAV-016 AC6); the diagram stays.
-    expect(pageShows()).toBe("b1 on activity");
+    // The bot page, on its conversation (QA 2026-10-28); the diagram stays.
+    expect(pageShows()).toBe("b1 on conversation");
     expect(screen.getByTestId("diagram-card-b1")).toBeInTheDocument();
     fireEvent.click(screen.getByText("page-close"));
     expect(screen.queryByTestId("bot-page")).toBeNull();
-    expect(
-      screen.getByRole("complementary", { name: "Selected bot" }),
-    ).toBeInTheDocument();
+    const side = screen.getByRole("complementary", { name: "Selected bot" });
+    expect(within(side).getByText("Inbox Watch")).toBeInTheDocument();
+    fireEvent.click(within(side).getByRole("button", { name: "Activity" }));
+    expect(pageShows()).toBe("b1 on activity");
   });
 
   it("the summary's Run now runs it and opens its Activity", () => {
     const { api } = setup({ mode: null });
     fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
+    fireEvent.click(screen.getByText("page-close"));
     fireEvent.click(
       within(
         screen.getByRole("complementary", { name: "Selected bot" }),
@@ -243,8 +239,7 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
 
     const openActivity = () => {
       fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
-      const side = screen.getByRole("complementary", { name: "Selected bot" });
-      fireEvent.click(within(side).getByRole("button", { name: "Activity" }));
+      fireEvent.click(screen.getByText("page-tab-activity"));
     };
     const panel = () => screen.getByRole("region", { name: "Selected bot" });
     const handle = () =>
@@ -438,11 +433,6 @@ describe("BotsView — unsaved changes", () => {
   it("the page's tab is the view's: wiring is off on Settings", () => {
     setup({ mode: null });
     fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
-    fireEvent.click(
-      within(
-        screen.getByRole("complementary", { name: "Selected bot" }),
-      ).getByRole("button", { name: "Activity" }),
-    );
     expect(
       screen.getByRole("button", { name: "Drag to wire Inbox Watch" }),
     ).toBeInTheDocument();

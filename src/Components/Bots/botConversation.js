@@ -350,3 +350,22 @@ export function skipNotice(name, reason) {
     ? `${who} didn't run: ${reason}. Your message is still in the box.`
     : `${who} didn't run. Your message is still in the box.`;
 }
+
+/**
+ * What a message does to a bot whose job runs on a schedule or on events:
+ * it runs the bot now, with the message as its task, tools and all. Null
+ * for a lead (it's asked, not run) or a bot that only runs when asked.
+ */
+export function jobRunNote(bot, isLead = false) {
+  if (!bot || isLead) return null;
+  const scheduled = (bot.schedules || []).some((s) => s && s.cron);
+  const events = (bot.subscriptions || []).length > 0;
+  if (!scheduled && !events) return null;
+  const when =
+    scheduled && events
+      ? "on a schedule and on events"
+      : scheduled
+        ? "on a schedule"
+        : "on events";
+  return `${bot.name || "This bot"} usually runs ${when}. A message here runs it now, using your message as its instructions. It can use its tools while it runs.`;
+}

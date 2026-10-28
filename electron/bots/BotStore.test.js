@@ -164,6 +164,23 @@ describe("BotStore session state (US-005)", () => {
     store.resetSession(bot.id);
     assert.equal(store.get(bot.id).session, null);
   });
+
+  it("the chat's session is kept apart from the job's; Reset clears both", () => {
+    const { store } = freshStore();
+    const bot = store.create(validDef);
+    store.saveSession(bot.id, "tool-loop", { messages: ["job"] });
+    store.saveSession(bot.id, "tool-loop", { messages: ["chat"] }, "chat");
+    assert.deepEqual(store.get(bot.id).session.state, { messages: ["job"] });
+    assert.deepEqual(store.get(bot.id).chatSession.state, {
+      messages: ["chat"],
+    });
+    // A definition update can't clobber it.
+    store.update(bot.id, { chatSession: null });
+    assert.ok(store.get(bot.id).chatSession);
+    store.resetSession(bot.id);
+    assert.equal(store.get(bot.id).session, null);
+    assert.equal(store.get(bot.id).chatSession, null);
+  });
 });
 
 describe("BotStore run log", () => {

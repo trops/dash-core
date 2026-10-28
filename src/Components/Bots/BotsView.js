@@ -791,7 +791,8 @@ export const BotsView = ({
           selectedId={selectedId}
           statusOf={(id) => (team ? team.statusOf(id) : "Idle")}
           approvalsFor={(id) => (team ? team.approvalsFor(id) : [])}
-          onSelect={(id) => select(id)}
+          // A click opens the bot's conversation; × goes back to its summary.
+          onSelect={(id) => openBot(id, "conversation")}
           onOpen={openBot}
           // Off while a bot's Settings is open: saving from the diagram
           // would overwrite that form's unsaved edits.

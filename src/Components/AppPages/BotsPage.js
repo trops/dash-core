@@ -1,6 +1,5 @@
 import React, { useContext, useEffect, useState } from "react";
 import {
-  Button3,
   ConfirmationModal,
   FilterMenu,
   SearchInput,
@@ -9,24 +8,17 @@ import {
   Switch,
 } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
-import { ComponentManager } from "../../ComponentManager";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { BotDetail } from "../Settings/details/BotDetail";
 import { STATUS_DOT, groupBotsByTeam, triggerSummary } from "../Bots/teamUtils";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { useAllBots } from "./useAllBots";
-import { DashTeamPanel } from "./DashTeamPanel";
+import { DashTeamPage } from "../Bots/DashTeamPage";
 import { botHandle } from "./botSummary";
 import { ListGroupLabel, ManageLayout, OverflowMenu } from "./ManageLayout";
 import { useProfiles } from "../../hooks/useProfiles";
 import { SpendingView } from "./SpendingView";
 import { AuditLogView } from "./AuditLogView";
 import { BotPage } from "../Bots/BotPage";
-
-// Widget config (declared `events`) by component name — feeds the bot
-// editor's "Run on events" picker.
-const getWidgetConfig = (name) =>
-  (name && ComponentManager.config(name)) || null;
 
 const UNASSIGNED = "unassigned";
 // The Dash team's group key (CRE-011) — listed first, above dashboard teams.
@@ -67,7 +59,8 @@ const StatusLabel = ({ status, muted }) => {
  * BotsPage — every bot as list + detail (app-navigation PRD NAV-006):
  * grouped by team, with search, a Team filter and status chips; the detail is
  * the bot's page (NAV-016 — conversation, activity, log, spending, settings).
- * The Dash team keeps its own panel; New Bot opens the editor in the detail.
+ * A Dash team role shows the Dash team's page (its conversation, to that
+ * role, and Settings). It opens on the user's first bot, not the Dash team.
  */
 export const BotsPage = ({
   workspaces = [],
@@ -77,7 +70,6 @@ export const BotsPage = ({
 }) => {
   const { muted, strong, selectedBg, selectedBorder } = useConfigTokens();
   const appContext = useContext(AppContext) || {};
-  const providers = appContext.providers || {};
   const botsApi = dashApi && dashApi.bots;
   const all = useAllBots();
   const profiles = useProfiles(appContext.credentials?.appId);
@@ -91,8 +83,6 @@ export const BotsPage = ({
   const [teams, setTeams] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
-  // null | "edit" (the Dash team's bots)
-  const [mode, setMode] = useState(null);
   // The bot page has unsaved Settings edits: leaving it asks first.
   const [pageDirty, setPageDirty] = useState(false);
   const [pendingLeave, setPendingLeave] = useState(null);
@@ -146,23 +136,23 @@ export const BotsPage = ({
   // A bot with unsaved edits stays shown even if a filter would hide it.
   const pinned =
     pageDirty && selectedId
-      ? all.bots.find((b) => b.id === selectedId) || null
+      ? [...all.bots, ...(all.dashTeam || [])].find(
+          (b) => b.id === selectedId,
+        ) || null
       : null;
+  // Nothing picked yet: the first of the user's own bots (its conversation),
+  // else the Dash team.
   const selected =
-    ordered.find((b) => b.id === selectedId) || pinned || ordered[0] || null;
+    ordered.find((b) => b.id === selectedId) ||
+    pinned ||
+    ordered.find((b) => !isDashTeamBot(b)) ||
+    ordered[0] ||
+    null;
   const teamOptions = allGroups.map((g) => ({
     value: teamKey(g),
     label: g.label,
     count: g.bots.length,
   }));
-
-  const handleSave = async (definition) => {
-    const saved = await botsApi.save(definition);
-    await all.refresh();
-    setMode(null);
-    if (saved && saved.id) setSelectedId(saved.id);
-    return saved;
-  };
 
   // Leaving a bot page with unsaved edits asks first (NAV-016 AC3).
   function guard(leave) {
@@ -176,40 +166,33 @@ export const BotsPage = ({
     if (leave) leave();
   }
 
-  const showsBotPage = !mode && !!selected && !isDashTeamBot(selected);
   let detail;
-  if (mode === "edit" && selected) {
-    // BotDetail only shows Cancel when creating — this is the way back.
+  if (selected && isDashTeamBot(selected)) {
+    // The Dash team's conversation (to this role) and its Settings — the
+    // same page as the Bots panel's pinned row. One page for every role:
+    // picking another role follows it (and its To: picker moves the list).
+    const roleBot = (role) =>
+      (all.dashTeam || []).find((b) => b && b.role === role) || null;
     detail = (
-      <div className="flex flex-col gap-2">
-        <div>
-          <Button3
-            title="Back to details"
-            size="sm"
-            onClick={() => setMode(null)}
-          />
-        </div>
-        <BotDetail
-          key={selected.id}
-          bot={selected}
-          providers={providers}
-          workspaces={workspaces}
-          getWidgetConfig={getWidgetConfig}
-          bots={all.bots}
-          onSave={handleSave}
-          onCancel={() => setMode(null)}
-        />
-      </div>
-    );
-  } else if (selected && isDashTeamBot(selected)) {
-    detail = (
-      <DashTeamPanel
-        key={selected.id}
-        bot={selected}
-        status={all.statusOf(selected.id)}
-        lastRun={all.lastRunOf(selected.id)}
-        onChanged={all.refresh}
-        onEdit={() => setMode("edit")}
+      <DashTeamPage
+        key="dash-team"
+        role={selected.role}
+        onRoleChange={(role) => {
+          const b = roleBot(role);
+          if (b) setSelectedId(b.id);
+        }}
+        workspaces={workspaces}
+        onOpenPlan={(seed) =>
+          window.dispatchEvent(
+            new CustomEvent("dash:open-create", {
+              detail: { type: "dashboard", seed },
+            }),
+          )
+        }
+        onDirtyChange={(dirty) => {
+          setPageDirty(dirty);
+          if (dirty) setSelectedId(selected.id);
+        }}
       />
     );
   } else if (selected) {
@@ -303,10 +286,10 @@ export const BotsPage = ({
       testId="bots-page"
       listLabel="Bots"
       detailTestId="bot-detail"
-      // A bot's page fills the pane and scrolls itself; the Dash team panel
-      // and the new-bot form fit their content.
-      detailFlush={showsBotPage}
-      detailFit={!showsBotPage}
+      // A bot's page (or the Dash team's) fills the pane and scrolls itself;
+      // the "no bots" line fits its content.
+      detailFlush={!!selected}
+      detailFit={!selected}
       toolbar={
         <>
           {viewSwitch}
@@ -359,11 +342,8 @@ export const BotsPage = ({
                     type="button"
                     aria-current={active ? "true" : undefined}
                     onClick={() => {
-                      if (bot.id === (selected && selected.id) && !mode) return;
-                      guard(() => {
-                        setMode(null);
-                        setSelectedId(bot.id);
-                      });
+                      if (bot.id === (selected && selected.id)) return;
+                      guard(() => setSelectedId(bot.id));
                     }}
                     className={`w-full text-left rounded-lg px-2 py-2 border flex flex-row items-center gap-3 ${
                       active

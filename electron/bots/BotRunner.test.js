@@ -323,6 +323,61 @@ describe("BotRunner.run — session resume gating", () => {
   });
 });
 
+describe("BotRunner.run — the user's chat keeps its own session", () => {
+  // QA 2026-10-28: a scheduled run between two messages took over the
+  // conversation — the reply continued the scheduled run instead.
+  function chatRunner(bot) {
+    const engine = mockEngine([
+      { type: "session", session: { messages: ["new"] } },
+      { type: "done" },
+    ]);
+    const slots = [];
+    const { runner } = makeRunner(engine, {
+      bot,
+      deps: {
+        store: {
+          get: () => ({ id: "bot_1", instructions: "do it", ...bot }),
+          saveSession: (id, eng, state, slot) => slots.push(slot),
+          appendRun: (id, run) => run,
+        },
+      },
+    });
+    return { runner, engine, slots };
+  }
+  const job = { engine: "tool-loop", state: { messages: ["scheduled"] } };
+  const chat = { engine: "tool-loop", state: { messages: ["chat"] } };
+
+  it("a reply resumes the chat's session, not the last scheduled run's", async () => {
+    const { runner, engine } = chatRunner({ session: job, chatSession: chat });
+    await runner.run("bot_1", { trigger: "reply", continueSession: true });
+    assert.deepEqual(engine.lastCtx.session, { messages: ["chat"] });
+  });
+
+  it("messages save to the chat's session; scheduled and event runs to the job's", async () => {
+    const { runner, slots } = chatRunner({ session: job, chatSession: chat });
+    await runner.run("bot_1", { trigger: "manual" });
+    await runner.run("bot_1", { trigger: "schedule" });
+    await runner.run("bot_1", { trigger: "event" });
+    await runner.run("bot_1", { trigger: "reply", continueSession: true });
+    assert.deepEqual(slots, ["chat", "job", "job", "chat"]);
+  });
+
+  it("a question asked of a lead is the user's; one asked on someone's behalf isn't", async () => {
+    const { runner, slots } = chatRunner({ chatSession: null });
+    await runner.run("bot_1", { trigger: "ask" });
+    await runner.run("bot_1", { trigger: "ask", via: "create" });
+    await runner.run("bot_1", { trigger: "ask", via: "mcp" });
+    await runner.run("bot_1", { trigger: "ask", via: "dash-team:planner" });
+    assert.deepEqual(slots, ["chat", "chat", "job", "job"]);
+  });
+
+  it("a bot from before chats had their own session carries on from the shared one", async () => {
+    const { runner, engine } = chatRunner({ session: chat });
+    await runner.run("bot_1", { trigger: "reply", continueSession: true });
+    assert.deepEqual(engine.lastCtx.session, { messages: ["chat"] });
+  });
+});
+
 describe("BotRunner.run — one run per bot", () => {
   it("skips a second run while the first is in progress", async () => {
     let release;

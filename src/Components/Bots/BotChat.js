@@ -23,6 +23,7 @@ import { planWithDashTeam } from "../../utils/openCreate";
 import {
   buildConversation,
   errorNextSteps,
+  jobRunNote,
   skipNotice,
   toPlainText,
   waitingText,
@@ -104,6 +105,8 @@ export const BotChat = ({
   const blocked = paused || !!overBudget;
   // "2 events waiting" while it's held (US-011 AC8).
   const waiting = waitingText(queuedEvents);
+  // A bot that runs on its own: what a message here does.
+  const jobNote = jobRunNote(bot, isLead);
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
   const strong = currentTheme["text-neutral-light"] || "text-gray-200";
@@ -554,8 +557,16 @@ export const BotChat = ({
                   : `Message ${bot.name}…`
         }
         above={
-          paused || overBudget || notice ? (
+          paused || overBudget || notice || jobNote ? (
             <div className="flex flex-col gap-2">
+              {jobNote && !blocked ? (
+                <span
+                  className={`text-xs ${muted}`}
+                  data-testid="bot-chat-job-note"
+                >
+                  {jobNote}
+                </span>
+              ) : null}
               {overBudget && !paused ? (
                 <div
                   className={`rounded-lg border px-3 py-2 flex flex-col gap-2 text-xs ${statusTokens.warning.bg} ${statusTokens.warning.border}`}

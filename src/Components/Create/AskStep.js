@@ -14,11 +14,18 @@ import { extractHandoff, withoutHandoff } from "../../utils/handoff";
 import { planWithDashTeam } from "../../utils/openCreate";
 import {
   questionRequest,
+  roleQuestion,
   leadQuestion,
   reopenedQuestion,
   hasPlan,
   handoverSeed,
 } from "./askThread";
+
+// Who a conversation is with: a team lead ({ botId, leadName, … }), a Dash
+// team role other than the Planner ({ role, roleName }), or — neither — the
+// Planner.
+const leadOf = (r) => (r && r.botId && !r.role ? r : null);
+const roleOf = (r) => (r && r.role && r.role !== "planner" ? r : null);
 
 /**
  * AskStep — a question to the Dash team's Planner (create-entry PRD CRE-007
@@ -38,6 +45,11 @@ import {
  * Create, `onHandoff(handoff, lead)` starts it; elsewhere (the dock) it opens
  * Create.
  *
+ * Asked of another Dash team role (the Dash team chat's "To:"):
+ * `recipient` is { role, roleName } — the Builder, Scout or Checker answers
+ * (from a chat it has no tools that build or change anything; the main
+ * process holds it to that), and the conversation stays with it.
+ *
  * New: `question` (+ `recipient`). Reopened from Recent: `recentId`.
  * `onStarted(id)` says which Recent entry a new question was saved as (the
  * Dash team's conversation list selects it, Phase 4a).
@@ -50,13 +62,13 @@ export const AskStep = ({
   onHandoff = null,
   onStarted = null,
 }) => {
-  // [{ who: "you" | "planner" | "lead" | "note", text, meta?, plan? }]
+  // [{ who: "you" | "planner" | "lead" | "role" | "note", text, meta?, plan? }]
   const [messages, setMessages] = useState(
     recentId ? [] : [{ who: "you", text: question }],
   );
   const [busy, setBusy] = useState(!recentId);
-  // The Planner didn't answer because it's still busy: offer to stop it.
-  const [plannerBusy, setPlannerBusy] = useState(false);
+  // The role didn't answer because it's still busy: offer to stop it.
+  const [roleBusy, setRoleBusy] = useState(false);
   const [soFar, setSoFar] = useState("");
   const [reply, setReply] = useState("");
   const [loaded, setLoaded] = useState(!recentId);
@@ -65,17 +77,21 @@ export const AskStep = ({
   const started = useRef(false);
   const alive = useRef(true);
   const firstAsked = useRef(question);
-  // The lead this conversation is with (null = the Dash team's Planner).
-  const [lead, setLead] = useState(recipient);
-  const leadRef = useRef(recipient);
+  // The lead this conversation is with (null = the Dash team).
+  const [lead, setLead] = useState(leadOf(recipient));
+  const leadRef = useRef(leadOf(recipient));
+  // The Dash team role it's with, when not the Planner.
+  const [teamRole, setTeamRole] = useState(roleOf(recipient));
+  const teamRoleRef = useRef(roleOf(recipient));
   // Live state (paused / over budget / running) for the availability check.
   const { leads } = useTeamLeads(!!lead);
   const leadsRef = useRef(leads);
   leadsRef.current = leads;
   const { muted } = useConfigTokens();
   // The lead's name on its replies; the To: line names the dashboard.
-  const replyLabel = lead ? lead.leadName : "Planner";
-  const replyName = lead ? lead.leadName : "the Planner";
+  const roleName = teamRole ? teamRole.roleName || "Dash team" : "Planner";
+  const replyLabel = lead ? lead.leadName : roleName;
+  const replyName = lead ? lead.leadName : `the ${roleName}`;
 
   // The conversation as it stands, for an answer that lands after this step
   // has closed (Create's Back / Close, Phase 2a).
@@ -103,7 +119,10 @@ export const AskStep = ({
     setBusy(true);
     setSoFar("");
     const to = leadRef.current;
-    const wrap = to ? leadQuestion : questionRequest;
+    const other = to ? null : teamRoleRef.current;
+    const role = other ? other.role : "planner";
+    const name = other ? other.roleName || other.role : "Planner";
+    const wrap = to ? leadQuestion : other ? roleQuestion : questionRequest;
     let request = wrap(text);
     let cont = continueConversation;
     if (reopened.current) {
@@ -122,7 +141,7 @@ export const AskStep = ({
         onText,
       });
     } else {
-      res = await runTeamRole("planner", request, {
+      res = await runTeamRole(role, request, {
         continueConversation: cont,
         planId: askId.current,
         onText,
@@ -133,24 +152,29 @@ export const AskStep = ({
       setSoFar("");
     }
     if (res.skipped) {
-      const why = teamSkipText(
-        res.reason,
-        to ? to.leadName || "lead" : "Planner",
-      );
-      if (!to) setPlannerBusy(why.busy);
+      const why = teamSkipText(res.reason, to ? to.leadName || "lead" : name);
+      if (!to) setRoleBusy(why.busy);
       // A lead's reason is already written for the user ("… is paused —
       // resume it in the Bots view"); only busy needs saying differently.
       note(to && !why.busy ? res.reason : why.text);
       return;
     }
-    if (!to) setPlannerBusy(false);
+    if (!to) setRoleBusy(false);
     if (res.status === "failed") {
       note(
         to
           ? readableError(String(res.error || "")) ||
               `${to.leadName} couldn't answer.`
-          : `The Planner couldn't answer: ${res.error || "unknown error"}`,
+          : `The ${name} couldn't answer: ${res.error || "unknown error"}`,
       );
+      return;
+    }
+    if (other) {
+      add({
+        who: "role",
+        text: res.output || "(no answer)",
+        meta: runCostLabel(res),
+      });
       return;
     }
     if (to) {
@@ -201,9 +225,12 @@ export const AskStep = ({
             if (!alive.current) return;
             const conv = (entry && entry.conversation) || {};
             firstAsked.current = (entry && entry.prompt) || "";
-            if (conv.recipient && conv.recipient.botId) {
+            if (leadOf(conv.recipient)) {
               leadRef.current = conv.recipient;
               setLead(conv.recipient);
+            } else if (roleOf(conv.recipient)) {
+              teamRoleRef.current = conv.recipient;
+              setTeamRole(conv.recipient);
             }
             setMessages(
               Array.isArray(conv.messages) && conv.messages.length
@@ -290,7 +317,9 @@ export const AskStep = ({
               <ChatMessage
                 key={i}
                 role="reply"
-                label={m.who === "lead" ? replyLabel : "Planner"}
+                label={
+                  m.who === "lead" || m.who === "role" ? replyLabel : "Planner"
+                }
                 meta={m.meta}
                 testId="ask-answer"
                 footer={
@@ -325,20 +354,20 @@ export const AskStep = ({
             ),
           )}
           <DashTeamApprovals compact />
-          {plannerBusy ? (
+          {roleBusy ? (
             <div
               className="flex flex-row flex-wrap items-center gap-2 text-sm"
               data-testid="planner-busy"
             >
               <span className={muted}>
-                The Planner is still working on an earlier request.
+                The {roleName} is still working on an earlier request.
               </span>
               <Button3
-                title="Stop the Planner"
+                title={`Stop the ${roleName}`}
                 size="sm"
                 onClick={async () => {
-                  await stopTeamRole("planner");
-                  setPlannerBusy(false);
+                  await stopTeamRole(teamRole ? teamRole.role : "planner");
+                  setRoleBusy(false);
                 }}
               />
             </div>
@@ -364,12 +393,14 @@ export const AskStep = ({
             ? `${replyName.charAt(0).toUpperCase()}${replyName.slice(1)} is looking…`
             : lead
               ? `Ask ${lead.leadName} a follow-up…`
-              : "Ask a follow-up…"
+              : teamRole
+                ? `Ask the ${roleName} a follow-up…`
+                : "Ask a follow-up…"
         }
         above={
-          lead ? (
+          lead || teamRole ? (
             <span className={`text-xs ${muted}`} data-testid="ask-to">
-              To: {leadLabel(lead)}
+              To: {lead ? leadLabel(lead) : `${roleName} · Dash team`}
             </span>
           ) : null
         }

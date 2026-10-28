@@ -9,6 +9,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { AskStep } from "./AskStep";
 import {
   questionRequest,
+  roleQuestion,
   leadQuestion,
   reopenedQuestion,
   hasPlan,
@@ -473,6 +474,109 @@ describe("asking a team lead (5e-2a)", () => {
     expect(
       screen.queryByRole("button", { name: "Plan this with the Dash team" }),
     ).toBeNull();
+  });
+});
+
+describe("asking another Dash team role (QA 2026-10-28)", () => {
+  const BUILDER = { role: "builder", roleName: "Builder" };
+  const roleApi = (over = {}) =>
+    api({
+      listDashTeam: jest
+        .fn()
+        .mockResolvedValue([
+          ...team,
+          { id: "b_builder", role: "builder", name: "Builder" },
+        ]),
+      run: jest
+        .fn()
+        .mockResolvedValue(answered("Yes — set its refresh to 1 second.")),
+      ...over,
+    });
+
+  test("goes to that role, kept with the conversation; no plan button", async () => {
+    const bots = roleApi();
+    render(
+      <AskStep
+        question="Can a widget poll every second?"
+        recipient={BUILDER}
+        onOpenPlan={jest.fn()}
+      />,
+    );
+    const answer = await screen.findByTestId("ask-answer");
+    expect(answer).toHaveTextContent("Yes — set its refresh to 1 second.");
+    expect(answer).toHaveTextContent("Builder");
+    expect(bots.saveCreateRecent).toHaveBeenNthCalledWith(1, {
+      kind: "question",
+      prompt: "Can a widget poll every second?",
+      conversation: { recipient: BUILDER },
+    });
+    const [botId, prompt, cont] = bots.run.mock.calls[0];
+    expect(botId).toBe("b_builder");
+    expect(prompt).toBe(roleQuestion("Can a widget poll every second?"));
+    expect(cont).toBe(false);
+    expect(screen.getByTestId("ask-to")).toHaveTextContent(
+      "To: Builder · Dash team",
+    );
+    // A follow-up stays with the Builder and continues.
+    fireEvent.change(screen.getByLabelText("Ask a follow-up"), {
+      target: { value: "And every 100ms?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(bots.run).toHaveBeenCalledTimes(2));
+    expect(bots.run.mock.calls[1][0]).toBe("b_builder");
+    expect(bots.run.mock.calls[1][2]).toBe(true);
+    expect(screen.queryByRole("button", { name: "Open as a plan" })).toBeNull();
+  });
+
+  test("busy: says so and offers to stop that role", async () => {
+    roleApi({
+      run: jest.fn().mockResolvedValue({
+        skipped: true,
+        reason: "a run is already in progress",
+      }),
+    });
+    render(<AskStep question="Hi" recipient={BUILDER} />);
+    expect(await screen.findByTestId("planner-busy")).toHaveTextContent(
+      "The Builder is still working on an earlier request.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Stop the Builder" }),
+    ).toBeInTheDocument();
+  });
+
+  test("reopened from Recent: carries on with the same role", async () => {
+    const bots = roleApi({
+      getCreateRecent: jest.fn().mockResolvedValue({
+        id: "plan_q1",
+        kind: "question",
+        prompt: "Can it poll?",
+        conversation: {
+          recipient: BUILDER,
+          messages: [
+            { who: "you", text: "Can it poll?" },
+            { who: "role", text: "Yes." },
+          ],
+        },
+      }),
+    });
+    render(<AskStep recentId="plan_q1" />);
+    expect(await screen.findByText("Yes.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Ask a follow-up"), {
+      target: { value: "How fast?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(bots.run).toHaveBeenCalled());
+    const [botId, prompt] = bots.run.mock.calls[0];
+    expect(botId).toBe("b_builder");
+    expect(prompt).toMatch(
+      /^Earlier in this conversation:\nMe: Can it poll\?\nYou: Yes\.\n\n\(A question from the Dash team chat/,
+    );
+  });
+
+  test("Recent names the role", () => {
+    expect(
+      recentStatus({ kind: "question", status: "answered", to: "Builder" }),
+    ).toBe("Answered · Builder");
   });
 });
 

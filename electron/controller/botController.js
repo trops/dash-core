@@ -141,6 +141,7 @@ const {
   mergeDashTeamSettings,
   tierModel,
 } = require("../bots/dashTeam");
+const { userRunOptions } = require("../bots/userRun");
 const {
   ROLE_SERVER,
   ROLE_BUILD_SERVER,
@@ -982,12 +983,14 @@ const botController = {
     };
     let started;
     try {
-      started = this._run(botId, {
-        prompt: inPlan ? `${prompt}\n\n${MEMORY_NOTE}` : prompt,
-        trigger: continueConversation ? "reply" : "manual",
-        continueSession: !!continueConversation,
-        ...(inPlan ? { planId: String(planId) } : {}),
-      });
+      started = this._run(
+        botId,
+        userRunOptions(this._store.get(botId), {
+          prompt: inPlan ? `${prompt}\n\n${MEMORY_NOTE}` : prompt,
+          continueConversation,
+          planId: inPlan ? planId : null,
+        }),
+      );
     } catch (err) {
       done();
       throw err;

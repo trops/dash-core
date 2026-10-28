@@ -69,14 +69,16 @@ function summarize(entry) {
   if (out.kind === "question") {
     const messages = (entry.conversation && entry.conversation.messages) || [];
     const last = messages[messages.length - 1];
-    // Messages are { who: "you" | "planner" | "lead" | "note", text }.
+    // Messages are { who: "you" | "planner" | "lead" | "role" | "note", text }.
     out.status =
-      last && (last.who === "planner" || last.who === "lead")
+      last &&
+      (last.who === "planner" || last.who === "lead" || last.who === "role")
         ? "answered"
         : "asked";
-    // Asked of a team lead (5e-2a): its name, for the row.
+    // Asked of a team lead (5e-2a) or a Dash team role: its name, for the row.
     const to = entry.conversation && entry.conversation.recipient;
     if (to && to.leadName) out.to = String(to.leadName);
+    else if (to && to.roleName) out.to = String(to.roleName);
     return out;
   }
   if (!state) return out;
