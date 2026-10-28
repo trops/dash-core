@@ -105,6 +105,61 @@ export async function runTeamRole(
   }
 }
 
+/**
+ * Why a Dash team role didn't run, in words that say what to do. "A run is
+ * already in progress" means it's busy (often waiting for an approval) —
+ * never "turn it on", which it already is.
+ * @returns {{ text: string, busy: boolean }}
+ */
+export function teamSkipText(reason, roleName = "Planner") {
+  const r = String(reason || "");
+  if (/in progress|busy/i.test(r)) {
+    return {
+      busy: true,
+      text: `The ${roleName} is still working on an earlier request — it may be waiting for you to approve something. Answer it, or stop it, then send again.`,
+    };
+  }
+  if (/paused/i.test(r)) {
+    return {
+      busy: false,
+      text: `The ${roleName} is paused. Turn it on in the Bots page › Dash team, then send again.`,
+    };
+  }
+  return {
+    busy: false,
+    text: `The ${roleName} can't run right now: ${r || "unknown reason"}.`,
+  };
+}
+
+/**
+ * Stop a Dash team role's run — and the team runs it's waiting on (a
+ * Planner blocked on the Builder's approval): the others first, then the
+ * role, so nothing it waits on keeps it running.
+ */
+export async function stopTeamRole(role) {
+  const api = bots();
+  if (!api || typeof api.stop !== "function") return false;
+  const bot = await findTeamRole(role);
+  if (!bot) return false;
+  let team = [];
+  try {
+    team = (await api.listDashTeam()) || [];
+  } catch (_e) {
+    team = [];
+  }
+  for (const other of team) {
+    if (other && other.id !== bot.id) {
+      try {
+        await api.stop(other.id);
+      } catch (_e) {
+        // not running
+      }
+    }
+  }
+  await api.stop(bot.id);
+  return true;
+}
+
 const SOURCES = ["Yours", "AI-built", "Registry"];
 
 /**

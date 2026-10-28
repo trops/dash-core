@@ -23,6 +23,7 @@ import { modelLabel } from "../../utils/runCostLabel";
 import { shortTime } from "./contactsList";
 import { BotAvatar } from "./BotAvatar";
 import { DASH_TEAM_CONTACT } from "./dashTeamContact";
+import { DashTeamApprovals } from "./DashTeamApprovals";
 
 const TABS = [
   { value: "conversation", label: "Conversation" },
@@ -414,6 +415,9 @@ export const DashTeamPage = ({
           }
           options={TABS}
         />
+      </div>
+      <div className="flex-shrink-0 px-5">
+        <DashTeamApprovals compact />
       </div>
       {tab === "conversation" ? (
         <Conversation

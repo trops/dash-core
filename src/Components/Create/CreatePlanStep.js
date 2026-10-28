@@ -17,7 +17,8 @@ import {
 } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { runTeamRole } from "../../utils/teamRoles";
+import { runTeamRole, stopTeamRole, teamSkipText } from "../../utils/teamRoles";
+import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { extractPlan, planTarget, validatePlan } from "../../utils/teamPlan";
 import { estimatePlan, describeEstimate } from "../../utils/planEstimate";
 import { runCostLabel, usageTokens } from "../../utils/runCostLabel";
@@ -435,6 +436,9 @@ export const CreatePlanStep = ({
   // told to the Planner, the open window, the piece being swapped, and
   // whether Build is walking through the open items.
   const [checks, setChecks] = useState({});
+  // The Planner didn't run because it's still busy (often waiting on an
+  // approval): say so, and offer to stop it.
+  const [plannerBusy, setPlannerBusy] = useState(false);
   const [edits, setEdits] = useState([]);
   const [dialog, setDialog] = useState(null);
   const [swapIndex, setSwapIndex] = useState(null);
@@ -487,15 +491,12 @@ export const CreatePlanStep = ({
     setBusy(false);
     setSoFar("");
     if (res.skipped) {
-      setMessages((m) => [
-        ...m,
-        {
-          who: "note",
-          text: `Can't plan right now: ${res.reason}. Turn the Planner on in the Bots page › Dash team.`,
-        },
-      ]);
+      const why = teamSkipText(res.reason, "Planner");
+      setPlannerBusy(why.busy);
+      setMessages((m) => [...m, { who: "note", text: why.text }]);
       return;
     }
+    setPlannerBusy(false);
     if (res.status === "failed") {
       setMessages((m) => [
         ...m,
@@ -1517,6 +1518,31 @@ export const CreatePlanStep = ({
       ) : null}
     </>
   );
+  // What the Dash team is waiting on: its approvals (a team bot asks before
+  // it changes anything), and a busy Planner the user can stop.
+  const teamWaiting = (
+    <>
+      <DashTeamApprovals compact={compact} />
+      {plannerBusy ? (
+        <div
+          className="flex flex-row flex-wrap items-center gap-2 text-sm"
+          data-testid="planner-busy"
+        >
+          <span className={muted}>
+            The Planner is still working on an earlier request.
+          </span>
+          <Button3
+            title="Stop the Planner"
+            size="sm"
+            onClick={async () => {
+              await stopTeamRole("planner");
+              setPlannerBusy(false);
+            }}
+          />
+        </div>
+      ) : null}
+    </>
+  );
   // One scroll area: the Planner's questions end the conversation, and the
   // chat opens at its end, so what's asked sits just above the reply box and
   // scrolls out of the way with everything else.
@@ -1561,6 +1587,7 @@ export const CreatePlanStep = ({
             <div className="flex flex-col gap-4 px-4 py-6">
               {chatMessages}
               {questionsBlock}
+              {teamWaiting}
             </div>
           </div>
           {foot}
@@ -1585,6 +1612,7 @@ export const CreatePlanStep = ({
           {chatMessages}
           {planCard}
           {questionsBlock}
+          {teamWaiting}
         </div>
       </div>
       {dialogs}

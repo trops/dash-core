@@ -3,6 +3,8 @@ import {
   findTeamRole,
   extractMatches,
   withoutMatches,
+  teamSkipText,
+  stopTeamRole,
 } from "./teamRoles";
 
 function setupBots({ team, record, events = [], throws = false }) {
@@ -144,5 +146,40 @@ describe("runTeamRole — conversation and events (phase 4a)", () => {
     });
     expect(api.run).toHaveBeenCalledWith("b_scout", "more", true);
     expect(events).toEqual(["tool_call"]);
+  });
+});
+
+describe("why a Dash team role didn't run (QA 2026-10-28)", () => {
+  test("busy is busy — never 'turn it on'", () => {
+    const r = teamSkipText("a run is already in progress", "Planner");
+    expect(r.busy).toBe(true);
+    expect(r.text).toMatch(/still working on an earlier request/);
+    expect(r.text).not.toMatch(/Turn/);
+  });
+  test("paused says turn it on; anything else says why", () => {
+    expect(teamSkipText("the Planner is paused").text).toMatch(
+      /is paused\. Turn it on/,
+    );
+    expect(teamSkipText("over budget").text).toBe(
+      "The Planner can't run right now: over budget.",
+    );
+  });
+  test("stopTeamRole stops the role and what it waits on — the others first", async () => {
+    const stop = jest.fn().mockResolvedValue({});
+    window.mainApi = {
+      bots: {
+        listDashTeam: jest.fn().mockResolvedValue([
+          { id: "b_planner", role: "planner", name: "Planner" },
+          { id: "b_builder", role: "builder", name: "Builder" },
+        ]),
+        stop,
+      },
+    };
+    expect(await stopTeamRole("planner")).toBe(true);
+    expect(stop.mock.calls.map((c) => c[0])).toEqual([
+      "b_builder",
+      "b_planner",
+    ]);
+    delete window.mainApi;
   });
 });

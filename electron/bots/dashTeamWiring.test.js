@@ -82,7 +82,7 @@ describe("botController — role tools (CRE-011, slice 3a)", () => {
   it("team bots get only their role's tools, on an auto-allowed server", () => {
     assert.match(
       ctrl,
-      /const tools = \[\.\.\.roleToolsFor\(bot\.role\), \.\.\.memory\];/,
+      /const roleTools = roleToolsFor\(bot\.role\)\.filter\([\s\S]*?const tools = \[\.\.\.roleTools, \.\.\.memory\];/,
     );
     assert.match(ctrl, /RESULTS_SERVER,\s*ROLE_SERVER,\s*\]/);
   });
@@ -100,6 +100,23 @@ describe("botController — role tools (CRE-011, slice 3a)", () => {
     assert.match(ctrl, /if \(!this\._handoffs\.take\(callerId, runKey\)\)/);
     assert.match(ctrl, /if \(this\._runner\.isRunning\(target\.id\)\)/);
     assert.match(ctrl, /trigger: "ask",\s*via: \`dash-team:/);
+  });
+
+  it("a hand-off while planning only answers: no build or place tools, so no approvals to wait on", () => {
+    assert.match(ctrl, /via: `dash-team:[^`]*`,\s*adviseOnly: true,/);
+    // The runner's options reach the tool list (they were dropped here).
+    assert.match(
+      ctrl,
+      /resolveTools: \(bot, runOpts\) => this\._resolveTools\(bot, runOpts\)/,
+    );
+    assert.match(
+      ctrl,
+      /\.\.\.\(opts\.adviseOnly \? \{ adviseOnly: true \} : \{\}\)/,
+    );
+    assert.match(
+      ctrl,
+      /!\(runOpts && runOpts\.adviseOnly\) \|\|\s*serverForTool\(t\.name\) !== ROLE_BUILD_SERVER/,
+    );
   });
 
   it("team runs stay off the event bus", () => {
