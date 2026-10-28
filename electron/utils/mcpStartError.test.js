@@ -6,7 +6,12 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { describeStartFailure, StderrTail } = require("./mcpStartError");
+const {
+  describeStartFailure,
+  describeNetworkFailure,
+  isLocalNetworkHost,
+  StderrTail,
+} = require("./mcpStartError");
 
 const CLOSED = "MCP error -32000: Connection closed";
 const NEXT = "Check its settings on the Providers page.";
@@ -120,5 +125,160 @@ describe("StderrTail", () => {
     assert.equal(t.text(), "ghijklmnop");
     t.push(Buffer.from("XYZ"));
     assert.equal(t.text(), "jklmnopXYZ");
+  });
+});
+
+describe("a remote server that couldn't be reached", () => {
+  // What Node's fetch throws: "fetch failed", the reason in `cause`.
+  const failed = (code, message) => {
+    const e = new TypeError("fetch failed");
+    e.cause = Object.assign(new Error(message || `connect ${code}`), { code });
+    return e;
+  };
+  const url = "http://10.0.0.107:9583/private_SECRETPATHTOKEN123";
+
+  it("a local-network address out of reach on a Mac: macOS blocking Dash, or the device off — says both, and the fix", () => {
+    const r = describeNetworkFailure(failed("EHOSTUNREACH"), url, "darwin");
+    assert.equal(r.fix, "local-network");
+    assert.match(
+      r.message,
+      /Dash couldn't reach 10\.0\.0\.107:9583 on your local network/,
+    );
+    assert.match(r.message, /check that the device is on/);
+    assert.equal(
+      describeNetworkFailure(failed("EHOSTDOWN"), url, "darwin").fix,
+      "local-network",
+    );
+    assert.match(r.message, /Privacy & Security › Local Network/);
+    // Never the path (it can hold the server's key).
+    assert.equal(r.message.includes("private_"), false);
+  });
+
+  it("elsewhere, or not a local address: just unreachable", () => {
+    assert.equal(
+      describeNetworkFailure(failed("EHOSTUNREACH"), url, "linux").fix,
+      undefined,
+    );
+    assert.equal(
+      describeNetworkFailure(
+        failed("EHOSTUNREACH"),
+        "http://example.com/mcp",
+        "darwin",
+      ).fix,
+      undefined,
+    );
+  });
+
+  it("refused, not found, timed out, reset, certificate", () => {
+    const text = (code) =>
+      describeNetworkFailure(failed(code), url, "darwin").message;
+    assert.match(
+      text("ECONNREFUSED"),
+      /Nothing is answering at 10\.0\.0\.107:9583/,
+    );
+    assert.match(text("ENOTFOUND"), /Couldn't find/);
+    assert.match(text("UND_ERR_CONNECT_TIMEOUT"), /didn't answer in time/);
+    assert.match(text("ECONNRESET"), /closed the connection/);
+    assert.match(
+      text("SELF_SIGNED_CERT_IN_CHAIN"),
+      /certificate isn't trusted/,
+    );
+  });
+
+  it("not a network error: the caller keeps its own message", () => {
+    assert.equal(
+      describeNetworkFailure(new Error("HTTP 401"), url, "darwin"),
+      null,
+    );
+  });
+
+  it("local network addresses", () => {
+    for (const h of [
+      "10.0.0.107",
+      "192.168.1.20",
+      "172.20.0.5",
+      "169.254.1.1",
+      "homeassistant.local",
+    ]) {
+      assert.equal(isLocalNetworkHost(h), true, h);
+    }
+    for (const h of ["8.8.8.8", "172.32.0.1", "example.com"]) {
+      assert.equal(isLocalNetworkHost(h), false, h);
+    }
+  });
+
+  it("the reason further down: nested causes, and IPv4 and IPv6 tried at once", () => {
+    const deep = new TypeError("fetch failed");
+    deep.cause = new Error("wrapper");
+    deep.cause.cause = Object.assign(new Error("connect EHOSTUNREACH"), {
+      code: "EHOSTUNREACH",
+    });
+    assert.equal(
+      describeNetworkFailure(deep, url, "darwin").fix,
+      "local-network",
+    );
+    const both = new TypeError("fetch failed");
+    both.cause = Object.assign(
+      new AggregateError(
+        [
+          Object.assign(new Error("connect ETIMEDOUT"), { code: "ETIMEDOUT" }),
+          Object.assign(new Error("connect EHOSTUNREACH"), {
+            code: "EHOSTUNREACH",
+          }),
+        ],
+        "",
+      ),
+      { code: "ETIMEDOUT" },
+    );
+    assert.equal(
+      describeNetworkFailure(both, "http://hass.local:8123/mcp", "darwin").fix,
+      "local-network",
+    );
+  });
+
+  it("the server answered: its own words, never read as a network failure", () => {
+    const http = Object.assign(
+      new Error("Error POSTing to endpoint: upstream connect ECONNREFUSED"),
+      { code: 502 },
+    );
+    assert.equal(describeNetworkFailure(http, url, "darwin"), null);
+    assert.equal(
+      describeNetworkFailure(
+        new Error("socket hang up in the reply"),
+        url,
+        "darwin",
+      ),
+      null,
+    );
+  });
+
+  it("a public address out of reach isn't a local-network problem", () => {
+    const r = describeNetworkFailure(
+      failed("EHOSTUNREACH"),
+      "http://93.184.216.34/mcp",
+      "darwin",
+    );
+    assert.equal(r.fix, undefined);
+    assert.match(r.message, /Couldn't reach 93\.184\.216\.34/);
+  });
+
+  it("IPv6 and names: only real local addresses", () => {
+    for (const h of [
+      "fd00::1",
+      "[fe80::1]",
+      "::ffff:a00:1",
+      "::ffff:192.168.1.5",
+    ]) {
+      assert.equal(isLocalNetworkHost(h), true, h);
+    }
+    for (const h of [
+      "fdic.gov",
+      "fc.example.com",
+      "fe80.example.com",
+      "2001:db8::1",
+      "::ffff:808:808",
+    ]) {
+      assert.equal(isLocalNetworkHost(h), false, h);
+    }
   });
 });

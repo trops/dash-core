@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, useMemo, useRef } from "react";
 import {
   FontAwesomeIcon,
   Button,
+  Button2,
   Card2,
   Icon2,
   InputText,
@@ -129,6 +130,27 @@ export function buildMcpConfig(
   }
   return config;
 }
+
+/**
+ * macOS may block Dash from a server on the local network: the button to
+ * the Local Network settings, and what to do next. `again`: the button to
+ * click once it's allowed.
+ */
+const LocalNetworkFix = ({ again }) => (
+  <div
+    className="flex flex-col items-start gap-2"
+    data-testid="mcp-local-network-fix"
+  >
+    <Button2
+      title="Open Local Network settings"
+      size="sm"
+      onClick={() => window.mainApi?.app?.openLocalNetworkSettings?.()}
+    />
+    <span className="text-xs opacity-70">
+      {`Turn on Dash there, then click ${again} again. If it still can't connect, check that the device is on, or quit and reopen Dash.`}
+    </span>
+  </div>
+);
 
 /**
  * CustomMcpServerForm
@@ -521,6 +543,9 @@ export const CustomMcpServerForm = ({
           setTestResult({
             success: false,
             message: result.message,
+            // What fixes it, when Dash knows (e.g. macOS blocked a server
+            // on the local network).
+            fix: result.fix || null,
           });
           setIsTesting(false);
           return;
@@ -558,7 +583,11 @@ export const CustomMcpServerForm = ({
 
     const onComplete = (event, result) => {
       if (result.error) {
-        setAuthResult({ success: false, message: result.message });
+        setAuthResult({
+          success: false,
+          message: result.message,
+          fix: result.fix || null,
+        });
       } else {
         setAuthResult({ success: true, message: "Authorized!" });
       }
@@ -1190,6 +1219,9 @@ export const CustomMcpServerForm = ({
                     </div>
                   </div>
                 )}
+                {authResult?.fix === "local-network" ? (
+                  <LocalNetworkFix again="Authorize" />
+                ) : null}
                 {authResult && !authResult.success && (
                   <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2">
                     <p className="text-xs font-semibold opacity-40 uppercase tracking-wider">
@@ -1263,6 +1295,9 @@ export const CustomMcpServerForm = ({
                   </span>
                 )}
               </div>
+              {testResult?.fix === "local-network" ? (
+                <LocalNetworkFix again="Fetch Tools" />
+              ) : null}
               {testResult?.success &&
                 testResult.tools?.length > 0 &&
                 selectedTools && (
