@@ -677,3 +677,213 @@ describe("applyLoadV2", () => {
     assert.match(taken.error, /already exists/);
   });
 });
+
+describe("keeping a profile in step with its account copy", () => {
+  // The account's copy of "Mac Mini", into the profile here linked to it.
+  function linked() {
+    const d = computer();
+    d.store.list = () => [
+      { id: "default", name: "Default", items: { dashboards: [], bots: [] } },
+      { id: "mm", name: "Mac Mini", items: { dashboards: [], bots: [] } },
+    ];
+    // This computer's own widget setting, and a key typed here.
+    d.workspaceFile()[0].layout[0].userPrefs = {
+      apiKey: "SECRET-HERE",
+      room: "Garage",
+    };
+    return d;
+  }
+  const renamed = () =>
+    manifest({
+      dashboards: {
+        ...manifest().dashboards,
+        "@trops/kitchen": {
+          ...manifest().dashboards["@trops/kitchen"],
+          name: "Kitchen (renamed)",
+        },
+      },
+      folders: [
+        { id: "2", name: "Home" },
+        { id: "1", name: "Kitchen stuff" },
+      ],
+    });
+  const saved = (d, id) =>
+    d.calls
+      .filter((c) => c[0] === "saveWorkspace" && String(c[1].id) === String(id))
+      .map((c) => c[1])
+      .pop();
+
+  it("the account's copy wins: names, folders and widget settings come across — a blank key never overwrites", async () => {
+    const d = linked();
+    const res = await applyLoadV2(
+      null,
+      "app",
+      renamed(),
+      { linkedProfileId: "mm", syncLinked: true },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    // A dashboard already here (kept at this computer's version) is renamed.
+    assert.equal(saved(d, 12).name, "Kitchen (renamed)");
+    // A widget setting changed elsewhere replaces this computer's.
+    const prefs = saved(d, 11).layout[0].userPrefs;
+    assert.equal(prefs.room, "Kitchen");
+    assert.equal(prefs.apiKey, "SECRET-HERE");
+    // A renamed folder is renamed here.
+    const folders = d.calls
+      .filter((c) => c[0] === "write" && c[1] === "menuItems.json")
+      .pop();
+    assert.equal(
+      folders[2].find((x) => String(x.id) === "1").name,
+      "Kitchen stuff",
+    );
+  });
+
+  it("folder and theme follow the account; a folder another profile uses isn't renamed", async () => {
+    const d = linked();
+    const res = await applyLoadV2(
+      null,
+      "app",
+      renamed(),
+      { linkedProfileId: "mm", syncLinked: true },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    assert.equal(saved(d, 11).menuId, 2);
+    assert.equal(saved(d, 11).themeKey, "Ocean");
+    assert.equal(saved(d, 12).menuId, 1);
+
+    const d2 = linked();
+    d2.store.list = () => [
+      {
+        id: "default",
+        name: "Default",
+        items: { dashboards: [], folders: ["1"] },
+      },
+      { id: "mm", name: "Mac Mini", items: { dashboards: [], bots: [] } },
+    ];
+    await applyLoadV2(
+      null,
+      "app",
+      renamed(),
+      { linkedProfileId: "mm", syncLinked: true },
+      d2,
+    );
+    assert.equal(
+      d2.calls.some(
+        (c) =>
+          c[0] === "write" &&
+          c[1] === "menuItems.json" &&
+          c[2].some((x) => x.name === "Kitchen stuff"),
+      ),
+      false,
+    );
+  });
+
+  it("a setting cleared elsewhere is cleared here; a blanked key isn't", async () => {
+    const d = linked();
+    const m = renamed();
+    m.settings.dashboards["@trops/home-lab"].items["layout/u1"].userPrefs = {
+      room: "",
+      apiKey: "",
+    };
+    await applyLoadV2(
+      null,
+      "app",
+      m,
+      { linkedProfileId: "mm", syncLinked: true },
+      d,
+    );
+    const prefs = saved(d, 11).layout[0].userPrefs;
+    assert.equal(prefs.room, "");
+    assert.equal(prefs.apiKey, "SECRET-HERE");
+  });
+
+  it("bots here take the account's choices — not kept ones, and never left without providers", async () => {
+    const run = async (localVersion, overlay) => {
+      const d = linked();
+      // @trops/brief is in the registry here (the shared stub has it deleted).
+      const others = d.lookup;
+      d.lookup = async (pkg) =>
+        pkg === "@trops/brief" ? { versions: ["1.0.1", "1.0.2"] } : others(pkg);
+      d.allBots().push({
+        id: "bb",
+        name: "Brief",
+        mcpServers: ["Slack"],
+        registryRef: {
+          package: "@trops/brief",
+          kind: "bot",
+          version: localVersion,
+          origin: "installed",
+        },
+      });
+      const m = renamed();
+      m.settings.bots = { "@trops/brief": overlay };
+      await applyLoadV2(
+        null,
+        "app",
+        m,
+        { linkedProfileId: "mm", syncLinked: true },
+        d,
+      );
+      return d.calls.filter((c) => c[0] === "updateBot" && c[1] === "bb");
+    };
+    // Already here at the same version: the account's choices come across.
+    const same = await run("1.0.1", {
+      mcpServers: ["Work Slack"],
+      provider: "claude-cli",
+      model: "sonnet",
+    });
+    assert.equal(same.length, 1);
+    assert.equal(same[0][2].provider, "claude-cli");
+    assert.deepEqual(same[0][2].mcpServers, ["Slack"]);
+    // None of the account's providers is here: it keeps its own.
+    const none = await run("1.0.1", {
+      mcpServers: ["Gone"],
+      toolSelections: { Gone: ["x"] },
+      provider: "claude-cli",
+    });
+    assert.equal(none[0][2].mcpServers, undefined);
+    assert.equal(none[0][2].toolSelections, undefined);
+    assert.equal(none[0][2].provider, "claude-cli");
+    // This computer's is newer and kept: untouched.
+    const kept = await run("1.0.3", { provider: "claude-cli" });
+    assert.equal(kept.length, 0);
+  });
+
+  it("the linked profile is gone here: no keeping in step", async () => {
+    const d = linked();
+    const res = await applyLoadV2(
+      null,
+      "app",
+      renamed(),
+      { linkedProfileId: "gone", syncLinked: true },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    assert.equal(saved(d, 12), undefined);
+  });
+
+  it("anything else — a file, or not into its linked profile — only fills in what's missing", async () => {
+    for (const choices of [
+      { linkedProfileId: "mm" },
+      { linkedProfileId: "mm", syncLinked: true, asNew: true, name: "Copy" },
+    ]) {
+      const d = linked();
+      const res = await applyLoadV2(null, "app", renamed(), choices, d);
+      assert.equal(res.success, true, res.error);
+      assert.equal(saved(d, 12), undefined);
+      const ws = saved(d, 11);
+      assert.equal(ws.layout[0].userPrefs.room, "Garage");
+      assert.equal(
+        d.calls.some(
+          (c) =>
+            c[0] === "write" &&
+            c[1] === "menuItems.json" &&
+            c[2].some((x) => x.name === "Kitchen stuff"),
+        ),
+        false,
+      );
+    }
+  });
+});

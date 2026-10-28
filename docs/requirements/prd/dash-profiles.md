@@ -328,6 +328,17 @@ Mac's / use the account's).
      - Replacing a profile now lists what leaves it ("Leaves this profile (stays on this computer): Office, Mailer").
      - The Welcome screen of a new install offers **Load a profile from my account**.
      - New IPC: `profile:sync-status`.
+     - Fix (found by the S3 live test): loading a profile's own account copy into the profile it's linked to now
+       **keeps it in step** — the account's copy wins for what's already here: dashboard names, folders and themes,
+       folder names, widget settings and bot provider choices (a blanked key still never overwrites one here). Before,
+       a rename made on another computer never arrived although the check then said "in step". Loading a file or
+       someone else's copy still only fills in what's missing. The main process decides (`syncLinked`), never the
+       renderer.
+       Review fixes: a dashboard or bot kept at this computer's version keeps its settings and how it runs (only the
+       name, folder and theme follow); a bot is never left without providers (when none of the account's map to one
+       here it keeps its own); a folder another profile here uses isn't renamed (folder 1 is on every computer); a
+       setting cleared elsewhere is cleared here, a blanked key or password still isn't. Known limits: a folder or
+       theme the account copy has none for isn't cleared here, and team members are matched by name.
 
 ---
 
@@ -378,6 +389,7 @@ Mac's / use the account's).
 
 ## Revision History
 
+- 2026-10-27: S3 merged (core v0.1.848). Sync-load fix: the account's copy wins when loaded into its linked profile.
 - 2026-10-27: S2 merged (core v0.1.847, registry v1.10.1, electron v0.0.1040). S3: out-of-sync check; Default replaced in place by its own account copy (user decision).
 - 2026-10-27: Step 2 planned and approved; S1 (registry v1.10.0) merged; S2 save to / load from the account.
 - 2026-10-27: v2 planned (registry as source of truth); 7a package identity.

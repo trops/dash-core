@@ -653,6 +653,26 @@ async function planLoadV2(
 // ---- applying -------------------------------------------------------------
 
 /**
+ * A dashboard's name, folder and theme as the profile has them, in this
+ * computer's terms (folders and themes mapped to their ids here). Only
+ * what the profile says and this computer has.
+ */
+function dashboardMeta(entry, folderId, themeKey) {
+  const meta = {};
+  if (typeof entry.name === "string" && entry.name.trim()) {
+    meta.name = entry.name;
+    meta.label = entry.name;
+  }
+  if (entry.folder != null && own(folderId, entry.folder)) {
+    meta.menuId = folderId[entry.folder];
+  }
+  if (entry.theme && own(themeKey, entry.theme)) {
+    meta.themeKey = themeKey[entry.theme];
+  }
+  return Object.keys(meta).length ? meta : null;
+}
+
+/**
  * Provider names a profile's settings may name: the ones its file lists
  * (each shown in the preview), as this computer calls them. Anything else
  * is dropped — a file can't connect a widget or bot to a provider the
@@ -678,8 +698,11 @@ function applyDashboardOverlay(
   ws,
   overlay,
   nameProvider = (n) => n,
-  { fillOnly = false } = {},
+  { fillOnly = false, blankedSecret = null } = {},
 ) {
+  // `blankedSecret(key, field)`: when given (keeping in step), an empty
+  // value replaces this computer's unless it's a key or password the
+  // profile left blank; otherwise an empty value never replaces one here.
   if (!ws || !overlay || !overlay.items || typeof overlay.items !== "object") {
     return ws;
   }
@@ -704,7 +727,13 @@ function applyDashboardOverlay(
         if (UNSAFE_KEYS.has(field) || LOCAL_PREFS.has(field)) continue;
         const here = prefs[field];
         const hasHere = here !== undefined && here !== null && here !== "";
-        if (value === "" && hasHere) continue;
+        if (
+          value === "" &&
+          hasHere &&
+          (!blankedSecret || blankedSecret(key, field))
+        ) {
+          continue;
+        }
         if (fillOnly && hasHere) continue;
         prefs[field] = value;
       }
@@ -773,6 +802,16 @@ async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
 
   // Target (checked before anything is installed).
   const replacing = plan.target.mode === "replace" && !choices.asNew;
+  // Loading a profile's own account copy into the profile it's linked to
+  // (keeping it in step): the account's copy wins — what's already here
+  // takes its names, folders, themes, widget settings and bot choices, not
+  // just what's missing. A blanked key still never overwrites one here.
+  // Set by the main process only (never from the renderer).
+  const sync =
+    choices.syncLinked === true &&
+    replacing &&
+    choices.linkedProfileId != null &&
+    plan.target.profileId === choices.linkedProfileId;
   const name = replacing
     ? plan.target.name
     : String(choices.name || plan.target.name).trim();
@@ -816,6 +855,18 @@ async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
     row.action === "install" ||
     (row.action === "update" && !keep.has(id(row))) ||
     (row.action === "keep" && take.has(id(row)));
+  // Rows the user kept at this computer's version.
+  const keptHere = (row) =>
+    (row.action === "keep" && !take.has(id(row))) ||
+    (row.action === "update" && keep.has(id(row)));
+  // Keys and passwords the profile left blank ("<item key>|<field>"), and
+  // anything named like one.
+  const blankedSecrets = new Set(
+    (manifest.secretsToEnter || []).map((s) => `${s.item}|${s.field}`),
+  );
+  const { looksSecretName } = require("./secretFields");
+  const blankedSecret = (key, field) =>
+    blankedSecrets.has(`${key}|${field}`) || looksSecretName(field);
   const counts = { added: 0, updated: 0 };
   const count = (row) =>
     row.action === "install" ? (counts.added += 1) : (counts.updated += 1);
@@ -867,12 +918,36 @@ async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
   // 3. Folders the dashboards go in — by this computer's own folder ids.
   const folders = d.folderFile(appId);
   const folderId = Object.create(null);
+  let foldersChanged = false;
+  const folderElsewhere = (fid) =>
+    store.hasProfiles(appId) &&
+    store
+      .list(appId)
+      .some(
+        (p) =>
+          p.id !== plan.target.profileId &&
+          ((p.items && p.items.folders) || [])
+            .map(String)
+            .includes(String(fid)),
+      );
   for (const f of folders) {
     if (f && f.id != null) folderId[String(f.id)] = f.id;
   }
-  let foldersChanged = false;
   for (const f of manifest.folders) {
-    if (own(folderId, f.id)) continue;
+    if (own(folderId, f.id)) {
+      // Keeping in step: the account's folder name comes too — unless
+      // another profile here uses that folder (folder 1 is on every
+      // computer; renaming it would change theirs).
+      const here =
+        sync && !folderElsewhere(f.id)
+          ? folders.find((x) => x && String(x.id) === String(f.id))
+          : null;
+      if (here && f.name && here.name !== f.name) {
+        here.name = f.name;
+        foldersChanged = true;
+      }
+      continue;
+    }
     const newId = /^\d+$/.test(f.id) ? Number(f.id) : f.id;
     folders.push({
       id: newId,
@@ -889,7 +964,10 @@ async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
   for (const row of of("dashboard")) {
     const entry = manifest.dashboards[row.package] || {};
     if (row.localId != null) dashId[row.package] = row.localId;
-    let fillOnly = true;
+    // Kept at this computer's version: its settings stay this computer's
+    // (they belong to that version's layout) — only its name, folder and
+    // theme follow the account.
+    let fillOnly = !sync || keptHere(row);
     if (loads(row)) {
       const res = await d.installDashboard(win, appId, row.package, {
         version: row.version,
@@ -916,7 +994,7 @@ async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
         continue;
       }
       dashId[row.package] = res.workspace.id;
-      fillOnly = row.localId != null;
+      fillOnly = !sync && row.localId != null;
       count(row);
     }
     if (dashId[row.package] == null) continue;
@@ -924,15 +1002,21 @@ async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
     const overlay = own(dashboards, row.package)
       ? dashboards[row.package]
       : null;
-    if (!overlay) continue;
+    // Keeping in step: the account's name, folder and theme come too.
+    const meta = sync ? dashboardMeta(entry, folderId, themeKey) : null;
+    if (!overlay && !meta) continue;
     const ws = d
       .workspaceFile(appId)
       .find((w) => String(w.id) === String(dashId[row.package]));
     if (ws) {
-      d.saveWorkspace(
-        appId,
-        applyDashboardOverlay(ws, overlay, nameProvider, { fillOnly }),
-      );
+      let next = overlay
+        ? applyDashboardOverlay(ws, overlay, nameProvider, {
+            fillOnly,
+            blankedSecret: sync && !fillOnly ? blankedSecret : null,
+          })
+        : ws;
+      if (meta) next = { ...next, ...meta };
+      d.saveWorkspace(appId, next);
     }
   }
 
@@ -1007,6 +1091,53 @@ async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
       continue;
     }
     count(row);
+  }
+
+  // Keeping in step: bots already here take the account's choices too
+  // (an update in place or one already here otherwise keeps this computer's).
+  if (sync) {
+    const bots = d.allBots() || [];
+    // A patch that would leave a bot here without any of its providers
+    // (none of the account's map to one here) keeps this computer's.
+    const syncPatch = (o, botId) => {
+      const patch = botPatch(o, nameProvider);
+      if (!patch) return null;
+      const here = bots.find((b) => String(b.id) === String(botId));
+      const hadSome =
+        here && Array.isArray(here.mcpServers) && here.mcpServers.length > 0;
+      if (hadSome && patch.mcpServers.length === 0) {
+        delete patch.mcpServers;
+        delete patch.toolSelections;
+      }
+      return patch;
+    };
+    for (const row of [...of("bot"), ...of("team")]) {
+      if (row.action === "install" || row.action === "unavailable") continue;
+      // Kept at this computer's version: it keeps how it runs here.
+      if (keptHere(row)) continue;
+      const overlay = own(botSettings, row.package)
+        ? botSettings[row.package]
+        : null;
+      if (!overlay) continue;
+      if (row.kind === "bot") {
+        const patch = syncPatch(overlay, row.localId);
+        if (patch && row.localId != null) d.updateBot(row.localId, patch);
+        continue;
+      }
+      const entry = manifest.bots[row.package] || {};
+      const wsId = entry.dashboard ? dashId[entry.dashboard] : null;
+      // Members by name (a member renamed here keeps its own choices).
+      for (const b of bots) {
+        if (String(b.workspaceId) !== String(wsId)) continue;
+        if (!refMatches("bot-team", b, row.package)) continue;
+        const o =
+          overlay.members && own(overlay.members, b.name)
+            ? overlay.members[b.name]
+            : null;
+        const patch = syncPatch(o, b.id);
+        if (patch) d.updateBot(b.id, patch);
+      }
+    }
   }
 
   // 6. The profile: what it holds on this computer — its dashboards, every
