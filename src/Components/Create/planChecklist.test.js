@@ -1,4 +1,7 @@
 import {
+  choosePlanProvider,
+  createdFor,
+  providerChoices,
   normalizeType,
   providerTypesOf,
   buildChecklist,
@@ -277,5 +280,70 @@ describe("a plan for a dashboard you have (5e-2b)", () => {
     expect(buildButtonLabel(connect, {}, new Set())).toBe(
       "Connect Gmail & build",
     );
+  });
+});
+
+describe("using a provider you have", () => {
+  const providers = {
+    a: { name: "Zed CRM", type: "crm", providerClass: "credential" },
+    b: { name: "My Mail", type: "custom", providerClass: "mcp" },
+    c: { name: "Gmail", type: "gmail", providerClass: "mcp" },
+  };
+  test("closest first: the same type, then MCP servers, then the rest", () => {
+    expect(providerChoices(providers, "Gmail").map((p) => p.name)).toEqual([
+      "Gmail",
+      "My Mail",
+      "Zed CRM",
+    ]);
+  });
+  test("the plan names it: widgets by its type, bots by its name", () => {
+    const plan = {
+      pieces: [
+        { kind: "widget", name: "Inbox", providers: ["Gmail", "slack"] },
+        {
+          kind: "bot",
+          name: "Brief",
+          tools: [
+            { provider: "gmail", tools: ["search"] },
+            { provider: "Slack" },
+          ],
+        },
+      ],
+    };
+    const next = choosePlanProvider(plan, "gmail", providers.b);
+    expect(next.pieces[0].providers).toEqual(["custom", "slack"]);
+    // That exact provider is pinned — "custom" alone could be any of them.
+    expect(next.pieces[0].provider).toEqual({ custom: "My Mail" });
+    expect(next.pieces[1].tools[0]).toEqual({
+      provider: "My Mail",
+      tools: ["search"],
+    });
+    expect(next.pieces[1].tools[1]).toEqual({ provider: "Slack" });
+    // The checklist no longer asks for Gmail.
+    const have = new Set(["slack", "custom"]);
+    expect(
+      buildChecklist(next, have).filter((i) => i.kind === "connect"),
+    ).toEqual([]);
+  });
+
+  test("what the user has counts by name too — a plan that names it isn't asking again", () => {
+    const have = providerTypesOf(providers);
+    expect(have.has("my-mail")).toBe(true);
+    const plan = {
+      pieces: [{ kind: "widget", name: "Inbox", providers: ["My Mail"] }],
+    };
+    expect(
+      buildChecklist(plan, have).filter((i) => i.kind === "connect"),
+    ).toEqual([]);
+  });
+  test("made in the Connect window: the one of that type, else the only one, else none", () => {
+    const gmail = { name: "Mail", type: "gmail" };
+    const slack = { name: "Slack", type: "slack" };
+    const custom = { name: "HA", type: "custom" };
+    expect(createdFor([slack, gmail], "gmail")).toBe(gmail);
+    expect(createdFor([custom], "home-assistant")).toBe(custom);
+    // Added Slack too while there: never replaces what the plan needs.
+    expect(createdFor([slack, custom], "home-assistant")).toBe(null);
+    expect(createdFor([], "gmail")).toBe(null);
   });
 });

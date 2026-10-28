@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Button,
   Button3,
@@ -12,6 +12,7 @@ import { AppContext } from "../../Context/App/AppContext";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { ProvidersSection } from "../Settings/sections/ProvidersSection";
 import { runTeamRole, extractMatches } from "../../utils/teamRoles";
+import { normalizeType } from "./planChecklist";
 
 /**
  * The Plan step's Before-building windows (create-entry CRE-003 AC3,
@@ -184,40 +185,79 @@ export const InstallReviewDialog = ({ item, onApprove, onSkip, onClose }) => {
 };
 
 /**
+ * The MCP catalog entry for a plan's provider type — by id, type or name
+ * ("google-calendar", "Google Calendar") — or null.
+ */
+export function catalogMatch(servers, providerType) {
+  const want = normalizeType(providerType);
+  if (!want) return null;
+  return (
+    (servers || []).find(
+      (sv) =>
+        sv &&
+        [sv.id, sv.type, sv.name].some((v) => v && normalizeType(v) === want),
+    ) || null
+  );
+}
+
+/**
  * Connect a provider without leaving the plan: the Providers screen, opened
- * on "add <type>", in a window over Create. Types in the MCP catalog open
- * the catalog with that server picked; anything else opens the credential
- * form with the type filled in.
+ * on "add <type>", in a window over Create. A type in the MCP catalog opens
+ * that catalog entry, picked; anything else asks which kind it is (an MCP
+ * server, an API key, a WebSocket) — never a guess.
+ *
+ * `onClose(created)`: the providers made while it was open (the plan uses
+ * the newest for this item).
  */
 export const ConnectDialog = ({ item, onClose, onSkip = null }) => {
   const app = useContext(AppContext) || {};
   const panel = usePanel();
   const { hairline, muted } = useConfigTokens();
   // null while looking the type up in the MCP catalog.
-  const [providerClass, setProviderClass] = useState(null);
+  const [link, setLink] = useState(null);
+  // The providers there were when it opened: what's new was made here.
+  const before = useRef(null);
+  if (before.current === null) {
+    before.current = new Set(
+      Object.values(app.providers || {})
+        .map((p) => p && p.name)
+        .filter(Boolean),
+    );
+  }
 
   useEffect(() => {
     let alive = true;
     const getCatalog = window.mainApi?.mcp?.getCatalog;
     Promise.resolve(getCatalog ? getCatalog() : null)
       .then((res) => {
-        const servers = (res && res.catalog) || [];
-        const inCatalog = servers.some(
-          (sv) =>
-            sv &&
-            (sv.id === item.providerType || sv.type === item.providerType),
+        const match = catalogMatch(res && res.catalog, item.providerType);
+        if (!alive) return;
+        setLink(
+          match
+            ? { providerClass: "mcp", providerType: match.id }
+            : { providerClass: null, providerType: item.providerType },
         );
-        if (alive) setProviderClass(inCatalog ? "mcp" : "credential");
       })
-      .catch(() => alive && setProviderClass("credential"));
+      .catch(
+        () =>
+          alive &&
+          setLink({ providerClass: null, providerType: item.providerType }),
+      );
     return () => {
       alive = false;
     };
   }, [item.providerType]);
+
+  const close = () => {
+    const created = Object.values(app.providers || {}).filter(
+      (p) => p && p.name && !before.current.has(p.name),
+    );
+    onClose(created);
+  };
   return (
     <Modal
       isOpen
-      setIsOpen={(v) => !v && onClose()}
+      setIsOpen={(v) => !v && close()}
       width="w-11/12"
       height="h-5/6"
     >
@@ -233,17 +273,17 @@ export const ConnectDialog = ({ item, onClose, onSkip = null }) => {
             {onSkip ? (
               <Button3 title="Build without it for now" onClick={onSkip} />
             ) : null}
-            <Button3 title="Done" onClick={onClose} />
+            <Button3 title="Done" onClick={close} />
           </div>
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
-          {providerClass ? (
+          {link ? (
             <ProvidersSection
               dashApi={app.dashApi || null}
               credentials={app.credentials || null}
               initialCreateRequested
-              initialProviderType={item.providerType}
-              initialProviderClass={providerClass}
+              initialProviderType={link.providerType}
+              initialProviderClass={link.providerClass}
             />
           ) : (
             <span className={`p-6 text-sm ${muted}`}>Opening…</span>

@@ -12,6 +12,7 @@ import {
   StatusBadge,
   useStatusTokens,
   SectionLabel,
+  SelectInput,
   ChatComposer,
   ChatMessage,
 } from "@trops/dash-react";
@@ -24,6 +25,10 @@ import { runCostLabel, usageTokens } from "../../utils/runCostLabel";
 import {
   buildChecklist,
   buildButtonLabel,
+  choosePlanProvider,
+  createdFor,
+  providerChoices,
+  providerLabel,
   countsLine,
   editNote,
   isDone,
@@ -932,6 +937,16 @@ export const CreatePlanStep = ({
     setEdits((e) => [...e, note]);
     setReady(false);
   };
+  // One of the user's providers for what the plan needs: the plan uses it
+  // (widgets by its type, bots by its name), so the item is done and the
+  // build wires it up.
+  const pickProvider = (item, provider) => {
+    if (!item || !provider) return;
+    editPlan(
+      choosePlanProvider(plan, item.providerType, provider),
+      `use my provider "${provider.name}" (type ${provider.type || "unknown"}) wherever the plan needs ${providerLabel(item.providerType)}`,
+    );
+  };
 
   // The chat follows the conversation to its latest message (its own column
   // full size; the one column in the dock).
@@ -1348,10 +1363,17 @@ export const CreatePlanStep = ({
             {checklist.map((it) => {
               const skipped = isSkipped(it, checks, have);
               const done = isDone(it, checks, have) && !skipped;
+              // The user's providers that could stand in, closest first.
+              const choices =
+                it.kind === "connect"
+                  ? providerChoices(app.providers, it.providerType)
+                  : [];
               return (
                 <div
                   key={it.id}
-                  className="flex flex-row items-center gap-3 text-sm py-1"
+                  className={`flex ${
+                    compact ? "flex-col items-stretch" : "flex-row items-center"
+                  } gap-3 text-sm py-1`}
                   data-testid="checklist-item"
                 >
                   <span className="flex-1 min-w-0 flex flex-col items-start gap-1">
@@ -1374,21 +1396,51 @@ export const CreatePlanStep = ({
                     ) : null}
                   </span>
                   {done ? null : (
-                    <Button2
-                      title={
-                        it.kind === "install"
-                          ? "Review & approve"
-                          : it.kind === "connect"
-                            ? "Connect"
-                            : "OK"
-                      }
-                      size="sm"
-                      onClick={() =>
-                        it.kind === "approve"
-                          ? finish(it, "done")
-                          : openItem(it)
-                      }
-                    />
+                    <div
+                      className={`flex flex-col gap-2 ${
+                        compact ? "items-start" : "items-end"
+                      }`}
+                    >
+                      <Button2
+                        title={
+                          it.kind === "install"
+                            ? "Review & approve"
+                            : it.kind === "connect"
+                              ? "Connect new"
+                              : "OK"
+                        }
+                        size="sm"
+                        onClick={() =>
+                          it.kind === "approve"
+                            ? finish(it, "done")
+                            : openItem(it)
+                        }
+                      />
+                      {choices.length ? (
+                        <div
+                          className={compact ? "w-full" : "w-56"}
+                          data-testid="checklist-use-provider"
+                        >
+                          <SelectInput
+                            label="Or use one you have"
+                            value=""
+                            onChange={(name) => {
+                              const p = choices.find((x) => x.name === name);
+                              if (p) pickProvider(it, p);
+                            }}
+                            options={[
+                              { value: "", label: "Pick a provider…" },
+                              ...choices.map((p) => ({
+                                value: p.name,
+                                label: p.type
+                                  ? `${p.name} · ${p.type}`
+                                  : p.name,
+                              })),
+                            ]}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
                   )}
                 </div>
               );
@@ -1400,9 +1452,17 @@ export const CreatePlanStep = ({
             goes below. */}
         {single || botMode ? null : expectSection}
 
+        {single || botMode ? expectSection : null}
+      </div>
+    ) : null;
+  // Build stays in view: pinned to the bottom of the plan, not at the end
+  // of a long card (QA 2026-10-28).
+  const buildBar =
+    plan && pieces.length ? (
+      <div className="flex flex-col gap-2" data-testid="plan-build-bar">
         {broken ? (
           <span
-            className="text-xs text-red-500 whitespace-pre-wrap"
+            className="text-xs text-red-500 whitespace-pre-wrap max-h-24 overflow-y-auto"
             data-testid="plan-errors"
           >
             The plan isn't complete yet: {check.errors.join(" ")}
@@ -1453,7 +1513,6 @@ export const CreatePlanStep = ({
                                 : "Saved · nothing has been built or installed yet.")}
           </span>
         </div>
-        {single || botMode ? expectSection : null}
       </div>
     ) : null;
   const dialogs = (
@@ -1482,19 +1541,21 @@ export const CreatePlanStep = ({
         <ConnectDialog
           item={dialog.item}
           onSkip={() => finish(dialog.item, "skipped")}
-          onClose={async () => {
+          onClose={async (created) => {
             const it = dialog.item;
             setDialog(null);
+            setWalking(false);
+            // A provider made in the window is the one this needed — even
+            // when its type isn't the plan's (a custom MCP server).
+            const made = createdFor(created, it.providerType);
+            if (made) pickProvider(it, made);
             if (app.refreshProviders) {
               try {
                 await app.refreshProviders();
               } catch (_e) {
-                // keep going; the item stays open
+                // the item stays open; it can be picked from the list
               }
             }
-            // Walk on only if it really got connected (no loop otherwise).
-            setWalking(false);
-            void it;
           }}
         />
       ) : null}
@@ -1542,12 +1603,19 @@ export const CreatePlanStep = ({
     return (
       <div className="flex-1 min-h-0 flex flex-row" data-testid="create-plan">
         <div
-          className="flex-1 min-w-0 overflow-y-auto"
+          className="flex-1 min-w-0 min-h-0 flex flex-col"
           data-testid="plan-column"
         >
-          <div className="mx-auto w-full max-w-3xl flex flex-col gap-4 px-6 py-8">
-            {planCard}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="mx-auto w-full max-w-3xl flex flex-col gap-4 px-6 py-8">
+              {planCard}
+            </div>
           </div>
+          {buildBar ? (
+            <div className={`flex-shrink-0 border-t px-6 py-3 ${hairline}`}>
+              <div className="mx-auto w-full max-w-3xl">{buildBar}</div>
+            </div>
+          ) : null}
         </div>
         <div
           className={`flex-1 min-w-0 min-h-0 flex flex-col border-l ${hairline}`}
@@ -1588,6 +1656,17 @@ export const CreatePlanStep = ({
         </div>
       </div>
       {dialogs}
+      {buildBar ? (
+        <div
+          className={`flex-shrink-0 border-t ${hairline} ${
+            compact ? "px-3 py-2" : "px-6 py-3"
+          }`}
+        >
+          <div className={compact ? "" : "mx-auto w-full max-w-3xl"}>
+            {buildBar}
+          </div>
+        </div>
+      ) : null}
       {foot}
     </div>
   );

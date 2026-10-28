@@ -42,12 +42,22 @@ export function normalizeType(name) {
   return ALIASES[dashed.replace(/-/g, "")] || dashed;
 }
 
-/** The provider types the user has (from AppContext.providers). */
+/**
+ * What the user has, as the plan names it (from AppContext.providers): each
+ * provider's type and its name — a plan that names one of the user's
+ * providers ("Work Mail") has it, whatever its type ("custom").
+ */
 export function providerTypesOf(providers) {
   const list = Array.isArray(providers)
     ? providers
     : Object.values(providers || {});
-  return new Set(list.map((p) => normalizeType(p && p.type)).filter(Boolean));
+  const out = new Set();
+  for (const p of list) {
+    if (!p) continue;
+    if (normalizeType(p.type)) out.add(normalizeType(p.type));
+    if (normalizeType(p.name)) out.add(normalizeType(p.name));
+  }
+  return out;
 }
 
 const titleCase = (t) =>
@@ -63,6 +73,98 @@ const PROVIDER_NAMES = {
   hubspot: "HubSpot",
   websocket: "WebSocket",
 };
+
+const providerList = (providers) =>
+  (Array.isArray(providers)
+    ? providers
+    : Object.values(providers || {})
+  ).filter((p) => p && p.name);
+
+/**
+ * The user's providers to offer for a needed type, closest first: the
+ * same type, then MCP servers (most plans' tools are MCP), then the rest.
+ * @returns {Array<{ name, type, providerClass }>}
+ */
+export function providerChoices(providers, providerType) {
+  const want = normalizeType(providerType);
+  const rank = (p) =>
+    normalizeType(p.type) === want || normalizeType(p.name) === want
+      ? 0
+      : p.providerClass === "mcp"
+        ? 1
+        : 2;
+  return providerList(providers)
+    .map((p) => ({
+      name: p.name,
+      type: p.type || "",
+      providerClass: p.providerClass || null,
+    }))
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
+/**
+ * Which of the providers made in the Connect window stands in for a needed
+ * type: one of that type (or name); else the only one made; else none —
+ * the user picks (adding Slack while there never replaces Gmail).
+ */
+export function createdFor(created, providerType) {
+  const list = (created || []).filter((p) => p && p.name);
+  const want = normalizeType(providerType);
+  const same = list.filter(
+    (p) => normalizeType(p.type) === want || normalizeType(p.name) === want,
+  );
+  if (same.length) return same[same.length - 1];
+  return list.length === 1 ? list[0] : null;
+}
+
+/**
+ * The plan using one of the user's providers wherever it needed
+ * `providerType`: widgets name provider types, so they take its type; bots
+ * name providers, so they take its name. The checklist, the Builder and
+ * the bot's setup then all see the provider the user chose.
+ */
+export function choosePlanProvider(plan, providerType, provider) {
+  if (!plan || !provider || !provider.name) return plan;
+  const want = normalizeType(providerType);
+  const matches = (t) => normalizeType(t) === want;
+  const type = provider.type || provider.name;
+  const pieces = (plan.pieces || []).map((p) => {
+    if (!p) return p;
+    let next = p;
+    if (Array.isArray(p.providers) && p.providers.some(matches)) {
+      // Its type, and that exact provider pinned (`provider: { type: name }`)
+      // — a custom MCP server's type is just "custom", and the user may have
+      // two of a type.
+      const pinned = {};
+      for (const [k, v] of Object.entries(
+        p.provider && typeof p.provider === "object" ? p.provider : {},
+      )) {
+        if (!matches(k)) pinned[k] = v;
+      }
+      pinned[type] = provider.name;
+      next = {
+        ...next,
+        providers: [
+          ...new Set(p.providers.map((t) => (matches(t) ? type : t))),
+        ],
+        provider: pinned,
+      };
+    }
+    if (
+      Array.isArray(p.tools) &&
+      p.tools.some((t) => t && matches(t.provider))
+    ) {
+      next = {
+        ...next,
+        tools: p.tools.map((t) =>
+          t && matches(t.provider) ? { ...t, provider: provider.name } : t,
+        ),
+      };
+    }
+    return next;
+  });
+  return { ...plan, pieces };
+}
 
 /** "gmail" / "Google Calendar" / "github" → "Gmail" / "Google Calendar" / "GitHub". */
 export function providerLabel(name) {

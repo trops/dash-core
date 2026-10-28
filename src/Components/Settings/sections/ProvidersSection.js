@@ -597,9 +597,14 @@ export const ProvidersSection = ({
       setIsAddingMcp(false);
       setIsCreating(false);
       setIsAddingWs(false);
+      // A deep link that named a type but not its kind (a plan's "Connect
+      // Home Assistant"): the type fills the credential form if that's
+      // what's chosen.
+      chooserType.current = providerType || null;
       setIsShowingClassChooser(true);
     }
   }
+  const chooserType = useRef(null);
 
   const prevCreateRequested = useRef(false);
   useEffect(() => {
@@ -790,6 +795,7 @@ export const ProvidersSection = ({
             setIsAddingWs(true);
           } else {
             setIsCreating(true);
+            if (chooserType.current) setFormType(chooserType.current);
           }
         }}
       />
