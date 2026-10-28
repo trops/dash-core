@@ -171,6 +171,55 @@ describe("LoadProfileV2Modal", () => {
     );
   });
 
+  test("a v3 profile's setup: folders, and the profile's copy of a changed item", async () => {
+    const { onLoaded } = mount({
+      schemaVersion: 3,
+      rows: [
+        { kind: "folder", package: "2", name: "House", action: "install" },
+        {
+          kind: "dashboard",
+          package: "1",
+          name: "Home",
+          action: "update",
+          localId: "1",
+          reason: "Edited more recently in the profile",
+        },
+        {
+          kind: "bot",
+          package: "brief",
+          name: "Brief",
+          action: "keep",
+          localId: "brief",
+          reason: "Edited more recently on this Mac",
+        },
+      ],
+    });
+    expect(screen.getByTestId("load-v2-folder")).toHaveTextContent(
+      "House · new",
+    );
+    expect(
+      screen.getByLabelText("Home — use the profile's copy"),
+    ).toBeChecked();
+    fireEvent.click(screen.getByLabelText("Brief — use the profile's copy"));
+    fireEvent.click(screen.getByRole("button", { name: "Load" }));
+    await waitFor(() => expect(onLoaded).toHaveBeenCalled());
+    expect(window.mainApi.profiles.applyLoad.mock.calls[0][2].take).toEqual([
+      "bot:brief",
+    ]);
+  });
+
+  test("loading a v3 profile as new says the records are shared", () => {
+    mount({
+      schemaVersion: 3,
+      target: { mode: "replace", profileId: "mm", name: "Mac Mini" },
+    });
+    expect(screen.queryByTestId("load-as-new-shared")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Load as a new profile instead"));
+    expect(screen.getByTestId("load-as-new-shared")).toHaveTextContent(
+      "a change to one shows in both profiles",
+    );
+  });
+
   test("Set up opens the provider form for that type", () => {
     mount();
     const seen = [];

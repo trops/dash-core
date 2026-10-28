@@ -23,6 +23,7 @@ export function changesText(changes = {}) {
     ["bots", "bot"],
     ["themes", "theme"],
     ["folders", "folder"],
+    ["widgets", "widget"],
   ]
     .filter(([k]) => changes[k] > 0)
     .map(([k, noun]) => plural(changes[k], noun))

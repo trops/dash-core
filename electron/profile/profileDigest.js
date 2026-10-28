@@ -6,16 +6,19 @@
  * dashboards here" since the profile was last saved to or loaded from the
  * account, without asking the registry.
  *
- * A digest is `{ dashboards, bots, themes, folders }`, each `{ id: hash }`
- * for the items the profile holds (Default without profiles: everything).
- * A hash covers what a profile save carries: the published content
- * (registry/fingerprint.js), the user's widget settings and provider
- * choices, and the name, folder and theme. Times and run state aren't in
- * it, so opening a dashboard or a bot run doesn't count as a change.
+ * A digest is `{ dashboards, bots, themes, folders, widgets }`, each
+ * `{ id: hash }` for what the profile holds (Default without profiles:
+ * everything). A hash covers what a v3 profile save carries — the setup
+ * record as the profile keeps it (profileSetup.setupHash: keys blanked,
+ * times and run state left out, so opening a dashboard or a bot run isn't
+ * a change) — and, per widget its dashboards use, the registry version
+ * installed. A widget built or edited here and not published counts as
+ * "built here", whatever its version: unpublished edits aren't changes to
+ * the profile (the first edit to a published widget counts once).
  */
 const crypto = require("crypto");
 
-const KINDS = ["dashboards", "bots", "themes", "folders"];
+const KINDS = ["dashboards", "bots", "themes", "folders", "widgets"];
 
 function defaultDeps() {
   const fileOf = (name, fallback) => (appId) => {
@@ -29,6 +32,13 @@ function defaultDeps() {
     workspaceFile: fileOf("workspaces.json", []),
     themeFile: fileOf("themes.json", {}),
     folderFile: fileOf("menuItems.json", []),
+    widgetRegistry: () => {
+      try {
+        return require("../widgetRegistry").getWidgetRegistry();
+      } catch (_e) {
+        return null;
+      }
+    },
     allBots: () => {
       try {
         const c = require("../controller/botController");
@@ -55,8 +65,8 @@ const list = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
 function profileDigest(appId, profileId, deps = {}) {
   const d = { ...defaultDeps(), ...deps };
   if (!d.store) d.store = require("./profileStore");
-  const { publishFingerprint } = require("../registry/fingerprint");
-  const { dashboardOverlay, botOverlay } = require("./profileManifest");
+  const { setupHash, comparableDashboard } = require("./profileSetup");
+  const { secretFieldLookup } = require("./secretFields");
   const profile = d.store.list(appId).find((p) => p.id === profileId);
   if (!profile) return null;
   const explicit = d.store.hasProfiles(appId);
@@ -66,44 +76,77 @@ function profileDigest(appId, profileId, deps = {}) {
     const ids = holds(kind);
     return ids === null || ids.has(String(id));
   };
+  const registry = d.widgetRegistry();
+  const secretFieldsFor = secretFieldLookup(registry);
 
-  const out = { dashboards: {}, bots: {}, themes: {}, folders: {} };
-  for (const w of list(d.workspaceFile(appId))) {
-    if (w.id == null || !held("dashboards", w.id)) continue;
-    out.dashboards[String(w.id)] = hashOf({
-      content: publishFingerprint("dashboard", w),
-      overlay: dashboardOverlay(w),
-      name: w.name || w.label || null,
-      menuId: w.menuId ?? null,
-      themeKey: w.themeKey || null,
-    });
+  const out = {
+    dashboards: {},
+    bots: {},
+    themes: {},
+    folders: {},
+    widgets: {},
+  };
+  const dashboards = list(d.workspaceFile(appId)).filter(
+    (w) => w.id != null && held("dashboards", w.id),
+  );
+  for (const w of dashboards) {
+    out.dashboards[String(w.id)] = setupHash(
+      "dashboards",
+      comparableDashboard(w, secretFieldsFor),
+    );
   }
   for (const b of list(d.allBots())) {
     if (b.system === "dash-team" || b.id == null) continue;
-    // Leads aren't in a profile (the app makes one when its dashboard
-    // opens and rewrites it on upgrade — a save leaves them out), so they
-    // aren't changes either.
+    // Leads aren't changes (the app makes one when its dashboard opens
+    // and rewrites it on upgrade).
     if (b.role === "lead") continue;
     if (!held("bots", b.id)) continue;
-    out.bots[String(b.id)] = hashOf({
-      content: publishFingerprint("bot", b),
-      overlay: botOverlay(b),
-      name: b.name || null,
-    });
+    out.bots[String(b.id)] = setupHash("bots", b);
   }
   const themes = d.themeFile(appId) || {};
   for (const key of Object.keys(themes)) {
     if (!held("themes", key)) continue;
-    out.themes[key] = hashOf({
-      content: publishFingerprint("theme", themes[key]),
-      name: (themes[key] && themes[key].name) || null,
-    });
+    out.themes[key] = setupHash("themes", themes[key]);
   }
   for (const f of list(d.folderFile(appId))) {
     if (f.id == null || !held("folders", f.id)) continue;
-    out.folders[String(f.id)] = hashOf({ name: f.name || null });
+    out.folders[String(f.id)] = setupHash("folders", f);
+  }
+  if (registry) {
+    const {
+      collectDependencyRefsFromWorkspace,
+      buildWidgetDependencies,
+    } = require("../schema/dashboardConfigUtils");
+    for (const w of dashboards) {
+      for (const dep of buildWidgetDependencies(
+        collectDependencyRefsFromWorkspace(w),
+        registry,
+      )) {
+        const pkg = packageIdOf(dep || {});
+        if (!pkg || out.widgets[pkg]) continue;
+        const installed = registry.getWidget ? registry.getWidget(pkg) : null;
+        // From the registry (or installed before Dash recorded where from).
+        const fromRegistry =
+          !!installed &&
+          !pkg.startsWith("@ai-built/") &&
+          (installed.installSource === "registry" ||
+            (!installed.installSource && !installed.copiedFromFolder));
+        out.widgets[pkg] = hashOf(
+          fromRegistry ? installed.version || null : "built-here",
+        );
+      }
+    }
   }
   return out;
+}
+
+/** "@scope/name" for a dashboard's widget dependency. */
+function packageIdOf(dep) {
+  const scope = String(dep.scope || "").replace(/^@/, "");
+  const name = String(dep.packageName || dep.package || "");
+  if (!name) return null;
+  if (name.startsWith("@")) return name;
+  return scope ? `@${scope}/${name}` : name;
 }
 
 /**
