@@ -178,8 +178,8 @@ class BotStore {
 
   /**
    * Update a bot's definition without discarding its session or run history.
-   * `id`, `createdAt`, and `session` are protected from the patch (session has
-   * its own methods).
+   * `id`, `createdAt`, `session` and `chatSession` are protected from the
+   * patch (sessions have their own methods).
    * @returns {object} the updated definition
    */
   update(id, patch) {
@@ -192,6 +192,7 @@ class BotStore {
       id: _i,
       createdAt: _c,
       session: _s,
+      chatSession: _cs,
       ref: _r,
       ...safePatch
     } = patch || {};
@@ -229,15 +230,18 @@ class BotStore {
   /**
    * Persist the engine's resume state on the bot record (US-005). Stored as
    * { engine, state } so a provider/engine change can detect a mismatch.
+   * `slot` "chat" keeps the user's conversation (chatSession) apart from the
+   * bot's scheduled and event runs (session), so neither overwrites the other.
    */
-  saveSession(id, engineId, state) {
+  saveSession(id, engineId, state, slot = "job") {
     const data = this._load();
     const bot = data.bots[id];
     if (!bot) throw new Error(`BotStore.saveSession: no bot "${id}"`);
-    bot.session = { engine: engineId, state };
+    const key = slot === "chat" ? "chatSession" : "session";
+    bot[key] = { engine: engineId, state };
     bot.updatedAt = this._now();
     this._save(data);
-    return bot.session;
+    return bot[key];
   }
 
   /** Clear stored session state (US-005 "Reset memory"). */
@@ -246,6 +250,7 @@ class BotStore {
     const bot = data.bots[id];
     if (!bot) throw new Error(`BotStore.resetSession: no bot "${id}"`);
     bot.session = null;
+    bot.chatSession = null;
     bot.updatedAt = this._now();
     this._save(data);
   }

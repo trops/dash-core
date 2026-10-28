@@ -63,6 +63,22 @@ function sumUsage(a, b) {
 }
 
 /**
+ * A run of the user's conversation with the bot: one they started (a
+ * message, Run now, a reply) or a question they asked a lead directly.
+ * These keep their own session, so a scheduled or event run in between
+ * doesn't take over the conversation (and a chat doesn't take over the
+ * job's). A question asked on someone's behalf (`via` the Dash team, a
+ * plan build or an MCP client) isn't the user's; one from Create's Ask is.
+ */
+function isChatRun(trigger, via) {
+  return (
+    trigger === "manual" ||
+    trigger === "reply" ||
+    (trigger === "ask" && (!via || via === "create"))
+  );
+}
+
+/**
  * The engine's events — until Dash quits mid-run (US-018 AC6). Then stop
  * waiting for the engine to wind down: it can take longer than Dash has
  * left, and the run's record must be written before Dash exits. A run the
@@ -204,6 +220,7 @@ class BotRunner {
     }
 
     const trigger = opts.trigger || "manual";
+    const chat = isChatRun(trigger, opts.via);
     // A run may override the bot's approval policy — the Dash team's runs
     // inside an approved plan build (the plan was the consent, CRE-003 AC3).
     const approvalPolicy = opts.approvalPolicy || bot.approvalPolicy;
@@ -332,10 +349,17 @@ class BotRunner {
       // A run does the bot's job against current data → fresh conversation.
       // Resume only when explicitly continuing (reply-to-continue) AND the
       // stored session was produced by this engine. Anything a bot should
-      // carry between runs belongs in its memory tools.
+      // carry between runs belongs in its memory tools. The user's chat
+      // resumes its own session (a bot saved before there was one: the
+      // shared one).
+      const stored = chat
+        ? bot.chatSession === undefined
+          ? bot.session
+          : bot.chatSession
+        : bot.session;
       const session =
-        opts.continueSession && bot.session && bot.session.engine === engine.id
-          ? bot.session.state
+        opts.continueSession && stored && stored.engine === engine.id
+          ? stored.state
           : null;
 
       const ctx = {
@@ -403,7 +427,12 @@ class BotRunner {
             toolCalls[callIndex.get(event.id)].ok = !event.isError;
           }
           if (event.type === "session") {
-            this._store.saveSession(botId, engine.id, event.session);
+            this._store.saveSession(
+              botId,
+              engine.id,
+              event.session,
+              chat ? "chat" : "job",
+            );
           } else if (event.type === "done") {
             usage = sumUsage(usage, event.usage);
           }

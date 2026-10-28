@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button3,
   ButtonIcon3,
@@ -9,6 +9,7 @@ import {
   ListRow,
   PanelHeader,
   SegmentedControl,
+  SelectInput,
   StatusBadge,
 } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
@@ -82,15 +83,48 @@ function useThreads() {
   return { threads, loaded };
 }
 
-const Conversation = ({ planner, onTurnOn, onOpenPlan }) => {
+// What each role is for, under the To: picker.
+const ROLE_HINT = {
+  planner: "Answers questions and plans new things for you to approve.",
+  scout: "Finds widgets and bots you have, or can get from the registry.",
+  builder:
+    "Answers questions about building widgets. It builds only in a plan you approve.",
+  checker: "Answers questions about checking widgets before they're used.",
+};
+
+const pickRole = (role) => (ROLE_ORDER.includes(role) ? role : "planner");
+// "builder" → "Builder", while the team's names are still loading.
+const roleWord = (role) => `${role.charAt(0).toUpperCase()}${role.slice(1)}`;
+
+const Conversation = ({ team, role, onRoleChange, onTurnOn, onOpenPlan }) => {
   const { muted, hairline } = useConfigTokens();
   const { threads } = useThreads();
   // What's open on the right: a thread ({ recentId }), a new question just
-  // sent ({ question }), or nothing yet (the composer). `key` stays put for
-  // a new question, so the thread isn't restarted once it's saved.
+  // sent ({ question, recipient }), or nothing yet (the composer). `key`
+  // stays put for a new question, so the thread isn't restarted once it's
+  // saved.
   const [open, setOpen] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [draft, setDraft] = useState("");
+  // Who a new question goes to: the Planner unless another role is picked.
+  const [to, setToState] = useState(() => pickRole(role));
+  const setTo = (next) => {
+    setToState(next);
+    if (onRoleChange) onRoleChange(next);
+  };
+  // The host picked another role (the Bots page's list): a new question to it.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    setToState(pickRole(role));
+    setOpen(null);
+    setSelectedId(null);
+  }, [role]);
+  const toBot = team.find((b) => b.role === to) || null;
+  const toName = (toBot && toBot.name) || roleWord(to);
 
   const startNew = () => {
     setOpen(null);
@@ -100,9 +134,27 @@ const Conversation = ({ planner, onTurnOn, onOpenPlan }) => {
     const q = draft.trim();
     if (!q) return;
     setDraft("");
-    setOpen({ key: `new:${Date.now()}`, question: q });
+    setOpen({
+      key: `new:${Date.now()}`,
+      question: q,
+      recipient: to === "planner" ? null : { role: to, roleName: toName },
+    });
   };
-  const paused = !!(planner && planner.paused);
+  const paused = !!(toBot && toBot.paused);
+  const picker =
+    team.length > 1 ? (
+      <div className="flex flex-col gap-1" data-testid="dash-team-to">
+        <div className="w-56">
+          <SelectInput
+            label="To"
+            value={to}
+            onChange={(v) => setTo(v)}
+            options={team.map((b) => ({ value: b.role, label: b.name }))}
+          />
+        </div>
+        <span className={`text-xs ${muted}`}>{ROLE_HINT[to] || ""}</span>
+      </div>
+    ) : null;
 
   return (
     <div className="flex flex-row flex-1 min-h-0 gap-4 px-5 pb-5">
@@ -158,6 +210,7 @@ const Conversation = ({ planner, onTurnOn, onOpenPlan }) => {
             key={open.key}
             question={open.question || ""}
             recentId={open.recentId || null}
+            recipient={open.recipient || null}
             onOpenPlan={onOpenPlan}
             onStarted={setSelectedId}
           />
@@ -170,26 +223,47 @@ const Conversation = ({ planner, onTurnOn, onOpenPlan }) => {
                 icon={
                   <FontAwesomeIcon icon="people-group" className="h-6 w-6" />
                 }
-                title={paused ? "The Dash team is paused" : "Ask the Dash team"}
+                title={
+                  paused
+                    ? to === "planner"
+                      ? "The Dash team is paused"
+                      : `The ${toName} is paused`
+                    : "Ask the Dash team"
+                }
                 description={
                   paused
-                    ? "Turn the Planner on to ask it about your dashboards and bots, or to plan something new."
+                    ? `Turn the ${toName} on to ask it questions${
+                        to === "planner"
+                          ? " about your dashboards and bots, or to plan something new"
+                          : ""
+                      }.`
                     : "Ask about your dashboards and bots, or ask for something new. If it plans something, you review the plan before anything is made."
                 }
               >
                 {paused && onTurnOn ? (
-                  <Button3 size="sm" title="Turn on" onClick={onTurnOn} />
+                  <Button3
+                    size="sm"
+                    title="Turn on"
+                    onClick={() => onTurnOn(toBot)}
+                  />
                 ) : null}
               </EmptyState>
             </div>
-            {paused ? null : (
+            {paused ? (
+              picker ? (
+                <div className="flex-shrink-0 px-3 pb-3">{picker}</div>
+              ) : null
+            ) : (
               <ChatComposer
                 ariaLabel="Ask the Dash team"
                 value={draft}
                 onChange={(v) => setDraft(v)}
                 onSend={ask}
-                placeholder="Ask the Dash team…"
+                placeholder={
+                  to === "planner" ? "Ask the Dash team…" : `Ask the ${toName}…`
+                }
                 sendLabel="Ask"
+                above={picker}
                 className="flex-shrink-0"
               />
             )}
@@ -335,6 +409,9 @@ const Settings = ({ all, workspaces, setDirty, guard }) => {
  * and Edit for its form — what Manage › Bots › Dash team shows.
  *
  * @param {"conversation"|"settings"} [initialTab]
+ * @param {string} [role]  who a new question goes to ("planner", "scout",
+ *   "builder", "checker"); a new value opens a new question to it
+ * @param {(role: string) => void} [onRoleChange]  the To: picker changed
  * @param {object[]} [workspaces]
  * Unsaved role edits are never dropped silently: leaving them (another
  * tab, back, close) asks first, and `onDirtyChange` tells the host (the
@@ -346,6 +423,8 @@ const Settings = ({ all, workspaces, setDirty, guard }) => {
  */
 export const DashTeamPage = ({
   initialTab = "conversation",
+  role = "planner",
+  onRoleChange = null,
   workspaces = EMPTY,
   onOpenPlan = null,
   onClose = null,
@@ -360,6 +439,16 @@ export const DashTeamPage = ({
     setDirtyState(!!v);
     if (onDirtyChange) onDirtyChange(!!v);
   };
+  // Another role picked by the host (it asked about unsaved edits first):
+  // its conversation.
+  const roleSeen = useRef(role);
+  useEffect(() => {
+    if (roleSeen.current === role) return;
+    roleSeen.current = role;
+    setDirty(false);
+    setTab("conversation");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
   // A way out waiting on "Discard unsaved changes?".
   const [leaveTo, setLeaveTo] = useState(null);
   const guard = (leave) => {
@@ -367,12 +456,14 @@ export const DashTeamPage = ({
     else leave();
   };
   const all = useAllBots();
-  const planner = all.dashTeam.find((b) => b && b.role === "planner") || null;
-  const turnOn = async () => {
+  const team = ROLE_ORDER.map((r) =>
+    all.dashTeam.find((b) => b && b.role === r),
+  ).filter(Boolean);
+  const turnOn = async (role) => {
     const b = botsApi();
-    if (!planner || !b || !b.resumeBot) return;
+    if (!role || !b || !b.resumeBot) return;
     try {
-      await b.resumeBot(planner.id);
+      await b.resumeBot(role.id);
     } finally {
       await all.refresh();
     }
@@ -421,7 +512,9 @@ export const DashTeamPage = ({
       </div>
       {tab === "conversation" ? (
         <Conversation
-          planner={planner}
+          team={team}
+          role={role}
+          onRoleChange={onRoleChange}
           onTurnOn={turnOn}
           onOpenPlan={onOpenPlan}
         />

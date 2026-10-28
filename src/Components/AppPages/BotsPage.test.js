@@ -15,9 +15,12 @@ import { AppContext } from "../../Context/App/AppContext";
 
 const mockApprove = jest.fn();
 const mockRefresh = jest.fn();
+// The Dash team, listed first when a test sets it.
+let mockDashTeam = [];
 jest.mock("./useAllBots", () => ({
   useAllBots: () => ({
     loading: false,
+    dashTeam: mockDashTeam,
     bots: [
       {
         id: "lead7",
@@ -85,6 +88,15 @@ jest.mock("../Bots/BotPage", () => ({
     </div>
   ),
 }));
+jest.mock("../Bots/DashTeamPage", () => ({
+  DashTeamPage: ({ role, onDirtyChange, onRoleChange }) => (
+    <div data-testid="dash-team-page-stub">
+      dash team to {role}
+      <button onClick={() => onDirtyChange(true)}>team-dirty</button>
+      <button onClick={() => onRoleChange("builder")}>team-to-builder</button>
+    </div>
+  ),
+}));
 jest.mock("../../ComponentManager", () => ({
   ComponentManager: { config: jest.fn(() => null) },
 }));
@@ -139,6 +151,7 @@ const rowNames = () =>
 afterEach(() => {
   delete window.mainApi;
   mockApprove.mockReset();
+  mockDashTeam = [];
 });
 
 describe("BotsPage list (NAV-006 AC1)", () => {
@@ -305,5 +318,54 @@ describe("BotsPage — Log (bot-factory US-003 AC5, US-014 AC9)", () => {
         limit: 50,
       }),
     );
+  });
+});
+
+describe("BotsPage — the Dash team (QA 2026-10-28)", () => {
+  const team = [
+    { id: "dt_p", name: "Planner", role: "planner", system: "dash-team" },
+    { id: "dt_b", name: "Builder", role: "builder", system: "dash-team" },
+  ];
+
+  it("opens on the user's first bot, not a Dash team role", () => {
+    mockDashTeam = team;
+    setup();
+    expect(rowNames()[0]).toBe("Planner");
+    expect(within(detail()).getByText("bot page lead7")).toBeInTheDocument();
+  });
+
+  it("a role opens the Dash team's page, its conversation to that role", () => {
+    mockDashTeam = team;
+    setup();
+    fireEvent.click(within(list()).getByText("Builder"));
+    expect(
+      within(detail()).getByText("dash team to builder"),
+    ).toBeInTheDocument();
+    fireEvent.click(within(list()).getByText("Planner"));
+    expect(
+      within(detail()).getByText("dash team to planner"),
+    ).toBeInTheDocument();
+  });
+
+  it("the page's To: picker moves the list's highlight", () => {
+    mockDashTeam = team;
+    setup();
+    fireEvent.click(within(list()).getByText("Planner"));
+    fireEvent.click(screen.getByText("team-to-builder"));
+    expect(
+      within(list()).getByText("Builder").closest("button"),
+    ).toHaveAttribute("aria-current", "true");
+  });
+
+  it("unsaved role edits: picking another bot asks first", () => {
+    mockDashTeam = team;
+    setup();
+    fireEvent.click(within(list()).getByText("Builder"));
+    fireEvent.click(screen.getByText("team-dirty"));
+    fireEvent.click(within(list()).getByText("Digest"));
+    expect(screen.getByText("Discard unsaved changes?")).toBeInTheDocument();
+    expect(
+      within(detail()).getByText("dash team to builder"),
+    ).toBeInTheDocument();
   });
 });

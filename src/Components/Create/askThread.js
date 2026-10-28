@@ -10,6 +10,17 @@ export function questionRequest(text) {
   ).trim()}`;
 }
 
+/**
+ * A question to a Dash team role other than the Planner (the Builder,
+ * Scout, Checker): it answers, and says a plan is how things get made —
+ * from a chat it has no tools that build or change anything.
+ */
+export function roleQuestion(text) {
+  return `(A question from the Dash team chat — answer it. You can't build, install or place anything from here; if I ask for that, say the Planner can plan it and I approve the plan.)\n${String(
+    text || "",
+  ).trim()}`;
+}
+
 /** A question to a team lead (5e-2a): the lead gets the words as typed. */
 export function leadQuestion(text) {
   return String(text || "").trim();
@@ -32,7 +43,10 @@ export function reopenedQuestion(
     .filter(
       (m) =>
         m &&
-        (m.who === "you" || m.who === "planner" || m.who === "lead") &&
+        (m.who === "you" ||
+          m.who === "planner" ||
+          m.who === "lead" ||
+          m.who === "role") &&
         m.text,
     )
     .slice(-keep)

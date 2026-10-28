@@ -137,7 +137,14 @@ describe("buildProfileFiles", () => {
     const { files, manifest } = buildProfileFiles({
       profile: { id: "p-mini", name: "Mac Mini" },
       dashboards: [{ id: 1, name: "HA", layout: [{ userPrefs: { room: 1 } }] }],
-      bots: [{ id: "b1", name: "memo", session: { id: "s" } }],
+      bots: [
+        {
+          id: "b1",
+          name: "memo",
+          session: { id: "s" },
+          chatSession: { id: "chat" },
+        },
+      ],
       providers: [{ name: "ha", type: "home-assistant" }],
       settings: {
         theme: "refresh",
@@ -159,6 +166,8 @@ describe("buildProfileFiles", () => {
       room: 1,
     });
     assert.equal(read("bots.json")[0].session, undefined);
+    // The user's chat with it stays on this computer too.
+    assert.equal(read("bots.json")[0].chatSession, undefined);
     assert.deepEqual(read("settings.json"), {
       theme: "refresh",
       checkForUpdatesOnLaunch: true,

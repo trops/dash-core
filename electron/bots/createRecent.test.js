@@ -425,6 +425,27 @@ describe("questions in Recent (phase 5e)", () => {
     assert.deepEqual(r.get(e.id).conversation.recipient, lead);
   });
 
+  it("a question to a Dash team role: answered by it, row names it", () => {
+    const r = make();
+    const e = r.save({
+      kind: "question",
+      prompt: "Can it poll?",
+      conversation: { recipient: { role: "builder", roleName: "Builder" } },
+    });
+    r.save({
+      id: e.id,
+      conversation: {
+        messages: [
+          { who: "you", text: "Can it poll?" },
+          { who: "role", text: "Yes." },
+        ],
+      },
+    });
+    const row = r.list()[0];
+    assert.equal(row.status, "answered");
+    assert.equal(row.to, "Builder");
+  });
+
   it("an unknown kind is a plan", () => {
     const r = make();
     assert.equal(r.save({ kind: "gadget", prompt: "x" }).kind, "plan");

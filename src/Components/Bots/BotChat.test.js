@@ -45,6 +45,26 @@ afterEach(() => {
   delete window.mainApi;
 });
 
+describe("BotChat — a bot that runs on its own (QA 2026-10-28)", () => {
+  it("says what a message does; a bot that only runs when asked doesn't", async () => {
+    window.mainApi = {
+      bots: {
+        getRuns: jest.fn().mockResolvedValue([]),
+        onStream: jest.fn(() => "s1"),
+        removeListener: jest.fn(),
+      },
+    };
+    const { rerender } = render(
+      <BotChat bot={{ ...bot, schedules: [{ cron: "0 9 * * *" }] }} />,
+    );
+    expect(await screen.findByTestId("bot-chat-job-note")).toHaveTextContent(
+      "Inbox Watch usually runs on a schedule. A message here runs it now, using your message as its instructions. It can use its tools while it runs.",
+    );
+    rerender(<BotChat bot={bot} />);
+    expect(screen.queryByTestId("bot-chat-job-note")).toBeNull();
+  });
+});
+
 describe("BotChat — history", () => {
   it("shows the conversation from run history", async () => {
     setup();

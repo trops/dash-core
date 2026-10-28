@@ -76,9 +76,10 @@ function dashboardHash(workspace) {
 
 /** A bot definition without what only makes sense on this computer. */
 function portableBot(bot) {
-  // The conversation session belongs to this computer's engine; runs,
-  // results, memory and approvals aren't part of the definition at all.
-  const { session, ...rest } = bot || {};
+  // The conversation sessions (the job's and the user's chat) belong to
+  // this computer's engine; runs, results, memory and approvals aren't part
+  // of the definition at all.
+  const { session, chatSession, ...rest } = bot || {};
   return rest;
 }
 

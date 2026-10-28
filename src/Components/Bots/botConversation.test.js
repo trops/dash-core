@@ -6,10 +6,35 @@ import {
   attentionCount,
   triggerLabel,
   errorNextSteps,
+  jobRunNote,
   readableError,
   skipNotice,
   toPlainText,
 } from "./botConversation";
+
+test("jobRunNote: what a message does to a bot that runs on its own", () => {
+  expect(
+    jobRunNote({ name: "Inbox Watch", schedules: [{ cron: "0 9 * * *" }] }),
+  ).toBe(
+    "Inbox Watch usually runs on a schedule. A message here runs it now, using your message as its instructions. It can use its tools while it runs.",
+  );
+  expect(
+    jobRunNote({ name: "Relay", subscriptions: [{ event: "x" }] }),
+  ).toMatch(/^Relay usually runs on events\./);
+  expect(
+    jobRunNote({
+      name: "Both",
+      schedules: [{ cron: "* * * * *" }],
+      subscriptions: [{}],
+    }),
+  ).toMatch(/runs on a schedule and on events\./);
+  // Runs only when asked; a lead (asked, not run); nothing.
+  expect(jobRunNote({ name: "Plain", schedules: [{}] })).toBeNull();
+  expect(
+    jobRunNote({ name: "Lead", schedules: [{ cron: "* * * * *" }] }, true),
+  ).toBeNull();
+  expect(jobRunNote(null)).toBeNull();
+});
 
 test("toPlainText drops a lead's hand-off marker (2c-2)", () => {
   expect(

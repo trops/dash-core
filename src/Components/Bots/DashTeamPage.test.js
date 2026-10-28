@@ -15,9 +15,10 @@ import {
 
 // The thread itself is AskStep's (AskStep.test.js); here only which one opens.
 jest.mock("../Create/AskStep", () => ({
-  AskStep: ({ question, recentId, onOpenPlan, onStarted }) => (
+  AskStep: ({ question, recentId, recipient, onOpenPlan, onStarted }) => (
     <div data-testid="ask-step">
       {recentId ? `thread ${recentId}` : `new: ${question}`}
+      {recipient ? ` to ${recipient.roleName} (${recipient.role})` : ""}
       <button onClick={() => onStarted && onStarted("plan_new")}>
         started
       </button>
@@ -150,6 +151,102 @@ test("asking starts a new thread with the question", async () => {
   expect(screen.getByTestId("ask-step")).toHaveTextContent(
     "new: How many dashboards?",
   );
+});
+
+describe("To: any role (QA 2026-10-28)", () => {
+  test("the Planner by default; another role gets the question", () => {
+    render(<DashTeamPage />);
+    const to = screen.getByRole("combobox", { name: "To" });
+    expect(to).toHaveValue("planner");
+    // In the team's order.
+    expect(
+      within(to)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Planner", "Scout", "Builder", "Checker"]);
+    fireEvent.change(to, { target: { value: "builder" } });
+    expect(screen.getByTestId("dash-team-to")).toHaveTextContent(
+      "It builds only in a plan you approve.",
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Ask the Dash team" }),
+      {
+        target: { value: "Can a widget poll every second?" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(screen.getByTestId("ask-step")).toHaveTextContent(
+      "new: Can a widget poll every second? to Builder (builder)",
+    );
+  });
+
+  test("the Planner's questions carry no recipient", () => {
+    render(<DashTeamPage />);
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Ask the Dash team" }),
+      {
+        target: { value: "Hi" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(screen.getByTestId("ask-step")).toHaveTextContent("new: Hi");
+    expect(screen.getByTestId("ask-step")).not.toHaveTextContent(" to ");
+  });
+
+  test("opened on a role (the Bots page) starts with it picked", () => {
+    render(<DashTeamPage role="scout" />);
+    expect(screen.getByRole("combobox", { name: "To" })).toHaveValue("scout");
+  });
+
+  test("the host picking another role opens a new question to it; the picker tells the host", () => {
+    const onRoleChange = jest.fn();
+    const { rerender } = render(
+      <DashTeamPage role="planner" onRoleChange={onRoleChange} />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Settings" }));
+    expect(screen.getByTestId("dash-team-roles")).toBeInTheDocument();
+    rerender(<DashTeamPage role="builder" onRoleChange={onRoleChange} />);
+    // Back on the conversation, to the Builder.
+    expect(screen.getByRole("combobox", { name: "To" })).toHaveValue("builder");
+    fireEvent.change(screen.getByRole("combobox", { name: "To" }), {
+      target: { value: "checker" },
+    });
+    expect(onRoleChange).toHaveBeenCalledWith("checker");
+  });
+
+  test("before the team's names load, a role keeps its own name", () => {
+    mockTeam = [];
+    render(<DashTeamPage role="builder" />);
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Ask the Dash team" }),
+      { target: { value: "Hi" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(screen.getByTestId("ask-step")).toHaveTextContent(
+      "to Builder (builder)",
+    );
+  });
+
+  test("a paused role: says so and Turn on resumes that role", async () => {
+    mockTeam = ROLES.map((r) =>
+      r.role === "builder" ? { ...r, paused: true } : r,
+    );
+    render(<DashTeamPage role="builder" />);
+    expect(screen.getByTestId("dash-team-start")).toHaveTextContent(
+      "The Builder is paused",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Turn on" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.resumeBot).toHaveBeenCalledWith("t_builder"),
+    );
+    // Another role can still be picked.
+    fireEvent.change(screen.getByRole("combobox", { name: "To" }), {
+      target: { value: "planner" },
+    });
+    expect(
+      screen.getByRole("textbox", { name: "Ask the Dash team" }),
+    ).toBeInTheDocument();
+  });
 });
 
 test("Open as a plan goes to the host", async () => {

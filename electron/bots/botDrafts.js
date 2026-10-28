@@ -238,6 +238,7 @@ function buildDraft({
     ...(publishes.length ? { publishes } : {}),
   });
   delete definition.session;
+  delete definition.chatSession;
   const { valid, errors } = validateBotDefinition(definition);
   if (!valid) return { error: `The draft isn't valid: ${errors.join("; ")}` };
 
