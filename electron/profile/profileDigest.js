@@ -65,7 +65,11 @@ const list = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
 function profileDigest(appId, profileId, deps = {}) {
   const d = { ...defaultDeps(), ...deps };
   if (!d.store) d.store = require("./profileStore");
-  const { setupHash, comparableDashboard } = require("./profileSetup");
+  const {
+    setupHash,
+    comparableDashboard,
+    installedWidget,
+  } = require("./profileSetup");
   const { secretFieldLookup } = require("./secretFields");
   const profile = d.store.list(appId).find((p) => p.id === profileId);
   if (!profile) return null;
@@ -124,7 +128,7 @@ function profileDigest(appId, profileId, deps = {}) {
       )) {
         const pkg = packageIdOf(dep || {});
         if (!pkg || out.widgets[pkg]) continue;
-        const installed = registry.getWidget ? registry.getWidget(pkg) : null;
+        const installed = installedWidget(registry, pkg);
         // From the registry (or installed before Dash recorded where from).
         const fromRegistry =
           !!installed &&

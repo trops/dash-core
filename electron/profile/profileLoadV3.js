@@ -26,6 +26,7 @@ const {
   setupHash,
   portableSetupBot,
   comparableDashboard,
+  installedWidget,
 } = require("./profileSetup");
 const {
   secretFieldLookup,
@@ -210,8 +211,7 @@ async function planLoadV3(
 
   // Widgets.
   for (const [pkg, version] of Object.entries(manifest.widgets)) {
-    const installed =
-      registry && registry.getWidget ? registry.getWidget(pkg) : null;
+    const installed = installedWidget(registry, pkg);
     const row = itemRow(
       "widget",
       pkg,

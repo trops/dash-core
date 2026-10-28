@@ -208,6 +208,25 @@ describe("LoadProfileV2Modal", () => {
     ]);
   });
 
+  test("from the account, a changed item says the account's copy", () => {
+    mount({
+      schemaVersion: 3,
+      fromAccount: true,
+      rows: [
+        {
+          kind: "dashboard",
+          package: "1",
+          name: "Home",
+          action: "update",
+          localId: "1",
+        },
+      ],
+    });
+    expect(
+      screen.getByLabelText("Home — use the account's copy"),
+    ).toBeChecked();
+  });
+
   test("loading a v3 profile as new says the records are shared", () => {
     mount({
       schemaVersion: 3,
