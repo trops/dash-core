@@ -28,6 +28,8 @@ const onboardingController = require("./controller/onboardingController");
 const exportController = require("./controller/exportController");
 const activeProfile = require("./profile/activeProfile");
 const profileStore = require("./profile/profileStore");
+// Auto-save to the account (dash-profiles v3): started once the window exists.
+const profileAutoSave = require("./profile/profileAutoSave");
 const notificationController = require("./controller/notificationController");
 const schedulerController = require("./controller/schedulerController");
 const themeRegistryController = require("./controller/themeRegistryController");
@@ -146,6 +148,7 @@ module.exports = {
   exportController,
   activeProfile,
   profileStore,
+  profileAutoSave,
   notificationController,
   schedulerController,
   themeRegistryController,

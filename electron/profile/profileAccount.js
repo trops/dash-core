@@ -98,7 +98,10 @@ function writeLinks(appId, owner, links, d) {
 /** The account copy `profileId` is linked to for `owner`, or null. */
 function getLink(appId, owner, profileId, deps = {}) {
   const d = { ...defaultDeps(), ...deps };
-  return readLinks(appId, owner, d)[profileId] || null;
+  const links = readLinks(appId, owner, d);
+  return Object.prototype.hasOwnProperty.call(links, profileId)
+    ? links[profileId] || null
+    : null;
 }
 
 /** `owner`'s links on this computer: { profileId: link }. */
