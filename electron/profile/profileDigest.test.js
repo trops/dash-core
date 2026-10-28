@@ -216,6 +216,23 @@ describe("profileDigest", () => {
     );
   });
 
+  it("a widget just installed (listed by its bare name until the next launch) is the same after the rename", () => {
+    const { deps, state } = computer();
+    const entry = { ...state.widgets["@trops/home"], scope: "trops" };
+    // Just installed: listed as "home".
+    state.widgets = { home: entry };
+    const fresh = profileDigest(appId, "mini", deps);
+    // Relaunched: renamed "@trops/home".
+    state.widgets = { "@trops/home": entry };
+    const relaunched = profileDigest(appId, "mini", deps);
+    assert.equal(digestChanges(fresh, relaunched).total, 0);
+    // Someone else's bare "home" isn't it.
+    state.widgets = { home: { ...entry, scope: "other" } };
+    assert.ok(
+      digestChanges(relaunched, profileDigest(appId, "mini", deps)).widgets > 0,
+    );
+  });
+
   it("widgets: a new registry version is a change; edits built here aren't", () => {
     const { deps, state } = computer();
     const before = profileDigest(appId, "mini", deps);

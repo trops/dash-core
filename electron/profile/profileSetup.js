@@ -154,6 +154,23 @@ function comparableDashboard(ws, secretFieldsFor = () => new Set()) {
   return rest;
 }
 
+/**
+ * This computer's installed widget for a package. A widget just installed
+ * is listed under its bare name ("chat") until the next launch renames it
+ * "@trops/chat" — the bare entry counts when it's the same publisher's.
+ */
+function installedWidget(registry, pkg) {
+  if (!registry || typeof registry.getWidget !== "function") return null;
+  const found = registry.getWidget(pkg);
+  if (found) return found;
+  const m = String(pkg).match(/^@([^/]+)\/(.+)$/);
+  if (!m) return null;
+  const bare = registry.getWidget(m[2]);
+  return bare && String(bare.scope || "").replace(/^@/, "") === m[1]
+    ? bare
+    : null;
+}
+
 /** The v3 profile, from what a save gathered. */
 function buildManifestV3({
   profile,
@@ -385,6 +402,7 @@ module.exports = {
   unpackSetup,
   setupHash,
   comparableDashboard,
+  installedWidget,
   buildManifestV3,
   parseProfileV3,
   jsonSchemaVersion,

@@ -469,6 +469,7 @@ Mac's / use the account's).
 
 ## Revision History
 
+- 2026-10-28: v3 merged (core v0.1.850, registry v1.10.2). Live test fix: a widget just installed is listed by its bare name ("chat") until the next launch renames it — the out-of-sync check now finds it either way (it showed "8 widgets changed" after a relaunch). Loading from the account says "use the account's copy". Backlog: installs should key widgets by package id from the start.
 - 2026-10-28: v3 planned (user): widgets are the only items; dashboards, themes, folders, bots and teams are setup kept in the profile; saving never publishes; publish prompt in the Widget Builder; auto-save revised. Electron v0.0.1041 shipped the sync-status handler; core v0.1.849 the sync-load fix.
 - 2026-10-27: S3 merged (core v0.1.848). Sync-load fix: the account's copy wins when loaded into its linked profile.
 - 2026-10-27: S2 merged (core v0.1.847, registry v1.10.1, electron v0.0.1040). S3: out-of-sync check; Default replaced in place by its own account copy (user decision).

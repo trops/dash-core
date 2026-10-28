@@ -75,15 +75,17 @@ export function rowText(row) {
 
 /**
  * A changed item's choice: a widget by version; setup (a dashboard,
- * folder, theme or bot — v3) by "the profile's copy".
+ * folder, theme or bot — v3) by "the profile's copy" — "the account's"
+ * when it came from the account.
  */
-export function choiceLabel(row) {
+export function choiceLabel(row, fromAccount = false) {
+  const whose = fromAccount ? "the account's" : "the profile's";
   if (row.action === "update") {
     return row.version
       ? `${row.name} — update to ${row.version}`
-      : `${row.name} — use the profile's copy`;
+      : `${row.name} — use ${whose} copy`;
   }
-  return `${row.name} — use the profile's ${row.version || "copy"}`;
+  return `${row.name} — use ${whose} ${row.version || "copy"}`;
 }
 
 /**
@@ -278,13 +280,13 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
                 <div key={rowId(row)} className="flex flex-col">
                   {row.action === "update" ? (
                     <Checkbox
-                      label={choiceLabel(row)}
+                      label={choiceLabel(row, !!preview.fromAccount)}
                       checked={!keep.has(rowId(row))}
                       onChange={(on) => toggle(keep, setKeep, rowId(row), !on)}
                     />
                   ) : row.action === "keep" ? (
                     <Checkbox
-                      label={choiceLabel(row)}
+                      label={choiceLabel(row, !!preview.fromAccount)}
                       checked={take.has(rowId(row))}
                       onChange={(on) => toggle(take, setTake, rowId(row), on)}
                     />
