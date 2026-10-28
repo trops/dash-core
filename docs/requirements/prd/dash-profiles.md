@@ -436,6 +436,21 @@ Mac's / use the account's).
      9:00 AM" and any error. Settings in `profileAutoSave.json` (per signed-in user, per profile), timer in
      `electron/profile/profileAutoSave.js`. Step 2's "auto-save holds public releases" no longer applies — nothing is
      released by a profile save.
+     - Built (`electron/profile/profileAutoSave.js`, `AutoSaveSetting`): it watches the files a setup lives in
+       (workspaces, themes, folders, profiles, bots, the installed widget list) — every way of changing them counts —
+       waits 30 seconds after the last change, then saves each profile with "When I make changes" whose fingerprint
+       changed (a bot run or opening a dashboard doesn't). Daily checks once a minute; a daily time set after today's
+       has passed starts tomorrow. It saves with the choices of the last manual save to the account (Bots, App
+       settings). A refused save (a newer copy, signed out, the registry out of reach) is recorded and shown under the
+       setting; the updates dialog offers the newer copy. Settings › Profiles shows the choice for a profile kept in the
+       account, with "Last saved to your account". IPC `profile:set-auto-save`; `list` returns `autoSave`;
+       dash-electron starts it once the window exists and stops it on quit.
+     - Review fixes: a save that didn't go through is tried again no sooner than 15 minutes (a network blip doesn't cost
+       a daily save its day; a newer copy waits for the user); once the profile is in step again (e.g. the account's copy
+       was loaded) the old warning goes; manual and automatic saves run one at a time; one profile's trouble doesn't
+       stop the others; a watched folder removed never crashes the app (folders are created before watching); stopping
+       leaves no timer behind; the settings file is written whole, and a damaged one is kept aside as .bak; only a
+       profile here, kept in the account, can be set; a refused change shows what the setting still is.
 
 ---
 

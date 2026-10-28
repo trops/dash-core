@@ -21,6 +21,7 @@ import {
   leftOutText,
 } from "./SaveProfileModal";
 import { AccountProfilesModal } from "./AccountProfilesModal";
+import { AutoSaveSetting } from "./AutoSaveSetting";
 import { takeProfileIntent } from "./profileIntent";
 import { LoadProfileModal } from "./LoadProfileModal";
 import { LoadProfileV2Modal } from "./LoadProfileV2Modal";
@@ -585,6 +586,14 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
             </div>
           )}
         </div>
+
+        {selected.account && !nameForm ? (
+          <AutoSaveSetting
+            appId={appId}
+            profile={selected}
+            onChanged={() => loadProfiles()}
+          />
+        ) : null}
 
         {!hasProfiles ? (
           <span className={`text-sm ${muted} max-w-prose`}>

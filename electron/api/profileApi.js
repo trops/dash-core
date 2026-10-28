@@ -29,6 +29,7 @@ const {
   PROFILE_SYNC_STATUS,
   PROFILE_PLAN_BUILT_PUBLISH,
   PROFILE_PUBLISH_BUILT,
+  PROFILE_SET_AUTO_SAVE,
 } = require("../events");
 
 const profileApi = {
@@ -136,6 +137,13 @@ const profileApi = {
    */
   publishBuilt: (appId, packageName, options) =>
     ipcRenderer.invoke(PROFILE_PUBLISH_BUILT, { appId, packageName, options }),
+  /**
+   * How a profile kept in the account saves itself: setting { mode:
+   * "manual" | "changes" | "daily", time: "HH:MM" }. Resolves { success,
+   * autoSave }. (list() returns each profile's autoSave too.)
+   */
+  setAutoSave: (appId, profileId, setting) =>
+    ipcRenderer.invoke(PROFILE_SET_AUTO_SAVE, { appId, profileId, setting }),
 };
 
 module.exports = profileApi;

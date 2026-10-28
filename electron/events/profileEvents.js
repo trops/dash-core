@@ -29,6 +29,8 @@ const PROFILE_SYNC_STATUS = "profile:sync-status";
 // Publishing a widget just built (v3, the Widget Builder's prompt).
 const PROFILE_PLAN_BUILT_PUBLISH = "profile:plan-built-publish";
 const PROFILE_PUBLISH_BUILT = "profile:publish-built";
+// Auto-save to the account (v3, Slice 3).
+const PROFILE_SET_AUTO_SAVE = "profile:set-auto-save";
 
 module.exports = {
   PROFILE_LIST,
@@ -52,4 +54,5 @@ module.exports = {
   PROFILE_SYNC_STATUS,
   PROFILE_PLAN_BUILT_PUBLISH,
   PROFILE_PUBLISH_BUILT,
+  PROFILE_SET_AUTO_SAVE,
 };

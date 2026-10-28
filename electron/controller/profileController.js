@@ -188,12 +188,19 @@ const profileController = {
     try {
       // Each profile kept in the signed-in user's account says so:
       // { accountId, revision, savedAt, updatedOn }.
-      const links = profileAccount.allLinks(appId, storedUsername());
+      const owner = storedUsername();
+      const links = profileAccount.allLinks(appId, owner);
+      // How each one kept in the account saves itself (v3, Slice 3).
+      const autoSave = owner
+        ? require("../profile/profileAutoSave").getSettings(appId, owner)
+        : {};
       return {
         success: true,
-        profiles: profileStore
-          .list(appId)
-          .map((p) => ({ ...p, account: links[p.id] || null })),
+        profiles: profileStore.list(appId).map((p) => ({
+          ...p,
+          account: links[p.id] || null,
+          autoSave: links[p.id] ? autoSave[p.id] || null : null,
+        })),
         activeProfileId: profileStore.getActiveProfileId(appId),
       };
     } catch (e) {
@@ -238,6 +245,7 @@ const profileController = {
       // The account copy stays in the account; this computer forgets it.
       if (res && res.success !== false) {
         profileAccount.forgetProfile(appId, profileId);
+        require("../profile/profileAutoSave").forgetProfile(appId, profileId);
       }
       return res;
     } catch (e) {
@@ -406,11 +414,30 @@ const profileController = {
     try {
       const { executeSave } = require("../profile/profileSaveV3");
       const { asNew, replaceRevision } = options || {};
-      return await executeSave(win, appId, profileId, saveOptions(options), {
-        target: "account",
-        asNew: asNew === true,
-        replaceRevision: profileAccount.revisionOf(replaceRevision),
-      });
+      const autoSave = require("../profile/profileAutoSave");
+      // Never at the same time as an auto-save (one revision, one save).
+      const result = await autoSave.exclusive(() =>
+        executeSave(win, appId, profileId, saveOptions(options), {
+          target: "account",
+          asNew: asNew === true,
+          replaceRevision: profileAccount.revisionOf(replaceRevision),
+        }),
+      );
+      // What this save chose is what auto-save uses from now on.
+      if (result && result.success) {
+        try {
+          autoSave.recordManualSave(
+            appId,
+            await signedInUsername(),
+            profileId,
+            saveOptions(options),
+            result,
+          );
+        } catch (_e) {
+          // auto-save settings are a convenience; the save happened
+        }
+      }
+      return result;
     } catch (e) {
       return fail(e);
     }
@@ -717,6 +744,41 @@ const profileController = {
         visibility: o.visibility === "public" ? "public" : "private",
         confirmPersonalPaths: o.confirmPersonalPaths === true,
       });
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
+   * How a profile kept in the account saves itself (v3, Slice 3): Manually,
+   * When I make changes, or Every day at a time. Only for a profile kept
+   * in the signed-in user's account.
+   */
+  async setAutoSave(appId, profileId, setting = {}) {
+    try {
+      const owner = await signedInUsername();
+      if (!owner) {
+        return {
+          success: false,
+          error: "Sign in to keep profiles in your account.",
+        };
+      }
+      // A profile here (an id, not "constructor"), kept in the account.
+      const here = profileStore.list(appId).some((p) => p.id === profileId);
+      if (!here || !profileAccount.getLink(appId, owner, profileId)) {
+        return {
+          success: false,
+          error: "Save it to your account first — then it can save itself.",
+        };
+      }
+      const s = setting || {};
+      const autoSave = require("../profile/profileAutoSave").setSetting(
+        appId,
+        owner,
+        profileId,
+        { mode: s.mode, time: s.time },
+      );
+      return { success: true, autoSave };
     } catch (e) {
       return fail(e);
     }
