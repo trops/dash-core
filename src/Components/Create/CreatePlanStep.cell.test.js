@@ -103,12 +103,10 @@ test("a cell's plan: where it goes, Swap but no remove", async () => {
     "Goes into: cell 2.2 on Slack Pack",
   );
   expect(screen.getByRole("button", { name: "Swap…" })).toBeInTheDocument();
-  // Build before What to expect (in view without scrolling); no Recent.
+  // Build in view without scrolling: pinned below the plan; no Recent.
   const build = screen.getByRole("button", { name: "Build" });
-  const expectBox = screen.getByTestId("plan-expect");
-  expect(
-    build.compareDocumentPosition(expectBox) & Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
+  expect(screen.getByTestId("plan-build-bar")).toContainElement(build);
+  expect(screen.getByTestId("plan-card")).not.toContainElement(build);
   expect(screen.getByTestId("plan-ready")).toHaveTextContent(
     "Nothing goes into cell 2.2 on Slack Pack until you've seen it running.",
   );

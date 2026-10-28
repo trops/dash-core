@@ -151,7 +151,8 @@ test("the plan card: pieces by group and source, before building, access, estima
   expect(est).toHaveTextContent("planning so far 2.3k");
   expect(est).toHaveTextContent("included in your plan");
   expect(est).toHaveTextContent("To run: about $0.04 per run");
-  expect(card).toHaveTextContent(
+  // Build is pinned to the bottom of the plan, with what it'll do.
+  expect(screen.getByTestId("plan-build-bar")).toHaveTextContent(
     "Saved · nothing has been built or installed yet.",
   );
 });
