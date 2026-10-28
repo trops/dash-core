@@ -616,12 +616,18 @@ const profileController = {
               BrowserWindow.getAllWindows()[0] ||
               null;
         const { applyLoadV2 } = require("../profile/profileLoadV2");
-        const { linkedProfileId: _notFromRenderer, ...chosen } = picked;
+        const {
+          linkedProfileId: _notFromRenderer,
+          syncLinked: _notFromRendererEither,
+          ...chosen
+        } = picked;
         const fromAccount = entry.read.account || null;
         const result = await applyLoadV2(win, appId, entry.read.v2, {
           ...chosen,
           defaultItems,
           linkedProfileId: fromAccount ? entry.read.linkedProfileId : null,
+          // The account's copy into the profile it's linked to: keep in step.
+          syncLinked: !!(fromAccount && entry.read.linkedProfileId),
         });
         if (result.success) {
           openedFiles.delete(token);
