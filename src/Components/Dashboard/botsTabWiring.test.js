@@ -121,7 +121,8 @@ describe("DashboardStage — Bot monitor hand-off (TEAM-011 B3)", () => {
       /window\.addEventListener\("dash:open-bot", handler\)/,
     );
     expect(stageSrc).toMatch(
-      /setBotPageRequest\(\{ botId: d\.botId, tab: d\.tab \|\| "conversation" \}\)/,
+      // Its Activity unless asked otherwise (no conversation, release 6b).
+      /setBotPageRequest\(\{ botId: d\.botId, tab: d\.tab \|\| "activity" \}\)/,
     );
     expect(stageSrc).toMatch(
       /openBotSettings = useCallback\(\(botId\) => \{\s*if \(botId\) setBotPageRequest\(\{ botId, tab: "settings" \}\);/,
@@ -185,6 +186,16 @@ describe("DashboardStage — dashboard tabs respect unsaved bot edits (TEAM-011)
   it("the prompt reads neutrally (tabs too)", () => {
     expect(stageSrc).toMatch(
       /This bot's settings have changes that haven't been saved\. Discard them and continue\?/,
+    );
+  });
+});
+
+// Release 6b: a Dash team role's conversation (an older question to the
+// Planner, from a notification) goes on with the Dash Lead.
+describe("DashboardStage — role conversations open as the Dash Lead's", () => {
+  it("maps any role:* key to role:dashlead", () => {
+    expect(stageSrc).toMatch(
+      /d\.key\.startsWith\("role:"\)\s*\?\s*"role:dashlead"/,
     );
   });
 });

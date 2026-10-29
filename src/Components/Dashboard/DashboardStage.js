@@ -490,7 +490,7 @@ const DashboardStageInner = ({
       ? {
           workspaceId: String(popoutWorkspaceId),
           botId: popoutBotId,
-          tab: popoutBotTab || "conversation",
+          tab: popoutBotTab || "activity",
           seq: 1,
         }
       : null,
@@ -500,7 +500,7 @@ const DashboardStageInner = ({
     setBotsFocus((prev) => ({
       workspaceId: String(workspaceId),
       botId,
-      tab: tab || "conversation",
+      tab: tab || "activity",
       seq: ((prev && prev.seq) || 0) + 1,
     }));
   }, []);
@@ -658,12 +658,13 @@ const DashboardStageInner = ({
     const handler = (e) => {
       const d = (e && e.detail) || {};
       if (!d.botId) return;
-      setBotPageRequest({ botId: d.botId, tab: d.tab || "conversation" });
+      setBotPageRequest({ botId: d.botId, tab: d.tab || "activity" });
     };
-    // The Dash team's page, from the Bots panel's pinned row (Phase 4a).
+    // The Dash team's page — its settings (Phase 4a; talking to it opens
+    // the Dash Lead's conversations, release 6b).
     const onDashTeam = (e) => {
       const d = (e && e.detail) || {};
-      setBotPageRequest({ dashTeam: true, tab: d.tab || "conversation" });
+      setBotPageRequest({ dashTeam: true, tab: d.tab || "settings" });
     };
     window.addEventListener("dash:open-bot", handler);
     window.addEventListener("dash:open-dash-team", onDashTeam);
@@ -681,8 +682,14 @@ const DashboardStageInner = ({
     const onOpen = (e) => {
       const d = (e && e.detail) || {};
       setBotPageRequest(null);
+      // A Dash team role's conversation (an older question to the Planner)
+      // goes on with the Dash Lead (release 6b).
+      const key =
+        typeof d.key === "string" && d.key.startsWith("role:")
+          ? "role:dashlead"
+          : d.key || "role:dashlead";
       setWorkspaceRequest({
-        key: d.key || "role:dashlead",
+        key,
         seq: Date.now(),
         seed: d.seed || null,
         // A conversation to open on (the notifications panel, release 4).

@@ -126,6 +126,10 @@ export const AskStep = ({
   const { muted } = useConfigTokens();
   // The lead's name on its replies; the To: line names the dashboard.
   const roleName = teamRole ? teamRole.roleName || "Dash team" : "Planner";
+  // Who answered a reopened conversation's earlier replies, when they
+  // didn't say (saved before release 6b): its saved recipient, else the
+  // Planner — not whoever it's carried on with now.
+  const [savedLabel, setSavedLabel] = useState(null);
   const replyLabel = lead ? lead.leadName : roleName;
   const replyName = lead ? lead.leadName : `the ${roleName}`;
 
@@ -244,6 +248,9 @@ export const AskStep = ({
     if (other) {
       add({
         who: "role",
+        // Who answered, kept with it (release 6b): a conversation can be
+        // carried on with someone else (the Dash Lead).
+        by: name,
         text: res.output || "(no answer)",
         meta: runCostLabel(res),
       });
@@ -253,6 +260,7 @@ export const AskStep = ({
       const handoff = extractHandoff(res.output);
       add({
         who: "lead",
+        by: to.leadName,
         text: withoutHandoff(res.output) || "(no answer)",
         meta: runCostLabel(res),
         ...(handoff ? { handoff } : {}),
@@ -297,10 +305,15 @@ export const AskStep = ({
             if (!alive.current) return;
             const conv = (entry && entry.conversation) || {};
             firstAsked.current = (entry && entry.prompt) || "";
-            if (leadOf(conv.recipient)) {
+            const was = conv.recipient || {};
+            setSavedLabel(was.leadName || was.roleName || "Planner");
+            // Carried on with whoever the host says (the lead workspace:
+            // an older Dash team question goes on with the Dash Lead,
+            // release 6b); else with whoever it was saved with.
+            if (!recipient && leadOf(conv.recipient)) {
               leadRef.current = conv.recipient;
               setLead(conv.recipient);
-            } else if (roleOf(conv.recipient)) {
+            } else if (!recipient && roleOf(conv.recipient)) {
               teamRoleRef.current = conv.recipient;
               setTeamRole(conv.recipient);
             }
@@ -469,9 +482,10 @@ export const AskStep = ({
                   key={i}
                   role="reply"
                   label={
-                    m.who === "lead" || m.who === "role"
-                      ? replyLabel
-                      : "Planner"
+                    m.by ||
+                    (m.who === "lead" || m.who === "role"
+                      ? savedLabel || replyLabel
+                      : "Planner")
                   }
                   meta={m.meta}
                   testId="ask-answer"

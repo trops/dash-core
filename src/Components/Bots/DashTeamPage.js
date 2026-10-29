@@ -1,16 +1,11 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Button,
-  Button3,
   ButtonIcon3,
-  ChatComposer,
   ConfirmationModal,
-  EmptyState,
-  FontAwesomeIcon,
   ListRow,
   PanelHeader,
   SegmentedControl,
-  SelectInput,
   StatusBadge,
 } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
@@ -19,8 +14,6 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotDetail } from "../Settings/details/BotDetail";
 import { DashTeamPanel } from "../AppPages/DashTeamPanel";
 import { useAllBots } from "../AppPages/useAllBots";
-import { AskStep } from "../Create/AskStep";
-import { questionThreads } from "../Create/recentRows";
 import { modelLabel } from "../../utils/runCostLabel";
 import { shortTime } from "./contactsList";
 import { BotAvatar } from "./BotAvatar";
@@ -28,14 +21,9 @@ import { DASH_TEAM_CONTACT } from "./dashTeamContact";
 import { DashTeamApprovals } from "./DashTeamApprovals";
 import { BotRunHistory } from "./BotRunHistory";
 
+// Managing only (lead-workspace releases 5, 6b): the role's runs and the
+// team's settings; the team is talked to in the Dash Lead's conversations.
 const TABS = [
-  { value: "conversation", label: "Conversation" },
-  { value: "settings", label: "Settings" },
-];
-
-// The Bots page (lead-workspace release 5): managing only — the role's
-// runs and the team's settings; its conversation is the Dash Lead's.
-const MANAGE_TABS = [
   { value: "activity", label: "Activity" },
   { value: "settings", label: "Settings" },
 ];
@@ -52,238 +40,6 @@ function botsApi() {
 
 const getWidgetConfig = (name) =>
   (name && ComponentManager.config(name)) || null;
-
-const TICK_MS = 60000;
-
-/** The questions in Recent, live; their ages kept current. */
-function useThreads() {
-  const [entries, setEntries] = useState(EMPTY);
-  const [loaded, setLoaded] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), TICK_MS);
-    return () => clearInterval(t);
-  }, []);
-  useEffect(() => {
-    let alive = true;
-    const b = botsApi();
-    const load = () => {
-      if (!b || !b.listCreateRecent) {
-        setLoaded(true);
-        return;
-      }
-      Promise.resolve(b.listCreateRecent())
-        .then((l) => {
-          if (!alive) return;
-          setEntries(Array.isArray(l) ? l : EMPTY);
-          setNow(Date.now());
-          setLoaded(true);
-        })
-        .catch(() => alive && setLoaded(true));
-    };
-    load();
-    const id = b && b.onCreateRecent ? b.onCreateRecent(load) : null;
-    return () => {
-      alive = false;
-      if (id != null && b.removeListener) b.removeListener(id);
-    };
-  }, []);
-  const threads = useMemo(() => questionThreads(entries, now), [entries, now]);
-  return { threads, loaded };
-}
-
-// What each role is for, under the To: picker.
-const ROLE_HINT = {
-  dashlead:
-    "Your contact for the team: passes your question to the right role and sums up the answer.",
-  planner: "Answers questions and plans new things for you to approve.",
-  scout: "Finds widgets and bots you have, or can get from the registry.",
-  builder:
-    "Answers questions about building widgets. It builds only in a plan you approve.",
-  checker: "Answers questions about checking widgets before they're used.",
-};
-
-const pickRole = (role) => (ROLE_ORDER.includes(role) ? role : "planner");
-// "builder" → "Builder", while the team's names are still loading.
-const roleWord = (role) => `${role.charAt(0).toUpperCase()}${role.slice(1)}`;
-
-const Conversation = ({ team, role, onRoleChange, onTurnOn, onOpenPlan }) => {
-  const { muted, hairline } = useConfigTokens();
-  const { threads } = useThreads();
-  // What's open on the right: a thread ({ recentId }), a new question just
-  // sent ({ question, recipient }), or nothing yet (the composer). `key`
-  // stays put for a new question, so the thread isn't restarted once it's
-  // saved.
-  const [open, setOpen] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
-  const [draft, setDraft] = useState("");
-  // Who a new question goes to: the Planner unless another role is picked.
-  const [to, setToState] = useState(() => pickRole(role));
-  const setTo = (next) => {
-    setToState(next);
-    if (onRoleChange) onRoleChange(next);
-  };
-  // The host picked another role (the Bots page's list): a new question to it.
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    setToState(pickRole(role));
-    setOpen(null);
-    setSelectedId(null);
-  }, [role]);
-  const toBot = team.find((b) => b.role === to) || null;
-  const toName = (toBot && toBot.name) || roleWord(to);
-
-  const startNew = () => {
-    setOpen(null);
-    setSelectedId(null);
-  };
-  const ask = () => {
-    const q = draft.trim();
-    if (!q) return;
-    setDraft("");
-    setOpen({
-      key: `new:${Date.now()}`,
-      question: q,
-      recipient: to === "planner" ? null : { role: to, roleName: toName },
-    });
-  };
-  const paused = !!(toBot && toBot.paused);
-  const picker =
-    team.length > 1 ? (
-      <div className="flex flex-col gap-1" data-testid="dash-team-to">
-        <div className="w-56">
-          <SelectInput
-            label="To"
-            value={to}
-            onChange={(v) => setTo(v)}
-            options={team.map((b) => ({ value: b.role, label: b.name }))}
-          />
-        </div>
-        <span className={`text-xs ${muted}`}>{ROLE_HINT[to] || ""}</span>
-      </div>
-    ) : null;
-
-  return (
-    <div className="flex flex-row flex-1 min-h-0 gap-4 px-5 pb-5">
-      <div
-        className={`flex flex-col w-64 flex-shrink-0 min-h-0 rounded-lg border ${hairline}`}
-        data-testid="dash-team-threads"
-      >
-        <div className="flex-shrink-0 p-2">
-          <Button3
-            size="sm"
-            onClick={startNew}
-            disabled={!open}
-            ariaLabel="New conversation"
-          >
-            <span className="inline-flex items-center gap-2">
-              <FontAwesomeIcon icon="plus" className="h-3 w-3" />
-              New conversation
-            </span>
-          </Button3>
-        </div>
-        <div className="flex-1 min-h-0 overflow-y-auto px-1 pb-2">
-          {threads.length ? (
-            threads.map((t) => (
-              <ListRow
-                key={t.id}
-                testId="dash-team-thread"
-                title={t.title}
-                meta={t.sub}
-                selected={t.id === selectedId}
-                onClick={() => {
-                  // Already open (maybe still answering): leave it be — a
-                  // remount would drop the answer on its way.
-                  if (open && t.id === selectedId) return;
-                  setSelectedId(t.id);
-                  setOpen({ key: t.id, recentId: t.id });
-                }}
-              />
-            ))
-          ) : (
-            <p className={`px-2 py-3 text-xs ${muted}`}>
-              Your questions show up here.
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div
-        className={`flex flex-col flex-1 min-w-0 min-h-0 rounded-lg border ${hairline}`}
-        data-testid="dash-team-chat"
-      >
-        {open ? (
-          <AskStep
-            key={open.key}
-            question={open.question || ""}
-            recentId={open.recentId || null}
-            recipient={open.recipient || null}
-            onOpenPlan={onOpenPlan}
-            onStarted={setSelectedId}
-          />
-        ) : (
-          <>
-            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
-              <EmptyState
-                testId="dash-team-start"
-                className="my-auto"
-                icon={
-                  <FontAwesomeIcon icon="people-group" className="h-6 w-6" />
-                }
-                title={
-                  paused
-                    ? to === "planner"
-                      ? "The Dash team is paused"
-                      : `The ${toName} is paused`
-                    : "Ask the Dash team"
-                }
-                description={
-                  paused
-                    ? `Turn the ${toName} on to ask it questions${
-                        to === "planner"
-                          ? " about your dashboards and bots, or to plan something new"
-                          : ""
-                      }.`
-                    : "Ask about your dashboards and bots, or ask for something new. If it plans something, you review the plan before anything is made."
-                }
-              >
-                {paused && onTurnOn ? (
-                  <Button3
-                    size="sm"
-                    title="Turn on"
-                    onClick={() => onTurnOn(toBot)}
-                  />
-                ) : null}
-              </EmptyState>
-            </div>
-            {paused ? (
-              picker ? (
-                <div className="flex-shrink-0 px-3 pb-3">{picker}</div>
-              ) : null
-            ) : (
-              <ChatComposer
-                ariaLabel="Ask the Dash team"
-                value={draft}
-                onChange={(v) => setDraft(v)}
-                onSend={ask}
-                placeholder={
-                  to === "planner" ? "Ask the Dash team…" : `Ask the ${toName}…`
-                }
-                sendLabel="Ask"
-                above={picker}
-                className="flex-shrink-0"
-              />
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
 
 /** "When it plans · Opus · last ran 3h ago" — a role's row, under its name. */
 export function roleLine(bot, lastRun, now = Date.now()) {
@@ -407,47 +163,32 @@ const Settings = ({ all, workspaces, setDirty, guard }) => {
 };
 
 /**
- * DashTeamPage — the Dash team as one contact (consolidation Phase 4a,
- * app-navigation NAV-016 AC7), opened from the Bots panel's pinned row.
+ * DashTeamPage — the Dash team on the Bots page (lead-workspace releases 5
+ * and 6b): a role's Activity, and the team's Settings — the four roles; pick
+ * one for its panel (pause, model, last run) and Edit for its form. The team
+ * is talked to through the Dash Lead (Open conversation), not here.
  *
- * Conversation: your questions to the team, one thread each (AskStep — the
- * Planner answers; an answer that plans something has Open as a plan). The
- * threads are the questions kept in Create's Recent, including ones asked
- * of a team lead, so nothing asked before is lost. Plans and builds the
- * team runs in Create aren't threads here.
- *
- * Settings: the four roles; pick one for its panel (pause, model, last run)
- * and Edit for its form — what Manage › Bots › Dash team shows.
- *
- * @param {"conversation"|"settings"} [initialTab]
- * @param {string} [role]  who a new question goes to ("planner", "scout",
- *   "builder", "checker"); a new value opens a new question to it
- * @param {(role: string) => void} [onRoleChange]  the To: picker changed
+ * @param {"activity"|"settings"} [initialTab]
+ * @param {string|null} [role]  the role whose Activity shows; none for the
+ *   team's own header (its Settings)
  * @param {object[]} [workspaces]
  * Unsaved role edits are never dropped silently: leaving them (another
  * tab, back, close) asks first, and `onDirtyChange` tells the host (the
  * modal keeps outside clicks from closing it).
  *
- * @param {(seed) => void} [onOpenPlan]  Open as a plan
  * @param {() => void} [onClose]
  * @param {(dirty: boolean) => void} [onDirtyChange]
- * @param {boolean} [manageOnly]  the Bots page: the picked role's Activity
- *   and the team's Settings, no conversation (lead-workspace release 5)
  */
 export const DashTeamPage = ({
-  initialTab = "conversation",
-  role = "planner",
-  onRoleChange = null,
+  initialTab = "activity",
+  role = null,
   workspaces = EMPTY,
-  onOpenPlan = null,
   onClose = null,
   onDirtyChange = null,
-  manageOnly = false,
 }) => {
   const { muted, strong, hairline, selectedBg } = useConfigTokens();
-  const firstTab = manageOnly ? "activity" : "conversation";
   const [tab, setTab] = useState(
-    initialTab === "settings" ? "settings" : firstTab,
+    initialTab === "settings" ? "settings" : "activity",
   );
   const [dirty, setDirtyState] = useState(false);
   const setDirty = (v) => {
@@ -455,13 +196,13 @@ export const DashTeamPage = ({
     if (onDirtyChange) onDirtyChange(!!v);
   };
   // Another role picked by the host (it asked about unsaved edits first):
-  // its conversation.
+  // its Activity.
   const roleSeen = useRef(role);
   useEffect(() => {
     if (roleSeen.current === role) return;
     roleSeen.current = role;
     setDirty(false);
-    setTab(firstTab);
+    setTab("activity");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
   // A way out waiting on "Discard unsaved changes?".
@@ -475,15 +216,10 @@ export const DashTeamPage = ({
     all.dashTeam.find((b) => b && b.role === r),
   ).filter(Boolean);
   const roleBot = team.find((b) => b.role === role) || null;
-  const turnOn = async (role) => {
-    const b = botsApi();
-    if (!role || !b || !b.resumeBot) return;
-    try {
-      await b.resumeBot(role.id);
-    } finally {
-      await all.refresh();
-    }
-  };
+  // A working role (not the Dash Lead) is talked to through the Dash Lead.
+  const member = !!roleBot && role !== "dashlead";
+  // No role picked: the team's Settings (there's no Activity to show).
+  const shownTab = roleBot ? tab : "settings";
 
   return (
     <div
@@ -495,27 +231,26 @@ export const DashTeamPage = ({
       >
         <div className="flex flex-row items-center gap-3 min-w-0">
           <BotAvatar
-            bot={manageOnly && roleBot ? roleBot : DASH_TEAM_CONTACT}
-            icon={manageOnly && roleBot ? "robot" : "people-group"}
+            bot={roleBot || DASH_TEAM_CONTACT}
+            icon={roleBot ? "robot" : "people-group"}
             large
           />
           <div className="flex flex-col gap-0.5 min-w-0">
             <h3 className="text-lg font-semibold truncate">
-              {manageOnly && roleBot ? roleBot.name : "Dash team"}
+              {roleBot ? roleBot.name : "Dash team"}
             </h3>
             <span className={`text-xs ${muted}`}>
-              {manageOnly && roleBot
+              {roleBot
                 ? `On the Dash team${roleBot.summary ? ` · ${roleBot.summary}` : ""}`
                 : "Dash Lead · Planner · Scout · Builder · Checker"}
             </span>
           </div>
         </div>
         <div className="flex flex-row items-center gap-2 flex-shrink-0">
-          {manageOnly && roleBot && role !== "dashlead" ? null : (
+          {member ? null : (
             <Button
-              // On the Bots page only the Dash Lead has a conversation (frame
-              // 14); a role says it's talked to through it.
-              title={manageOnly ? "Open conversation" : "Talk to the Dash Lead"}
+              // Only the Dash Lead has a conversation (frame 14).
+              title="Open conversation"
               size="sm"
               // Unsaved role edits are asked about first.
               onClick={() =>
@@ -541,17 +276,17 @@ export const DashTeamPage = ({
       <div className="flex-shrink-0 px-5 py-3">
         <SegmentedControl
           ariaLabel="Show"
-          value={tab}
+          value={shownTab}
           onChange={(v) =>
             guard(() => {
               setDirty(false);
               setTab(v);
             })
           }
-          options={manageOnly ? MANAGE_TABS : TABS}
+          options={roleBot ? TABS : TABS.filter((t) => t.value === "settings")}
         />
       </div>
-      {manageOnly && roleBot && role !== "dashlead" ? (
+      {member ? (
         <div className="flex-shrink-0 px-5 pb-2">
           <div
             data-testid="dash-team-member-note"
@@ -564,18 +299,10 @@ export const DashTeamPage = ({
       <div className="flex-shrink-0 px-5">
         <DashTeamApprovals compact />
       </div>
-      {tab === "activity" ? (
+      {shownTab === "activity" ? (
         <div className="flex-1 min-h-0 overflow-y-auto pb-6">
-          {roleBot ? <BotRunHistory bot={roleBot} /> : null}
+          <BotRunHistory bot={roleBot} />
         </div>
-      ) : tab === "conversation" ? (
-        <Conversation
-          team={team}
-          role={role}
-          onRoleChange={onRoleChange}
-          onTurnOn={turnOn}
-          onOpenPlan={onOpenPlan}
-        />
       ) : (
         <Settings
           all={all}

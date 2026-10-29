@@ -55,13 +55,13 @@ describe("BotFlowSummary (TEAM-014 AC4)", () => {
     );
   });
 
-  it("opens Conversation / Activity / Settings and Run now", () => {
+  it("opens Activity / Settings and Run now; only a lead is asked (release 6b)", () => {
     const { onOpen, onRunNow } = setup(reader);
-    fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
+    expect(screen.queryByRole("button", { name: "Conversation" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ask the lead" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Activity" }));
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(onOpen.mock.calls.map((c) => c[0])).toEqual([
-      "conversation",
       "activity",
       "settings",
     ]);
@@ -77,4 +77,10 @@ describe("BotFlowSummary (TEAM-014 AC4)", () => {
     expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
     expect(screen.queryByTestId("runs-after")).toBeNull();
   });
+});
+
+test("the lead keeps Ask the lead (its conversation, release 6b)", () => {
+  const { onOpen } = setup(lead);
+  fireEvent.click(screen.getByRole("button", { name: "Ask the lead" }));
+  expect(onOpen).toHaveBeenCalledWith("conversation");
 });

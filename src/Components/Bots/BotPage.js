@@ -15,22 +15,23 @@ import { BotDetail } from "../Settings/details/BotDetail";
 import { AuditLogView } from "../AppPages/AuditLogView";
 import { approvalText } from "../AppPages/botSummary";
 import { BotAvatar } from "./BotAvatar";
-import { BotChat } from "./BotChat";
 import { BotRunHistory } from "./BotRunHistory";
 import { BotSpending } from "./BotSpending";
 import { botStatus } from "./botConversation";
-import { budgetLimitText } from "./contactsList";
 import { STATUS_DOT } from "./teamUtils";
 import { useBotContacts } from "./useBotContacts";
 
 /**
  * BotPage — everything about one bot in one place (app-navigation NAV-016):
- * a header with Run now / Turn on·Pause / Stop, then Conversation · Activity ·
- * Log · Spending · Settings. The same page in Manage › Bots, in the large
+ * a header with Run now / Turn on·Pause / Stop, then Activity · Log ·
+ * Spending · Settings. Managing only (lead-workspace releases 5, 6b): a
+ * lead, or a bot on no dashboard, has Open conversation (the lead
+ * workspace); a team member says it's talked to through its lead. The same page in Manage › Bots, in the large
  * modal opened from the Bots panel, and in a dashboard's Bots view.
  *
  * @param {string} botId
- * @param {string} [initialTab]  "conversation" (default) | "activity" | "log" | "spending" | "settings"
+ * @param {string} [initialTab]  "activity" (default) | "log" | "spending" |
+ *   "settings" — anything else (an old "conversation") opens Activity
  * @param {object[]} [workspaces]  dashboards (team names, event picker)
  * @param {(workspace, botId) => void} [onOpenInBotsView]  a team bot's Bots view
  * @param {() => void} [onClose]  the modal's close (×)
@@ -42,13 +43,8 @@ import { useBotContacts } from "./useBotContacts";
  *   ("Open Settings › Providers") — the app's settings, not this bot's
  * @param {React.ReactNode} [actions]  more header buttons (the Bots view's ⋯)
  * @param {React.ReactNode} [below]  shown under the header (that menu's row)
- * @param {object} [chatProps]  more Conversation props for BotChat
- * @param {boolean} [manageOnly]  the Bots page (lead-workspace release 5):
- *   no Conversation tab — a lead or a bot on no dashboard has Open
- *   conversation; a team member says it's talked to through its lead
  */
 export const BOT_PAGE_TABS = [
-  { value: "conversation", label: "Conversation" },
   { value: "activity", label: "Activity" },
   { value: "log", label: "Log" },
   { value: "spending", label: "Spending" },
@@ -61,7 +57,7 @@ const getWidgetConfig = (name) =>
 
 export const BotPage = ({
   botId,
-  initialTab = "conversation",
+  initialTab = "activity",
   workspaces = EMPTY,
   onOpenInBotsView = null,
   onClose = null,
@@ -72,16 +68,12 @@ export const BotPage = ({
   onOpenSettings = null,
   actions = null,
   below = null,
-  chatProps = null,
-  manageOnly = false,
 }) => {
   const { muted, strong, hairline, selectedBg } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const appContext = useContext(AppContext) || {};
   const c = useBotContacts();
-  const tabs = manageOnly
-    ? BOT_PAGE_TABS.filter((t) => t.value !== "conversation")
-    : BOT_PAGE_TABS;
+  const tabs = BOT_PAGE_TABS;
   const [tab, setTabState] = useState(
     tabs.some((t) => t.value === initialTab) ? initialTab : tabs[0].value,
   );
@@ -141,9 +133,9 @@ export const BotPage = ({
       ? null
       : workspaces.find((w) => String(w.id) === String(bot.workspaceId)) ||
         null;
-  // On the Bots page a bot whose dashboard is gone is on no dashboard
-  // (talked to directly); elsewhere the workspace list may not be passed.
-  const hasDashboard = manageOnly
+  // A bot whose dashboard is gone is on no dashboard (talked to directly).
+  // Without the dashboards passed in, its workspaceId is all there is.
+  const hasDashboard = workspaces.length
     ? !!ws
     : bot.workspaceId !== null &&
       bot.workspaceId !== undefined &&
@@ -163,7 +155,7 @@ export const BotPage = ({
   };
   // A team member is talked to through its lead (frame 15).
   const teamLead =
-    manageOnly && !isLead && hasDashboard
+    !isLead && hasDashboard
       ? bots.find(
           (b) =>
             b.role === "lead" &&
@@ -349,8 +341,8 @@ export const BotPage = ({
         </span>
       ) : null}
 
-      {/* Waiting approvals — the conversation shows them inline instead. */}
-      {tab !== "conversation" && approvals.length ? (
+      {/* Waiting approvals. */}
+      {approvals.length ? (
         <div className="flex-shrink-0 flex flex-col gap-2 px-5 pt-3">
           {approvals.map((a) => (
             <div
@@ -387,6 +379,18 @@ export const BotPage = ({
           options={tabs}
         />
       </div>
+      {!isLead && hasDashboard && !teamLead ? (
+        <div className="flex-shrink-0 px-5 pb-1">
+          <div
+            data-testid="bot-page-member-note"
+            className={`rounded-lg px-4 py-3 text-sm ${muted} ${selectedBg}`}
+          >
+            This dashboard has no lead, so its bots aren&apos;t talked to yet.
+            Turn on &ldquo;Create team leads automatically&rdquo; on the Bots
+            page to give it one.
+          </div>
+        </div>
+      ) : null}
       {teamLead ? (
         <div className="flex-shrink-0 px-5 pb-1">
           <div
@@ -402,23 +406,6 @@ export const BotPage = ({
         className="flex flex-col flex-1 min-h-0"
         data-testid={`bot-page-${tab}`}
       >
-        {tab === "conversation" ? (
-          <BotChat
-            bot={bot}
-            isLead={isLead}
-            approvals={approvals}
-            onApprove={c.approve || null}
-            nameOf={nameOf}
-            onOpenSettings={onOpenSettings}
-            onChangeModel={toSettings}
-            paused={isPaused}
-            onResume={c.setBotPaused ? () => setPaused(false) : null}
-            overBudget={isOver ? budgetLimitText(budget) : null}
-            onKeepRunning={c.keepRunning ? () => c.keepRunning(bot.id) : null}
-            queuedEvents={(c.queued || {})[bot.id] || 0}
-            {...(chatProps || {})}
-          />
-        ) : null}
         {tab === "activity" ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-6">
             <BotRunHistory

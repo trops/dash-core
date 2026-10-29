@@ -109,7 +109,9 @@ const PANEL_GAP = 16; // gap-4 between the diagram and the panel
 const PANEL_MIN = 360;
 const DIAGRAM_MIN = 320;
 
-const TABS = ["conversation", "activity", "log", "spending", "settings"];
+// A bot's page has no conversation (lead-workspace release 6b): the lead
+// is asked in the lead workspace.
+const TABS = ["activity", "log", "spending", "settings"];
 
 // Diagram / List (TEAM-014), remembered per viewer. Storage can be blocked.
 const MODE_KEY = "dash:botsView:mode";
@@ -177,7 +179,7 @@ export const BotsView = ({
   const [tab, setTab] = useState(() =>
     focusTarget && TABS.includes(focusTarget.tab)
       ? focusTarget.tab
-      : "conversation",
+      : "activity",
   );
   const [menuOpen, setMenuOpen] = useState(false);
   // Team diagram (TEAM-014): the view, and whether the selected bot's
@@ -286,7 +288,7 @@ export const BotsView = ({
     guarded(() => {
       setDirty(false);
       setSelectedId(id);
-      setTab(id === NEW_BOT ? "settings" : "conversation");
+      setTab(id === NEW_BOT ? "settings" : "activity");
       reopenPage();
       setMenuOpen(false);
       setImportPreview(null);
@@ -296,17 +298,30 @@ export const BotsView = ({
     });
 
   // Diagram: open a bot's tab beside the diagram / back to its summary.
-  const openBot = (id, nextTab) =>
+  const openBot = (id, nextTab) => {
+    // "Ask the lead": its conversation, in the lead workspace (release 6b).
+    const asked = all.find((b) => b.id === id);
+    if (nextTab === "conversation" && asked && asked.role === "lead") {
+      guarded(() =>
+        window.dispatchEvent(
+          new CustomEvent("dash:open-workspace", {
+            detail: { key: `lead:${id}` },
+          }),
+        ),
+      );
+      return;
+    }
     guarded(() => {
       setDirty(false);
       setSelectedId(id);
-      setTab(TABS.includes(nextTab) ? nextTab : "conversation");
+      setTab(TABS.includes(nextTab) ? nextTab : "activity");
       reopenPage();
       setMenuOpen(false);
       setImportPreview(null);
       setRegistryOpen(false);
       setDetailOpen(true);
     });
+  };
   const closeDetail = () =>
     guarded(() => {
       setDirty(false);
@@ -316,7 +331,7 @@ export const BotsView = ({
         setSelectedId(
           (lead && lead.id) || (members[0] && members[0].id) || null,
         );
-        setTab("conversation");
+        setTab("activity");
       }
     });
 
@@ -331,7 +346,7 @@ export const BotsView = ({
     guarded(() => {
       setDirty(false);
       setSelectedId(focus.botId);
-      setTab(TABS.includes(focus.tab) ? focus.tab : "conversation");
+      setTab(TABS.includes(focus.tab) ? focus.tab : "activity");
       reopenPage();
       setMenuOpen(false);
       setDetailOpen(true);
@@ -427,7 +442,7 @@ export const BotsView = ({
     afterChange();
     if (selectedId === NEW_BOT && saved && saved.id) {
       setSelectedId(saved.id);
-      setTab("conversation");
+      setTab("activity");
     }
     return saved;
   };
@@ -791,8 +806,8 @@ export const BotsView = ({
           selectedId={selectedId}
           statusOf={(id) => (team ? team.statusOf(id) : "Idle")}
           approvalsFor={(id) => (team ? team.approvalsFor(id) : [])}
-          // A click opens the bot's conversation; × goes back to its summary.
-          onSelect={(id) => openBot(id, "conversation")}
+          // A click opens the bot's page; × goes back to its summary.
+          onSelect={(id) => openBot(id, "activity")}
           onOpen={openBot}
           // Off while a bot's Settings is open: saving from the diagram
           // would overwrite that form's unsaved edits.
@@ -828,14 +843,6 @@ export const BotsView = ({
       </div>
     </div>
   );
-
-  const tabs = selected
-    ? [
-        ["conversation", isLead ? "Ask the lead" : "Conversation"],
-        ["activity", "Activity"],
-        ["settings", "Settings"],
-      ]
-    : [["settings", "New bot"]];
 
   return (
     <div

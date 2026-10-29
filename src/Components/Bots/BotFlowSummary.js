@@ -98,11 +98,14 @@ export const BotFlowSummary = ({
       )}
 
       <div className="flex flex-row flex-wrap gap-2">
-        <Button3
-          title={isLead ? "Ask the lead" : "Conversation"}
-          size="sm"
-          onClick={() => onOpen && onOpen("conversation")}
-        />
+        {/* Only the lead is asked — in its conversation (release 6b). */}
+        {isLead ? (
+          <Button3
+            title="Ask the lead"
+            size="sm"
+            onClick={() => onOpen && onOpen("conversation")}
+          />
+        ) : null}
         <Button3
           title="Activity"
           size="sm"

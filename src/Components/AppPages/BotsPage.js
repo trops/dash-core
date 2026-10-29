@@ -232,7 +232,6 @@ export const BotsPage = ({
     detail = (
       <DashTeamPage
         key={dashSettings ? "dash-settings" : `dash-${selBot.role}`}
-        manageOnly
         // The team's Settings: no role, so the Dash team's own header.
         role={dashSettings ? null : selBot.role}
         initialTab={dashSettings ? "settings" : "activity"}
@@ -246,7 +245,6 @@ export const BotsPage = ({
       <BotPage
         key={selBot.id}
         botId={selBot.id}
-        manageOnly
         initialTab="activity"
         workspaces={workspaces}
         onOpenInBotsView={onOpenBotInBotsView}

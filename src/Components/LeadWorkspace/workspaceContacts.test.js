@@ -213,3 +213,24 @@ test("withStopped: this question's steps still asking become stopped; others sta
   expect(out.map((m) => m.status)).toEqual(["asking", "stopped", "done"]);
   expect(withStopped([{ who: "you" }], "2:")).toEqual([{ who: "you" }]);
 });
+
+// Release 6b: the Dash team is talked to through the Dash Lead — its older
+// questions to a role are the Dash Lead's conversations too.
+test("the Dash Lead's conversations include questions once asked of a Dash team role", () => {
+  const entries = [
+    { id: "q1", kind: "question", with: "role:dashlead", updatedAt: "3" },
+    { id: "q2", kind: "question", with: "role:planner", updatedAt: "2" },
+    { id: "q3", kind: "question", with: "role:scout", updatedAt: "1" },
+    { id: "q4", kind: "question", with: "lead:lead_7", updatedAt: "4" },
+    { id: "p1", kind: "plan", with: "role:planner", updatedAt: "5" },
+  ];
+  expect(contactThreads(entries, "role:dashlead").map((e) => e.id)).toEqual([
+    "q1",
+    "q2",
+    "q3",
+  ]);
+  // A dashboard lead keeps only its own.
+  expect(contactThreads(entries, "lead:lead_7").map((e) => e.id)).toEqual([
+    "q4",
+  ]);
+});

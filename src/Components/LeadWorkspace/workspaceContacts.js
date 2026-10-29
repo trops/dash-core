@@ -104,12 +104,18 @@ export function findContact(groups, key) {
 }
 
 /**
- * A contact's conversations from Recent (questions), newest first.
+ * A contact's conversations from Recent (questions), newest first. The
+ * Dash Lead's include the questions once asked of a Dash team role (the
+ * Dash team page's chat, Create's Ask — "role:planner", …): the team is
+ * talked to through the Dash Lead now (release 6b), so nothing is lost.
  * @param {object[]} entries  bots.listCreateRecent()
  */
 export function contactThreads(entries, key) {
+  const mine = (w) =>
+    w === key ||
+    (key === "role:dashlead" && typeof w === "string" && w.startsWith("role:"));
   return (entries || [])
-    .filter((e) => e && e.kind === "question" && e.id && e.with === key)
+    .filter((e) => e && e.kind === "question" && e.id && mine(e.with))
     .sort((a, b) =>
       String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")),
     );

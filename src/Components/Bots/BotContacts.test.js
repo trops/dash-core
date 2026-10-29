@@ -306,7 +306,7 @@ describe("pinned: this dashboard's lead and the Dash team (consolidation Phase 4
     expect(within(pinned()).queryByTestId("bot-contact-row")).toBeNull();
   });
 
-  test("the pinned lead opens its page; Dash team opens the team's page", () => {
+  test("the pinned lead opens its page; Dash team opens the Dash Lead's conversations (release 6b)", () => {
     const onOpenBot = jest.fn();
     onDashboard(1, { props: { onOpenBot } });
     fireEvent.click(
@@ -314,14 +314,14 @@ describe("pinned: this dashboard's lead and the Dash team (consolidation Phase 4
     );
     expect(onOpenBot).toHaveBeenCalledWith("sl", "conversation");
     const opened = jest.fn();
-    window.addEventListener("dash:open-dash-team", opened);
+    window.addEventListener("dash:open-workspace", opened);
     fireEvent.click(
       within(pinned())
         .getByTestId("bot-contact-dash-team")
         .querySelector("button"),
     );
-    window.removeEventListener("dash:open-dash-team", opened);
-    expect(opened.mock.calls[0][0].detail).toEqual({ tab: "conversation" });
+    window.removeEventListener("dash:open-workspace", opened);
+    expect(opened.mock.calls[0][0].detail).toEqual({ key: "role:dashlead" });
   });
 
   test("search filters the pinned rows too", () => {

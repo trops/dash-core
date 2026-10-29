@@ -270,6 +270,37 @@ describe("AskStep", () => {
   });
 });
 
+// Release 6b: an older question to a Dash team role, carried on with the
+// Dash Lead, still says who answered it.
+test("a reopened answer keeps who gave it, not who it's carried on with", async () => {
+  api({
+    getCreateRecent: jest.fn().mockResolvedValue({
+      id: "plan_q9",
+      kind: "question",
+      prompt: "Which widgets use Gmail?",
+      conversation: {
+        recipient: { role: "scout", roleName: "Scout" },
+        messages: [
+          { who: "you", text: "Which widgets use Gmail?" },
+          { who: "role", text: "None yet." },
+          { who: "role", by: "Dash Lead", text: "Still none." },
+        ],
+      },
+    }),
+  });
+  render(
+    <AskStep
+      recentId="plan_q9"
+      recipient={{ role: "dashlead", roleName: "Dash Lead" }}
+    />,
+  );
+  const answers = await screen.findAllByTestId("ask-answer");
+  expect(answers[0]).toHaveTextContent("Scout");
+  expect(answers[1]).toHaveTextContent("Dash Lead");
+  // A follow-up goes to the Dash Lead, not the Scout it was saved with.
+  expect(screen.getByText(/To: Dash Lead/)).toBeInTheDocument();
+});
+
 const LEAD = {
   botId: "b_lead",
   leadName: "Daily Brief Lead",

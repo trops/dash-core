@@ -155,7 +155,7 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
     setup({ mode: null });
     fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
     // The bot page, on its conversation (QA 2026-10-28); the diagram stays.
-    expect(pageShows()).toBe("b1 on conversation");
+    expect(pageShows()).toBe("b1 on activity");
     expect(screen.getByTestId("diagram-card-b1")).toBeInTheDocument();
     fireEvent.click(screen.getByText("page-close"));
     expect(screen.queryByTestId("bot-page")).toBeNull();
@@ -369,7 +369,7 @@ describe("BotsView — team list", () => {
 
   it("opens on the lead's bot page, with Turn off lead — no Drafts (2c-2)", () => {
     setup();
-    expect(pageShows()).toBe("lead_7 on conversation");
+    expect(pageShows()).toBe("lead_7 on activity");
     expect(mockPageProps.chatProps).toBeUndefined();
     expect(screen.queryByText("Drafts")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "More actions" }));
@@ -379,7 +379,7 @@ describe("BotsView — team list", () => {
   it("selecting a member shows its bot page, with this team's actions", () => {
     setup();
     fireEvent.click(within(teamList()).getByText("Inbox Watch"));
-    expect(pageShows()).toBe("b1 on conversation");
+    expect(pageShows()).toBe("b1 on activity");
     expect(mockPageProps.workspaces).toEqual([workspace]);
     fireEvent.click(screen.getByRole("button", { name: "More actions" }));
     for (const a of [
@@ -424,10 +424,10 @@ describe("BotsView — unsaved changes", () => {
     fireEvent.click(within(teamList()).getByText("CRM Sync"));
     expect(screen.getByText("Discard unsaved changes?")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Keep editing"));
-    expect(pageShows()).toBe("b1 on conversation");
+    expect(pageShows()).toBe("b1 on activity");
     fireEvent.click(within(teamList()).getByText("CRM Sync"));
     fireEvent.click(screen.getByText("Discard"));
-    expect(pageShows()).toBe("b2 on conversation");
+    expect(pageShows()).toBe("b2 on activity");
   });
 
   it("the page's tab is the view's: wiring is off on Settings", () => {
@@ -449,7 +449,7 @@ describe("BotsView — narrow windows", () => {
     expect(screen.queryByRole("navigation", { name: "Team" })).toBeNull();
     const picker = screen.getByLabelText("Bot");
     fireEvent.change(picker, { target: { value: "b2" } });
-    expect(pageShows()).toBe("b2 on conversation");
+    expect(pageShows()).toBe("b2 on activity");
     // No summary to go back to: the page has no ×.
     expect(screen.queryByText("page-close")).toBeNull();
   });
@@ -494,7 +494,7 @@ describe("BotsView — focus requests (B3 monitor)", () => {
       seq: 1,
     });
     rerender({ botId: "b2", tab: "conversation", seq: 2 });
-    expect(pageShows()).toBe("b2 on conversation");
+    expect(pageShows()).toBe("b2 on activity");
     rerender({ botId: "b2", tab: "activity", seq: 3 });
     expect(pageShows()).toBe("b2 on activity");
   });
@@ -508,7 +508,7 @@ describe("BotsView — focus requests (B3 monitor)", () => {
     rerender({ botId: "b2", tab: "conversation", seq: 2 });
     expect(screen.getByText("Discard unsaved changes?")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Discard"));
-    expect(pageShows()).toBe("b2 on conversation");
+    expect(pageShows()).toBe("b2 on activity");
   });
   it("applies once the team loads (team arrives after mount)", () => {
     setup();
@@ -532,7 +532,7 @@ describe("BotsView — focus requests (B3 monitor)", () => {
   });
   it("an unknown bot is ignored", () => {
     renderWithFocus({ botId: "nope", tab: "activity", seq: 1 });
-    expect(pageShows()).toBe("lead_7 on conversation");
+    expect(pageShows()).toBe("lead_7 on activity");
   });
 });
 
