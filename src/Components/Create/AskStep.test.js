@@ -909,3 +909,66 @@ describe("while the team builds (lead-workspace release 3b)", () => {
     expect(bots.run).not.toHaveBeenCalled();
   });
 });
+
+// Lead workspace release 6c: what a conversation is about is saved with it,
+// and its note goes with the first question and the first reply after a
+// reopen — the chat shows what was typed.
+describe("about (release 6c)", () => {
+  const ABOUT = {
+    label: "Making",
+    text: "a widget",
+    note: "(The user wants to make a widget — plan a widget.)",
+  };
+
+  test("saved with it; the note goes with the first question only", async () => {
+    const bots = api();
+    render(<AskStep question="A to-do list" about={ABOUT} />);
+    await waitFor(() => expect(bots.run).toHaveBeenCalled());
+    expect(bots.saveCreateRecent).toHaveBeenNthCalledWith(1, {
+      kind: "question",
+      prompt: "A to-do list",
+      conversation: { about: ABOUT },
+    });
+    expect(bots.run.mock.calls[0][1]).toMatch(
+      /A to-do list\n\n\(The user wants to make a widget — plan a widget\.\)$/,
+    );
+    expect(screen.getByText("A to-do list")).toBeInTheDocument();
+    expect(screen.queryByText(/The user wants/)).toBeNull();
+    await screen.findByText("Morning Briefer sent a brief today at 8:02.");
+    fireEvent.change(screen.getByLabelText("Ask a follow-up"), {
+      target: { value: "Make it blue" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(bots.run).toHaveBeenCalledTimes(2));
+    expect(bots.run.mock.calls[1][1]).not.toMatch(/The user wants/);
+  });
+
+  test("reopened: told to the host, and its note goes with the next reply", async () => {
+    const bots = api({
+      getCreateRecent: jest.fn().mockResolvedValue({
+        id: "plan_q1",
+        kind: "question",
+        prompt: "A to-do list",
+        conversation: {
+          about: ABOUT,
+          messages: [
+            { who: "you", text: "A to-do list" },
+            { who: "planner", text: "Two columns?" },
+          ],
+        },
+      }),
+    });
+    const onAbout = jest.fn();
+    render(<AskStep recentId="plan_q1" onAbout={onAbout} />);
+    expect(await screen.findByText("Two columns?")).toBeInTheDocument();
+    expect(onAbout).toHaveBeenCalledWith(ABOUT);
+    fireEvent.change(screen.getByLabelText("Ask a follow-up"), {
+      target: { value: "One" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(bots.run).toHaveBeenCalled());
+    expect(bots.run.mock.calls[0][1]).toMatch(
+      /One\n\n\(The user wants to make a widget — plan a widget\.\)$/,
+    );
+  });
+});

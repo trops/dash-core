@@ -26,6 +26,7 @@ import {
   findContact,
 } from "./workspaceContacts";
 import { WorkspaceSide } from "./WorkspaceSide";
+import { makingAbout, makingStart, registrySeed } from "./workspaceStart";
 import { useWorkspacePlan } from "./useWorkspacePlan";
 import { PlanCard, PlanChoices } from "./PlanViews";
 import { BuildInChat, BuildWalk, PastBuild } from "./BuildViews";
@@ -207,6 +208,15 @@ export const LeadWorkspace = ({
   const picked = findContact(groups, key);
   const missing = !loading && !picked;
   const contact = loading ? null : picked;
+  // A page's New (release 6c, frame 41): this new Dash Lead conversation
+  // already says what's being made — until another conversation is opened.
+  const making = useMemo(
+    () => makingStart(request && request.making),
+    [request],
+  );
+  const [makingOn, setMakingOn] = useState(!!making);
+  const makingShown =
+    !!making && makingOn && !!contact && contact.kind === "dashlead";
   const [switchOpen, setSwitchOpen] = useState(false);
   // What's open in the middle: a thread ({ recentId }), a new question just
   // sent ({ question }), or nothing yet (the start).
@@ -307,36 +317,56 @@ export const LeadWorkspace = ({
     [entries, now, contact],
   );
 
+  // What a reopened conversation is about (its saved `about`, release 6c).
+  const [reopenedAbout, setReopenedAbout] = useState(null);
+  // Moving on — another lead, a new or other conversation, a question —
+  // leaves what was being started behind: a seed still saving doesn't open
+  // over it afterwards.
+  const moves = useRef(0);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const moveOn = () => {
+    moves.current += 1;
+    setSeedError(null);
+    setReopenedAbout(null);
+  };
   const switchTo = (next) => {
     setSwitchOpen(false);
     setNavOpen(false);
     if (next === key) return;
+    moveOn();
     setKey(next);
     setOpen(null);
     setSelectedId(null);
     setMessages(EMPTY);
     setSideOpen(null);
+    setMakingOn(false);
   };
-  // Open as a plan (release 3c): the plan from another chat becomes a new
-  // Dash Lead conversation — saved, then opened like any in Recents.
+  // A seeded plan becomes a new Dash Lead conversation — saved, then opened
+  // like any in Recents: Open as a plan (release 3c), from another chat,
+  // and a registry dashboard picked in Start from (release 6c). Resolves
+  // true once it's open; false when it couldn't be saved (`lostText`, if
+  // given, says so at the start) or the user moved on meanwhile.
   const seeded = useRef(false);
   const [seedError, setSeedError] = useState(null);
-  useEffect(() => {
-    const seed = request && request.seed;
-    if (!seed || seeded.current || !contact || contact.kind !== "dashlead")
-      return;
-    seeded.current = true;
+  const startSeeded = (seed, lostText = null) => {
+    setSeedError(null);
     const b = botsApi();
+    const at = moves.current;
+    const current = () => alive.current && moves.current === at;
     // Never lost without a word: the start says it didn't come over.
-    const lost = () =>
-      setSeedError(
-        "The plan from your chat didn't come over. Ask for it here, or open it again from that chat.",
-      );
-    if (!b || !b.saveCreateRecent) {
-      lost();
-      return;
-    }
-    Promise.resolve(
+    const lost = () => {
+      if (lostText && current()) setSeedError(lostText);
+      return false;
+    };
+    if (!b || !b.saveCreateRecent || !contact || contact.kind !== "dashlead")
+      return Promise.resolve(lost());
+    return Promise.resolve(
       b.saveCreateRecent({
         kind: "question",
         prompt: seed.label || "From the Dash team chat",
@@ -347,29 +377,56 @@ export const LeadWorkspace = ({
       }),
     )
       .then((res) => {
-        if (!res || !res.id) {
-          lost();
-          return;
-        }
+        if (!res || !res.id) return lost();
+        if (!current()) return false;
+        moveOn();
         setSelectedId(res.id);
         setSideOpen(null);
+        setOutsOpen(false);
+        setMakingOn(false);
         setOpen({ key: res.id, recentId: res.id });
+        return true;
       })
       .catch(lost);
+  };
+  useEffect(() => {
+    const seed = request && request.seed;
+    if (!seed || seeded.current || !contact || contact.kind !== "dashlead")
+      return;
+    seeded.current = true;
+    startSeeded(
+      seed,
+      "The plan from your chat didn't come over. Ask for it here, or open it again from that chat.",
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request, contact]);
+  // Start from › A dashboard from the registry (frame 42): the picked one,
+  // as a plan the Dash Lead sets up with you. Its row says when it
+  // couldn't be opened.
+  const pickRegistryDashboard = (dashboard, config) =>
+    startSeeded(registrySeed(dashboard, config)).then((ok) =>
+      ok
+        ? null
+        : {
+            error: `${dashboard.name} didn't come over. Pick it again, or describe what you want in the box.`,
+          },
+    );
   const startNew = () => {
+    moveOn();
     setNavOpen(false);
     setOpen(null);
     setSelectedId(null);
     setMessages(EMPTY);
     setSideOpen(null);
+    setMakingOn(false);
   };
   const ask = (text) => {
     const q = String(text || draft).trim();
     if (!q || !contact) return;
+    moveOn();
     setDraft("");
     setSideOpen(null);
-    setOpen({ key: `new:${Date.now()}`, question: q });
+    setOpen({ key: `new:${Date.now()}`, question: q, making: makingShown });
   };
 
   // The plan's build, live (release 3b) — from how it last ended until the
@@ -497,22 +554,15 @@ export const LeadWorkspace = ({
   const answering = stillAnswering(messages);
 
   // Start from (frame 13). Describing it is the box; the registry's
-  // dashboards are in Create for now (release 6 brings them here); copying a
-  // dashboard and editing a widget are on their pages.
+  // dashboards open on the right (frame 42); copying a dashboard and editing
+  // a widget are on their pages.
   const startFrom = (kind) => {
     if (kind === "describe") {
       if (composer.current) composer.current.focus();
       return;
     }
     if (kind === "registry") {
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("dash:open-create", {
-            detail: { type: "dashboard" },
-          }),
-        );
-      }
-      onClose();
+      setSideOpen("registry");
       return;
     }
     const page = kind === "copy" ? "dashboards" : "widgets";
@@ -613,7 +663,17 @@ export const LeadWorkspace = ({
     );
   const isBot = contact && contact.kind === "bot";
   const lone = isBot ? all.bots.find((b) => b.id === contact.botId) : null;
-  const start = startText(contact);
+  const start = makingShown
+    ? { title: making.title, text: making.greeting, starters: making.starters }
+    : startText(contact);
+  // The "Making:" line: a page's New, before and after its first question,
+  // or what a reopened conversation was saved as.
+  const aboutShown =
+    makingShown && (!open || open.making)
+      ? making
+      : open && open.recentId
+        ? reopenedAbout
+        : null;
   const title = isBot
     ? `Your conversation with ${contact.name}`
     : open
@@ -803,6 +863,8 @@ export const LeadWorkspace = ({
                         setSelectedId(t.id);
                         setMessages(EMPTY);
                         setSideOpen(null);
+                        setMakingOn(false);
+                        moveOn();
                         setOpen({ key: t.id, recentId: t.id });
                       }}
                     />
@@ -883,6 +945,21 @@ export const LeadWorkspace = ({
               </span>
             ) : null}
           </header>
+          {/* What this conversation is about (frame 41): a page's New —
+              also when it's reopened. */}
+          {aboutShown ? (
+            <div className="flex-shrink-0 flex flex-row px-6 pt-4">
+              <span
+                className={`rounded-full border px-3 py-1 text-sm ${hairline}`}
+                data-testid="workspace-about"
+              >
+                <span className={muted}>{aboutShown.label}:</span>{" "}
+                <span className={`font-semibold ${strong}`}>
+                  {aboutShown.text}
+                </span>
+              </span>
+            </div>
+          ) : null}
           {loading ? (
             <div
               className={`flex-1 flex items-center justify-center text-sm ${muted}`}
@@ -905,6 +982,10 @@ export const LeadWorkspace = ({
               // A new lead is a new conversation (never a carried-over one).
               key={`${contact.key}:${open.key}`}
               question={open.question || ""}
+              // A page's New: saved with it, and the Dash Lead is told
+              // what's being made.
+              about={open.making ? makingAbout(making) : null}
+              onAbout={setReopenedAbout}
               recentId={open.recentId || null}
               recipient={contact.recipient}
               hideTo
@@ -1053,8 +1134,10 @@ export const LeadWorkspace = ({
               // No Expand in a small window: the column already covers it.
               onToggleWide={narrow ? null : () => setWide((v) => !v)}
               onSummary={setSideSummary}
-              isNew={!open && !isBot}
+              // A page's New already says what's made: no Start from.
+              isNew={!open && !isBot && !makingShown}
               onStartFrom={startFrom}
+              onUseRegistry={pickRegistryDashboard}
             />
           ) : null}
         </aside>

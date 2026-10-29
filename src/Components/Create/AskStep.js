@@ -84,6 +84,12 @@ export const AskStep = ({
   // stands goes along), as (text) => text.
   renderAfter = null,
   prepareSend = null,
+  // What the conversation is about (release 6c): { label, text, note } —
+  // saved with it; its note goes with the first question and with the
+  // first reply after a reopen (the chat shows what was typed). A reopened
+  // conversation's own is told to `onAbout`.
+  about = null,
+  onAbout = null,
   // The reply box's words, when the host has its own (the workspace's
   // "Reply", no hint line); otherwise it names who is asked.
   placeholder = null,
@@ -111,6 +117,11 @@ export const AskStep = ({
   const started = useRef(false);
   const alive = useRef(true);
   const firstAsked = useRef(question);
+  const aboutRef = useRef(about);
+  const withAbout = (t) =>
+    aboutRef.current && aboutRef.current.note
+      ? `${t}\n\n${aboutRef.current.note}`
+      : t;
   // Unique across reopens too (a reopened thread keeps its old steps).
   const askSeq = useRef(Date.now());
   // The lead this conversation is with (null = the Dash team).
@@ -176,7 +187,7 @@ export const AskStep = ({
     if (reopened.current) {
       reopened.current = false;
       cont = false;
-      request = reopenedQuestion(history, text, 6, wrap);
+      request = reopenedQuestion(history, withAbout(text), 6, wrap);
     }
     const onText = (t) => alive.current && setSoFar(t);
     // Hand-offs as they happen: the step, then its answer. Ids are this
@@ -304,6 +315,10 @@ export const AskStep = ({
           .then((entry) => {
             if (!alive.current) return;
             const conv = (entry && entry.conversation) || {};
+            if (conv.about && typeof conv.about === "object") {
+              aboutRef.current = conv.about;
+              if (onAbout) onAbout(conv.about);
+            }
             firstAsked.current = (entry && entry.prompt) || "";
             const was = conv.recipient || {};
             setSavedLabel(was.leadName || was.roleName || "Planner");
@@ -338,7 +353,14 @@ export const AskStep = ({
             ? bots.saveCreateRecent({
                 kind: "question",
                 prompt: question,
-                ...(recipient ? { conversation: { recipient } } : {}),
+                ...(recipient || about
+                  ? {
+                      conversation: {
+                        ...(recipient ? { recipient } : {}),
+                        ...(about ? { about } : {}),
+                      },
+                    }
+                  : {}),
               })
             : null,
         )
@@ -351,7 +373,7 @@ export const AskStep = ({
           .catch(() => {})
           // Asked even if closed meanwhile: the answer is saved to Recent
           // (add), so a reopened question isn't left unanswered.
-          .then(() => ask(question, false, []));
+          .then(() => ask(withAbout(question), false, []));
       }
     }
     return () => {

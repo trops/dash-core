@@ -32,7 +32,7 @@ const OptionCard = ({ icon, title, description, onClick, currentTheme }) => (
  * "New Widget" header button is clicked (audit #19).
  *
  * Options (consolidation Phase 3b: the Dash team first, then by hand):
- * 1. Describe it to the Dash team (Create › Widget)
+ * 1. Describe it to the Dash team (a Dash Lead conversation about a widget)
  * 2. Build it by hand (the Widget Builder, no AI)
  * 3. Search for Widgets (registry browser)
  * 4. Install from File (.zip)

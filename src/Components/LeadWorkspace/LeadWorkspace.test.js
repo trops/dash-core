@@ -804,13 +804,347 @@ describe("release 3a: matches the mockup", () => {
     expect(onOpenPage).toHaveBeenLastCalledWith("dashboards");
     fireEvent.click(within(from).getByText("Edit a widget you have"));
     expect(onOpenPage).toHaveBeenLastCalledWith("widgets");
+    // The registry's dashboards open on the right (release 6c, frame 42).
     const heard = [];
     const listen = (e) => heard.push(e.detail);
     window.addEventListener("dash:open-create", listen);
     fireEvent.click(within(from).getByText("A dashboard from the registry"));
     window.removeEventListener("dash:open-create", listen);
-    expect(heard).toEqual([{ type: "dashboard" }]);
-    expect(onClose).toHaveBeenCalled();
+    expect(heard).toEqual([]);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId("workspace-registry")).toBeInTheDocument();
+  });
+
+  describe("a page's New (release 6c, frame 41)", () => {
+    test("opening a Recent drops it; a reopened conversation shows its own", async () => {
+      render(
+        <LeadWorkspace
+          request={{
+            key: "role:dashlead",
+            making: { kind: "widget", from: "widgets" },
+          }}
+          onClose={jest.fn()}
+        />,
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: /Do I have a clock/ }),
+      );
+      expect(screen.queryByTestId("workspace-about")).toBeNull();
+      expect(mockAskProps.about).toBeNull();
+      act(() =>
+        mockAskProps.onAbout({ label: "Making", text: "a bot", note: "(n)" }),
+      );
+      expect(screen.getByTestId("workspace-about")).toHaveTextContent(
+        "Making: a bot",
+      );
+    });
+
+    test("says what's being made, its greeting and starters; no Start from", () => {
+      render(
+        <LeadWorkspace
+          request={{
+            key: "role:dashlead",
+            making: { kind: "widget", from: "widgets" },
+          }}
+          onClose={jest.fn()}
+        />,
+      );
+      expect(screen.getByTestId("workspace-about")).toHaveTextContent(
+        "Making: a widget — from the Widgets page",
+      );
+      const start = screen.getByTestId("workspace-start");
+      expect(start).toHaveTextContent("What should the widget do?");
+      expect(
+        within(start).getByRole("button", { name: "Track a stock price" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId("workspace-start-from")).toBeNull();
+    });
+
+    test("the first question tells the Dash Lead what's being made; the line stays", () => {
+      render(
+        <LeadWorkspace
+          request={{
+            key: "role:dashlead",
+            making: { kind: "bot", from: "bots" },
+          }}
+          onClose={jest.fn()}
+        />,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Sum up my email each morning" }),
+      );
+      expect(mockAskProps.question).toBe("Sum up my email each morning");
+      expect(mockAskProps.about).toEqual({
+        label: "Making",
+        text: "a bot — from the Bots page",
+        note: "(The user wants to make a bot — plan a bot.)",
+      });
+      expect(screen.getByTestId("workspace-about")).toHaveTextContent(
+        "Making: a bot — from the Bots page",
+      );
+    });
+
+    test("New conversation starts an ordinary one", () => {
+      render(
+        <LeadWorkspace
+          request={{
+            key: "role:dashlead",
+            making: { kind: "dashboard", from: "dashboards" },
+          }}
+          onClose={jest.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "My AWS costs" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "+ New conversation" }),
+      );
+      expect(screen.queryByTestId("workspace-about")).toBeNull();
+      expect(screen.getByTestId("workspace-start")).toHaveTextContent(
+        "What should we make?",
+      );
+      expect(screen.getByTestId("workspace-start-from")).toBeInTheDocument();
+    });
+  });
+
+  describe("Start from › a dashboard from the registry (release 6c, frame 42)", () => {
+    const index = {
+      packages: [
+        {
+          type: "dashboard",
+          scope: "trops",
+          name: "home",
+          displayName: "Home",
+          widgets: [{}, {}, {}, {}],
+          team: { members: [{ role: "lights" }] },
+          providerTypes: ["home-assistant"],
+        },
+        { type: "dashboard", name: "secret", visibility: "private" },
+        { type: "widget", name: "clock" },
+      ],
+    };
+    const config = {
+      name: "Home",
+      description: "Your home at a glance",
+      workspace: { layout: [{ id: 1, component: "trops.weather.Weather" }] },
+      widgets: [{ scope: "trops", packageName: "weather" }],
+      providers: [],
+      team: { members: [] },
+    };
+
+    test("lists the public dashboards; Use this starts a conversation with its plan", async () => {
+      window.mainApi.registry = {
+        fetchIndex: jest.fn().mockResolvedValue(index),
+      };
+      window.mainApi.dashboardConfig = {
+        getPackageConfig: jest
+          .fn()
+          .mockResolvedValue({ success: true, config }),
+      };
+      render(
+        <LeadWorkspace
+          request={{ key: "role:dashlead" }}
+          onClose={jest.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByText("A dashboard from the registry"));
+      const rows = await screen.findAllByTestId("workspace-registry-row");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toHaveTextContent("Home");
+      expect(rows[0]).toHaveTextContent(
+        "trops · 4 widgets · 1 bot · needs Home Assistant",
+      );
+      fireEvent.click(
+        within(rows[0]).getByRole("button", { name: "Use this: Home" }),
+      );
+      await waitFor(() =>
+        expect(mockAskProps && mockAskProps.recentId).toBe("q_new"),
+      );
+      expect(
+        window.mainApi.dashboardConfig.getPackageConfig,
+      ).toHaveBeenCalledWith("home");
+      const saved = window.mainApi.bots.saveCreateRecent.mock.calls[0][0];
+      expect(saved.prompt).toBe("Start from Home");
+      const msgs = saved.conversation.messages;
+      expect(msgs[0]).toEqual({
+        who: "you",
+        text: "Start from Home, from the registry",
+      });
+      expect(msgs[1]).toMatchObject({
+        who: "step",
+        bot: "the registry",
+        label: "Read Home",
+      });
+      expect(msgs[1].plan.pieces.map((p) => p.kind)).toEqual([
+        "widget",
+        "layout",
+      ]);
+      expect(msgs[2].text).toMatch(/^Here's Home from the registry as a plan/);
+    });
+
+    test("the registry out of reach says so", async () => {
+      window.mainApi.registry = {
+        fetchIndex: jest.fn().mockRejectedValue(new Error("offline")),
+      };
+      render(
+        <LeadWorkspace
+          request={{ key: "role:dashlead" }}
+          onClose={jest.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByText("A dashboard from the registry"));
+      expect(
+        await screen.findByText(/The registry couldn't be reached/),
+      ).toBeInTheDocument();
+    });
+
+    test("a package that can't be read says so on its row", async () => {
+      window.mainApi.registry = {
+        fetchIndex: jest.fn().mockResolvedValue(index),
+      };
+      window.mainApi.dashboardConfig = {
+        getPackageConfig: jest
+          .fn()
+          .mockResolvedValue({ success: false, error: "Not found." }),
+      };
+      render(
+        <LeadWorkspace
+          request={{ key: "role:dashlead" }}
+          onClose={jest.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByText("A dashboard from the registry"));
+      const [row] = await screen.findAllByTestId("workspace-registry-row");
+      fireEvent.click(
+        within(row).getByRole("button", { name: "Use this: Home" }),
+      );
+      expect(await within(row).findByRole("alert")).toHaveTextContent(
+        "Home couldn't be read.",
+      );
+      expect(window.mainApi.bots.saveCreateRecent).not.toHaveBeenCalled();
+    });
+
+    const deferred = () => {
+      let resolve;
+      const promise = new Promise((r) => (resolve = r));
+      return { promise, resolve };
+    };
+    const openList = async () => {
+      render(
+        <LeadWorkspace
+          request={{ key: "role:dashlead" }}
+          onClose={jest.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByText("A dashboard from the registry"));
+      const [row] = await screen.findAllByTestId("workspace-registry-row");
+      return row;
+    };
+
+    test("a conversation that couldn't be saved says so on its row", async () => {
+      window.mainApi.registry = {
+        fetchIndex: jest.fn().mockResolvedValue(index),
+      };
+      window.mainApi.dashboardConfig = {
+        getPackageConfig: jest
+          .fn()
+          .mockResolvedValue({ success: true, config }),
+      };
+      window.mainApi.bots.saveCreateRecent = jest.fn().mockResolvedValue({});
+      const row = await openList();
+      fireEvent.click(
+        within(row).getByRole("button", { name: "Use this: Home" }),
+      );
+      expect(await within(row).findByRole("alert")).toHaveTextContent(
+        "Home didn't come over.",
+      );
+      expect(screen.queryByTestId("ask-step")).toBeNull();
+    });
+
+    test("busy until it's open: a second click doesn't make two", async () => {
+      window.mainApi.registry = {
+        fetchIndex: jest.fn().mockResolvedValue(index),
+      };
+      window.mainApi.dashboardConfig = {
+        getPackageConfig: jest
+          .fn()
+          .mockResolvedValue({ success: true, config }),
+      };
+      const saving = deferred();
+      window.mainApi.bots.saveCreateRecent = jest.fn(() => saving.promise);
+      const row = await openList();
+      const use = within(row).getByRole("button", { name: "Use this: Home" });
+      fireEvent.click(use);
+      await waitFor(() =>
+        expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalledTimes(1),
+      );
+      expect(use).toBeDisabled();
+      fireEvent.click(use);
+      await act(async () => saving.resolve({ id: "q_new" }));
+      expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalledTimes(1);
+      expect(mockAskProps.recentId).toBe("q_new");
+    });
+
+    test("moved on while it was read: nothing opens", async () => {
+      window.mainApi.registry = {
+        fetchIndex: jest.fn().mockResolvedValue(index),
+      };
+      const reading = deferred();
+      window.mainApi.dashboardConfig = {
+        getPackageConfig: jest.fn(() => reading.promise),
+      };
+      const row = await openList();
+      fireEvent.click(
+        within(row).getByRole("button", { name: "Use this: Home" }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "+ New conversation" }),
+      );
+      await act(async () => reading.resolve({ success: true, config }));
+      expect(window.mainApi.bots.saveCreateRecent).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("ask-step")).toBeNull();
+    });
+
+    test("moved on while it was saved: it isn't opened over what you did", async () => {
+      window.mainApi.registry = {
+        fetchIndex: jest.fn().mockResolvedValue(index),
+      };
+      window.mainApi.dashboardConfig = {
+        getPackageConfig: jest
+          .fn()
+          .mockResolvedValue({ success: true, config }),
+      };
+      const saving = deferred();
+      window.mainApi.bots.saveCreateRecent = jest.fn(() => saving.promise);
+      const row = await openList();
+      fireEvent.click(
+        within(row).getByRole("button", { name: "Use this: Home" }),
+      );
+      await waitFor(() =>
+        expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalled(),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "+ New conversation" }),
+      );
+      await act(async () => saving.resolve({ id: "q_new" }));
+      expect(screen.queryByTestId("ask-step")).toBeNull();
+      expect(screen.getByTestId("workspace-start")).toBeInTheDocument();
+    });
+
+    test("an empty registry says so", async () => {
+      window.mainApi.registry = {
+        fetchIndex: jest.fn().mockResolvedValue({ packages: [] }),
+      };
+      render(
+        <LeadWorkspace
+          request={{ key: "role:dashlead" }}
+          onClose={jest.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByText("A dashboard from the registry"));
+      expect(
+        await screen.findByText("There are no dashboards in the registry yet."),
+      ).toBeInTheDocument();
+    });
   });
 
   test("a plan ready: Outputs first, the team waits for the go-ahead, providers at the foot", () => {

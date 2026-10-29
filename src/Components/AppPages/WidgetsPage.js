@@ -623,10 +623,16 @@ export const WidgetsPage = ({
 
   const pick = async (option) => {
     if (option === "dash-team") {
-      // Create › Widget: the Dash team (consolidation Phase 3b).
+      // The Dash team makes one: a new Dash Lead conversation about it
+      // (lead-workspace release 6c, frame 41).
       setMode(null);
       window.dispatchEvent(
-        new CustomEvent("dash:open-create", { detail: { type: "widget" } }),
+        new CustomEvent("dash:open-workspace", {
+          detail: {
+            key: "role:dashlead",
+            making: { kind: "widget", from: "widgets" },
+          },
+        }),
       );
     } else if (option === "builder") {
       setMode(null);
