@@ -96,3 +96,12 @@ Smaller windows (35–36), light theme, carrying existing Dash team questions in
 - `electron/bots/dashTeam.js`: `dashlead` role (appended to `ROLES`). `electron/bots/roleTools.js`: `ASK_TARGETS`, Dash Lead tools.
 - `src/Components/Bots/DashTeamPage.js`, `src/Components/Create/AskStep.js`: the Dash Lead in the "To:" picker, asked with the words as typed.
 - Leads already defaulted to the fast tier (`_resolveRunProfile`).
+
+### Release 2 (2026-10-29)
+
+- `src/Components/LeadWorkspace/`: `LeadWorkspace` (the window: switcher, per-lead Recents, conversation, resizable right column; loading and missing-lead states), `WorkspaceSide` (Needs you, Outputs, Team in this conversation with live lines; a lone bot's runs), `HandoffStep` + `handoffSteps.js` (steps from the lead's stream; per-question ids; stopped when the run ends without an answer), `workspaceContacts.js`.
+- Opened by the `dash:open-workspace` event (`{ key: "role:dashlead" | "lead:<id>" | "bot:<id>" }`), hosted in `DashboardStage`; "Open conversation" on a lead's or lone bot's page, "Talk to the Dash Lead" on the Dash team page (both ask about unsaved edits first).
+- `AskStep`: hand-off steps, Stop (only that lead or role, and what it asked — `botController` tracks `_askRole` runs for stop too), `onMessagesChange`, `approvalBots`, `hideTo`; a reopened thread picks up a newer saved copy.
+- `createRecent` summaries carry `with` ("lead:<id>" | "role:<role>") for per-lead Recents.
+- Approvals show in the chat and in the right column's Needs you, as in the approved mockup (frame 34).
+- Not yet: a member's full run (actions, links, files) as an output — release 3 with the plan outputs; bots are matched to steps by name.

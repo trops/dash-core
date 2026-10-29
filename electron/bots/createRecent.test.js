@@ -421,6 +421,8 @@ describe("questions in Recent (phase 5e)", () => {
     const row = r.list()[0];
     assert.equal(row.status, "answered");
     assert.equal(row.to, "Daily Brief Lead");
+    // Whose Recents it belongs to in the lead workspace (release 2).
+    assert.equal(row.with, "lead:b_lead");
     // The recipient survives saving the messages.
     assert.deepEqual(r.get(e.id).conversation.recipient, lead);
   });
@@ -444,6 +446,7 @@ describe("questions in Recent (phase 5e)", () => {
     const row = r.list()[0];
     assert.equal(row.status, "answered");
     assert.equal(row.to, "Builder");
+    assert.equal(row.with, "role:builder");
   });
 
   it("an unknown kind is a plan", () => {

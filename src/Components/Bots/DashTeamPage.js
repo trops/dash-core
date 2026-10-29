@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Button,
   Button3,
   ButtonIcon3,
   ChatComposer,
@@ -488,13 +489,29 @@ export const DashTeamPage = ({
             </span>
           </div>
         </div>
-        {onClose ? (
-          <ButtonIcon3
-            icon="xmark"
-            ariaLabel="Close"
-            onClick={() => guard(onClose)}
+        <div className="flex flex-row items-center gap-2 flex-shrink-0">
+          <Button
+            title="Talk to the Dash Lead"
+            size="sm"
+            // Unsaved role edits are asked about first.
+            onClick={() =>
+              guard(() =>
+                window.dispatchEvent(
+                  new CustomEvent("dash:open-workspace", {
+                    detail: { key: "role:dashlead" },
+                  }),
+                ),
+              )
+            }
           />
-        ) : null}
+          {onClose ? (
+            <ButtonIcon3
+              icon="xmark"
+              ariaLabel="Close"
+              onClick={() => guard(onClose)}
+            />
+          ) : null}
+        </div>
       </div>
       <div className="flex-shrink-0 px-5 py-3">
         <SegmentedControl

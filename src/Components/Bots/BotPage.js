@@ -131,6 +131,10 @@ export const BotPage = ({
   const budget = (c.budgets || {})[bot.id] || null;
   const isOver = !!(budget && budget.over);
   const isLead = bot.role === "lead";
+  const hasDashboard =
+    bot.workspaceId !== null &&
+    bot.workspaceId !== undefined &&
+    bot.workspaceId !== "";
   const status = isOver
     ? "Over budget"
     : botStatus({
@@ -170,6 +174,22 @@ export const BotPage = ({
     }
     if (onClose) onClose();
   }
+  // The lead workspace (release 2) — after "Discard unsaved changes?" when
+  // Settings has edits.
+  function openWorkspace() {
+    window.dispatchEvent(
+      new CustomEvent("dash:open-workspace", {
+        detail: { key: `${isLead ? "lead" : "bot"}:${bot.id}` },
+      }),
+    );
+  }
+  function talk() {
+    if (tab === "settings" && dirty) {
+      setLeaveTo("workspace");
+      return;
+    }
+    openWorkspace();
+  }
   function discardAndLeave() {
     const next = leaveTo;
     setLeaveTo(null);
@@ -177,6 +197,8 @@ export const BotPage = ({
     setFormKey((k) => k + 1);
     if (next === "close") {
       if (onClose) onClose();
+    } else if (next === "workspace") {
+      openWorkspace();
     } else if (next) {
       setTab(next);
     }
@@ -267,6 +289,11 @@ export const BotPage = ({
               size="sm"
               onClick={() => onOpenInBotsView(ws, bot.id)}
             />
+          ) : null}
+          {/* A lead, or a bot on no dashboard, is talked to in the lead
+              workspace (lead-workspace release 2). */}
+          {isLead || !hasDashboard ? (
+            <Button title="Open conversation" size="sm" onClick={talk} />
           ) : null}
           {isRunning && c.stop ? (
             <Button3 title="Stop" size="sm" onClick={() => c.stop(bot.id)} />
