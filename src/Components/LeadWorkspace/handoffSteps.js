@@ -6,6 +6,9 @@
  * tool_result. Pure.
  */
 
+import { extractPlan } from "../../utils/teamPlan";
+import { hasPlan } from "../Create/askThread";
+
 const ROLE_NAMES = {
   planner: "the Planner",
   scout: "the Scout",
@@ -78,12 +81,22 @@ export function withResult(messages, event) {
   const next = messages.map((m) => {
     if (!m || m.who !== "step" || m.id !== id) return m;
     hit = true;
-    const answer = answerText(event.output);
+    const full = answerText(event.output);
+    // The Planner's answer carries its plan (release 3a): kept on the step,
+    // and its words shown without the JSON.
+    const plan = event.isError ? null : extractPlan(full);
+    const planned = hasPlan(plan);
+    const answer = planned
+      ? full.replace(/<plan>[\s\S]*?<\/plan>/gi, "").trim() ||
+        plan.summary ||
+        ""
+      : full;
     return {
       ...m,
       status: event.isError ? "failed" : "done",
       answer,
       result: firstLine(answer),
+      ...(planned ? { plan } : {}),
     };
   });
   return hit ? next : messages;

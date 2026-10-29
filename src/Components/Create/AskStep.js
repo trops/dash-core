@@ -78,6 +78,12 @@ export const AskStep = ({
   approvalBots = null,
   // In the workspace the left column already says who it is.
   hideTo = false,
+  // Lead workspace (release 3a): what shows after a message — the plan's
+  // card, the reply choices — as (message, index, { send, focusReply,
+  // busy }) => node; and what's sent for a typed reply (the plan as it
+  // stands goes along), as (text) => text.
+  renderAfter = null,
+  prepareSend = null,
 }) => {
   // [{ who: "you" | "planner" | "lead" | "role" | "note" | "step", text, meta?, plan? }]
   // A step is a hand-off ("Asked Inbox Watch"): { id, bot, label, request,
@@ -96,7 +102,8 @@ export const AskStep = ({
   const started = useRef(false);
   const alive = useRef(true);
   const firstAsked = useRef(question);
-  const askSeq = useRef(0);
+  // Unique across reopens too (a reopened thread keeps its old steps).
+  const askSeq = useRef(Date.now());
   // The lead this conversation is with (null = the Dash team).
   const [lead, setLead] = useState(leadOf(recipient));
   const leadRef = useRef(leadOf(recipient));
@@ -397,70 +404,93 @@ export const AskStep = ({
     if (bot && bots && bots.stop) await bots.stop(bot.id);
   };
 
-  const send = (text) => {
+  // `details` go to the lead with it but aren't shown (e.g. the plan's
+  // problems behind "Ask the Planner to fix it").
+  const send = (text, details = "") => {
     const t = String(text || "").trim();
     if (!t || busy) return;
     const history = messages;
     setReply("");
     setMessages((m) => [...m, { who: "you", text: t }]);
-    ask(t, true, history);
+    const full = details ? `${t}\n\n${details}` : t;
+    ask(prepareSend ? prepareSend(full) : full, true, history);
   };
 
+  // The reply box, for Change something.
+  const root = useRef(null);
+  const focusReply = () => {
+    const boxes =
+      root.current && root.current.querySelectorAll("textarea, input");
+    const box = boxes && boxes.length ? boxes[boxes.length - 1] : null;
+    if (box) box.focus();
+  };
+  const after = (m, i) =>
+    renderAfter ? renderAfter(m, i, { send, focusReply, busy }) : null;
+
   return (
-    <div className="flex-1 min-h-0 flex flex-col" data-testid="ask-step">
+    <div
+      ref={root}
+      className="flex-1 min-h-0 flex flex-col"
+      data-testid="ask-step"
+    >
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="flex flex-col gap-3 px-3 py-3">
-          {messages.map((m, i) =>
-            m.who === "you" ? (
-              <ChatMessage key={i} role="you">
-                {m.text}
-              </ChatMessage>
-            ) : m.who === "note" ? (
-              <ChatMessage key={i} role="note">
-                {m.text}
-              </ChatMessage>
-            ) : m.who === "step" ? (
-              <HandoffStep key={m.id || i} step={m} />
-            ) : (
-              <ChatMessage
-                key={i}
-                role="reply"
-                label={
-                  m.who === "lead" || m.who === "role" ? replyLabel : "Planner"
-                }
-                meta={m.meta}
-                testId="ask-answer"
-                footer={
-                  m.handoff && lead ? (
-                    <Button
-                      size="sm"
-                      title="Plan this with the Dash team"
-                      onClick={() =>
-                        onHandoff
-                          ? onHandoff(m.handoff, lead)
-                          : planWithDashTeam(m.handoff, {
-                              workspaceId: lead.dashboardId ?? null,
-                              from: lead.leadName,
-                            })
-                      }
-                    />
-                  ) : m.plan && onOpenPlan ? (
-                    <Button3
-                      size="sm"
-                      title="Open as a plan"
-                      onClick={() =>
-                        onOpenPlan(
-                          handoverSeed(messages.slice(0, i + 1), m.plan),
-                        )
-                      }
-                    />
-                  ) : null
-                }
-              >
-                <span className="whitespace-pre-wrap">{m.text}</span>
-              </ChatMessage>
-            ),
-          )}
+          {messages.map((m, i) => (
+            <React.Fragment key={m.who === "step" && m.id ? m.id : i}>
+              {m.who === "you" ? (
+                <ChatMessage key={i} role="you">
+                  {m.text}
+                </ChatMessage>
+              ) : m.who === "note" ? (
+                <ChatMessage key={i} role="note">
+                  {m.text}
+                </ChatMessage>
+              ) : m.who === "step" ? (
+                <HandoffStep key={m.id || i} step={m} />
+              ) : (
+                <ChatMessage
+                  key={i}
+                  role="reply"
+                  label={
+                    m.who === "lead" || m.who === "role"
+                      ? replyLabel
+                      : "Planner"
+                  }
+                  meta={m.meta}
+                  testId="ask-answer"
+                  footer={
+                    m.handoff && lead ? (
+                      <Button
+                        size="sm"
+                        title="Plan this with the Dash team"
+                        onClick={() =>
+                          onHandoff
+                            ? onHandoff(m.handoff, lead)
+                            : planWithDashTeam(m.handoff, {
+                                workspaceId: lead.dashboardId ?? null,
+                                from: lead.leadName,
+                              })
+                        }
+                      />
+                    ) : m.plan && onOpenPlan ? (
+                      <Button3
+                        size="sm"
+                        title="Open as a plan"
+                        onClick={() =>
+                          onOpenPlan(
+                            handoverSeed(messages.slice(0, i + 1), m.plan),
+                          )
+                        }
+                      />
+                    ) : null
+                  }
+                >
+                  <span className="whitespace-pre-wrap">{m.text}</span>
+                </ChatMessage>
+              )}
+              {after(m, i)}
+            </React.Fragment>
+          ))}
           <DashTeamApprovals compact bots={approvalBots} />
           {roleBusy ? (
             <div

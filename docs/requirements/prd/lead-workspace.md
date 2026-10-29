@@ -1,7 +1,7 @@
 # PRD: Lead Workspace — Talk to Each Team Through Its Lead
 
-**Status:** In Progress (release 1)
-**Last Updated:** 2026-10-28
+**Status:** In Progress (release 3)
+**Last Updated:** 2026-10-29
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; dash-electron hosts the notifications panel and picks up each release)
 **Approved mockup:** https://claude.ai/artifact/LQogUdGVwvhr1w435jXkrS (page "CURRENT — Lead workspace", frames 1–37)
@@ -105,3 +105,13 @@ Smaller windows (35–36), light theme, carrying existing Dash team questions in
 - `createRecent` summaries carry `with` ("lead:<id>" | "role:<role>") for per-lead Recents.
 - Approvals show in the chat and in the right column's Needs you, as in the approved mockup (frame 34).
 - Not yet: a member's full run (actions, links, files) as an output — release 3 with the plan outputs; bots are matched to steps by name.
+
+### Release 3a — the plan in the conversation (2026-10-29)
+
+- The Planner's plan rides on its hand-off step (`handoffSteps.withResult` keeps `plan`, shows its words without the JSON). The latest one is the conversation's plan (`workspacePlan.js`); `useWorkspacePlan` holds it with the user's changes (remove, Swap, a provider picked) and Before it builds, saved with the conversation as `conversation.workspacePlan` (Recents tag it "Plan" — `createRecent` `planned`).
+- In the chat (`PlanViews.js`): the plan's card under the Planner's step (opens it on the right); under the lead's answer, the Planner's questions as taps or **Yes, build it** / **Change something** (the reply box). A typed reply takes the plan as it stands and the changes along (`withPlanContext`), so a change reaches the Planner whole.
+- On the right: the plan as an output (`PlanOutput`: pieces with Swap / remove, sketch, what to expect) and **Before it builds** (Create's checklist and dialogs; each item says "Planner · Dash team"); the Planner's row opens the plan.
+- Shared with Create: the plan's pieces, checklist rows and What to expect moved to `Create/PlanParts.js` (CreatePlanStep uses them; its tests unchanged).
+- The Dash Lead's instructions: the plan shows beside its answer with Yes, build it — summarise and ask, don't repeat it; changes go back to the Planner with the plan. Release 1's text is in its history, so a generated Dash Lead upgrades.
+- Until 3b: **Yes, build it** opens Create's build with the plan, what's already done (`seed.checks`) and the user's words (`seed.messages`); the workspace closes so one window shows at a time. The conversation remembers it was sent (`workspacePlan.sent`, saved at once): reopened, it says "Sent to Create to build" instead of offering it again.
+- Review fixes: while the lead is still answering the plan can't be changed (a new one may come — `stillAnswering`); the plan on the right has its own Yes, build it, so a chat ending on "Stopped." or an unrelated answer doesn't strand it; the choices show only under the answer to the same question as the plan; a plan that arrives after the window closed keeps what was done before building; the Planner's questions say who asks; a broken plan is described in plain words and its problems go to the lead unseen; the last change is saved when the window closes; step ids stay unique across reopens.

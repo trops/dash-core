@@ -97,3 +97,35 @@ test("a finished plan: Build is right there, nothing asked again", async () => {
   expect(note.parentElement.querySelector("button")).not.toBeDisabled();
   expect(mockRunTeamRole).not.toHaveBeenCalled();
 });
+
+test("a plan from the lead workspace keeps what was done before building there (release 3a)", async () => {
+  mockRunTeamRole.mockReset();
+  window.mainApi = {
+    bots: {
+      saveCreateRecent: jest.fn().mockResolvedValue({ id: "plan_1" }),
+      listDashTeam: jest.fn().mockResolvedValue([]),
+    },
+  };
+  const plan = {
+    ...READY,
+    beforeBuilding: [
+      { kind: "approve", what: "Turn on the lights-off bot" },
+      { kind: "approve", what: "Allow the weekly report" },
+    ],
+  };
+  render(
+    <CreatePlanStep
+      prompt=""
+      seed={{
+        plan,
+        label: "Home",
+        checks: { "approve:Turn on the lights-off bot": "done" },
+      }}
+    />,
+  );
+  const items = await screen.findAllByTestId("checklist-item");
+  expect(items[0]).toHaveTextContent("Done");
+  expect(items[1]).toHaveTextContent("To do");
+  // The Planner isn't asked again: the plan is ready as it is.
+  expect(mockRunTeamRole).not.toHaveBeenCalled();
+});
