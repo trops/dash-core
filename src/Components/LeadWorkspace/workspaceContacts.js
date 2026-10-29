@@ -6,12 +6,14 @@
  * A contact:
  *   { key, kind: "dashlead" | "lead" | "bot", name, sub, botId,
  *     recipient (what AskStep is given; null for a lone bot),
- *     members: [{ id, name }] (the bots it hands work to) }
+ *     members: [{ id, name, role? }] (the bots it hands work to),
+ *     line (under its name at the top of the switcher) }
  * `key` matches a conversation's `with` from Recent ("role:dashlead",
  * "lead:<botId>"); a lone bot's is "bot:<id>".
  */
 
-const WORK_ROLES = ["planner", "scout", "builder", "checker"];
+// In the order they work (frame 1): the Scout looks first.
+const WORK_ROLES = ["scout", "planner", "builder", "checker"];
 
 const sameId = (a, b) =>
   a !== null &&
@@ -43,8 +45,10 @@ export function contactGroups({ dashTeam = [], leads = [], bots = [] } = {}) {
         (dashTeam || []).find((b) => b && b.role === r),
       )
         .filter(Boolean)
-        .map((b) => ({ id: b.id, name: b.name })),
+        .map((b) => ({ id: b.id, name: b.name, role: b.role })),
     });
+    const d = leadsGroup[0];
+    d.line = d.members.map((m) => m.name).join(" · ") || d.sub;
   }
   for (const l of leads || []) {
     if (!l || !l.botId) continue;
@@ -61,6 +65,7 @@ export function contactGroups({ dashTeam = [], leads = [], bots = [] } = {}) {
       botId: l.botId,
       recipient: l,
       members,
+      line: members.map((m) => m.name).join(" · ") || "No bots yet",
     });
   }
   const lone = (bots || [])
@@ -81,6 +86,7 @@ export function contactGroups({ dashTeam = [], leads = [], bots = [] } = {}) {
       botId: b.id,
       recipient: null,
       members: [],
+      line: "A bot on no dashboard",
     }));
   return [
     { label: "Team leads", items: leadsGroup },

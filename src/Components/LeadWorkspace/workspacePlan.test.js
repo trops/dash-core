@@ -11,7 +11,10 @@ import {
   latestPlanStep,
   planLine,
   planName,
+  planRows,
   planStatus,
+  planSubLine,
+  providersLine,
   withPlanContext,
 } from "./workspacePlan";
 
@@ -168,4 +171,30 @@ test("Create gets the user's words and who it was planned with", () => {
     { who: "you", text: "Plan it" },
     { who: "note", text: "Planned with Dash Lead." },
   ]);
+});
+
+test("the opened plan: a line, one row per widget or bot, what still needs connecting", () => {
+  const connect = {
+    id: "connect:home-assistant",
+    kind: "connect",
+    label: "Connect Home Assistant",
+    providerType: "home-assistant",
+  };
+  expect(planSubLine(PLAN, [connect])).toBe("2 widgets · uses Home Assistant");
+  expect(planRows(PLAN, [connect])).toEqual([
+    { main: "Weather", sub: "From the registry — @trops/weather" },
+    { main: "Lights panel", sub: "New" },
+    {
+      main: "Needs Home Assistant connected",
+      sub: "Before it builds, or during the build",
+      warn: true,
+    },
+  ]);
+  // Connected: no warning row.
+  expect(planRows(PLAN, [connect], () => true)).toHaveLength(2);
+  expect(providersLine([connect])).toBe("Home Assistant · not connected yet");
+  expect(providersLine([connect], () => true)).toBe(
+    "Home Assistant · connected",
+  );
+  expect(providersLine([])).toBe("none needed");
 });

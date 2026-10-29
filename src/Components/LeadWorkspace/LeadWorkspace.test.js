@@ -233,9 +233,9 @@ describe("WorkspaceSide", () => {
       "Inbox Watch's answer",
     );
     const rows = screen.getAllByTestId("workspace-member");
-    expect(rows[0]).toHaveTextContent("Inbox Watch · answered");
+    expect(rows[0]).toHaveTextContent("Inbox Watch · done");
     expect(rows[0]).toHaveTextContent("2 need attention.");
-    expect(rows[1]).toHaveTextContent("Morning Briefer · not asked");
+    expect(rows[1]).toHaveTextContent("Morning Briefer · ready");
   });
 
   test("opening an answer shows what it was asked and said; Expand asks for room", () => {
@@ -333,7 +333,7 @@ describe("a plan in the conversation (release 3a)", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Plan me a dashboard for my smart home",
+        name: "A dashboard for my smart home",
       }),
     );
     expect(mockAskProps).not.toBeNull();
@@ -380,9 +380,16 @@ describe("a plan in the conversation (release 3a)", () => {
     expect(screen.getByTestId("workspace-plan-output")).toHaveTextContent(
       "Lights panel",
     );
-    expect(screen.getByTestId("workspace-plan-output")).toHaveTextContent(
-      "nothing is made until you say yes",
+    // One row per piece, read only: changes are asked for in the chat.
+    expect(screen.getAllByTestId("workspace-plan-row")[0]).toHaveTextContent(
+      "Lights panelNew",
     );
+    expect(
+      within(screen.getByTestId("workspace-plan-output")).queryByRole(
+        "button",
+        { name: /Swap|Remove/ },
+      ),
+    ).toBeNull();
   });
 
   test("Yes, build it hands the plan to Create's build, with what's done; Change something goes to the reply box", async () => {
@@ -557,7 +564,7 @@ describe("release 3a review fixes", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Plan me a dashboard for my smart home",
+        name: "A dashboard for my smart home",
       }),
     );
     act(() => {
@@ -627,7 +634,7 @@ describe("release 3a review fixes", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Plan me a dashboard for my smart home",
+        name: "A dashboard for my smart home",
       }),
     );
     const broken = { summary: "x", pieces: "nope" };
@@ -654,5 +661,202 @@ describe("release 3a review fixes", () => {
       api.send.mock.calls[api.send.mock.calls.length - 1];
     expect(shown).toBe("Please have the Planner fill the gaps in the plan.");
     expect(details).toMatch(/^\(What's missing, for the Planner:\n- /);
+  });
+});
+
+describe("release 3a: matches the mockup", () => {
+  const PLAN = {
+    summary: "A home dashboard with your lights",
+    pieces: [
+      {
+        kind: "widget",
+        name: "Weather",
+        source: "registry",
+        package: "@trops/weather",
+      },
+      {
+        kind: "widget",
+        name: "Lights panel",
+        source: "new",
+        providers: ["home-assistant"],
+      },
+      { kind: "layout", name: "Home", source: "new" },
+    ],
+  };
+  const planStep = (id, plan = PLAN) => ({
+    who: "step",
+    id,
+    bot: "the Planner",
+    label: "Asked the Planner",
+    status: "done",
+    answer: "Here's a plan.",
+    result: "Here's a plan.",
+    plan,
+  });
+  const you = (text) => ({ who: "you", text });
+  const reply = { who: "role", text: "Want it built?" };
+  const api = { busy: false, send: jest.fn(), focusReply: jest.fn() };
+
+  test("the switcher's list scrolls, each with its avatar, the current one ticked", () => {
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    // Under the name at the top: who's on the team.
+    expect(screen.getByTestId("workspace-switcher")).toHaveTextContent(
+      "Inbox Watch",
+    );
+    fireEvent.click(screen.getByTestId("workspace-switcher"));
+    const menu = screen.getByTestId("workspace-switcher-menu");
+    expect(menu.className).toMatch(/overflow-y-auto/);
+    expect(menu.style.maxHeight).toBe("calc(100% - 88px)");
+    const items = within(menu).getAllByTestId("workspace-switcher-item");
+    for (const it of items) {
+      expect(within(it).getByTestId("bot-avatar")).toBeInTheDocument();
+    }
+    const current = within(menu).getByRole("button", {
+      name: "Kitchen Sink Lead",
+    });
+    expect(within(current).getByLabelText("Current")).toBeInTheDocument();
+    expect(
+      within(
+        within(menu).getByRole("button", { name: "Dash Lead" }),
+      ).queryByLabelText("Current"),
+    ).toBeNull();
+  });
+
+  test("a new Dash Lead conversation: Start from, the team ready, a New conversation row", () => {
+    const onClose = jest.fn();
+    const onOpenPage = jest.fn();
+    render(
+      <LeadWorkspace
+        request={{ key: "role:dashlead" }}
+        onClose={onClose}
+        onOpenPage={onOpenPage}
+      />,
+    );
+    expect(screen.getByTestId("workspace-start")).toHaveTextContent(
+      "What should we make?",
+    );
+    expect(screen.getByTestId("workspace-thread-new")).toHaveTextContent(
+      "New conversation",
+    );
+    const from = screen.getByTestId("workspace-start-from");
+    expect(
+      within(from)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual([
+      "Describe itSay what you want in the box — the usual way",
+      "A dashboard from the registryInstall a ready-made one and its bots, then adjust it",
+      "Copy one of your dashboardsStart from what you have and change it",
+      "Edit a widget you haveOpen it in the Widget Builder",
+    ]);
+    // Nothing made yet: no empty Outputs box under Start from.
+    expect(screen.queryByText("What the team makes shows here.")).toBeNull();
+    // The team in the order it works, each saying what it's for.
+    const rows = screen.getAllByTestId("workspace-member");
+    expect(rows[0]).toHaveTextContent("Scout · ready");
+    expect(rows[0]).toHaveTextContent("finds what you already have");
+    expect(rows[1]).toHaveTextContent("Planner · ready");
+    expect(rows[1]).toHaveTextContent("turns your request into a plan");
+
+    fireEvent.click(within(from).getByText("Describe it"));
+    expect(document.activeElement).toBe(
+      screen.getByRole("textbox", { name: "Ask Dash Lead" }),
+    );
+    fireEvent.click(within(from).getByText("Copy one of your dashboards"));
+    expect(onOpenPage).toHaveBeenLastCalledWith("dashboards");
+    fireEvent.click(within(from).getByText("Edit a widget you have"));
+    expect(onOpenPage).toHaveBeenLastCalledWith("widgets");
+    const heard = [];
+    const listen = (e) => heard.push(e.detail);
+    window.addEventListener("dash:open-create", listen);
+    fireEvent.click(within(from).getByText("A dashboard from the registry"));
+    window.removeEventListener("dash:open-create", listen);
+    expect(heard).toEqual([{ type: "dashboard" }]);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test("a plan ready: Outputs first, the team waits for the go-ahead, providers at the foot", () => {
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "A dashboard for my smart home" }),
+    );
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([you("Plan it"), planStep("1:t1"), reply]);
+    });
+    expect(mockAskProps.placeholder).toBe("Reply");
+    expect(mockAskProps.hint).toBeNull();
+    const side = screen.getByTestId("workspace-side");
+    // Outputs heads the column; Before it builds sits under it.
+    const text = side.textContent;
+    expect(text.indexOf("Outputs")).toBeLessThan(
+      text.indexOf("Before it builds"),
+    );
+    expect(screen.queryByTestId("workspace-start-from")).toBeNull();
+    expect(within(side).getByTestId("workspace-output-plan")).toHaveTextContent(
+      "Plan",
+    );
+    const rows = screen.getAllByTestId("workspace-member");
+    expect(rows[1]).toHaveTextContent("Planner · done");
+    // What it made, not its first words; the Scout wasn't needed.
+    expect(rows[1]).toHaveTextContent("drafted a plan — 2 widgets");
+    expect(rows[0]).toHaveTextContent("Scout · not needed");
+    expect(
+      within(rows[1]).getByRole("button", { name: "Plan ›" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-providers")).toHaveTextContent(
+      "Home Assistant · not connected yet",
+    );
+    // Before it builds: the action on each row (Review, Connect).
+    const before = screen.getByTestId("workspace-before");
+    expect(
+      within(before)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(expect.arrayContaining(["Review", "Connect"]));
+    // The opened plan: what's missing to connect, as a row.
+    fireEvent.click(within(side).getByTestId("workspace-output-plan"));
+    const out = screen.getByTestId("workspace-plan-output");
+    expect(out).toHaveTextContent("2 widgets · uses Home Assistant");
+    expect(out).toHaveTextContent("Needs Home Assistant connected");
+  });
+
+  test("a changed plan: the earlier card stays and opens the earlier plan", () => {
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "A dashboard for my smart home" }),
+    );
+    const OLD = { ...PLAN, pieces: PLAN.pieces.slice(1) };
+    const msgs = [
+      you("Plan it"),
+      planStep("1:t1", OLD),
+      reply,
+      you("Add the weather"),
+      planStep("2:t1"),
+      reply,
+    ];
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange(msgs);
+    });
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(msgs[1], 1, api);
+    });
+    const card = render(node);
+    expect(card.container).toHaveTextContent("changed since");
+    fireEvent.click(within(card.container).getByRole("button"));
+    const out = screen.getByTestId("workspace-plan-output");
+    expect(out).toHaveTextContent("Planner · an earlier plan");
+    expect(out).not.toHaveTextContent("Weather");
+    expect(
+      within(out).queryByRole("button", { name: "Yes, build it" }),
+    ).toBeNull();
   });
 });

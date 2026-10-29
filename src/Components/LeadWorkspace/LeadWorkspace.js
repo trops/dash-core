@@ -1,7 +1,7 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Button2,
   Button3,
-  ButtonIcon3,
   ChatComposer,
   FontAwesomeIcon,
   ListRow,
@@ -39,6 +39,7 @@ const EMPTY = [];
 const TICK_MS = 60000;
 const SIDE_MIN = 320;
 const SIDE_MAX = 900;
+const WIDE = 760;
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -82,12 +83,12 @@ function startText(contact) {
   if (contact.kind === "dashlead") {
     return {
       title: "What should we make?",
-      text: "Describe it in your own words — a dashboard, a widget, a bot, or a question about what you have. The Dash Lead brings in the Planner, Scout, Builder and Checker, and nothing is made until you say yes.",
+      text: "Describe it in your own words — a dashboard, a widget, a bot, or a change to one you have. The team plans it with you, and nothing is made until you say yes.",
       starters: [
-        "Plan me a dashboard for my smart home",
+        "A dashboard for my smart home",
         "A widget that shows my calendar",
-        "Do I already have a weather widget?",
-        "What did my bots do today?",
+        "A bot that sums up my email each morning",
+        "Change one of my dashboards",
       ],
     };
   }
@@ -119,13 +120,20 @@ function startText(contact) {
  * @param {{ key?: string }|null} request  who to open on ("role:dashlead",
  *   "lead:<botId>", "bot:<botId>"); default the Dash Lead
  * @param {() => void} onClose
+ * @param {(page) => void} [onOpenPage]  opens an app page ("dashboards",
+ *   "widgets") in the workspace's place — Start from's copy and edit
  */
-export const LeadWorkspace = ({ request = null, onClose }) => {
+export const LeadWorkspace = ({
+  request = null,
+  onClose,
+  onOpenPage = null,
+}) => {
   const { currentTheme } = useContext(ThemeContext) || {};
   const panel = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
   const { muted, strong, hairline, selectedBg } = useConfigTokens();
+  const composer = useRef(null);
   const all = useAllBots();
   const { leads, loaded: leadsLoaded } = useTeamLeads(true);
   const { entries, now } = useRecentEntries();
@@ -220,12 +228,46 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
   // The lead is still answering: the plan isn't changed meanwhile.
   const answering = stillAnswering(messages);
 
+  // Start from (frame 13). Describing it is the box; the registry's
+  // dashboards are in Create for now (release 6 brings them here); copying a
+  // dashboard and editing a widget are on their pages.
+  const startFrom = (kind) => {
+    if (kind === "describe") {
+      if (composer.current) composer.current.focus();
+      return;
+    }
+    if (kind === "registry") {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("dash:open-create", {
+            detail: { type: "dashboard" },
+          }),
+        );
+      }
+      onClose();
+      return;
+    }
+    const page = kind === "copy" ? "dashboards" : "widgets";
+    if (onOpenPage) onOpenPage(page);
+    else onClose();
+  };
+
   // After a message: the plan's card under the step that brought it, and
   // the reply choices under the lead's answer to it.
   const choicesAt = choicesIndex(messages);
   const renderAfter = (m, i, api) => {
     if (m.who === "step" && wp.step && m.id === wp.step.id && wp.plan) {
       return <PlanCard plan={wp.plan} onOpen={() => setSideOpen("plan")} />;
+    }
+    // An earlier plan keeps its card: the history still opens it.
+    if (m.who === "step" && m.plan) {
+      return (
+        <PlanCard
+          plan={m.plan}
+          earlier
+          onOpen={() => setSideOpen(`plan:${m.id}`)}
+        />
+      );
     }
     if (i === choicesAt && wp.plan && !api.busy) {
       return (
@@ -293,7 +335,7 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
                 {contact ? contact.name : "No one to talk to yet"}
               </span>
               <span className={`text-xs truncate ${muted}`}>
-                {contact ? contact.sub : ""}
+                {contact ? contact.line || contact.sub : ""}
               </span>
             </span>
             <FontAwesomeIcon
@@ -304,9 +346,10 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
           {switchOpen ? (
             <div
               role="menu"
-              className={`absolute left-3 right-3 z-30 flex flex-col gap-1 rounded-lg border p-2 shadow-lg ${hairline} ${panel.backgroundColor || ""}`}
-              // Below the switcher, never over it.
-              style={{ top: 76 }}
+              className={`absolute left-1 right-1 z-30 flex flex-col gap-1 rounded-lg border p-2 shadow-lg overflow-y-auto ${hairline} ${panel.backgroundColor || ""}`}
+              // Below the switcher, never over it; a long list scrolls
+              // inside the window.
+              style={{ top: 76, maxHeight: "calc(100% - 88px)" }}
               data-testid="workspace-switcher-menu"
             >
               {groups.map((g) => (
@@ -314,16 +357,45 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
                   <span className={`px-2 pt-1 text-xs ${muted}`}>
                     {g.label}
                   </span>
-                  {g.items.map((c) => (
-                    <ListRow
-                      key={c.key}
-                      testId="workspace-switcher-item"
-                      title={c.name}
-                      meta={c.sub}
-                      selected={c.key === (contact && contact.key)}
-                      onClick={() => switchTo(c.key)}
-                    />
-                  ))}
+                  {g.items.map((c) => {
+                    const current = c.key === (contact && contact.key);
+                    return (
+                      <ListRow
+                        key={c.key}
+                        testId="workspace-switcher-item"
+                        icon={
+                          <BotAvatar
+                            bot={{ id: c.botId, name: c.name }}
+                            icon={
+                              c.kind === "dashlead" ? "people-group" : undefined
+                            }
+                          />
+                        }
+                        title={
+                          <span className="flex flex-row items-center gap-2">
+                            <span className="truncate">{c.name}</span>
+                            {current ? (
+                              <span
+                                role="img"
+                                aria-label="Current"
+                                className="flex-shrink-0"
+                              >
+                                <FontAwesomeIcon
+                                  icon="check"
+                                  className="h-3 w-3"
+                                />
+                              </span>
+                            ) : null}
+                          </span>
+                        }
+                        ariaLabel={c.name}
+                        // One line: a long dashboard name never strands "· 0 bots".
+                        meta={<span className="block truncate">{c.sub}</span>}
+                        selected={current}
+                        onClick={() => switchTo(c.key)}
+                      />
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -340,6 +412,14 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
               </div>
               <span className={`px-2 pt-3 pb-1 text-xs ${muted}`}>Recents</span>
               <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+                {/* A conversation not started yet is the first one (frame 13). */}
+                {open ? null : (
+                  <ListRow
+                    testId="workspace-thread-new"
+                    title="New conversation"
+                    selected
+                  />
+                )}
                 {threads.length ? (
                   threads.map((t) => (
                     <ListRow
@@ -363,12 +443,12 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
                       }}
                     />
                   ))
-                ) : (
+                ) : open ? (
                   <span className={`px-2 py-2 text-xs ${muted}`}>
                     Your conversations with {contact ? contact.name : "them"}{" "}
                     show here.
                   </span>
-                )}
+                ) : null}
               </div>
             </>
           )}
@@ -421,6 +501,8 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
               // A typed reply takes the plan (and the changes made to it on
               // the right) along, so a change reaches the Planner whole.
               prepareSend={(t) => withPlanContext(t, wp.plan, wp.takeEdits())}
+              placeholder="Reply"
+              hint={null}
             />
           ) : (
             <>
@@ -435,7 +517,7 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
                   <span className={`text-sm ${muted}`}>{start.text}</span>
                   <div className="flex flex-row flex-wrap gap-2">
                     {start.starters.map((s) => (
-                      <Button3
+                      <Button2
                         key={s}
                         size="sm"
                         title={s}
@@ -446,11 +528,13 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
                 </div>
               </div>
               <ChatComposer
+                ref={composer}
                 ariaLabel={contact ? `Ask ${contact.name}` : "Ask"}
                 value={draft}
                 onChange={(v) => setDraft(v)}
                 onSend={() => ask()}
-                placeholder={contact ? `Ask ${contact.name}…` : "Ask…"}
+                placeholder="Reply"
+                hint={null}
                 sendLabel="Ask"
                 className="flex-shrink-0"
               />
@@ -464,13 +548,14 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
           aria-label="Outputs"
           className={`flex-shrink-0 flex flex-col min-h-0 border-l ${hairline}`}
           style={{
-            // Expanded, it never squeezes the conversation out.
+            // Expanded (frame 37): 760 wide, and never more than half the
+            // screen, so the conversation keeps room.
             width: wide
               ? Math.min(
-                  SIDE_MAX,
+                  WIDE,
                   Math.round(
                     (typeof window !== "undefined" ? window.innerWidth : 1600) *
-                      0.55,
+                      0.5,
                   ),
                 )
               : sideWidth,
@@ -480,7 +565,15 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
           <div
             className={`flex-shrink-0 flex flex-row items-center justify-end px-3 py-2 border-b ${hairline}`}
           >
-            <ButtonIcon3 icon="xmark" ariaLabel="Close" onClick={onClose} />
+            {/* A plain ×, quiet until it's wanted (frame 1). */}
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className={`flex items-center justify-center h-8 w-8 rounded-lg ${muted}`}
+            >
+              <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
+            </button>
           </div>
           {contact ? (
             <WorkspaceSide
@@ -494,6 +587,8 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
               onOpen={setSideOpen}
               wide={wide}
               onToggleWide={() => setWide((v) => !v)}
+              isNew={!open && !isBot}
+              onStartFrom={startFrom}
             />
           ) : null}
         </aside>
