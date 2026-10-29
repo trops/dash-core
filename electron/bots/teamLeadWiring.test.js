@@ -107,9 +107,10 @@ describe("AI Assistant recipient picker wiring (TEAM-013)", () => {
     );
     assert.match(
       api,
-      /askLead: \(botId, question, continueConversation = false, via = null\)/,
+      /askLead: \(\s*botId,\s*question,\s*continueConversation = false,\s*via = null,\s*conversationId = null,\s*\)/,
     );
-    assert.match(api, /continueConversation,\s*via,/);
+    // And the asking conversation (lead-workspace release 5).
+    assert.match(api, /continueConversation,\s*via,\s*conversationId,/);
   });
 });
 
@@ -127,11 +128,14 @@ describe("botController — a lead asks its bots (team_ask_bot)", () => {
       /takeHandoff: \(\) => this\._handoffs\.take\(lead\.id, runKey\)/,
     );
     assert.match(ctrl, /run: \(opts\) => this\._run\(member\.id, opts\)/);
-    // Who started the lead's own run (an outside caller can't run its bots).
+    // Who started the lead's own run (an outside caller can't run its
+    // bots) and its conversation — read from the run entry by leadRunInfo
+    // (leadAsk.test.js), never the entry object itself.
     assert.match(
       ctrl,
-      /leadVia: this\._runVia \? this\._runVia\.get\(lead\.id\) : null/,
+      /\.\.\.leadRunInfo\(this\._runVia \? this\._runVia\.get\(lead\.id\) : null\)/,
     );
+    assert.doesNotMatch(ctrl, /leadVia: this\._runVia/);
   });
 
   it("stopping the lead stops the bots it's waiting on", () => {

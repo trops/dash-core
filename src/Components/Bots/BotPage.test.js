@@ -69,6 +69,8 @@ const workspaces = [{ id: 7, name: "Kitchen Sink" }];
 const BOTS = [
   { id: "b1", name: "Inbox Watch", workspaceId: 7 },
   { id: "b2", name: "Loose Bot", workspaceId: null },
+  // Its dashboard was deleted.
+  { id: "b4", name: "Orphan Bot", workspaceId: 99 },
   { id: "lead7", name: "Kitchen Sink Lead", role: "lead", workspaceId: 7 },
 ];
 
@@ -352,4 +354,42 @@ describe("BotPage settings", () => {
     await waitFor(() => expect(botsApi.delete).toHaveBeenCalledWith("b1"));
     expect(onDeleted).toHaveBeenCalledWith("b1");
   });
+});
+
+// Lead-workspace release 5 (frames 14, 15, 24): on the Bots page a bot is
+// managed, not talked to.
+describe("BotPage — manage only (the Bots page)", () => {
+  it("no Conversation tab; opens on Activity; a team member is talked to through its lead", () => {
+    setup({ manageOnly: true });
+    expect(screen.queryByRole("radio", { name: "Conversation" })).toBeNull();
+    expect(screen.getByRole("radio", { name: "Activity" })).toBeChecked();
+    expect(screen.queryByTestId("chat-stub")).toBeNull();
+    expect(screen.getByTestId("bot-page-member-note")).toHaveTextContent(
+      "You talk to this team through Kitchen Sink Lead. Each run below links to the conversation it came from.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Open conversation" }),
+    ).toBeNull();
+  });
+
+  it("a lead, or a bot on no dashboard, keeps Open conversation and has no note", () => {
+    setup({ manageOnly: true, botId: "lead7" });
+    expect(
+      screen.getByRole("button", { name: "Open conversation" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("bot-page-member-note")).toBeNull();
+    rerenderPage({ manageOnly: true, botId: "b2" });
+    expect(
+      screen.getByRole("button", { name: "Open conversation" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("bot-page-member-note")).toBeNull();
+  });
+});
+
+test("manage only: a bot whose dashboard is gone is talked to directly", () => {
+  setup({ manageOnly: true, botId: "b4" });
+  expect(
+    screen.getByRole("button", { name: "Open conversation" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByTestId("bot-page-member-note")).toBeNull();
 });

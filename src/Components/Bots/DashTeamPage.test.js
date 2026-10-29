@@ -380,3 +380,43 @@ test("roleLine: the job, the model, and when it last ran in words", () => {
     /last ran on \w{3} \d+$/,
   );
 });
+
+// Lead-workspace release 5 (frame 14): on the Bots page a role is managed —
+// its runs and the team's settings; its conversation is the Dash Lead's.
+test("manage only: the role's Activity and Settings, no conversation", async () => {
+  window.mainApi.bots.getRuns = jest.fn().mockResolvedValue([
+    {
+      trigger: "ask",
+      status: "completed",
+      startedAt: "2026-10-02T09:00:00.000Z",
+      output: "Drafted a plan.",
+    },
+  ]);
+  render(<DashTeamPage manageOnly role="planner" />);
+  expect(screen.getByText("Planner")).toBeInTheDocument();
+  expect(screen.getByText("On the Dash team · Plans")).toBeInTheDocument();
+  expect(screen.queryByRole("radio", { name: "Conversation" })).toBeNull();
+  expect(screen.getByRole("radio", { name: "Activity" })).toBeChecked();
+  expect(screen.getByRole("radio", { name: "Settings" })).toBeInTheDocument();
+  expect(screen.getByTestId("dash-team-member-note")).toHaveTextContent(
+    "You talk to the Dash team through the Dash Lead.",
+  );
+  expect(await screen.findByText("Drafted a plan.")).toBeInTheDocument();
+  expect(window.mainApi.bots.getRuns).toHaveBeenCalledWith("t_planner", 50);
+  expect(screen.queryByTestId("dash-team-start")).toBeNull();
+});
+
+test("manage only: a role has no Open conversation; the team's Settings keep the Dash team header", () => {
+  const { unmount } = render(<DashTeamPage manageOnly role="planner" />);
+  expect(
+    screen.queryByRole("button", { name: "Open conversation" }),
+  ).toBeNull();
+  unmount();
+  render(<DashTeamPage manageOnly role={null} initialTab="settings" />);
+  expect(screen.getByText("Dash team")).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Open conversation" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "Settings" })).toBeChecked();
+  expect(screen.queryByTestId("dash-team-member-note")).toBeNull();
+});

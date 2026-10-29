@@ -75,6 +75,14 @@ Frames 22, 27–29.
 
 Frames 14, 15, 23–26.
 
+- **Teams first:** the Dash team, each dashboard's team (its lead, then its bots), "Dashboards with no bots" folded into one group, and "On no dashboard" (also leads whose dashboard is gone). Teams start closed; the picked team and any that needs you start open. Team rows show "N bots · Lead" and "N need(s) you" / "N running".
+- **Needs you on top** of the tree: what each bot wants and its team; a click opens that bot inside its team.
+- **Search** ("Search bots and teams…") and **status** (All / Needs you / Running / Paused) open only the teams that match; the Team filter is gone.
+- **A team** shows its overview: Open conversation (its lead), Open dashboard, what needs you ("Answer in the conversation ›"), and Bots on this team (How it runs, Status, This month). The Dash team's adds Dash team settings. "Dashboards with no bots" lists those dashboards.
+- **A bot** is management only: Activity, Log, Spending, Settings. Leads and bots on no dashboard keep Open conversation; a team member says "You talk to this team through X". A Dash team role shows its Activity and the team's Settings.
+- **Each run links to the conversation it came from:** a lead-asked run records `conversationId` (the asking conversation, via `askLead` → the lead's run entry → `team_ask_bot`), and Activity's Open conversation opens that exact one; older runs open the lead's conversations.
+- **Fixed on the way:** `team_ask_bot` read the lead's run entry object as its `via`, so a lead asked from outside Dash (MCP) could still run its bots; now `leadRunInfo` reads `via`.
+
 ### Release 6 — finishing
 
 Smaller windows (35–36), light theme, carrying existing Dash team questions into Dash Lead conversations, removing old chat entry points.

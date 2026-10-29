@@ -27,7 +27,7 @@ function bots() {
 export async function askTeamLead(
   lead,
   question,
-  { onText, onEvent, continueConversation = false } = {},
+  { onText, onEvent, continueConversation = false, conversationId = null } = {},
 ) {
   const api = bots();
   if (!lead || !lead.botId) {
@@ -62,6 +62,8 @@ export async function askTeamLead(
       question,
       !!continueConversation,
       "create",
+      // The conversation asking: the bots the lead asks record it.
+      conversationId,
     );
     if (!record) return { status: "failed", error: "no answer" };
     if (record.skipped) {

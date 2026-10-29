@@ -260,3 +260,53 @@ describe("BotRunHistory — retries (US-023)", () => {
     );
   });
 });
+
+// Lead-workspace release 5 (frames 15, 24): each run links to the
+// conversation it came from.
+test("a run its lead asked for opens that conversation; scheduled runs have no link", async () => {
+  const opened = jest.fn();
+  window.addEventListener("dash:open-workspace", opened);
+  window.mainApi = {
+    bots: {
+      getRuns: jest.fn().mockResolvedValue([
+        {
+          trigger: "schedule",
+          status: "completed",
+          startedAt: "2026-10-01T09:00:00.000Z",
+          output: "Nothing urgent.",
+        },
+        {
+          trigger: "ask",
+          via: "lead:lead7",
+          conversationId: "q_42",
+          status: "completed",
+          startedAt: "2026-10-02T09:00:00.000Z",
+          output: "2 need attention.",
+        },
+      ]),
+    },
+  };
+  render(
+    <BotRunHistory
+      bot={bot}
+      nameOf={(id) => (id === "lead7" ? "Kitchen Sink Lead" : id)}
+    />,
+  );
+  const links = await screen.findAllByRole("button", {
+    name: /^Open conversation/,
+  });
+  expect(links).toHaveLength(1);
+  // Where it came from, on the row itself (frame 15).
+  expect(screen.getByTestId("run-conversation-label")).toHaveTextContent(
+    "Asked by Kitchen Sink Lead",
+  );
+  expect(links[0]).toHaveAccessibleName(
+    "Open conversation — Asked by Kitchen Sink Lead",
+  );
+  fireEvent.click(links[0]);
+  window.removeEventListener("dash:open-workspace", opened);
+  expect(opened.mock.calls[0][0].detail).toEqual({
+    key: "lead:lead7",
+    recentId: "q_42",
+  });
+});

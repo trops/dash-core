@@ -91,7 +91,7 @@ describe("AppPage", () => {
     expect(screen.getByRole("heading", { name: "Bots" })).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Every bot, grouped by the dashboard team it works for.",
+        "Your teams and their bots. Open a team to see its lead and bots.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByTestId("section-bots")).toBeInTheDocument();

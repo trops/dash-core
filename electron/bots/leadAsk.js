@@ -24,6 +24,8 @@ const OUTSIDE_CALLERS = new Set(["mcp"]);
  * @param {{ id: string, name: string }} p.member
  * @param {string} p.request
  * @param {string|null} [p.leadVia]  who started the lead's run
+ * @param {string|null} [p.conversationId]  the lead conversation it came
+ *   from (release 5: the bot's Activity opens it)
  * @param {() => boolean} p.takeHandoff  counts the hand-off; false = over the cap
  * @param {(opts) => Promise<object>} p.run  runs the member with run options
  * @param {(p: Promise) => void} [p.track]  told about the member's run
@@ -35,6 +37,7 @@ async function askTeamBot({
   member,
   request,
   leadVia = null,
+  conversationId = null,
   takeHandoff,
   run,
   track = null,
@@ -63,6 +66,7 @@ async function askTeamBot({
       // setting — the request came through the lead, not straight from
       // the user.
       approvalPolicy: "ask",
+      ...(conversationId ? { conversationId: String(conversationId) } : {}),
     }),
   );
   if (track) track(started);
@@ -75,6 +79,20 @@ async function askTeamBot({
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Who started a lead's current run, and from which conversation — from the
+ * controller's run entry (`{ via, conversationId }`), for askTeamBot.
+ * @param {object|null} entry
+ * @returns {{ leadVia: string|null, conversationId: string|null }}
+ */
+function leadRunInfo(entry) {
+  const e = entry && typeof entry === "object" ? entry : {};
+  return {
+    leadVia: e.via ? String(e.via) : null,
+    conversationId: e.conversationId ? String(e.conversationId) : null,
+  };
 }
 
 /**
@@ -106,6 +124,7 @@ function withPlanDashboard(text, dashboard) {
 
 module.exports = {
   askTeamBot,
+  leadRunInfo,
   withPlanDashboard,
   LEAD_ASK_WAIT_MS,
   OUTSIDE_CALLERS,
