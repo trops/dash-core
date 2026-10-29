@@ -21,7 +21,8 @@ const EMPTY = [];
  * asks first), and a request for another bot or tab asks first too.
  *
  * The Dash team's page (DashTeamPage, Phase 4a) shows here too:
- * `{ dashTeam: true, tab }`.
+ * `{ dashTeam: true, tab }` — its Activity and Settings; the team is talked
+ * to in the Dash Lead's conversations (lead-workspace release 6b).
  *
  * @param {{ botId?: string, dashTeam?: boolean, tab?: string }|null} request
  *   the bot (or the Dash team) to show
@@ -88,26 +89,17 @@ export const BotPageModal = ({
       >
         {shown.dashTeam ? (
           <DashTeamPage
-            key={`dash-team-${shown.tab || "conversation"}`}
-            initialTab={shown.tab || "conversation"}
+            key={`dash-team-${shown.tab || "settings"}`}
+            initialTab={shown.tab || "settings"}
             workspaces={workspaces}
-            onOpenPlan={(seed) => {
-              close();
-              window.dispatchEvent(
-                // Carried on with the Dash Lead (lead-workspace release 3c).
-                new CustomEvent("dash:open-workspace", {
-                  detail: { key: "role:dashlead", seed },
-                }),
-              );
-            }}
             onClose={close}
             onDirtyChange={setDirty}
           />
         ) : (
           <BotPage
-            key={`${shown.botId}-${shown.tab || "conversation"}`}
+            key={`${shown.botId}-${shown.tab || "activity"}`}
             botId={shown.botId}
-            initialTab={shown.tab || "conversation"}
+            initialTab={shown.tab || "activity"}
             workspaces={workspaces}
             onOpenInBotsView={
               onOpenInBotsView

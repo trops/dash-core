@@ -28,17 +28,18 @@ jest.mock("./BotPage", () => ({
   },
 }));
 
+let mockDashTeamProps;
 jest.mock("./DashTeamPage", () => ({
-  DashTeamPage: (props) => (
-    <div>
-      dash team on {props.initialTab}
-      <button onClick={() => props.onOpenPlan({ prompt: "p" })}>
-        open-plan
-      </button>
-      <button onClick={props.onClose}>team-close</button>
-      <button onClick={() => props.onDirtyChange(true)}>team-dirty</button>
-    </div>
-  ),
+  DashTeamPage: (props) => {
+    mockDashTeamProps = props;
+    return (
+      <div>
+        dash team on {props.initialTab}
+        <button onClick={props.onClose}>team-close</button>
+        <button onClick={() => props.onDirtyChange(true)}>team-dirty</button>
+      </div>
+    );
+  },
 }));
 
 let mockModalProps;
@@ -92,7 +93,7 @@ test("shows the asked-for bot on the asked-for tab", () => {
 
 test("opens on the conversation by default", () => {
   setup({ botId: "b1" });
-  expect(screen.getByText("page for b1 on conversation")).toBeInTheDocument();
+  expect(screen.getByText("page for b1 on activity")).toBeInTheDocument();
 });
 
 test("the page's close closes the modal", () => {
@@ -182,16 +183,9 @@ describe("the Dash team (consolidation Phase 4a)", () => {
     expect(screen.getByText("dash team on settings")).toBeInTheDocument();
   });
 
-  test("Open as a plan closes the modal and carries the plan on with the Dash Lead (release 3c)", () => {
-    const opened = jest.fn();
-    window.addEventListener("dash:open-workspace", opened);
-    const { onClose } = setup({ dashTeam: true, tab: "conversation" });
-    fireEvent.click(screen.getByText("open-plan"));
-    expect(onClose).toHaveBeenCalled();
-    expect(opened.mock.calls[0][0].detail).toEqual({
-      key: "role:dashlead",
-      seed: { prompt: "p" },
-    });
-    window.removeEventListener("dash:open-workspace", opened);
+  test("the Dash team opens on its Settings; it has no conversation of its own (release 6b)", () => {
+    setup({ dashTeam: true });
+    expect(mockDashTeamProps.initialTab).toBe("settings");
+    expect(mockDashTeamProps.onOpenPlan).toBeUndefined();
   });
 });

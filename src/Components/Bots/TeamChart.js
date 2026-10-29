@@ -254,8 +254,9 @@ export const TeamChart = ({
     const showActions = !drag && (active || hovered === bot.id);
     const dropping = !!drag;
     const droppable = canDrop(bot.id);
+    // Only the lead is asked — in its conversation (release 6b).
     const actions = [
-      ["conversation", isLead ? "Ask the lead" : "Conversation", "comment"],
+      ...(isLead ? [["conversation", "Ask the lead", "comment"]] : []),
       ["activity", "Activity", "wave-square"],
       ["settings", "Settings", "gear"],
     ];

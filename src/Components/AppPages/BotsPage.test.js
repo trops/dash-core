@@ -80,7 +80,7 @@ jest.mock("../Settings/details/BotDetail", () => ({
 jest.mock("../Bots/BotPage", () => ({
   BotPage: ({
     botId,
-    manageOnly,
+    initialTab,
     onOpenInBotsView,
     onDeleted,
     onDirtyChange,
@@ -88,7 +88,7 @@ jest.mock("../Bots/BotPage", () => ({
   }) => (
     <div data-testid="bot-page-stub">
       <span>bot page {botId}</span>
-      {manageOnly ? <span>manage only</span> : null}
+      <span>{`opens on ${initialTab}`}</span>
       <button onClick={() => onOpenInBotsView({ id: 9 }, botId)}>
         stub-open-bots-view
       </button>
@@ -99,9 +99,9 @@ jest.mock("../Bots/BotPage", () => ({
   ),
 }));
 jest.mock("../Bots/DashTeamPage", () => ({
-  DashTeamPage: ({ role, manageOnly, initialTab, onDirtyChange }) => (
+  DashTeamPage: ({ role, initialTab, onDirtyChange }) => (
     <div data-testid="dash-team-page-stub">
-      {`dash team ${role} ${initialTab}${manageOnly ? " manage" : ""}`}
+      {`dash team ${role} ${initialTab}`}
       <button onClick={() => onDirtyChange(true)}>team-dirty</button>
     </div>
   ),
@@ -346,7 +346,7 @@ describe("BotsPage — a bot: management only (frames 14, 15, 24)", () => {
     setup();
     fireEvent.click(within(list()).getByText("Inbox Watch"));
     expect(within(detail()).getByText("bot page b1")).toBeInTheDocument();
-    expect(within(detail()).getByText("manage only")).toBeInTheDocument();
+    expect(within(detail()).getByText("opens on activity")).toBeInTheDocument();
   });
 
   it("passes Open in Bots view through", () => {
@@ -455,7 +455,7 @@ describe("BotsPage — the Dash team", () => {
     expect(botNames().slice(0, 3)).toEqual(["Dash Lead", "Planner", "Builder"]);
     fireEvent.click(within(list()).getByText("Planner"));
     expect(screen.getByTestId("dash-team-page-stub")).toHaveTextContent(
-      "dash team planner activity manage",
+      "dash team planner activity",
     );
   });
 
@@ -476,7 +476,7 @@ describe("BotsPage — the Dash team", () => {
     );
     expect(screen.getByTestId("dash-team-page-stub")).toHaveTextContent(
       // The team's Settings: no role picked, so the Dash team's header.
-      "dash team null settings manage",
+      "dash team null settings",
     );
   });
 

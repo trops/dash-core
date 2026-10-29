@@ -18,17 +18,6 @@ let mockContacts;
 jest.mock("./useBotContacts", () => ({
   useBotContacts: () => mockContacts,
 }));
-let mockChatProps;
-jest.mock("./BotChat", () => ({
-  BotChat: (props) => {
-    mockChatProps = props;
-    return (
-      <div data-testid="chat-stub">
-        chat with {props.bot.name} ({props.approvals.length} approvals)
-      </div>
-    );
-  },
-}));
 let mockRunProps;
 jest.mock("./BotRunHistory", () => ({
   BotRunHistory: (props) => {
@@ -123,15 +112,20 @@ afterEach(() => {
 });
 
 describe("BotPage header", () => {
-  it("shows the bot, its status and its dashboard; opens the conversation first", () => {
+  it("shows the bot, its status and its dashboard; opens on Activity — no conversation (release 6b)", () => {
     setup();
     expect(screen.getByText("Inbox Watch")).toBeInTheDocument();
     expect(screen.getByTestId("bot-page-status")).toHaveTextContent(
       "Idle · Kitchen Sink",
     );
-    expect(screen.getByTestId("chat-stub")).toHaveTextContent(
-      "chat with Inbox Watch",
-    );
+    expect(screen.getByText("runs of Inbox Watch")).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Conversation" })).toBeNull();
+    expect(screen.queryByTestId("chat-stub")).toBeNull();
+  });
+
+  it('an old "conversation" tab request opens Activity', () => {
+    setup({ initialTab: "conversation" });
+    expect(screen.getByRole("radio", { name: "Activity" })).toBeChecked();
   });
 
   it("Run now on a paused bot is a test run that offers Turn on", async () => {
@@ -262,8 +256,6 @@ describe("BotPage in a dashboard's Bots view (NAV-016 AC6)", () => {
   it("an error's next step opens the app's settings, not the bot's", () => {
     const onOpenSettings = jest.fn();
     setup({ onOpenSettings });
-    expect(mockChatProps.onOpenSettings).toBe(onOpenSettings);
-    tab("Activity");
     expect(mockRunProps.onOpenSettings).toBe(onOpenSettings);
   });
 
@@ -298,15 +290,12 @@ describe("BotPage tabs", () => {
     expect(screen.getByText("settings for Inbox Watch")).toBeInTheDocument();
   });
 
-  it("waiting approvals show above every tab but the conversation", () => {
+  it("waiting approvals show above every tab", () => {
     const approval = {
       id: "a1",
       request: { botId: "b1", toolName: "send_email", serverName: "Gmail" },
     };
     setup({}, { approvals: [approval] });
-    expect(screen.getByTestId("chat-stub")).toHaveTextContent("1 approvals");
-    expect(screen.queryByRole("button", { name: "Allow" })).toBeNull();
-    tab("Activity");
     fireEvent.click(screen.getByRole("button", { name: "Allow" }));
     expect(mockContacts.approve).toHaveBeenCalledWith("a1", { allow: true });
   });
@@ -360,7 +349,7 @@ describe("BotPage settings", () => {
 // managed, not talked to.
 describe("BotPage — manage only (the Bots page)", () => {
   it("no Conversation tab; opens on Activity; a team member is talked to through its lead", () => {
-    setup({ manageOnly: true });
+    setup();
     expect(screen.queryByRole("radio", { name: "Conversation" })).toBeNull();
     expect(screen.getByRole("radio", { name: "Activity" })).toBeChecked();
     expect(screen.queryByTestId("chat-stub")).toBeNull();
@@ -373,12 +362,12 @@ describe("BotPage — manage only (the Bots page)", () => {
   });
 
   it("a lead, or a bot on no dashboard, keeps Open conversation and has no note", () => {
-    setup({ manageOnly: true, botId: "lead7" });
+    setup({ botId: "lead7" });
     expect(
       screen.getByRole("button", { name: "Open conversation" }),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("bot-page-member-note")).toBeNull();
-    rerenderPage({ manageOnly: true, botId: "b2" });
+    rerenderPage({ botId: "b2" });
     expect(
       screen.getByRole("button", { name: "Open conversation" }),
     ).toBeInTheDocument();
@@ -387,9 +376,25 @@ describe("BotPage — manage only (the Bots page)", () => {
 });
 
 test("manage only: a bot whose dashboard is gone is talked to directly", () => {
-  setup({ manageOnly: true, botId: "b4" });
+  setup({ botId: "b4" });
   expect(
     screen.getByRole("button", { name: "Open conversation" }),
   ).toBeInTheDocument();
   expect(screen.queryByTestId("bot-page-member-note")).toBeNull();
+});
+
+test("a member on a dashboard with no lead says how to give it one", () => {
+  setup(
+    {
+      botId: "b5",
+      workspaces: [...workspaces, { id: 11, name: "Calendar" }],
+    },
+    { bots: [...BOTS, { id: "b5", name: "Cal Bot", workspaceId: 11 }] },
+  );
+  expect(screen.getByTestId("bot-page-member-note")).toHaveTextContent(
+    "This dashboard has no lead",
+  );
+  expect(
+    screen.queryByRole("button", { name: "Open conversation" }),
+  ).toBeNull();
 });
