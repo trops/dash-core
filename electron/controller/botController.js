@@ -2448,6 +2448,10 @@ const botController = {
       // A hand-off while the user is still planning: answers only — none
       // of the tools that change things (no approvals to wait on).
       ...(opts.adviseOnly ? { adviseOnly: true } : {}),
+      // A Dash team run inside a plan (or a question): that plan's memory
+      // tools, and its memory calls go to the plan's bucket (4e-1). Dropped
+      // here before, so the prompt's MEMORY_NOTE named tools it never had.
+      ...(opts.planId ? { planId: String(opts.planId) } : {}),
       emit: (event) => {
         if (!alreadyRunning) this._events.onRunEvent(botId, event);
         this._broadcast(BOT_STREAM, { botId, event });

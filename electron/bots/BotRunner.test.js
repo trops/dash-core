@@ -378,6 +378,42 @@ describe("BotRunner.run — the user's chat keeps its own session", () => {
   });
 });
 
+describe("BotRunner.run — a run inside a plan (4e-1)", () => {
+  // The plan's memory: its tools come from resolveTools (which needs the
+  // planId) and every tool call carries it to the plan's bucket.
+  function planRunner() {
+    const engine = mockEngine([{ type: "done" }]);
+    const seen = { resolve: [], calls: [] };
+    const { runner } = makeRunner(engine, {
+      deps: {
+        resolveTools: async (bot, opts) => {
+          seen.resolve.push(opts.planId || null);
+          return { tools: [], resolveServer: () => "dash-memory" };
+        },
+        callTool: async (server, tool, input, opts) => {
+          seen.calls.push(opts.planId || null);
+          return { text: "ok" };
+        },
+      },
+    });
+    return { runner, engine, seen };
+  }
+
+  it("the planId reaches the tool list and every tool call", async () => {
+    const { runner, engine, seen } = planRunner();
+    await runner.run("bot_1", { trigger: "ask", planId: "plan_7" });
+    await engine.lastCtx.executeTool("memory_get", { key: "plan" });
+    assert.deepEqual(seen, { resolve: ["plan_7"], calls: ["plan_7"] });
+  });
+
+  it("a run outside a plan has none", async () => {
+    const { runner, engine, seen } = planRunner();
+    await runner.run("bot_1", { trigger: "manual" });
+    await engine.lastCtx.executeTool("memory_get", { key: "plan" });
+    assert.deepEqual(seen, { resolve: [null], calls: [null] });
+  });
+});
+
 describe("BotRunner.run — one run per bot", () => {
   it("skips a second run while the first is in progress", async () => {
     let release;
