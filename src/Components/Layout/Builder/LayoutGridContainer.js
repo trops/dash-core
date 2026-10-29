@@ -1295,16 +1295,18 @@ export const LayoutGridContainer = memo(
           </button>
           <button
             onClick={() =>
-              // Create, for this cell, through the Dash team (consolidation
-              // Phase 2b): Scout, Planner, Builder, Checker, your preview.
+              // A conversation with the dashboard's lead about this cell
+              // (lead-workspace release 6c, frame 38): it brings in the Dash
+              // team, you preview the widget, and it goes in this cell.
               window.dispatchEvent(
-                new CustomEvent("dash:open-create", {
+                new CustomEvent("dash:open-workspace", {
                   detail: {
                     cell: {
                       cellNumber,
                       gridItemId: item.id,
                       workspaceId: workspace?.id,
                       scope: workspaceScope || "main",
+                      span: item.grid?.[cellNumber]?.span || null,
                     },
                   },
                 }),

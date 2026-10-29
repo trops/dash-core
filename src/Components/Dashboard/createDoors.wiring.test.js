@@ -73,25 +73,29 @@ describe("removed for good", () => {
   });
 });
 
-// Consolidation Phase 2b: a cell's Build with AI and Edit's Ask AI open
-// Create for that cell (the Dash team, a preview, placed in the edit).
-describe("an empty cell's AI doors open Create for that cell", () => {
+// Lead-workspace release 6c-2: a cell's Build with AI, on the grid and in
+// the Edit panel, opens a conversation with its dashboard's lead.
+describe("an empty cell's AI doors open its lead's conversation (lead-workspace 6c)", () => {
   it("Build with AI on the grid", () => {
     const grid = read("Layout", "Builder", "LayoutGridContainer.js");
     expect(grid).toMatch(
-      /new CustomEvent\("dash:open-create", \{\s*detail: \{\s*cell: \{\s*cellNumber,\s*gridItemId: item\.id,\s*workspaceId: workspace\?\.id,\s*scope: workspaceScope \|\| "main",/,
+      /new CustomEvent\("dash:open-workspace", \{\s*detail: \{\s*cell: \{\s*cellNumber,\s*gridItemId: item\.id,\s*workspaceId: workspace\?\.id,\s*scope: workspaceScope \|\| "main",/,
     );
+    expect(grid).not.toMatch(/dash:open-create/);
     expect(grid).not.toMatch(/dash:open-widget-builder/);
   });
   it("Edit's Ask AI › Build a widget for this cell", () => {
     expect(stageSrc).toMatch(
-      /new CustomEvent\("dash:open-create", \{\s*detail: \{\s*cell: \{\s*cellNumber: editSelection\.cellNumber,/,
+      /new CustomEvent\("dash:open-workspace", \{\s*detail: \{\s*cell: \{\s*cellNumber: editSelection\.cellNumber,/,
     );
   });
-  it("the request carries the page being edited, and Create gets the cell", () => {
+  it("the request carries the page being edited, and no Dash Lead key (its lead is found)", () => {
     expect(stageSrc).toMatch(/activePageRef\.current = currentActivePageId;/);
     expect(stageSrc).toMatch(
-      /cell=\{createRequest \? createRequest\.cell \|\| null : null\}/,
+      /d\.key \|\| \(d\.cell \? null : "role:dashlead"\)/,
+    );
+    expect(stageSrc).toMatch(
+      /cell:\s*d\.cell && d\.cell\.gridItemId != null && d\.cell\.cellNumber/,
     );
   });
 });

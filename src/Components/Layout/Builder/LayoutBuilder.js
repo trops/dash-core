@@ -37,6 +37,7 @@ import {
 import { WorkspaceScopeContext } from "./LayoutGridContainer";
 import { LayoutPageContext } from "./WorkspaceScopeContext";
 import { ProviderSelector } from "../../Provider/ProviderSelector";
+import { cellProblem } from "./cellPlacement";
 import { McpServerPicker } from "../../Provider/McpServerPicker";
 
 // import LayoutBuilderEditItemModal from "./Modal/LayoutBuilderEditItemModal";
@@ -158,6 +159,10 @@ export const LayoutBuilder = ({
 
   // Ref for current workspace state (avoids stale closure in event listener)
   const wsRef = useRef(currentWorkspace);
+  // Placing a widget into a cell only happens while editing (lead-workspace
+  // release 6c: the conversation is told whether it went in).
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
   // The dashboard a widget is added to — its uuid (data file) includes it.
   const addToDashboardId = () =>
     dashboardId !== undefined && dashboardId !== null
@@ -205,8 +210,15 @@ export const LayoutBuilder = ({
         scope: targetScope = null,
         userPrefs = null,
         selectedProviders = null,
+        onPlaced = null,
       } = e.detail || {};
       if (!widgetComponentName || !cellNumber || !gridItemId) return;
+      // Told once, by the dashboard it's for: true (placed), or why not —
+      // "preview" (not being edited), "gone", "taken", "unknown-widget",
+      // "failed".
+      const told = (result) => {
+        if (typeof onPlaced === "function") onPlaced(result);
+      };
       // Grid ids repeat across pages and the pinned sidebar: when the event
       // names them, only that scope and page act.
       if (targetScope && targetScope !== (scope || "main")) return;
@@ -236,8 +248,18 @@ export const LayoutBuilder = ({
         return;
       }
 
+      // Not being edited any more: it isn't placed behind the user's back.
+      if (previewRef.current) {
+        told("preview");
+        return;
+      }
+      // Only an empty cell is filled: trying again never replaces a widget.
+      const problem = cellProblem(ws.layout, gridItemId, cellNumber);
+      if (problem) {
+        told(problem);
+        return;
+      }
       const gridItem = ws.layout.find((item) => item.id === gridItemId);
-      if (!gridItem?.grid) return;
 
       // Just installed: it may take a moment to be registered here.
       const config = ComponentManager.config(widgetComponentName);
@@ -253,6 +275,7 @@ export const LayoutBuilder = ({
         console.warn(
           `[LayoutBuilder] Widget ${widgetComponentName} not found in ComponentManager`,
         );
+        told("unknown-widget");
         return;
       }
 
@@ -287,11 +310,13 @@ export const LayoutBuilder = ({
         const newWorkspace = JSON.parse(JSON.stringify(ws));
         newWorkspace.layout = newLayout;
         commitWorkspace(newWorkspace);
+        told(true);
         console.log(
           `[LayoutBuilder] AI widget placed: ${widgetComponentName} → cell ${cellNumber}`,
         );
       } catch (err) {
         console.error("[LayoutBuilder] Failed to place AI widget:", err);
+        told("failed");
       }
     };
 

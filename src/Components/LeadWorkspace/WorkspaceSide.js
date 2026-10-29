@@ -405,7 +405,8 @@ export const WorkspaceSide = ({
   if (open === "check" && build) {
     return opened(<CheckReportOutput state={buildState} />);
   }
-  if (open === "preview" && build && pb) {
+  // The preview, while it waits for a look — once it's past, Outputs.
+  if (open === "preview" && build && pb && previewStep) {
     return opened(<PreviewOutput state={buildState} pb={pb} />);
   }
   // An earlier plan, from its card in the chat.

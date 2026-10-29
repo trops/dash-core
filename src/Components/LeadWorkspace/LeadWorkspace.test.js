@@ -232,6 +232,19 @@ describe("WorkspaceSide", () => {
     },
   ];
 
+  test("a preview that's past (it went in): Outputs, not an empty page (6c-2)", () => {
+    render(
+      <WorkspaceSide
+        contact={contact}
+        messages={messages}
+        open="preview"
+        build={{ buildId: "b1", kind: "cell" }}
+        pb={{ state: { status: "done", steps: [] } }}
+      />,
+    );
+    expect(screen.getByTestId("workspace-side")).toHaveTextContent("Outputs");
+  });
+
   test("an answer is an output; each bot says whether it was asked", () => {
     render(<WorkspaceSide contact={contact} messages={messages} />);
     expect(screen.getByTestId("workspace-output")).toHaveTextContent(
@@ -2328,5 +2341,303 @@ describe("a smaller window", () => {
     expect(
       screen.queryByRole("button", { name: "Conversations and leads" }),
     ).toBeNull();
+  });
+});
+
+describe("an empty cell (release 6c, frames 38, 39)", () => {
+  const CELL = {
+    workspaceId: "7",
+    gridItemId: 3,
+    cellNumber: "2.1",
+    pageId: "p1",
+    scope: "main",
+  };
+  const ONE = {
+    summary: "A weather widget",
+    pieces: [{ kind: "widget", name: "Weather", source: "new" }],
+  };
+  const you = (text) => ({ who: "you", text });
+  const reply = { who: "role", text: "Put it there?" };
+  const api = { busy: false, send: jest.fn(), focusReply: jest.fn() };
+  const planStep = (plan) => ({
+    who: "step",
+    id: "1:t1",
+    bot: "the Planner",
+    label: "Asked the Planner",
+    status: "done",
+    answer: "Here's a plan.",
+    result: "Here's a plan.",
+    plan,
+  });
+  let push = null;
+  beforeEach(() => {
+    push = null;
+    Object.assign(window.mainApi.bots, {
+      startPlanBuild: jest
+        .fn()
+        .mockResolvedValue({ buildId: "build_c", state: null }),
+      getPlanBuild: jest.fn().mockResolvedValue(null),
+      onPlanBuild: jest.fn((cb) => {
+        push = (state) => act(() => cb({ buildId: "build_c", state }));
+        return 9;
+      }),
+      approvePlanStep: jest.fn().mockResolvedValue({ ok: true }),
+    });
+  });
+
+  test("opens with the dashboard's lead: For: that cell, its greeting and starters", () => {
+    render(<LeadWorkspace request={{ cell: CELL }} onClose={jest.fn()} />);
+    expect(screen.getByTestId("workspace-about")).toHaveTextContent(
+      "For: Kitchen Sink — the empty cell in row 2, column 1",
+    );
+    const start = screen.getByTestId("workspace-start");
+    expect(start).toHaveTextContent("What should go in this cell?");
+    expect(start).toHaveTextContent(
+      "Kitchen Sink Lead brings in the Dash team",
+    );
+    expect(
+      within(start).getByRole("button", { name: "The weather" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-switcher")).toHaveTextContent(
+      "Kitchen Sink Lead",
+    );
+    fireEvent.click(within(start).getByRole("button", { name: "The weather" }));
+    expect(mockAskProps.recipient).toMatchObject({ botId: "lead_7" });
+    expect(mockAskProps.about.label).toBe("For");
+    expect(mockAskProps.about.note).toMatch(/Plan exactly one widget/);
+    expect(mockAskProps.about.cell).toMatchObject({
+      gridItemId: 3,
+      cellNumber: "2.1",
+      dashboardName: "Kitchen Sink",
+    });
+  });
+
+  test("a plan with more than one widget doesn't fit: the check says so, nothing is built", () => {
+    render(<LeadWorkspace request={{ cell: CELL }} onClose={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "The weather" }));
+    const TWO = {
+      summary: "Two",
+      pieces: [
+        { kind: "widget", name: "Weather", source: "new" },
+        { kind: "widget", name: "Clock", source: "new" },
+      ],
+    };
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([you("The weather"), planStep(TWO), reply]);
+    });
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    const choices = render(node);
+    expect(
+      within(choices.container).queryByRole("button", { name: "Yes, add it" }),
+    ).toBeNull();
+    expect(
+      within(choices.container).getByRole("button", {
+        name: "Ask the Planner to fix it",
+      }),
+    ).toBeInTheDocument();
+    choices.unmount();
+    expect(window.mainApi.bots.startPlanBuild).not.toHaveBeenCalled();
+  });
+
+  test("New conversation drops the cell: the next plan isn't for it", () => {
+    render(<LeadWorkspace request={{ cell: CELL }} onClose={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ New conversation" }));
+    expect(screen.queryByTestId("workspace-about")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "What did my bots do today?" }),
+    );
+    expect(mockAskProps.about).toBeNull();
+  });
+
+  test("Put it in again, while it's still there, stays in", async () => {
+    await yesAddIt();
+    const heard = [];
+    const listen = (e) => heard.push(e.detail);
+    window.addEventListener("dash:place-widget-in-cell", listen);
+    push({
+      status: "running",
+      steps: [{ ...DONE.steps[0], status: "running" }],
+    });
+    push(DONE);
+    act(() => heard[0].onPlaced(true));
+    fireEvent.click(
+      within(chat()).getByRole("button", { name: "Put it in again" }),
+    );
+    act(() => heard[1].onPlaced("taken"));
+    window.removeEventListener("dash:place-widget-in-cell", listen);
+    expect(
+      within(chat()).getByTestId("workspace-build-reply"),
+    ).toHaveTextContent("Weather is in the cell you picked.");
+  });
+
+  test("a build that ends waiting for a provider is put in too", async () => {
+    await yesAddIt();
+    const heard = [];
+    const listen = (e) => heard.push(e.detail);
+    window.addEventListener("dash:place-widget-in-cell", listen);
+    push({
+      status: "running",
+      steps: [{ ...DONE.steps[0], status: "running" }],
+    });
+    push({ ...DONE, status: "waiting-for-providers" });
+    window.removeEventListener("dash:place-widget-in-cell", listen);
+    expect(heard).toHaveLength(1);
+  });
+
+  test("a dashboard with no lead: the Dash Lead", () => {
+    render(
+      <LeadWorkspace
+        request={{ cell: { ...CELL, workspaceId: "99" } }}
+        onClose={jest.fn()}
+      />,
+    );
+    expect(screen.getByTestId("workspace-switcher")).toHaveTextContent(
+      "Dash Lead",
+    );
+    expect(screen.getByTestId("workspace-about")).toHaveTextContent(
+      "For: Your dashboard — the empty cell in row 2, column 1",
+    );
+  });
+
+  const yesAddIt = async () => {
+    render(<LeadWorkspace request={{ cell: CELL }} onClose={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "The weather" }));
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([you("The weather"), planStep(ONE), reply]);
+    });
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    const choices = render(node);
+    fireEvent.click(
+      within(choices.container).getByRole("button", { name: "Yes, add it" }),
+    );
+    choices.unmount();
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
+    );
+    await waitFor(() => expect(push).not.toBeNull());
+  };
+  const chat = () => {
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    return render(node).container;
+  };
+  const DONE = {
+    status: "done",
+    made: [
+      {
+        component: "ai-built.weather.Weather",
+        inputs: { settings: { units: "c" } },
+      },
+    ],
+    steps: [
+      { id: "build:0", kind: "build", label: "Build Weather", status: "done" },
+      {
+        id: "install:0",
+        kind: "install",
+        label: "Install Weather",
+        status: "done",
+      },
+    ],
+  };
+
+  test("Yes, add it: built as a cell's, without the dashboard; the editor puts it in", async () => {
+    await yesAddIt();
+    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(ONE, {
+      cell: true,
+      recentId: "q_new",
+    });
+    const heard = [];
+    const listen = (e) => heard.push(e.detail);
+    window.addEventListener("dash:place-widget-in-cell", listen);
+    push({
+      status: "running",
+      steps: [{ ...DONE.steps[0], status: "running" }],
+    });
+    push(DONE);
+    window.removeEventListener("dash:place-widget-in-cell", listen);
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toMatchObject({
+      widgetComponentName: "ai-built.weather.Weather",
+      cellNumber: "2.1",
+      gridItemId: 3,
+      workspaceId: "7",
+      pageId: "p1",
+      scope: "main",
+      userPrefs: { units: "c" },
+    });
+    expect(
+      within(chat()).getByTestId("workspace-build-reply"),
+    ).toHaveTextContent("putting it in the cell you picked");
+    act(() => heard[0].onPlaced(true));
+    const c = chat();
+    expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
+      "Weather is in the cell you picked. Save Kitchen Sink to keep it.",
+    );
+    expect(
+      within(c).queryByRole("button", { name: "Put it in the cell" }),
+    ).toBeNull();
+  });
+
+  test("not being edited any more: it says so, and Put it in the cell tries again", async () => {
+    await yesAddIt();
+    const heard = [];
+    const listen = (e) => heard.push(e.detail);
+    window.addEventListener("dash:place-widget-in-cell", listen);
+    push({
+      status: "running",
+      steps: [{ ...DONE.steps[0], status: "running" }],
+    });
+    push(DONE);
+    act(() => heard[0].onPlaced("preview"));
+    const c = chat();
+    expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
+      "Kitchen Sink isn't being edited any more",
+    );
+    fireEvent.click(
+      within(c).getByRole("button", { name: "Put it in the cell" }),
+    );
+    window.removeEventListener("dash:place-widget-in-cell", listen);
+    expect(heard).toHaveLength(2);
+  });
+
+  test("no editor answers: not placed", async () => {
+    await yesAddIt();
+    jest.useFakeTimers();
+    try {
+      push({
+        status: "running",
+        steps: [{ ...DONE.steps[0], status: "running" }],
+      });
+      push(DONE);
+      act(() => jest.advanceTimersByTime(8000));
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(
+      within(chat()).getByRole("button", { name: "Put it in the cell" }),
+    ).toBeInTheDocument();
+  });
+
+  test("a finished cell build reopened isn't put in again by itself", async () => {
+    await yesAddIt();
+    const heard = [];
+    const listen = (e) => heard.push(e.detail);
+    window.addEventListener("dash:place-widget-in-cell", listen);
+    push(DONE);
+    window.removeEventListener("dash:place-widget-in-cell", listen);
+    expect(heard).toHaveLength(0);
+    expect(
+      within(chat()).getByRole("button", { name: "Put it in the cell" }),
+    ).toBeInTheDocument();
   });
 });

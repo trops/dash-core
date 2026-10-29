@@ -26,7 +26,13 @@ import {
   findContact,
 } from "./workspaceContacts";
 import { WorkspaceSide } from "./WorkspaceSide";
-import { makingAbout, makingStart, registrySeed } from "./workspaceStart";
+import {
+  cellStart,
+  makingAbout,
+  makingStart,
+  registrySeed,
+} from "./workspaceStart";
+import { useDashboard } from "./useDashboard";
 import { useWorkspacePlan } from "./useWorkspacePlan";
 import { PlanCard, PlanChoices } from "./PlanViews";
 import { BuildInChat, BuildWalk, PastBuild } from "./BuildViews";
@@ -37,9 +43,11 @@ import {
   stillAnswering,
   withPlanContext,
   yesLabel,
+  cellBuildPlan,
 } from "./workspacePlan";
 import {
   buildKind,
+  buildStatus,
   buildOptions,
   isBuilding,
   waitingFor,
@@ -202,21 +210,65 @@ export const LeadWorkspace = ({
     [all.dashTeam, leads, all.bots],
   );
   const [key, setKey] = useState((request && request.key) || "role:dashlead");
+  // An empty cell's Build with AI (release 6c, frame 38):
+  // { workspaceId, gridItemId, cellNumber, pageId, scope, span? } — talked
+  // over with that dashboard's lead (the Dash Lead when it has none), once
+  // the leads are in.
+  const cellReq =
+    request &&
+    request.cell &&
+    request.cell.gridItemId != null &&
+    request.cell.cellNumber
+      ? request.cell
+      : null;
+  const cellLead = cellReq
+    ? (leads || []).find(
+        (l) => l && String(l.dashboardId) === String(cellReq.workspaceId),
+      ) || null
+    : null;
+  const [cellKeyed, setCellKeyed] = useState(
+    !cellReq || !!(request && request.key),
+  );
+  if (!cellKeyed && leadsLoaded) {
+    setCellKeyed(true);
+    setKey(cellLead ? `lead:${cellLead.botId}` : "role:dashlead");
+  }
+  const cellDashboard = useDashboard(
+    cellReq && !cellLead ? cellReq.workspaceId : null,
+  );
   // Until the lists are in, nothing is asked: a question must never go to a
   // stand-in while the lead you picked is still loading.
-  const loading = !!all.loading || !leadsLoaded;
+  const loading = !!all.loading || !leadsLoaded || !cellKeyed;
   const picked = findContact(groups, key);
   const missing = !loading && !picked;
   const contact = loading ? null : picked;
-  // A page's New (release 6c, frame 41): this new Dash Lead conversation
-  // already says what's being made — until another conversation is opened.
+  // What a new conversation opened by a door is about — a page's New
+  // (release 6c, frame 41: the Dash Lead, "Making:") or an empty cell
+  // (frame 38: "For:") — until another conversation is opened.
+  // Kept on plain values: the leads and bots lists refresh while the team
+  // works, and the cell's plan shouldn't change with them.
+  const cellDashboardName =
+    (cellLead && (cellLead.dashboardLabel || cellLead.dashboardName)) ||
+    (cellDashboard && (cellDashboard.label || cellDashboard.name)) ||
+    "";
+  const contactName = contact ? contact.name : "";
   const making = useMemo(
-    () => makingStart(request && request.making),
-    [request],
+    () =>
+      makingStart(request && request.making) ||
+      cellStart(cellReq, {
+        dashboardName: cellDashboardName,
+        leadName: contactName,
+      }),
+    [request, cellReq, cellDashboardName, contactName],
   );
-  const [makingOn, setMakingOn] = useState(!!making);
+  const [makingOn, setMakingOn] = useState(
+    !!(request && request.making) || !!cellReq,
+  );
   const makingShown =
-    !!making && makingOn && !!contact && contact.kind === "dashlead";
+    !!making &&
+    makingOn &&
+    !!contact &&
+    (making.cell ? contact.kind !== "bot" : contact.kind === "dashlead");
   const [switchOpen, setSwitchOpen] = useState(false);
   // What's open in the middle: a thread ({ recentId }), a new question just
   // sent ({ question }), or nothing yet (the start).
@@ -297,12 +349,23 @@ export const LeadWorkspace = ({
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [drawerOpen, switchOpen]);
-  // The plan this conversation is about (release 3a).
+  // What a reopened conversation is about (its saved `about`, release 6c).
+  const [reopenedAbout, setReopenedAbout] = useState(null);
+  // The empty cell this conversation is about (release 6c): the door's, or
+  // a reopened one's.
+  const convCell =
+    makingShown && making.cell && (!open || open.making)
+      ? making.cell
+      : open && open.recentId && reopenedAbout && reopenedAbout.cell
+        ? reopenedAbout.cell
+        : null;
+  // The plan this conversation is about (release 3a) — for its cell, if any.
   const wp = useWorkspacePlan({
     messages,
     recentId: open ? open.recentId || selectedId : null,
     reopened: !!(open && open.recentId),
     convKey: open ? `${key}:${open.key}` : key,
+    cell: convCell,
   });
   const { width: sideWidth, handleProps } = useResizableWidth({
     defaultWidth: 420,
@@ -317,8 +380,6 @@ export const LeadWorkspace = ({
     [entries, now, contact],
   );
 
-  // What a reopened conversation is about (its saved `about`, release 6c).
-  const [reopenedAbout, setReopenedAbout] = useState(null);
   // Moving on — another lead, a new or other conversation, a question —
   // leaves what was being started behind: a seed still saving doesn't open
   // over it afterwards.
@@ -453,15 +514,16 @@ export const LeadWorkspace = ({
       setBuildError("Building from a plan isn't available in this version.");
       return;
     }
-    // Two saves at once would overwrite each other (as Create, 5e-2b).
+    const kind = carryOn && wp.build ? wp.build.kind : buildKind(wp.plan);
+    // Two saves at once would overwrite each other (as Create, 5e-2b) — a
+    // cell build saves nothing: the editor places it (release 6c).
     const target = planTarget(wp.plan);
-    if (target && dirtyDashboardId() === target.id) {
+    if (kind !== "cell" && target && dirtyDashboardId() === target.id) {
       setBuildError(
         `Save or cancel your edits to ${target.name} first, then say yes again.`,
       );
       return;
     }
-    const kind = carryOn && wp.build ? wp.build.kind : buildKind(wp.plan);
     const earlier = carryOn
       ? wp.build
       : wp.lastBuild && wp.lastBuild.stepId !== (wp.step && wp.step.id)
@@ -471,7 +533,7 @@ export const LeadWorkspace = ({
     const from = { key: wp.key, stepId: wp.step ? wp.step.id : null };
     const at = carryOn && wp.build ? wp.build.at : messages.length - 1;
     const start = (resumeFrom) =>
-      b.startPlanBuild(wp.plan, {
+      b.startPlanBuild(kind === "cell" ? cellBuildPlan(wp.plan) : wp.plan, {
         ...buildOptions(kind),
         ...(resumeFrom ? { resumeFrom } : {}),
         ...(conversationId ? { recentId: conversationId } : {}),
@@ -540,7 +602,90 @@ export const LeadWorkspace = ({
     pb.resume();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumeKey]);
+  // A cell build that's done (release 6c): the editor puts it in the cell
+  // — an unsaved change, as Create did. Once, when it finishes here; the
+  // editor says whether it went in, or why not (LayoutBuilder: "preview",
+  // "gone", "taken", "unknown-widget", "failed"; no answer: "no-answer"),
+  // and Put it in the cell tries again — only ever into an empty cell.
+  // buildId → "placing" | true | a reason.
+  const [placements, setPlacements] = useState({});
+  const madeForCell = (pb.state && pb.state.made && pb.state.made[0]) || null;
+  const canPlace = !!(
+    wp.build &&
+    convCell &&
+    madeForCell &&
+    madeForCell.component
+  );
+  const placeInCell = () => {
+    if (!canPlace) return;
+    const build = wp.build;
+    const at = convCell;
+    const made = madeForCell;
+    const id = build.buildId;
+    // Put in again while it's still there: the cell is taken by it.
+    const was = placements[id];
+    const set = (v) =>
+      alive.current && setPlacements((cur) => ({ ...cur, [id]: v }));
+    set("placing");
+    let answered = false;
+    let timer = null;
+    const answer = (result) => {
+      if (answered) return;
+      answered = true;
+      if (timer) clearTimeout(timer);
+      set(
+        result === true || (was === true && result === "taken")
+          ? true
+          : String(result || "failed"),
+      );
+    };
+    // No editor answers (that dashboard, or its page, isn't open).
+    timer = setTimeout(() => answer("no-answer"), 8000);
+    const inputs = made.inputs || {};
+    window.dispatchEvent(
+      new CustomEvent("dash:place-widget-in-cell", {
+        detail: {
+          widgetComponentName: made.component,
+          cellNumber: at.cellNumber,
+          gridItemId: at.gridItemId,
+          workspaceId: at.workspaceId,
+          pageId: at.pageId ?? null,
+          scope: at.scope || "main",
+          userPrefs: inputs.settings || null,
+          selectedProviders: inputs.providers || null,
+          onPlaced: answer,
+        },
+      }),
+    );
+  };
+  // Seen running here: only then is it placed by itself when it's done (a
+  // reopened, finished one asks first).
+  const sawRunning = useRef(null);
+  const cellBuildId =
+    wp.build && wp.build.kind === "cell" ? wp.build.buildId : null;
+  // Done as the chat says it: finished (anything failed left off), or
+  // waiting only for a provider.
+  const cellStatus =
+    cellBuildId && pb.state
+      ? buildStatus(pb.state, (wp.build && wp.build.leftOff) || [])
+      : null;
+  const cellDone =
+    cellStatus === "done" || cellStatus === "waiting-for-providers";
+  useEffect(() => {
+    if (!cellBuildId || !cellStatus) return;
+    if (!cellDone) {
+      sawRunning.current = cellBuildId;
+      return;
+    }
+    if (
+      sawRunning.current === cellBuildId &&
+      placements[cellBuildId] === undefined
+    )
+      placeInCell();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cellBuildId, cellStatus]);
   const buildActions = {
+    placeInCell,
     fix: pb.fix,
     retry: pb.retry,
     approve: pb.approve,
@@ -590,6 +735,15 @@ export const LeadWorkspace = ({
                 current
                 yes={yesLabel(wp.plan)}
                 actions={buildActions}
+                cell={
+                  b.kind === "cell"
+                    ? {
+                        dashboardName: convCell ? convCell.dashboardName : "",
+                        placed: placements[b.buildId],
+                        canPlace,
+                      }
+                    : null
+                }
                 actionError={pb.actionError || buildError}
               />
             ) : (

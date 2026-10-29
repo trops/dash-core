@@ -91,15 +91,26 @@ function others(plan) {
  *   Cell = { name, kind: "add" | "keep" | "empty" | "hidden" } — hidden: a
  *   cell another one spans, kept so the columns stay in place. added: how
  *   many cells it fills (0: nothing to draw)
+ * A plan for an empty cell (`plan.cell`, release 6c, frame 39): its one
+ * widget goes in that cell of that grid, on its page; `cellOnly` is set.
  */
 export function planChanges(workspace, plan) {
   const target = planTarget(plan);
   if (!target || !workspace) return null;
-  const layout = shownLayout(workspace);
+  const at = plan.cell || null;
+  const page =
+    at && at.pageId != null && Array.isArray(workspace.pages)
+      ? workspace.pages.find((p) => p && String(p.id) === String(at.pageId))
+      : null;
+  const layout = page
+    ? Array.isArray(page.layout)
+      ? page.layout
+      : []
+    : shownLayout(workspace);
   const byId = new Map(layout.map((i) => [String(i && i.id), i]));
-  const gridNode = layout.find(
-    (i) => i && i.component === "LayoutGridContainer" && i.grid,
-  );
+  const gridNode = at
+    ? layout.find((i) => i && String(i.id) === String(at.gridItemId) && i.grid)
+    : layout.find((i) => i && i.component === "LayoutGridContainer" && i.grid);
   const grid = gridNode ? gridNode.grid : null;
   const rows = grid ? Number(grid.rows) || 0 : 0;
   const cols = grid ? Number(grid.cols) || 1 : 1;
@@ -128,6 +139,56 @@ export function planChanges(workspace, plan) {
   // After: the additions in the next free cells, then new rows.
   const after = now.map((line) => line.map((c) => ({ ...c })));
   const adds = additions(plan);
+  if (at) {
+    // The picked cell, and nothing else — a plan with more (or other) than
+    // one widget doesn't fit: nothing drawn, each piece listed.
+    const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+    if (pieces.length !== 1 || pieces[0].kind !== "widget") {
+      return {
+        name: target.name,
+        cols,
+        now,
+        after: now,
+        rows: pieces.map((p) => ({
+          mark: "!",
+          main: `${p.name || "Something"} — ${p.kind || "piece"}`,
+          sub: "A cell takes one widget — say which one in the chat",
+        })),
+        unchanged: [],
+        added: 0,
+        cellOnly: true,
+        fits: false,
+      };
+    }
+    const add = adds[0] || null;
+    const slot = add
+      ? after.flat().find((c) => c.key === String(at.cellNumber)) || null
+      : null;
+    if (slot) {
+      slot.name = add.name;
+      slot.kind = "add";
+    }
+    const row = String(at.cellNumber).split(".")[0];
+    return {
+      name: target.name,
+      cols,
+      now,
+      after,
+      rows: add
+        ? [
+            {
+              mark: "+",
+              main: `${add.name} — in the empty cell, row ${row}`,
+              sub: add.sub,
+            },
+          ]
+        : [],
+      unchanged: [],
+      added: slot ? 1 : 0,
+      cellOnly: true,
+      fits: true,
+    };
+  }
   for (const add of adds) {
     let slot = null;
     for (const line of after) {

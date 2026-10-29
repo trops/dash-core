@@ -561,8 +561,9 @@ const DashboardStageInner = ({
     window.addEventListener("dash:open-bots-view", handler);
     return () => window.removeEventListener("dash:open-bots-view", handler);
   }, [openBotsView]);
-  // Open the Create screen from anywhere — still an empty cell's, the dock's
-  // and a lead's hand-off, until lead-workspace release 6c. detail: { type, workspaceId, recentId, seed,
+  // Open the Create screen from anywhere — still the dock's and a lead's
+  // hand-off, until lead-workspace release 6c-4 (an empty cell opens its
+  // lead's conversation since 6c-2). detail: { type, workspaceId, recentId, seed,
   // cell, prompt, context } — prompt fills in what to ask, context is a
   // lead's hand-off note ({ note, from }); recentId opens a plan
   // conversation (Expand from the dock, 4e-2);
@@ -687,7 +688,7 @@ const DashboardStageInner = ({
       const key =
         typeof d.key === "string" && d.key.startsWith("role:")
           ? "role:dashlead"
-          : d.key || "role:dashlead";
+          : d.key || (d.cell ? null : "role:dashlead");
       setWorkspaceRequest({
         key,
         seq: Date.now(),
@@ -696,6 +697,20 @@ const DashboardStageInner = ({
         recentId: d.recentId || null,
         // A page's New (release 6c): { kind, from } — what's being made.
         making: d.making && typeof d.making === "object" ? d.making : null,
+        // An empty cell being edited (release 6c): talked over with its
+        // dashboard's lead; the main grid's page is the one being edited.
+        cell:
+          d.cell && d.cell.gridItemId != null && d.cell.cellNumber
+            ? {
+                ...d.cell,
+                scope: d.cell.scope || "main",
+                pageId:
+                  d.cell.pageId ??
+                  ((d.cell.scope || "main") === "main"
+                    ? activePageRef.current
+                    : null),
+              }
+            : null,
       });
     };
     window.addEventListener("dash:open-workspace", onOpen);
@@ -3228,15 +3243,33 @@ const DashboardStageInner = ({
                   }
                   onBuildWithAi={() => {
                     if (editSelection?.kind !== "cell") return;
-                    // Create, for this cell, through the Dash team (2b).
+                    // A conversation with the dashboard's lead about this
+                    // cell (lead-workspace release 6c, frame 38).
                     window.dispatchEvent(
-                      new CustomEvent("dash:open-create", {
+                      new CustomEvent("dash:open-workspace", {
                         detail: {
                           cell: {
                             cellNumber: editSelection.cellNumber,
                             gridItemId: editSelection.gridItemId,
                             workspaceId: workspaceSelected?.id,
                             scope: editSelection.scope || "main",
+                            // Its size, when it spans (the main grid's
+                            // shown page).
+                            span:
+                              (editSelection.scope || "main") === "main"
+                                ? ((
+                                    (
+                                      (workspaceSelected?.pages || []).find(
+                                        (p) =>
+                                          p && p.id === currentActivePageId,
+                                      ) || workspaceSelected
+                                    )?.layout || []
+                                  ).find(
+                                    (i) =>
+                                      i && i.id === editSelection.gridItemId,
+                                  )?.grid?.[editSelection.cellNumber]?.span ??
+                                  null)
+                                : null,
                           },
                         },
                       }),

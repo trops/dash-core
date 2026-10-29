@@ -38,6 +38,12 @@ export function planName(plan) {
 export function planLine(plan) {
   const target = plan ? planTarget(plan) : null;
   const added = target ? addedCount(plan) : 0;
+  // One widget for an empty cell (release 6c, frame 39) — or a plan that
+  // doesn't fit one.
+  if (plan && plan.cell)
+    return fitsCell(plan)
+      ? "Plan · 1 added, in the cell you picked"
+      : "Plan · doesn't fit one cell";
   if (added) return `Plan · ${added} added · on ${target.name}`;
   const counts = plan ? countsLine(plan) : "";
   // A change that fills no cells (a new bot, a theme): what it makes.
@@ -56,9 +62,48 @@ function addedCount(plan) {
   );
 }
 
-/** Yes, build it — or, for a dashboard the user has, Yes, make the changes. */
+/**
+ * Yes, build it — or, for a dashboard the user has, Yes, make the changes;
+ * for an empty cell, Yes, add it.
+ */
 export function yesLabel(plan) {
+  if (plan && plan.cell) return "Yes, add it";
   return plan && planTarget(plan) ? "Yes, make the changes" : "Yes, build it";
+}
+
+/** A plan that fits an empty cell: exactly one widget, nothing else. */
+export function fitsCell(plan) {
+  const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+  return pieces.length === 1 && pieces[0].kind === "widget";
+}
+
+/**
+ * A conversation about an empty cell (release 6c): its plan is for that
+ * cell's dashboard, and says which cell (`cell`) — so it shows what
+ * changes there. What's built goes without them: the editor places it.
+ */
+export function planForCell(plan, cell) {
+  if (!plan || !cell) return plan;
+  return {
+    ...plan,
+    dashboard: {
+      id: String(cell.workspaceId),
+      name: cell.dashboardName || "Your dashboard",
+    },
+    cell: {
+      cellNumber: cell.cellNumber,
+      gridItemId: cell.gridItemId,
+      pageId: cell.pageId ?? null,
+      scope: cell.scope || "main",
+    },
+  };
+}
+
+/** The plan as a cell build takes it: no dashboard, no cell. */
+export function cellBuildPlan(plan) {
+  if (!plan) return plan;
+  const { dashboard: _d, cell: _c, ...rest } = plan;
+  return rest;
 }
 
 /**
