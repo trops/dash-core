@@ -561,8 +561,8 @@ const DashboardStageInner = ({
     window.addEventListener("dash:open-bots-view", handler);
     return () => window.removeEventListener("dash:open-bots-view", handler);
   }, [openBotsView]);
-  // Open the Create screen from anywhere — Manage pages' New Widget / New Bot
-  // (create-entry PRD CRE-008). detail: { type, workspaceId, recentId, seed,
+  // Open the Create screen from anywhere — still an empty cell's, the dock's
+  // and a lead's hand-off, until lead-workspace release 6c. detail: { type, workspaceId, recentId, seed,
   // cell, prompt, context } — prompt fills in what to ask, context is a
   // lead's hand-off note ({ note, from }); recentId opens a plan
   // conversation (Expand from the dock, 4e-2);
@@ -694,6 +694,8 @@ const DashboardStageInner = ({
         seed: d.seed || null,
         // A conversation to open on (the notifications panel, release 4).
         recentId: d.recentId || null,
+        // A page's New (release 6c): { kind, from } — what's being made.
+        making: d.making && typeof d.making === "object" ? d.making : null,
       });
     };
     window.addEventListener("dash:open-workspace", onOpen);
@@ -1506,9 +1508,9 @@ const DashboardStageInner = ({
   // ─── Create screen (create-entry PRD CRE-001 / CRE-008) ──────────
 
   // Making something starts a new Dash Lead conversation (lead-workspace
-  // release 3c, frame 13): the Create button, New dashboard, ⌘N. An empty
-  // cell, Change with AI and the pages' own New buttons still open Create
-  // until release 6.
+  // release 3c, frame 13): the Create button, New dashboard, ⌘N; the pages'
+  // own New buttons too, saying what's made (release 6c). An empty cell and
+  // Change with AI still open Create until 6c-2 / 6c-3.
   function openDashLead() {
     setBotPageRequest(null);
     setWorkspaceRequest({ key: "role:dashlead", seq: Date.now() });

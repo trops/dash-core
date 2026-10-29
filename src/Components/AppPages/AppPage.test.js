@@ -102,15 +102,22 @@ describe("AppPage", () => {
     ["widgets", "New Widget", "widget"],
     ["dashboards", "New Dashboard", "dashboard"],
   ])(
-    "%s: the primary action opens the Create screen on that type (CRE-008)",
+    "%s: the primary action opens a Dash Lead conversation about making one (release 6c)",
     (key, label, type) => {
       const onOpen = jest.fn();
-      window.addEventListener("dash:open-create", onOpen);
+      const onCreate = jest.fn();
+      window.addEventListener("dash:open-workspace", onOpen);
+      window.addEventListener("dash:open-create", onCreate);
       render(<AppPage pageKey={key} />);
       fireEvent.click(screen.getByText(label));
-      window.removeEventListener("dash:open-create", onOpen);
+      window.removeEventListener("dash:open-workspace", onOpen);
+      window.removeEventListener("dash:open-create", onCreate);
+      expect(onCreate).not.toHaveBeenCalled();
       expect(onOpen).toHaveBeenCalledTimes(1);
-      expect(onOpen.mock.calls[0][0].detail).toEqual({ type });
+      expect(onOpen.mock.calls[0][0].detail).toEqual({
+        key: "role:dashlead",
+        making: { kind: type, from: key },
+      });
       expect(screen.getByTestId("create")).toHaveTextContent("false");
     },
   );

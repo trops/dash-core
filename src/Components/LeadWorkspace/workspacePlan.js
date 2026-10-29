@@ -272,13 +272,16 @@ export function seedConversation(seed) {
       out.push({ who: "note", text: String(m.text) });
     }
   });
-  // No Planner answer kept: the plan still needs its step.
+  // No Planner answer kept: the plan still needs its step — the seed's own
+  // (a registry dashboard, release 6c), or the Planner's.
   if (lastPlanner < 0 && seed && seed.plan) {
+    const step =
+      (seed.step && typeof seed.step === "object" && seed.step) || {};
     out.push({
       who: "step",
       id: "seed:plan",
-      bot: "the Planner",
-      label: "Asked the Planner",
+      bot: step.bot || "the Planner",
+      label: step.label || "Asked the Planner",
       status: "done",
       answer: String(seed.plan.summary || ""),
       result: firstLineOf(seed.plan.summary),
@@ -287,7 +290,9 @@ export function seedConversation(seed) {
   }
   out.push({
     who: "role",
-    text: "Here's the plan from your chat with the Planner — it's on the right. Want me to build it?",
+    text:
+      (seed && typeof seed.reply === "string" && seed.reply) ||
+      "Here's the plan from your chat with the Planner — it's on the right. Want me to build it?",
   });
   return out;
 }

@@ -47,11 +47,15 @@ describe("DashboardStage — one door (Phase 2a)", () => {
   });
 });
 
-describe("Manage › Dashboards — New Dashboard opens Create", () => {
-  it("is in OPENS_CREATE", () => {
-    expect(read("AppPages", "AppPage.js")).toMatch(
-      /OPENS_CREATE = \{\s*dashboards: "dashboard",\s*widgets: "widget",\s*bots: "bot",?\s*\}/,
+// Lead-workspace release 6c (frame 41): a page's New opens a Dash Lead
+// conversation about making one.
+describe("Manage › Dashboards — New Dashboard opens a Dash Lead conversation", () => {
+  it("is in OPENS_WORKSPACE", () => {
+    const src = read("AppPages", "AppPage.js");
+    expect(src).toMatch(
+      /OPENS_WORKSPACE = \{\s*dashboards: "dashboard",\s*widgets: "widget",\s*bots: "bot",?\s*\}/,
     );
+    expect(src).not.toMatch(/dash:open-create/);
   });
 });
 

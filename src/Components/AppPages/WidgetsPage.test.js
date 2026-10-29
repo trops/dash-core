@@ -935,15 +935,17 @@ describe("WidgetsPage page actions", () => {
     expect(screen.queryByTestId("install-picker")).toBeNull();
   });
 
-  it("Install another › Describe it to the Dash team opens Create on Widget (3b)", async () => {
+  it("Install another › Describe it to the Dash team opens a Dash Lead conversation about a widget (6c)", async () => {
     setup({ installRequest: { action: "zip", nonce: 12 } });
     fireEvent.click(await screen.findByText("Install another"));
     const details = [];
     const onEvent = (e) => details.push(e.detail);
-    window.addEventListener("dash:open-create", onEvent);
+    window.addEventListener("dash:open-workspace", onEvent);
     fireEvent.click(screen.getByText("pick-dash-team"));
-    window.removeEventListener("dash:open-create", onEvent);
-    expect(details).toEqual([{ type: "widget" }]);
+    window.removeEventListener("dash:open-workspace", onEvent);
+    expect(details).toEqual([
+      { key: "role:dashlead", making: { kind: "widget", from: "widgets" } },
+    ]);
     expect(screen.queryByTestId("install-picker")).toBeNull();
   });
 });

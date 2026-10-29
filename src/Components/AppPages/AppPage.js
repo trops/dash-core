@@ -9,10 +9,10 @@ import { ThemesPage } from "./ThemesPage";
 import { FoldersSection } from "../Settings/sections/FoldersSection";
 import { ProvidersSection } from "../Settings/sections/ProvidersSection";
 
-// New Dashboard, New Widget and New Bot open the Create screen on that type
-// (create-entry PRD CRE-008, consolidation Phase 2a); the other pages create
-// in place.
-const OPENS_CREATE = {
+// New Dashboard, New Widget and New Bot open a new Dash Lead conversation
+// about making one (lead-workspace release 6c, frame 41); the other pages
+// create in place.
+const OPENS_WORKSPACE = {
   dashboards: "dashboard",
   widgets: "widget",
   bots: "bot",
@@ -201,10 +201,16 @@ export const AppPage = ({
             title={CREATE_LABEL[section]}
             size="sm"
             onClick={() =>
-              OPENS_CREATE[section]
+              OPENS_WORKSPACE[section]
                 ? window.dispatchEvent(
-                    new CustomEvent("dash:open-create", {
-                      detail: { type: OPENS_CREATE[section] },
+                    new CustomEvent("dash:open-workspace", {
+                      detail: {
+                        key: "role:dashlead",
+                        making: {
+                          kind: OPENS_WORKSPACE[section],
+                          from: section,
+                        },
+                      },
                     }),
                   )
                 : setCreateRequested(true)
