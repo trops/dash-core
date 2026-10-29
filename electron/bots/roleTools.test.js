@@ -127,6 +127,33 @@ describe("roleToolsFor", () => {
       ["search_library", "read_widget", "list_providers"],
     );
     assert.ok(!roleToolsFor("builder").some((t) => t.name === "ask_role"));
+    // The Dash Lead (lead-workspace release 1): hands off and reads results.
+    assert.deepEqual(
+      roleToolsFor("dashlead").map((t) => t.name),
+      [
+        "ask_role",
+        "list_dashboards",
+        "list_providers",
+        "bot_results",
+        "bot_runs",
+      ],
+    );
+    const leadAsk = roleToolsFor("dashlead").find((t) => t.name === "ask_role");
+    assert.deepEqual(leadAsk.inputSchema.properties.role.enum, [
+      "planner",
+      "scout",
+      "builder",
+      "checker",
+    ]);
+    // The Planner still can't ask the Planner.
+    const plannerAsk = roleToolsFor("planner").find(
+      (t) => t.name === "ask_role",
+    );
+    assert.deepEqual(plannerAsk.inputSchema.properties.role.enum, [
+      "scout",
+      "builder",
+      "checker",
+    ]);
     assert.deepEqual(roleToolsFor("lead"), []);
     for (const role of Object.keys(ROLE_TOOL_NAMES)) {
       for (const t of roleToolsFor(role)) assert.ok(t.inputSchema, t.name);
@@ -312,6 +339,40 @@ describe("ask_role", () => {
       { role: "scout", request: "x" },
     );
     assert.deepEqual(r, { text: "busy", isError: true });
+  });
+});
+
+describe("ask_role from the Dash Lead (lead-workspace release 1)", () => {
+  it("may hand a request to the Planner as well as the other roles", async () => {
+    let seen = null;
+    const res = await handleRoleTool(
+      deps({
+        askRole: async (req) => {
+          seen = req;
+          return { text: "Planner: a plan for a clock", isError: false };
+        },
+      }),
+      { botId: "b_dashlead", role: "dashlead" },
+      "ask_role",
+      { role: "planner", request: "plan me a clock" },
+    );
+    assert.deepEqual(seen, {
+      callerId: "b_dashlead",
+      role: "planner",
+      request: "plan me a clock",
+    });
+    assert.match(res.text, /Planner: a plan for a clock/);
+  });
+
+  it("never to itself or an unknown role", async () => {
+    const res = await handleRoleTool(
+      deps(),
+      { botId: "b_dashlead", role: "dashlead" },
+      "ask_role",
+      { role: "dashlead", request: "x" },
+    );
+    assert.equal(res.isError, true);
+    assert.match(res.text, /"planner", "scout", "builder", "checker"/);
   });
 });
 

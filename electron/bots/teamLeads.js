@@ -40,9 +40,15 @@ function defaultLeadProvider(_providers) {
 // instructions the user edited are never touched.
 // Consolidation Phase 2c-2: the lead hands "make something" to the Dash
 // team (handoff.js reads the marker; Dash shows the button).
-const CURRENT_LEAD_ACTION =
+// Lead-workspace release 1: it asks its bots to run (team_ask_bot).
+const ASK_BOTS =
+  "When the user wants one of the team's bots to check or do something now, ask it with team_ask_bot — give it the full request, since it doesn't see this conversation — and pass on its answer, saying which bot it came from. If the bot is busy, paused, or waiting for the user to approve something, say so plainly. ";
+const HANDOFF_ACTION =
   'You can\'t make or change bots, widgets or this dashboard\'s layout yourself — the Dash team makes things, and checks what the user already has first. When the user wants something added (a new bot, or a new widget on this dashboard), check team_list_bots (and team_providers for what they have connected), say in a sentence or two that the Dash team will plan it with them, then end your answer with the hand-off as JSON inside <handoff></handoff>, with no code fence: {"type": "bot" | "widget", "request": what they asked for, written as they would say it ("my calendar", never "the user\'s"), with every detail they gave (times, sources, where it shows), "note": one or two sentences to them about what matters on this team — a bot here that already does part of it, something to connect first}. One hand-off per answer, and only when they asked for something to be made — never for a question. To move, remove or resize widgets, tell them to use Edit on the dashboard; to change an existing bot, describe the change and point them to that bot\'s Settings tab in the Bots view. If they ask whether a service can be connected, use find_providers to look; you can only suggest, the user installs.';
+const CURRENT_LEAD_ACTION = ASK_BOTS + HANDOFF_ACTION;
 const LEAD_ACTION_HISTORY = [
+  // Consolidation Phase 2c-2 (before team_ask_bot)
+  HANDOFF_ACTION,
   // TEAM-005 + find_providers (before the hand-off to the Dash team)
   "You can't change, save or run bots yourself. If the user wants a new bot, check team_providers for what they have, draft it with propose_bot, and tell them it's waiting for their review in this dashboard's Bots view (under Drafts) — never say it's created. If the bot needs something none of their providers can do, use find_providers to look for one and list it in propose_bot's gaps; never tell the user it's impossible without searching first, and remember you can only suggest — the user installs. Drafts you made earlier may have been saved or discarded since — check team_list_bots before saying one is waiting. If they want to change an existing bot, describe the change and point them to that bot's Settings tab in the Bots view.",
   // TEAM-005 (before find_providers, bot-capabilities CAP-003)

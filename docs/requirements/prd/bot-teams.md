@@ -26,6 +26,8 @@ The consolidation roadmap (Phases 1–4, 2026-10-16 → 2026-10-21) moved severa
 
 ---
 
+> **2026-10-28 — new direction:** teams are talked to only through their lead, in a conversation workspace; the Dash team gets a Dash Lead; Create folds into it; the right-edge rail becomes one notifications panel; the Bots page becomes management only. See [lead-workspace.md](./lead-workspace.md). Where this PRD says otherwise, lead-workspace.md wins.
+
 ## Context & Background
 
 ### Problem Statement

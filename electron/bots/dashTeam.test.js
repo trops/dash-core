@@ -25,8 +25,14 @@ const teamBot = (role, over = {}) => ({
 });
 
 describe("Dash team roles", () => {
-  it("has the Planner, Scout, Builder and Checker", () => {
-    assert.deepEqual(ROLE_IDS, ["planner", "scout", "builder", "checker"]);
+  it("has the Planner, Scout, Builder, Checker and their lead", () => {
+    assert.deepEqual(ROLE_IDS, [
+      "planner",
+      "scout",
+      "builder",
+      "checker",
+      "dashlead",
+    ]);
     for (const r of ROLES) {
       assert.ok(r.instructions.length > 50, r.role);
       assert.ok(r.summary, r.role);
@@ -64,8 +70,24 @@ describe("planEnsureDashTeam", () => {
         ["create", "scout"],
         ["create", "builder"],
         ["create", "checker"],
+        ["create", "dashlead"],
       ],
     );
+  });
+
+  it("the Dash Lead (lead-workspace release 1): the team's contact, on the fast tier", () => {
+    const def = dashTeamDefinition("dashlead");
+    assert.equal(def.name, "Dash Lead");
+    assert.equal(def.ref, "dash/dashlead");
+    // Never a dashboard lead: those are role "lead" on a dashboard.
+    assert.notEqual(def.role, "lead");
+    assert.equal(def.workspaceId, null);
+    assert.equal(
+      modelForRole(teamBot("dashlead"), "claude-code", {}),
+      "claude-haiku-5-5",
+    );
+    assert.match(def.instructions, /ask_role/);
+    assert.match(def.instructions, /open Create in the left menu/);
   });
 
   it("leaves a complete team alone, including edited instructions", () => {
@@ -528,12 +550,17 @@ describe("Dash team instructions (consolidation Phase 3: a change to one widget)
     assert.doesNotMatch(checker.history[0], /lost a setting/);
   });
   it("the text before Phase 3 upgrades, for every role", () => {
-    const bots = ROLE_IDS.map((r) =>
+    // The working roles (the Dash Lead came after Phase 3).
+    const roles = ROLE_IDS.filter((r) => r !== "dashlead");
+    const bots = roles.map((r) =>
       teamBot(r, { instructions: role(r).history[0] }),
+    );
+    bots.push(
+      teamBot("dashlead", { instructions: role("dashlead").instructions }),
     );
     assert.deepEqual(
       planEnsureDashTeam(bots).map((p) => [p.action, p.role]),
-      ROLE_IDS.map((r) => ["upgrade", r]),
+      roles.map((r) => ["upgrade", r]),
     );
   });
 });

@@ -104,7 +104,7 @@ test("a header and two tabs; opens on Conversation, ready to ask", async () => {
   render(<DashTeamPage onClose={() => {}} />);
   expect(screen.getByText("Dash team")).toBeInTheDocument();
   expect(
-    screen.getByText("Planner · Scout · Builder · Checker"),
+    screen.getByText("Dash Lead · Planner · Scout · Builder · Checker"),
   ).toBeInTheDocument();
   expect(screen.getByTestId("dash-team-start")).toHaveTextContent(
     "Ask the Dash team",

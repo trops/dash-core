@@ -129,6 +129,7 @@ const allWidgetItems = (ws) => {
   return out;
 };
 // A plan build that's still going (fix / retry / resume / remove wait).
+const { askTeamBot } = require("../bots/leadAsk");
 const isBuildBusy = (state) =>
   !state || state.status === "running" || state.status === "waiting";
 const {
@@ -2109,6 +2110,9 @@ const botController = {
       botId,
     });
     if (stopped) this._logAudit({ type: "run-stopped", botId });
+    // A lead stopped while it waits on its bots (team_ask_bot): stop them too.
+    const asked = this._leadAsked ? this._leadAsked.get(botId) : null;
+    for (const id of asked ? [...asked] : []) this.stop(id);
     return { stopped };
   },
 
@@ -2434,6 +2438,14 @@ const botController = {
       !isDashTeam(this._store.get(botId));
     const alreadyRunning = !publishes;
     if (!alreadyRunning) this._events.startRun(botId, opts.cause);
+    // Who started the bot's current run — a lead asked from outside Dash
+    // can't run its bots (leadAsk.js). Only a run that will start counts.
+    let viaEntry = null;
+    if (!this._runner.listActive().includes(botId)) {
+      if (!this._runVia) this._runVia = new Map();
+      viaEntry = { via: opts.via || null };
+      this._runVia.set(botId, viaEntry);
+    }
     const p = this._runner.run(botId, {
       prompt: opts.prompt,
       trigger: opts.trigger,
@@ -2471,7 +2483,12 @@ const botController = {
         this._sendNotice(failureNotice(this._store.get(botId), record));
       })
       .catch(() => {})
-      .finally(() => this._broadcastRunActive());
+      .finally(() => {
+        if (viaEntry && this._runVia.get(botId) === viaEntry) {
+          this._runVia.delete(botId);
+        }
+        this._broadcastRunActive();
+      });
     return p;
   },
 
@@ -3860,6 +3877,35 @@ const botController = {
     };
   },
 
+  /**
+   * team_ask_bot (lead-workspace release 1): a lead runs one of its own
+   * bots with the user's request and gets the answer back. The bot does its
+   * job as usual — its own tools, approvals, pause and budget all apply —
+   * and its run is marked as asked by the lead (`via: lead:<id>`). Counted
+   * with the lead's other hand-offs for the run. A run that's still going
+   * after the wait (usually waiting on an approval) is reported as pending;
+   * it finishes on its own and shows in the bot's activity.
+   */
+  async _leadAskBot(lead, member, request) {
+    const runKey = this._runner.startedAt(lead.id) || "idle";
+    if (!this._leadAsked) this._leadAsked = new Map();
+    return askTeamBot({
+      lead,
+      member,
+      request,
+      leadVia: this._runVia ? this._runVia.get(lead.id) : null,
+      takeHandoff: () => this._handoffs.take(lead.id, runKey),
+      run: (opts) => this._run(member.id, opts),
+      // Stopping the lead stops the bots it's waiting on (stop()).
+      track: (p) => {
+        const asked = this._leadAsked.get(lead.id) || new Set();
+        asked.add(member.id);
+        this._leadAsked.set(lead.id, asked);
+        p.catch(() => {}).finally(() => asked.delete(member.id));
+      },
+    });
+  },
+
   _connectedServers() {
     return this._mcp && this._mcp.listConnectedServers
       ? this._mcp.listConnectedServers()
@@ -4000,6 +4046,8 @@ const botController = {
           findProviders: (teamCtx, capability) =>
             this._findProviders(teamCtx, capability),
           listProviders: () => this.listToolSources(caller.workspaceId),
+          askBot: (_teamCtx, member, request) =>
+            this._leadAskBot(caller, member, request),
         },
         { workspaceId: caller.workspaceId, botId: caller.id },
         toolName,

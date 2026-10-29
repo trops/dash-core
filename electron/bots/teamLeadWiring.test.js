@@ -112,3 +112,32 @@ describe("AI Assistant recipient picker wiring (TEAM-013)", () => {
     assert.match(api, /continueConversation,\s*via,/);
   });
 });
+
+// Lead-workspace release 1: the controller side of team_ask_bot (its
+// behaviour is tested in leadAsk.test.js).
+describe("botController — a lead asks its bots (team_ask_bot)", () => {
+  it("the team tools get a runner that asks through leadAsk.js", () => {
+    assert.match(
+      ctrl,
+      /askBot: \(_teamCtx, member, request\) =>\s*this\._leadAskBot\(caller, member, request\)/,
+    );
+    assert.match(ctrl, /return askTeamBot\(\{/);
+    assert.match(
+      ctrl,
+      /takeHandoff: \(\) => this\._handoffs\.take\(lead\.id, runKey\)/,
+    );
+    assert.match(ctrl, /run: \(opts\) => this\._run\(member\.id, opts\)/);
+    // Who started the lead's own run (an outside caller can't run its bots).
+    assert.match(
+      ctrl,
+      /leadVia: this\._runVia \? this\._runVia\.get\(lead\.id\) : null/,
+    );
+  });
+
+  it("stopping the lead stops the bots it's waiting on", () => {
+    assert.match(
+      ctrl,
+      /const asked = this\._leadAsked \? this\._leadAsked\.get\(botId\) : null;\s*for \(const id of asked \? \[\.\.\.asked\] : \[\]\) this\.stop\(id\);/,
+    );
+  });
+});
