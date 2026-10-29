@@ -79,6 +79,12 @@ function summarize(entry) {
     const to = entry.conversation && entry.conversation.recipient;
     if (to && to.leadName) out.to = String(to.leadName);
     else if (to && to.roleName) out.to = String(to.roleName);
+    // Who the conversation is with, for the lead workspace's Recents
+    // (lead-workspace release 2): "lead:<botId>" or "role:<role>".
+    out.with =
+      to && to.botId && !to.role
+        ? `lead:${to.botId}`
+        : `role:${(to && to.role) || "planner"}`;
     return out;
   }
   if (!state) return out;

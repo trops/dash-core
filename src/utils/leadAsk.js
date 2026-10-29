@@ -20,14 +20,14 @@ function bots() {
  * @param {{ botId, leadName, paused?, overBudget?, running? }} lead
  * @param {string} question
  * @param {{ onText?: (soFar: string) => void,
- *   continueConversation?: boolean }} [opts]
+ *   onEvent?: (event) => void, continueConversation?: boolean }} [opts]
  * @returns {Promise<{ skipped: true, reason: string } |
  *   { status, output, model, usage, cost, error }>}
  */
 export async function askTeamLead(
   lead,
   question,
-  { onText, continueConversation = false } = {},
+  { onText, onEvent, continueConversation = false } = {},
 ) {
   const api = bots();
   if (!lead || !lead.botId) {
@@ -45,6 +45,8 @@ export async function askTeamLead(
     typeof api.onStream === "function"
       ? api.onStream(({ botId, event } = {}) => {
           if (botId !== lead.botId || !event) return;
+          // Every event (its hand-offs too), for the lead workspace.
+          if (onEvent) onEvent(event);
           if (event.type === "tool_call" || event.type === "tool_result") {
             afterTool = true;
           }

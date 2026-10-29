@@ -39,9 +39,12 @@ export function approvalText(request, botName) {
  *
  * Renders nothing when none is waiting.
  */
-export const DashTeamApprovals = ({ compact = false }) => {
+export const DashTeamApprovals = ({ compact = false, bots = null }) => {
   const { muted, strong, hairline } = useConfigTokens();
-  const [team, setTeam] = useState([]);
+  // `bots` (lead-workspace release 2): the bots whose approvals to show — a
+  // dashboard team in a lead's conversation. Default: the Dash team.
+  const [dashTeam, setTeam] = useState([]);
+  const team = Array.isArray(bots) ? bots : dashTeam;
   const [approvals, setApprovals] = useState([]);
   const [busy, setBusy] = useState(null);
 

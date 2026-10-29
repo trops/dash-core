@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button, Button3, ChatComposer, ChatMessage } from "@trops/dash-react";
-import { runTeamRole, stopTeamRole, teamSkipText } from "../../utils/teamRoles";
+import {
+  findTeamRole,
+  runTeamRole,
+  stopTeamRole,
+  teamSkipText,
+} from "../../utils/teamRoles";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { askTeamLead } from "../../utils/leadAsk";
 import { useTeamLeads } from "../AiAssistant/components/RecipientPicker";
@@ -11,6 +16,12 @@ import { extractPlan } from "../../utils/teamPlan";
 import { runCostLabel } from "../../utils/runCostLabel";
 import { withoutPlan } from "./CreatePlanStep";
 import { extractHandoff, withoutHandoff } from "../../utils/handoff";
+import {
+  stepFromCall,
+  withResult,
+  withStopped,
+} from "../LeadWorkspace/handoffSteps";
+import { HandoffStep } from "../LeadWorkspace/HandoffStep";
 import { planWithDashTeam } from "../../utils/openCreate";
 import {
   questionRequest,
@@ -61,8 +72,16 @@ export const AskStep = ({
   onOpenPlan = null,
   onHandoff = null,
   onStarted = null,
+  // Lead workspace (release 2): the conversation as it changes (its steps
+  // feed the right column), and whose approvals show here.
+  onMessagesChange = null,
+  approvalBots = null,
+  // In the workspace the left column already says who it is.
+  hideTo = false,
 }) => {
-  // [{ who: "you" | "planner" | "lead" | "role" | "note", text, meta?, plan? }]
+  // [{ who: "you" | "planner" | "lead" | "role" | "note" | "step", text, meta?, plan? }]
+  // A step is a hand-off ("Asked Inbox Watch"): { id, bot, label, request,
+  // status, answer?, result? } (handoffSteps.js).
   const [messages, setMessages] = useState(
     recentId ? [] : [{ who: "you", text: question }],
   );
@@ -77,6 +96,7 @@ export const AskStep = ({
   const started = useRef(false);
   const alive = useRef(true);
   const firstAsked = useRef(question);
+  const askSeq = useRef(0);
   // The lead this conversation is with (null = the Dash team).
   const [lead, setLead] = useState(leadOf(recipient));
   const leadRef = useRef(leadOf(recipient));
@@ -139,6 +159,22 @@ export const AskStep = ({
       request = reopenedQuestion(history, text, 6, wrap);
     }
     const onText = (t) => alive.current && setSoFar(t);
+    // Hand-offs as they happen: the step, then its answer. Ids are this
+    // question's own (an engine's call ids can repeat across runs).
+    askSeq.current += 1;
+    const seq = askSeq.current;
+    const onEvent = (e) => {
+      const step = stepFromCall(e);
+      if (step) {
+        add({ ...step, id: `${seq}:${step.id}` });
+        return;
+      }
+      if (e && e.type === "tool_result") {
+        const mine = { ...e, id: `${seq}:${e.id}` };
+        if (alive.current) setMessages((m) => withResult(m, mine));
+        else messagesRef.current = withResult(messagesRef.current, mine);
+      }
+    };
     let res;
     if (to) {
       // Live state when the lead list has it (it may have been paused).
@@ -147,17 +183,28 @@ export const AskStep = ({
       res = await askTeamLead(live, request, {
         continueConversation: cont,
         onText,
+        onEvent,
       });
     } else {
       res = await runTeamRole(role, request, {
         continueConversation: cont,
         planId: askId.current,
         onText,
+        onEvent,
       });
     }
     if (alive.current) {
       setBusy(false);
       setSoFar("");
+    }
+    // A hand-off with no answer when the run ended (Stop, quit): stopped,
+    // never a spinner forever.
+    const settle = (m) => withStopped(m, `${seq}:`);
+    if (alive.current) setMessages(settle);
+    else messagesRef.current = settle(messagesRef.current);
+    if (res.status === "stopped" || res.status === "interrupted") {
+      note("Stopped.");
+      return;
     }
     if (res.skipped) {
       const why = teamSkipText(res.reason, to ? to.leadName || "lead" : name);
@@ -299,6 +346,57 @@ export const AskStep = ({
     return () => clearTimeout(t);
   }, [loaded, messages]);
 
+  useEffect(() => {
+    if (onMessagesChange) onMessagesChange(messages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
+
+  // Reopened while an earlier copy of this conversation is still being
+  // answered (switched away mid-run): take the saved conversation when it
+  // grows, so the answer isn't lost — or overwritten by this older copy.
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  useEffect(() => {
+    const bots = window.mainApi && window.mainApi.bots;
+    if (!recentId || !bots || !bots.onCreateRecent || !bots.getCreateRecent) {
+      return undefined;
+    }
+    const id = bots.onCreateRecent(() => {
+      if (busyRef.current) return;
+      Promise.resolve(bots.getCreateRecent(recentId))
+        .then((entry) => {
+          const saved =
+            entry && entry.conversation && entry.conversation.messages;
+          if (
+            alive.current &&
+            Array.isArray(saved) &&
+            saved.length > messagesRef.current.length
+          ) {
+            setMessages(saved);
+          }
+        })
+        .catch(() => {});
+    });
+    return () => {
+      if (id != null && bots.removeListener) bots.removeListener(id);
+    };
+  }, [recentId]);
+
+  // Stop: the lead (and the bots it's waiting on), or the Dash team role.
+  const stopNow = async () => {
+    const bots = window.mainApi && window.mainApi.bots;
+    if (leadRef.current) {
+      if (bots && bots.stop) await bots.stop(leadRef.current.botId);
+      return;
+    }
+    // Only this role (and the roles it asked) — not the whole Dash team,
+    // which may be building something elsewhere.
+    const bot = await findTeamRole(
+      teamRoleRef.current ? teamRoleRef.current.role : "planner",
+    );
+    if (bot && bots && bots.stop) await bots.stop(bot.id);
+  };
+
   const send = (text) => {
     const t = String(text || "").trim();
     if (!t || busy) return;
@@ -321,6 +419,8 @@ export const AskStep = ({
               <ChatMessage key={i} role="note">
                 {m.text}
               </ChatMessage>
+            ) : m.who === "step" ? (
+              <HandoffStep key={m.id || i} step={m} />
             ) : (
               <ChatMessage
                 key={i}
@@ -361,7 +461,7 @@ export const AskStep = ({
               </ChatMessage>
             ),
           )}
-          <DashTeamApprovals compact />
+          <DashTeamApprovals compact bots={approvalBots} />
           {roleBusy ? (
             <div
               className="flex flex-row flex-wrap items-center gap-2 text-sm"
@@ -396,6 +496,7 @@ export const AskStep = ({
         onChange={(v) => setReply(v)}
         onSend={() => send(reply)}
         busy={busy}
+        onStop={stopNow}
         placeholder={
           busy
             ? `${replyName.charAt(0).toUpperCase()}${replyName.slice(1)} is looking…`
@@ -406,7 +507,7 @@ export const AskStep = ({
                 : "Ask a follow-up…"
         }
         above={
-          lead || teamRole ? (
+          !hideTo && (lead || teamRole) ? (
             <span className={`text-xs ${muted}`} data-testid="ask-to">
               To: {lead ? leadLabel(lead) : `${roleName} · Dash team`}
             </span>

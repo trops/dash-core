@@ -43,6 +43,7 @@ export * from "./Components/Workspace";
 export * from "./Components/AiAssistant";
 export * from "./Components/MarkdownForm";
 export * from "./Components/Bots";
+export * from "./Components/LeadWorkspace";
 
 // --- Utils ---
 export * from "./utils";

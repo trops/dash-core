@@ -648,3 +648,119 @@ describe("AskStep — closed before the answer arrives", () => {
     );
   });
 });
+
+describe("a lead's hand-offs show as steps (lead-workspace release 2)", () => {
+  test("Asked Inbox Watch, then its answer; the host hears the conversation", async () => {
+    let stream = null;
+    const seen = [];
+    api({
+      listLeads: jest.fn().mockResolvedValue([LEAD]),
+      onListChanged: jest.fn(() => 4),
+      onRunActive: jest.fn(() => 5),
+      onStream: jest.fn((cb) => {
+        stream = cb;
+        return 1;
+      }),
+      askLead: jest.fn(async () => {
+        stream({
+          botId: "b_lead",
+          event: {
+            type: "tool_call",
+            id: "t1",
+            name: "mcp__bot-mcp__team_ask_bot",
+            input: {
+              bot: "Inbox Watch",
+              request: "Anything urgent since 9:00?",
+            },
+          },
+        });
+        stream({
+          botId: "b_lead",
+          event: {
+            type: "tool_result",
+            id: "t1",
+            output:
+              "<team_data>\nInbox Watch's answer:\n2 need attention.\n</team_data>",
+          },
+        });
+        return { status: "completed", output: "Two things need you." };
+      }),
+    });
+    render(
+      <AskStep
+        question="Anything urgent?"
+        recipient={LEAD}
+        onMessagesChange={(m) => seen.push(m)}
+      />,
+    );
+    expect(await screen.findByTestId("ask-answer")).toHaveTextContent(
+      "Two things need you.",
+    );
+    expect(screen.getByTestId("handoff-step")).toHaveTextContent(
+      "Asked Inbox Watch · 2 need attention.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Asked Inbox Watch/ }));
+    expect(screen.getByTestId("handoff-step-detail")).toHaveTextContent(
+      "Anything urgent since 9:00?",
+    );
+    const last = seen[seen.length - 1];
+    expect(last.map((m) => m.who)).toEqual(["you", "step", "lead"]);
+  });
+});
+
+describe("Stop and step ids (release 2 review)", () => {
+  test("stopped mid hand-off: the step says stopped and the reply says Stopped.", async () => {
+    let stream = null;
+    api({
+      listLeads: jest.fn().mockResolvedValue([LEAD]),
+      onListChanged: jest.fn(() => 4),
+      onRunActive: jest.fn(() => 5),
+      onStream: jest.fn((cb) => {
+        stream = cb;
+        return 1;
+      }),
+      askLead: jest.fn(async () => {
+        stream({
+          botId: "b_lead",
+          event: {
+            type: "tool_call",
+            id: "t1",
+            name: "team_ask_bot",
+            input: { bot: "Inbox Watch", request: "x" },
+          },
+        });
+        return { status: "stopped", output: "" };
+      }),
+    });
+    render(<AskStep question="Anything urgent?" recipient={LEAD} />);
+    expect(await screen.findByText("Stopped.")).toBeInTheDocument();
+    expect(screen.getByTestId("handoff-step")).toHaveTextContent(
+      "Asked Inbox Watch · stopped",
+    );
+  });
+
+  test("Stop in a Dash team role chat stops that role only", async () => {
+    let finish;
+    const bots = api({
+      listDashTeam: jest
+        .fn()
+        .mockResolvedValue([
+          ...team,
+          { id: "b_dashlead", role: "dashlead", name: "Dash Lead" },
+          { id: "b_builder", role: "builder", name: "Builder" },
+        ]),
+      run: jest.fn(() => new Promise((r) => (finish = r))),
+      stop: jest.fn().mockResolvedValue({ stopped: true }),
+    });
+    render(
+      <AskStep
+        question="Hi"
+        recipient={{ role: "dashlead", roleName: "Dash Lead" }}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /stop/i }));
+    await waitFor(() => expect(bots.stop).toHaveBeenCalledWith("b_dashlead"));
+    expect(bots.stop).not.toHaveBeenCalledWith("b_builder");
+    finish({ status: "stopped" });
+  });
+});

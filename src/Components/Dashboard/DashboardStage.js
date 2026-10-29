@@ -76,6 +76,7 @@ import { DashboardConfigModal } from "./DashboardConfigModal";
 import { useTeamBots } from "../Bots/useTeamBots";
 import { BotsView } from "../Bots/BotsView";
 import { BotPageModal } from "../Bots/BotPageModal";
+import { LeadWorkspace } from "../LeadWorkspace/LeadWorkspace";
 import { usePendingApprovalCount } from "../Bots/usePendingApprovalCount";
 import { useProvidersNeedingSetup } from "../AppPages/useProviderStatus";
 import { AppPage } from "../AppPages/AppPage";
@@ -670,6 +671,19 @@ const DashboardStageInner = ({
       window.removeEventListener("dash:open-bot", handler);
       window.removeEventListener("dash:open-dash-team", onDashTeam);
     };
+  }, []);
+  // The lead workspace (lead-workspace release 2): talk to a team through
+  // its lead, or to a bot on no dashboard. detail.key: "role:dashlead" |
+  // "lead:<botId>" | "bot:<botId>".
+  const [workspaceRequest, setWorkspaceRequest] = useState(null);
+  useEffect(() => {
+    const onOpen = (e) => {
+      const d = (e && e.detail) || {};
+      setBotPageRequest(null);
+      setWorkspaceRequest({ key: d.key || "role:dashlead", seq: Date.now() });
+    };
+    window.addEventListener("dash:open-workspace", onOpen);
+    return () => window.removeEventListener("dash:open-workspace", onOpen);
   }, []);
   const openBotSettings = useCallback((botId) => {
     if (botId) setBotPageRequest({ botId, tab: "settings" });
@@ -3267,6 +3281,13 @@ const DashboardStageInner = ({
         {/* ─── Modals (hidden in popout mode) ────────── */}
         {!popout && (
           <>
+            {workspaceRequest ? (
+              <LeadWorkspace
+                key={workspaceRequest.seq}
+                request={workspaceRequest}
+                onClose={() => setWorkspaceRequest(null)}
+              />
+            ) : null}
             <BotPageModal
               request={botPageRequest}
               onClose={() => setBotPageRequest(null)}
