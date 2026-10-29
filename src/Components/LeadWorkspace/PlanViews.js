@@ -2,8 +2,10 @@ import React, { useState } from "react";
 import {
   Button,
   Button2,
+  Button3,
   ButtonIcon2,
   FontAwesomeIcon,
+  Switch,
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
@@ -19,6 +21,7 @@ import {
 import { PlanChecklistRows, isTypeItOption } from "../Create/PlanParts";
 import {
   canBuild,
+  isSettingsChange,
   planLine,
   planName,
   planRows,
@@ -27,7 +30,7 @@ import {
   yesLabel,
 } from "./workspacePlan";
 import { planTarget } from "../../utils/teamPlan";
-import { planChanges } from "./planChanges";
+import { planChanges, widgetChanges } from "./planChanges";
 import { useDashboard } from "./useDashboard";
 
 /**
@@ -84,7 +87,11 @@ export const PlanCard = ({ plan, earlier = false, onOpen }) => (
   <div className="self-start w-full max-w-md" data-testid="workspace-plan-card">
     <OutputCard
       // A change to a dashboard the user has says so (frame 30).
-      title={planTarget(plan) ? `${planName(plan)} — changes` : planName(plan)}
+      title={
+        planTarget(plan) || plan.widgetChange
+          ? `${planName(plan)} — changes`
+          : planName(plan)
+      }
       sub={earlier ? `${planLine(plan)} · changed since` : planLine(plan)}
       bordered={false}
       onClick={onOpen}
@@ -339,6 +346,10 @@ export const PlanOutput = ({
   onBuild = null,
   buildLine = null,
   leadName = "The Dash Lead",
+  // A change to what one widget does (release 6c): in place or a new
+  // widget, when it can go either way; signing in to change it in place.
+  onWidgetMode = null,
+  onSignIn = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
@@ -348,49 +359,81 @@ export const PlanOutput = ({
   if (!plan) return null;
   // Now and after only before it's built: once it is, the dashboard read
   // now already has what was added.
-  const changes = target && !buildLine ? planChanges(dashboard, plan) : null;
+  // A change to one widget has its own rows, no grids (release 6c).
+  const changes =
+    target && !buildLine && !plan.widgetChange
+      ? planChanges(dashboard, plan)
+      : null;
   const draws = !!(changes && changes.added && changes.now.length);
   const checklist = earlier ? [] : wp.checklist;
   // Connected for real — a connect skipped before building still needs it.
   const connected = (it) =>
     !!(wp.have && wp.have.has(normalizeType(it.providerType)));
   const planned = planRows(plan, checklist, connected);
+  // A change to one widget (release 6c, frame 40): what changes on it.
+  const wc = widgetChanges(plan);
   // A change: what's added, what stays, then what to connect.
-  const rows = changes
+  const rows = wc
     ? [
-        // A cell plan that doesn't fit: each piece, flagged (release 6c).
-        ...changes.rows.map((r) =>
-          changes.fits === false ? { ...r, warn: true } : { ...r, add: true },
+        ...wc.rows.map((r) =>
+          r.mark === "!"
+            ? { ...r, warn: true }
+            : r.mark === "~"
+              ? { ...r, change: true }
+              : r,
         ),
-        ...(changes.cellOnly && changes.fits !== false
-          ? [{ main: "Everything else — unchanged", sub: "" }]
-          : draws && changes.unchanged.length
-            ? [{ main: `${changes.unchanged.join(", ")} — unchanged`, sub: "" }]
-            : []),
         ...planned.filter((r) => r.warn),
       ]
-    : planned;
+    : changes
+      ? [
+          // A cell plan that doesn't fit: each piece, flagged (release 6c).
+          ...changes.rows.map((r) =>
+            changes.fits === false ? { ...r, warn: true } : { ...r, add: true },
+          ),
+          ...(changes.cellOnly && changes.fits !== false
+            ? [{ main: "Everything else — unchanged", sub: "" }]
+            : draws && changes.unchanged.length
+              ? [
+                  {
+                    main: `${changes.unchanged.join(", ")} — unchanged`,
+                    sub: "",
+                  },
+                ]
+              : []),
+          ...planned.filter((r) => r.warn),
+        ]
+      : planned;
   return (
     <div className="flex flex-col gap-4" data-testid="workspace-plan-output">
       <div className="flex flex-col gap-1">
         <span className={`text-xs ${muted}`}>
           {earlier
             ? "Planner · an earlier plan"
-            : target
-              ? "Planner · the changes"
-              : "Planner · the plan"}
+            : wc
+              ? "Planner · the change"
+              : target
+                ? "Planner · the changes"
+                : "Planner · the plan"}
         </span>
         <span className={`text-lg font-semibold ${strong}`}>
-          {target ? `${target.name} — changes` : planName(plan)}
+          {wc
+            ? `${wc.name} — changes`
+            : target
+              ? `${target.name} — changes`
+              : planName(plan)}
         </span>
         <span className={`text-sm ${muted}`}>
-          {plan.cell
-            ? changes && changes.fits === false
-              ? "A cell takes one widget — this plan has more"
-              : "Only the cell you picked changes"
-            : target
+          {wc
+            ? wc.fits
               ? "Nothing changes until you say yes"
-              : planSubLine(plan, checklist) || "Nothing to make yet"}
+              : `A change to ${wc.name} is only ${wc.name} — this plan has more`
+            : plan.cell
+              ? changes && changes.fits === false
+                ? "A cell takes one widget — this plan has more"
+                : "Only the cell you picked changes"
+              : target
+                ? "Nothing changes until you say yes"
+                : planSubLine(plan, checklist) || "Nothing to make yet"}
         </span>
       </div>
       {draws ? (
@@ -419,6 +462,13 @@ export const PlanOutput = ({
                   className={`h-3 w-3 mt-1 ${statusTokens.warning.icon}`}
                   aria-hidden="true"
                 />
+              ) : r.change ? (
+                <span role="img" aria-label="Changed">
+                  <FontAwesomeIcon
+                    icon="arrows-rotate"
+                    className={`h-3 w-3 mt-1 ${statusTokens.info.icon}`}
+                  />
+                </span>
               ) : r.add ? (
                 <span role="img" aria-label="Added">
                   <FontAwesomeIcon
@@ -440,6 +490,38 @@ export const PlanOutput = ({
               </span>
             </div>
           ))}
+        </div>
+      ) : null}
+      {wc &&
+      wc.fits &&
+      !earlier &&
+      !buildLine &&
+      !readOnly &&
+      !isSettingsChange(plan) &&
+      (onWidgetMode || onSignIn) ? (
+        <div
+          className="flex flex-col gap-1"
+          data-testid="workspace-plan-widget-mode"
+        >
+          {onWidgetMode ? (
+            <>
+              <Switch
+                label={`Change ${wc.name} everywhere it's used`}
+                checked={plan.widgetChange.mode === "update"}
+                onChange={(on) => onWidgetMode(on ? "update" : "new")}
+              />
+              <span className={`text-xs ${muted}`}>
+                Off: it's saved as a new widget, and ${wc.name} stays as it is.
+              </span>
+            </>
+          ) : (
+            <div className="flex flex-row flex-wrap items-center gap-2">
+              <span className={`text-xs ${muted}`}>
+                Published {wc.name} yourself? Sign in to change it in place.
+              </span>
+              <Button3 size="sm" title="Sign in" onClick={onSignIn} />
+            </div>
+          )}
         </div>
       ) : null}
       {earlier ? (

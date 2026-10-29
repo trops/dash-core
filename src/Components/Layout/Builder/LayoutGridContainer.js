@@ -1474,8 +1474,8 @@ export const LayoutGridContainer = memo(
           onEditWithAI={
             cellComponent
               ? () => {
-                  // Its panel stays open behind Create (there's no Ask AI
-                  // tab any more — consolidation Phase 3P).
+                  // Its panel stays open behind the conversation (there's
+                  // no Ask AI tab any more — consolidation Phase 3P).
                   selectWidget("widget");
                   window.dispatchEvent(
                     new CustomEvent("dash:edit-widget-with-ai", {

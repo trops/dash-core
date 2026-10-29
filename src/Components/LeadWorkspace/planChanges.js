@@ -7,6 +7,8 @@
  * is full, as the build places them (electron/utils/placeWidget.js). Pure.
  */
 import { planTarget } from "../../utils/teamPlan";
+import { shownSetting } from "./workspaceStart";
+import { usageText } from "../Create/editCreate";
 
 /** The page the dashboard shows, or null (activeLayout.js shownPage). */
 function shownPage(ws) {
@@ -232,4 +234,102 @@ export function planChanges(workspace, plan) {
 export function changesLine(changes) {
   if (!changes) return "";
   return `${changes.added} added`;
+}
+
+/**
+ * What a change to one widget does (release 6c, frame 40), a row each:
+ * its settings, old → new; or what the Builder changes and where it goes.
+ * A plan that is more than that widget doesn't fit: each piece, flagged.
+ * @returns {null | { name, fits, rows: [{ mark: "~" | "!" | "", main, sub }] }}
+ */
+export function widgetChanges(plan) {
+  const w = plan && plan.widgetChange;
+  if (!w) return null;
+  const name = w.displayName || "The widget";
+  const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+  const one =
+    pieces.length === 1 && pieces[0].kind === "widget" ? pieces[0] : null;
+  if (!one) {
+    return {
+      name,
+      fits: false,
+      rows: pieces.map((p) => ({
+        mark: "!",
+        main: `${p.name || "Something"} — ${p.kind || "piece"}`,
+        sub: `A change to ${name} is only ${name} — say what to leave out in the chat`,
+      })),
+    };
+  }
+  if (one.source === "settings") {
+    const labels = w.settingLabels || {};
+    const now = w.settingsNow || {};
+    const options = w.settingOptions || {};
+    const said = (k, v) =>
+      options[k] && options[k][String(v)] !== undefined
+        ? options[k][String(v)]
+        : shownSetting(v);
+    // Only a widget on a dashboard has a copy whose settings can change.
+    if (!w.onDashboard) {
+      return {
+        name,
+        fits: false,
+        rows: [
+          {
+            mark: "!",
+            main: `${name}'s settings`,
+            sub: "Settings change on a copy on a dashboard — open it from there, or ask for a change to what it does",
+          },
+        ],
+      };
+    }
+    return {
+      name,
+      fits: true,
+      rows: [
+        ...Object.entries(one.settings || {}).map(([k, v]) =>
+          labels[k] === undefined
+            ? {
+                mark: "!",
+                main: `${k} — ${name} has no setting by that name`,
+                sub: "It's left out",
+              }
+            : {
+                mark: "~",
+                main: `${labels[k]} — ${k in now ? said(k, now[k]) : "set"} → ${said(k, v)}`,
+                sub: "A setting",
+              },
+        ),
+        {
+          mark: "",
+          main: "Place and size — unchanged",
+          sub: "A change to what it does would go to the Builder, with a preview",
+        },
+      ],
+    };
+  }
+  const used = Array.isArray(w.usedOn) ? w.usedOn : [];
+  return {
+    name,
+    fits: true,
+    rows: [
+      {
+        mark: "~",
+        main: "What it does — the Builder changes it",
+        sub: "You see it running before it's saved",
+      },
+      w.mode === "update"
+        ? {
+            mark: "",
+            main: `In place — everywhere ${name} is used`,
+            sub: used.length ? `On ${usageText(used)}` : "",
+          }
+        : {
+            mark: "",
+            main: `A new widget — ${name} stays as it is`,
+            sub: w.onDashboard
+              ? `It takes this copy's place on ${w.dashboardName || "the dashboard"}`
+              : "It goes in your widgets",
+          },
+    ],
+  };
 }

@@ -21,7 +21,8 @@ const src = fs.readFileSync(
 
 describe("a change to a widget in the bot controller", () => {
   it("startPlanBuild takes edit, finds the widget itself and holds the plan to it", () => {
-    assert.match(src, /bot = false,\s*edit = null,\s*\} = \{\},/);
+    // (release 6c added `settings` after it)
+    assert.match(src, /bot = false,\s*edit = null,[\s\S]{0,240}?\} = \{\},/);
     assert.match(src, /editTarget = this\._editTarget\(edit\);/);
     assert.match(src, /plan = editPlan\(plan, editTarget\);/);
     // …which names no dashboard (a change goes to a widget).

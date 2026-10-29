@@ -405,7 +405,7 @@ describe("botController — cell builds (Phase 2b)", () => {
   it("checks a cell plan as one widget and builds in cell mode", () => {
     assert.match(
       src,
-      /cell: !!cell,\s*standalone: !!\(cell && standalone\),\s*bot: !!bot,\s*edit: editTarget[\s\S]{0,160}?\}\);/,
+      /cell: !!cell,\s*standalone: !!\(cell && standalone\),\s*bot: !!bot,\s*(settings: !!settingsOf,\s*)?edit: editTarget[\s\S]{0,160}?\}\);/,
     );
     assert.match(
       src,

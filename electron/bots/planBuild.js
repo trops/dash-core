@@ -47,6 +47,11 @@
  * install keeps a backup), "new" saves the change as a new AI-built widget.
  * The Builder is told which widget; the main process holds it to that.
  *
+ * Only a widget's settings (lead-workspace release 6c, opts.settings:
+ * { workspaceId, itemId, pageId, scope, component, displayName }): the plan
+ * is that widget, source "settings", with what changes — one step sets them
+ * on that copy of the widget (its dashboard, as saved). Nothing is built.
+ *
  * One bot (consolidation Phase 2c-1, opts.bot): the plan is one new bot —
  * checked (checkbot), then saved paused on the dashboard the plan names, with
  * its results card if planned, or Unassigned. Never a new dashboard.
@@ -226,13 +231,31 @@ function botSteps(plan, add) {
 /** The steps for a plan, all waiting. */
 function planSteps(
   plan,
-  { dashboardName, cell = false, bot = false, edit = null } = {},
+  {
+    dashboardName,
+    cell = false,
+    bot = false,
+    edit = null,
+    settings = null,
+  } = {},
 ) {
   const pieces = ((plan && plan.pieces) || []).filter(Boolean);
   const widgets = pieces.filter((p) => p.kind === "widget");
   const layout = pieces.find((p) => p.kind === "layout");
   const steps = [];
   const add = (step) => steps.push({ status: STATUS.waiting, ...step });
+  if (settings) {
+    const name =
+      settings.displayName || (widgets[0] && widgets[0].name) || "the widget";
+    add({
+      id: "settings:0",
+      kind: "settings",
+      piece: 0,
+      role: "dash",
+      label: `Change ${name}'s settings`,
+    });
+    return steps;
+  }
   if (cell || edit) {
     // A change is to one widget (validatePlan).
     cellSteps(edit ? widgets.slice(0, 1) : widgets, add, edit);
@@ -1230,11 +1253,14 @@ function undoOnDashboard(workspace, built) {
  *   placeBotResults({ dashboardId, botId }) → { component, widgetId, pageId } | throws
  *   wireTrigger({ dashboardId, botId, widgetId, component, event }) | throws
  *   wireListener({ dashboardId, widgetId, component, handler, botId, result }) | throws
+ *   setWidgetSettings({ workspaceId, itemId, pageId, scope, component,
+ *     settings }) → { dashboard: { id, name }, changed, dropped } | throws —
+ *     opts.settings: that copy of the widget, as saved
  *   emit(state)   progress after every change
  *   now()
  * @param {{ dashboardName?: string, resume?: { plan, state },
  *           autoFix?: boolean, cell?: boolean, bot?: boolean,
- *           edit?: object }} [opts]
+ *           edit?: object, settings?: object }} [opts]
  *   resume — an earlier build of this plan whose work is reused (Edit plan)
  *   autoFix — a failed build or check is fixed by the Builder by itself
  *   edit — a change to one widget the user has (Phase 3, see the top)
@@ -1313,6 +1339,25 @@ function createPlanBuild(plan, deps, opts = {}) {
   async function runStep(step) {
     const piece = step.piece != null ? pieces[step.piece] : null;
     switch (step.kind) {
+      case "settings": {
+        const res = await deps.setWidgetSettings({
+          ...opts.settings,
+          settings: (piece && piece.settings) || {},
+        });
+        if (res && res.dashboard) {
+          state.dashboard = {
+            id: String(res.dashboard.id),
+            name: res.dashboard.name,
+            targeted: true,
+          };
+        }
+        state.made[step.piece] = {
+          changed: (res && res.changed) || [],
+          dropped: (res && res.dropped) || [],
+        };
+        step.detail = ((res && res.changed) || []).join(", ");
+        return;
+      }
       case "install": {
         const res = await deps.installWidget(piece.package, piece);
         state.made[step.piece] = {

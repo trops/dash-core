@@ -8,7 +8,15 @@ import {
   providerLabel,
   providerTypesOf,
 } from "../Create/planChecklist";
-import { cellBuildPlan, latestPlanStep, planForCell } from "./workspacePlan";
+import {
+  cellBuildPlan,
+  isSettingsChange,
+  latestPlanStep,
+  planForCell,
+  planForWidget,
+  widgetBuildPlan,
+} from "./workspacePlan";
+import { forEdit } from "../Create/editCreate";
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -54,6 +62,8 @@ const saved = (st) => ({
  *   with no plan
  * @param {object|null} cell   an empty cell the conversation is about
  *   (release 6c): the plan is for it (planForCell)
+ * @param {object|null} widget  a widget the conversation changes (release
+ *   6c, its saved about.widget): the plan is that change (planForWidget)
  */
 export function useWorkspacePlan({
   messages,
@@ -61,6 +71,7 @@ export function useWorkspacePlan({
   reopened = false,
   convKey = "",
   cell = null,
+  widget = null,
 }) {
   const app = useContext(AppContext) || {};
   const step = latestPlanStep(messages);
@@ -180,7 +191,11 @@ export function useWorkspacePlan({
     [],
   );
 
-  const plan = useMemo(() => planForCell(state.plan, cell), [state.plan, cell]);
+  const plan = useMemo(
+    () =>
+      cell ? planForCell(state.plan, cell) : planForWidget(state.plan, widget),
+    [state.plan, cell, widget],
+  );
   const have = providerTypesOf(app.providers);
   const checklist = useMemo(
     () => (plan ? buildChecklist(plan, have) : []),
@@ -191,7 +206,31 @@ export function useWorkspacePlan({
   const check = plan
     ? plan.cell
       ? validatePlan(cellBuildPlan(plan), { cell: true })
-      : validatePlan(plan, {})
+      : plan.widgetChange
+        ? isSettingsChange(plan)
+          ? plan.widgetChange.onDashboard
+            ? validatePlan(widgetBuildPlan(plan), { settings: true })
+            : {
+                valid: false,
+                errors: [
+                  'Settings change on a copy of the widget on a dashboard — from here, plan a change to what it does (source "update" or "new").',
+                ],
+                warnings: [],
+              }
+          : validatePlan(
+              forEdit(
+                widgetBuildPlan(plan),
+                plan.widgetChange,
+                plan.widgetChange.mode,
+              ),
+              {
+                edit: {
+                  package: plan.widgetChange.package,
+                  mode: plan.widgetChange.mode,
+                },
+              },
+            )
+        : validatePlan(plan, {})
     : null;
   const open = checklist.filter((it) => !isDone(it, state.checks, have)).length;
 

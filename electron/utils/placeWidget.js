@@ -165,6 +165,45 @@ function setWidgetPrefs(workspace, widgetId, prefs, component = null) {
 }
 
 /**
+ * Set settings on one copy of a widget (lead-workspace release 6c): the item
+ * with that id on that page (or the pinned sidebar, scope "sidebar") — item
+ * ids repeat across pages — and the top-level mirror when that page is the
+ * one shown. The component must be that widget's, by its id or, on a
+ * dashboard saved before scoped ids, its bare name.
+ * @returns {object|null} the new workspace, or null when it isn't there
+ */
+function setItemPrefs(
+  workspace,
+  { itemId, component = null, pageId = null, scope = "main" } = {},
+  prefs = {},
+) {
+  const ws = clone(workspace || {});
+  const bare = component ? String(component).split(".").pop() : null;
+  const isIt = (i) =>
+    i &&
+    String(i.id) === String(itemId) &&
+    (!component || i.component === component || i.component === bare);
+  const setIn = (layout) => {
+    const item = Array.isArray(layout) ? layout.find(isIt) : null;
+    if (!item) return false;
+    item.userPrefs = { ...(item.userPrefs || {}), ...(prefs || {}) };
+    return true;
+  };
+  if (scope && scope !== "main") {
+    return setIn(ws.sidebarLayout) ? ws : null;
+  }
+  const pages = Array.isArray(ws.pages) ? ws.pages : [];
+  if (!pages.length) return setIn(ws.layout) ? ws : null;
+  const page =
+    pageId != null
+      ? pages.find((p) => p && String(p.id) === String(pageId)) || null
+      : shownPage(ws);
+  if (!page || !setIn(page.layout)) return null;
+  if (page === shownPage(ws)) setIn(ws.layout);
+  return ws;
+}
+
+/**
  * Add an event to a widget's listeners (`listeners[handler]`) — in every
  * layout (pages and the top-level mirror) where that widget id holds
  * `component` (when given). Adding one that's already there is a no-op.
@@ -355,6 +394,7 @@ module.exports = {
   blankDashboard,
   placeWidget,
   setWidgetPrefs,
+  setItemPrefs,
   addWidgetListener,
   removeWidgets,
 };

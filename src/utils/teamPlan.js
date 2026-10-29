@@ -15,7 +15,8 @@
  *     questions: [{ question, options?: [string] }],       // for the user
  *     pieces:    [{ kind: "widget" | "bot" | "layout" | "theme",
  *                   name,
- *                   source: "yours" | "ai-built" | "registry" | "new" | "update",
+ *                   source: "yours" | "ai-built" | "registry" | "new" | "update"
+ *                     | "settings",  // settings: only that widget's settings (6c)
  *                   package?,        // yours / ai-built / registry / update
  *                   component?,      // which widget, when the package has several
  *                   providers?: [type],
@@ -52,7 +53,9 @@
  * Pure (NFR-006).
  */
 const KINDS = ["widget", "bot", "layout", "theme"];
-const SOURCES = ["yours", "ai-built", "registry", "new", "update"];
+// "settings": a change to only the settings of the widget being changed
+// (lead-workspace release 6c, context.settings).
+const SOURCES = ["yours", "ai-built", "registry", "new", "update", "settings"];
 const BEFORE_KINDS = ["connect", "install", "approve"];
 // Pieces that already exist somewhere and so must say which package.
 const NEEDS_PACKAGE = new Set(["yours", "ai-built", "registry", "update"]);
@@ -344,7 +347,10 @@ function extractPlan(text) {
  *   context.bot: a plan for one bot (Phase 2c-1) — exactly one new bot;
  *   context.edit: a change to one widget the user has ({ package, mode },
  *   Phase 3) — exactly that widget: "update" changes it in place (source
- *   "update", its package), "new" saves the change as a new widget.
+ *   "update", its package), "new" saves the change as a new widget;
+ *   context.settings: a change to only the settings of one widget on a
+ *   dashboard (lead-workspace release 6c) — exactly one widget piece, source
+ *   "settings", with the settings that change.
  * @returns {{ valid: boolean, errors: string[], warnings: string[] }}
  */
 function validatePlan(plan, context = {}) {
@@ -416,6 +422,29 @@ function validatePlan(plan, context = {}) {
         'This change is saved as a new widget: its piece must be source "new".',
       );
     }
+  }
+  // Only a widget's settings (release 6c): that widget, source "settings",
+  // with what changes — nothing is built.
+  if (context.settings && Array.isArray(pieces)) {
+    const one = pieces.length === 1 ? pieces[0] : null;
+    if (
+      !one ||
+      one.kind !== "widget" ||
+      one.source !== "settings" ||
+      !isObject(one.settings) ||
+      !Object.keys(one.settings).length
+    ) {
+      errors.push(
+        'A change to a widget\'s settings is that one widget, source "settings", with the settings that change.',
+      );
+    }
+  } else if (
+    Array.isArray(pieces) &&
+    pieces.some((p) => p && p.source === "settings")
+  ) {
+    errors.push(
+      'Only the widget being changed can have source "settings" — a change to one widget\'s settings.',
+    );
   }
   // One bot (Phase 2c-1): saved on the dashboard it names, or Unassigned —
   // exactly one new bot, nothing else.

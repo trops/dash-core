@@ -560,7 +560,7 @@ describe("WidgetsPage package detail (NAV-008 AC3)", () => {
     ).toBeInTheDocument();
   });
 
-  it("one Change <widget> door opens Create on it; the code by hand is in Create (Phase 3P)", () => {
+  it("one Change <widget> door: the Change with AI event (its conversation has the code by hand, 6c)", () => {
     setup();
     const events = [];
     const code = [];

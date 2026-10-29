@@ -20,6 +20,8 @@ export function latestPlanStep(messages) {
 /** The plan's name: its layout's, the dashboard it changes, or its summary. */
 export function planName(plan) {
   if (!plan) return "";
+  // A change to one widget (release 6c): that widget.
+  if (plan.widgetChange) return plan.widgetChange.displayName || "The widget";
   const pieces = Array.isArray(plan.pieces) ? plan.pieces : [];
   const layout = pieces.find((p) => p && p.kind === "layout" && p.name);
   const name =
@@ -38,6 +40,15 @@ export function planName(plan) {
 export function planLine(plan) {
   const target = plan ? planTarget(plan) : null;
   const added = target ? addedCount(plan) : 0;
+  // A change to one widget (release 6c, frame 40): its settings, or what
+  // it does.
+  if (plan && plan.widgetChange) {
+    if (!fitsWidget(plan)) return "Plan · more than this widget";
+    const n = settingsChanged(plan).length;
+    return isSettingsChange(plan)
+      ? `Plan · ${n} setting${n === 1 ? "" : "s"} change`
+      : "Plan · a change to what it does";
+  }
   // One widget for an empty cell (release 6c, frame 39) — or a plan that
   // doesn't fit one.
   if (plan && plan.cell)
@@ -68,6 +79,7 @@ function addedCount(plan) {
  */
 export function yesLabel(plan) {
   if (plan && plan.cell) return "Yes, add it";
+  if (plan && plan.widgetChange) return "Yes, change it";
   return plan && planTarget(plan) ? "Yes, make the changes" : "Yes, build it";
 }
 
@@ -97,6 +109,68 @@ export function planForCell(plan, cell) {
       scope: cell.scope || "main",
     },
   };
+}
+
+/**
+ * A conversation about changing one widget (release 6c): its plan says
+ * which (`widgetChange`). A settings change is for that copy's dashboard
+ * (unsaved edits there come first); a change to what it does names no
+ * dashboard.
+ */
+export function planForWidget(plan, widget) {
+  if (!plan || !widget) return plan;
+  const { dashboard: _d, ...rest } = plan;
+  const next = { ...rest, widgetChange: widget };
+  if (
+    widget.onDashboard &&
+    isSettingsChange(next) &&
+    widget.workspaceId != null
+  ) {
+    next.dashboard = {
+      id: String(widget.workspaceId),
+      name: widget.dashboardName || "Your dashboard",
+    };
+  }
+  return next;
+}
+
+/** The widget piece of a change, when the plan is that one widget. */
+function changePiece(plan) {
+  const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+  return pieces.length === 1 && pieces[0].kind === "widget" ? pieces[0] : null;
+}
+
+/**
+ * A change plan that is that one widget, nothing else — and a settings
+ * change only for a copy on a dashboard.
+ */
+export function fitsWidget(plan) {
+  const p = changePiece(plan);
+  if (!p) return false;
+  if (p.source === "settings")
+    return !!(plan.widgetChange && plan.widgetChange.onDashboard);
+  return true;
+}
+
+/** Only its settings change (source "settings"): nothing is built. */
+export function isSettingsChange(plan) {
+  const p = changePiece(plan);
+  return !!(p && p.source === "settings");
+}
+
+/** The settings a settings change sets: [key]. */
+export function settingsChanged(plan) {
+  const p = changePiece(plan);
+  return p && p.settings && typeof p.settings === "object"
+    ? Object.keys(p.settings)
+    : [];
+}
+
+/** The plan as a change's build takes it: no dashboard, no widgetChange. */
+export function widgetBuildPlan(plan) {
+  if (!plan) return plan;
+  const { dashboard: _d, widgetChange: _w, ...rest } = plan;
+  return rest;
 }
 
 /** The plan as a cell build takes it: no dashboard, no cell. */
