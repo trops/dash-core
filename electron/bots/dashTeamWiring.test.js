@@ -119,6 +119,20 @@ describe("botController — role tools (CRE-011, slice 3a)", () => {
     );
   });
 
+  it("a run inside a plan reaches the runner with its planId (the plan's memory)", () => {
+    // _run hands it on (it was dropped, so the memory tools never came)…
+    assert.match(
+      ctrl,
+      /\.\.\.\(opts\.planId \? \{ planId: String\(opts\.planId\) \} : \{\}\),\s*emit:/,
+    );
+    // …the tool list adds the memory tools for it, and memory calls use it.
+    assert.match(
+      ctrl,
+      /const memory = runOpts && runOpts\.planId \? MEMORY_TOOLS : \[\];/,
+    );
+    assert.match(ctrl, /planId: opts\.planId \|\| null,/);
+  });
+
   it("team runs stay off the event bus", () => {
     assert.match(
       ctrl,
