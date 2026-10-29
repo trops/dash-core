@@ -364,8 +364,10 @@ export const PlanChecklistRows = ({
   onPickProvider,
   who = null,
   readOnly = false,
+  rows = false,
 }) => {
-  const { muted, strong } = useConfigTokens();
+  const { muted, strong, hairline } = useConfigTokens();
+  const statusTokens = useStatusTokens();
   return (
     <>
       {checklist.map((it) => {
@@ -376,6 +378,88 @@ export const PlanChecklistRows = ({
           it.kind === "connect"
             ? providerChoices(providers, it.providerType)
             : [];
+        const picker = choices.length ? (
+          <div className="w-full" data-testid="checklist-use-provider">
+            <SelectInput
+              label="Or use one you have"
+              value=""
+              onChange={(name) => {
+                const p = choices.find((x) => x.name === name);
+                if (p) onPickProvider(it, p);
+              }}
+              options={[
+                { value: "", label: "Pick a provider…" },
+                ...choices.map((p) => ({
+                  value: p.name,
+                  label: p.type ? `${p.name} · ${p.type}` : p.name,
+                })),
+              ]}
+            />
+          </div>
+        ) : null;
+        if (rows) {
+          // The lead workspace's Before it builds (frame 1): a mark, who
+          // asks, what and its detail, the action on the same line.
+          return (
+            <div
+              key={it.id}
+              className={`flex flex-row items-start gap-3 px-4 py-3 border-t text-sm ${hairline}`}
+              data-testid="checklist-item"
+            >
+              {done ? (
+                <FontAwesomeIcon
+                  icon="check"
+                  className={`h-3 w-3 mt-1 ${statusTokens.success.icon}`}
+                  aria-label="Done"
+                />
+              ) : (
+                // A hollow ring: still to do (frame 1's ○).
+                <span
+                  role="img"
+                  aria-label="To do"
+                  className={`inline-block flex-shrink-0 h-2.5 w-2.5 mt-1 rounded-full border ${hairline}`}
+                />
+              )}
+              <span className="flex-1 min-w-0 flex flex-col items-start gap-1">
+                {who ? (
+                  <span
+                    className={`flex flex-row items-center gap-1.5 text-xs ${muted}`}
+                    data-testid="checklist-who"
+                  >
+                    <span
+                      className={`inline-block h-2 w-2 rounded-full ${statusTokens.success.solidBg}`}
+                      aria-hidden="true"
+                    />
+                    {who(it)}
+                  </span>
+                ) : null}
+                <span className={done ? muted : strong}>{it.label}</span>
+                {it.package || skipped ? (
+                  <span
+                    className={`text-xs ${muted}`}
+                    data-testid={skipped ? "checklist-skipped" : undefined}
+                  >
+                    {skipped ? "Skipped — what needs it waits" : it.package}
+                  </span>
+                ) : null}
+                {done || readOnly ? null : picker}
+              </span>
+              {done || readOnly ? null : (
+                <Button2
+                  title={
+                    it.kind === "install"
+                      ? "Review"
+                      : it.kind === "connect"
+                        ? "Connect"
+                        : "OK"
+                  }
+                  size="sm"
+                  onClick={() => onAction(it)}
+                />
+              )}
+            </div>
+          );
+        }
         return (
           <div
             key={it.id}
@@ -429,26 +513,7 @@ export const PlanChecklistRows = ({
                   onClick={() => onAction(it)}
                 />
                 {choices.length ? (
-                  <div
-                    className={compact ? "w-full" : "w-56"}
-                    data-testid="checklist-use-provider"
-                  >
-                    <SelectInput
-                      label="Or use one you have"
-                      value=""
-                      onChange={(name) => {
-                        const p = choices.find((x) => x.name === name);
-                        if (p) onPickProvider(it, p);
-                      }}
-                      options={[
-                        { value: "", label: "Pick a provider…" },
-                        ...choices.map((p) => ({
-                          value: p.name,
-                          label: p.type ? `${p.name} · ${p.type}` : p.name,
-                        })),
-                      ]}
-                    />
-                  </div>
+                  <div className={compact ? "w-full" : "w-56"}>{picker}</div>
                 ) : null}
               </div>
             )}

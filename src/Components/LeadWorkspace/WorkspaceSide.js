@@ -1,10 +1,22 @@
-import React, { useEffect, useState } from "react";
-import { Button3, FontAwesomeIcon, ListRow } from "@trops/dash-react";
+import React, { useContext, useEffect, useState } from "react";
+import {
+  Button2,
+  Button3,
+  FontAwesomeIcon,
+  ThemeContext,
+  useStatusTokens,
+} from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
+import { isDone } from "../Create/planChecklist";
 import { toolName } from "./handoffSteps";
-import { BeforeItBuilds, PlanOutput } from "./PlanViews";
-import { planName, planStatus } from "./workspacePlan";
+import { BeforeItBuilds, OutputCard, PlanOutput } from "./PlanViews";
+import {
+  planName,
+  planStatus,
+  planSubLine,
+  providersLine,
+} from "./workspacePlan";
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -35,6 +47,43 @@ const norm = (name) =>
     .replace(/^the /i, "")
     .trim()
     .toLowerCase();
+
+// What each Dash team role is for, under its name until it's asked (frame
+// 13), and what its output is called (frame 1).
+const ROLE_LINES = {
+  scout: "finds what you already have",
+  planner: "turns your request into a plan",
+  builder: "builds what you approve",
+  checker: "checks what's built",
+};
+const ROLE_OUTPUT = { scout: "Findings" };
+
+/**
+ * Where you can start a new Dash Lead conversation from (frame 13).
+ * `onStartFrom(kind)`: "describe" | "registry" | "copy" | "widget".
+ */
+const START_FROM = [
+  {
+    kind: "describe",
+    title: "Describe it",
+    sub: "Say what you want in the box — the usual way",
+  },
+  {
+    kind: "registry",
+    title: "A dashboard from the registry",
+    sub: "Install a ready-made one and its bots, then adjust it",
+  },
+  {
+    kind: "copy",
+    title: "Copy one of your dashboards",
+    sub: "Start from what you have and change it",
+  },
+  {
+    kind: "widget",
+    title: "Edit a widget you have",
+    sub: "Open it in the Widget Builder",
+  },
+];
 
 /**
  * What each bot is doing right now — one line, from its stream: the tool
@@ -99,10 +148,59 @@ function shortTime(at) {
 }
 
 /**
- * WorkspaceSide — the workspace's right column (lead-workspace release 2):
- * Needs you (the team's approvals), Outputs (what the team answered), and
- * Team in this conversation (each bot: whether it was asked, a live line
- * while it works, its answer). A lone bot shows its runs instead.
+ * A team member's state and line (frames 1, 13): working (its live line),
+ * done (what it answered), or not asked yet — ready, or waiting while a plan
+ * waits for the go-ahead.
+ */
+function memberState(m, last, status, { plan, lines }) {
+  const working = !!(last && last.status === "asking");
+  if (working)
+    return {
+      tone: "working",
+      state: "working",
+      line: lines[m.id] || "starting…",
+    };
+  if (last) {
+    if (last.status === "failed")
+      return { tone: "bad", state: "couldn't answer", line: last.result || "" };
+    if (last.status === "stopped")
+      return { tone: "idle", state: "stopped", line: last.result || "" };
+    // A plan says what it is ("drafted a plan — 2 widgets"), not the
+    // Planner's first words.
+    if (last.plan) {
+      const what = planSubLine(last.plan);
+      return {
+        tone: "ok",
+        state: "done",
+        line: what ? `drafted a plan — ${what}` : "drafted a plan",
+      };
+    }
+    return { tone: "ok", state: "done", line: last.result || "" };
+  }
+  if (status === "Running")
+    return { tone: "idle", state: "busy with its own run", line: "" };
+  if (status === "Paused") return { tone: "idle", state: "paused", line: "" };
+  if (plan && m.role === "builder")
+    return {
+      tone: "idle",
+      state: "waiting",
+      line: "waiting for your go-ahead",
+    };
+  if (plan && m.role === "checker")
+    return { tone: "idle", state: "waiting", line: ROLE_LINES.checker };
+  // The plan came without it (the lead looked itself).
+  if (plan && m.role === "scout")
+    return { tone: "idle", state: "not needed", line: "" };
+  return { tone: "idle", state: "ready", line: ROLE_LINES[m.role] || "" };
+}
+
+/**
+ * WorkspaceSide — the workspace's right column (lead-workspace releases 2
+ * and 3a, frames 1, 6, 13): Outputs — where to start from (a new Dash Lead
+ * conversation), Before it builds, the team's approvals, the plan and the
+ * team's answers — then Team in this conversation (each bot: its state, a
+ * live line while it works, its output) and the providers the plan needs. A
+ * lone bot shows its runs instead of a team.
  *
  * @param {object} contact     workspaceContacts' contact
  * @param {object[]} messages  the conversation (AskStep's), with its steps
@@ -110,9 +208,12 @@ function shortTime(at) {
  * @param {object|null} wp    the conversation's plan (useWorkspacePlan)
  * @param {boolean} planReadOnly  the lead is answering: a new plan may come
  * @param {() => void} onBuild  Yes, build it
- * @param {string|null} open  what's opened: "plan", a step's id, or null
+ * @param {string|null} open  what's opened: "plan", "plan:<step id>" (an
+ *   earlier plan), a step's id, or null
  * @param {(what) => void} onOpen
  * @param {boolean} wide, onToggleWide  the column's size
+ * @param {boolean} isNew  a new conversation, nothing asked yet
+ * @param {(kind) => void} onStartFrom  a Start from choice
  */
 export const WorkspaceSide = ({
   contact,
@@ -125,8 +226,14 @@ export const WorkspaceSide = ({
   onOpen = () => {},
   wide = false,
   onToggleWide = null,
+  isNew = false,
+  onStartFrom = null,
 }) => {
-  const { muted, strong, hairline, selectedBg } = useConfigTokens();
+  const { muted, strong, hairline } = useConfigTokens();
+  const { currentTheme } = useContext(ThemeContext) || {};
+  // The link colour: the accent role (Aurora gives it its own text shade).
+  const link = `${(currentTheme && currentTheme["text-primary-medium"]) || ""} dr-role-accent`;
+  const statusTokens = useStatusTokens();
   const members = (contact && contact.members) || [];
   const lines = useLiveLines(members.map((m) => m.id));
   const runs = useRuns(
@@ -134,16 +241,16 @@ export const WorkspaceSide = ({
   );
   const steps = (messages || []).filter((m) => m && m.who === "step");
 
-  // A step opened from Outputs or a bot's row: the latest version of it.
   const plan = wp && wp.plan ? wp.plan : null;
   const back = (
     <div className="flex flex-row items-center gap-2">
       <Button3 size="sm" title="← Outputs" onClick={() => onOpen(null)} />
       <span className="flex-1" />
       {onToggleWide ? (
-        <Button3
+        <Button2
           size="sm"
-          title={wide ? "Shrink" : "Expand"}
+          title={wide ? "Shrink ⇥" : "⇤ Expand"}
+          ariaLabel={wide ? "Shrink" : "Expand"}
           onClick={onToggleWide}
         />
       ) : null}
@@ -154,6 +261,19 @@ export const WorkspaceSide = ({
       <div className="flex flex-col gap-4 p-5 min-h-0 overflow-y-auto">
         {back}
         <PlanOutput wp={wp} readOnly={planReadOnly} onBuild={onBuild} />
+      </div>
+    );
+  }
+  // An earlier plan, from its card in the chat.
+  const earlierStep =
+    typeof open === "string" && open.startsWith("plan:")
+      ? steps.find((s) => s.id === open.slice(5) && s.plan) || null
+      : null;
+  if (earlierStep && wp) {
+    return (
+      <div className="flex flex-col gap-4 p-5 min-h-0 overflow-y-auto">
+        {back}
+        <PlanOutput wp={wp} plan={earlierStep.plan} />
       </div>
     );
   }
@@ -197,57 +317,75 @@ export const WorkspaceSide = ({
   const approvalBots = contact
     ? [{ id: contact.botId, name: contact.name }, ...members]
     : [];
+  const startFrom =
+    isNew && contact && contact.kind === "dashlead" && onStartFrom;
+  const connected = (it) => (wp ? isDone(it, wp.checks, wp.have) : false);
+  const dot = {
+    ok: statusTokens.success.icon,
+    bad: statusTokens.error.icon,
+    idle: muted,
+  };
 
   return (
     <div
-      className="flex flex-col gap-5 p-5 min-h-0 overflow-y-auto"
+      className="flex flex-col gap-4 p-5 min-h-0 overflow-y-auto"
       data-testid="workspace-side"
     >
-      <DashTeamApprovals compact bots={approvalBots} />
-      {wp ? <BeforeItBuilds wp={wp} readOnly={planReadOnly} /> : null}
+      <span className={`text-sm font-semibold ${strong}`}>Outputs</span>
 
-      <div className="flex flex-col gap-2">
-        <span className={`text-sm font-semibold ${strong}`}>Outputs</span>
-        {plan ? (
-          <ListRow
-            testId="workspace-output-plan"
-            icon={
-              <FontAwesomeIcon
-                icon="table-cells-large"
-                className={`h-4 w-4 ${muted}`}
-              />
-            }
-            title={`${planName(plan)} — plan`}
-            meta={planStatus({ plan, check: wp.check, open: wp.open })}
-            onClick={() => onOpen("plan")}
-          />
-        ) : null}
-        {answered.length || plan ? (
-          answered.map((s) => (
-            <ListRow
-              key={s.id}
-              testId="workspace-output"
-              icon={
-                <FontAwesomeIcon
-                  icon="comment"
-                  className={`h-4 w-4 ${muted}`}
-                />
-              }
-              title={`${cap(s.bot)}'s answer`}
-              meta={s.result}
-              onClick={() => onOpen(s.id)}
-            />
-          ))
-        ) : (
-          <span
-            className={`rounded-lg border border-dashed p-4 text-center text-sm ${hairline} ${muted}`}
-          >
-            {isBot
-              ? "Its answers and results show here."
-              : "What the team finds shows here."}
-          </span>
-        )}
-      </div>
+      {startFrom ? (
+        <div className="flex flex-col gap-2" data-testid="workspace-start-from">
+          <span className={`text-xs ${muted}`}>Start from</span>
+          {START_FROM.map((s) => (
+            <button
+              key={s.kind}
+              type="button"
+              onClick={() => onStartFrom(s.kind)}
+              className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 text-left ${hairline}`}
+            >
+              <span className={`text-sm font-semibold ${strong}`}>
+                {s.title}
+              </span>
+              <span className={`text-xs ${muted}`}>{s.sub}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {wp ? <BeforeItBuilds wp={wp} readOnly={planReadOnly} /> : null}
+      <DashTeamApprovals compact bots={approvalBots} />
+
+      {plan ? (
+        <OutputCard
+          testId="workspace-output-plan"
+          title={`${planName(plan)} — plan`}
+          sub={planStatus({ plan, check: wp.check, open: wp.open })}
+          kind="Plan"
+          onClick={() => onOpen("plan")}
+        />
+      ) : null}
+      {answered.map((s) => (
+        <OutputCard
+          key={s.id}
+          testId="workspace-output"
+          icon="comment"
+          title={`${cap(s.bot)}'s answer`}
+          sub={s.result}
+          kind="Answer"
+          onClick={() => onOpen(s.id)}
+        />
+      ))}
+      {!answered.length && !plan && !startFrom ? (
+        <span
+          className={`rounded-xl border border-dashed p-6 text-center text-sm ${hairline} ${muted}`}
+        >
+          {isBot
+            ? "Its answers and results show here."
+            : "What the team makes shows here."}
+        </span>
+      ) : null}
+
+      <div className={`border-t ${hairline}`} aria-hidden="true" />
 
       {isBot ? (
         <div className="flex flex-col gap-2" data-testid="workspace-runs">
@@ -275,7 +413,7 @@ export const WorkspaceSide = ({
           )}
         </div>
       ) : (
-        <div className="flex flex-col gap-2" data-testid="workspace-team">
+        <div className="flex flex-col gap-3" data-testid="workspace-team">
           <span className={`text-sm font-semibold ${strong}`}>
             Team in this conversation
           </span>
@@ -283,26 +421,21 @@ export const WorkspaceSide = ({
             members.map((m) => {
               const mine = steps.filter((s) => norm(s.bot) === norm(m.name));
               const last = mine[mine.length - 1] || null;
-              const status = statusOf(m.id);
-              const working = !!(last && last.status === "asking");
-              const state = working
-                ? "working"
-                : last
-                  ? last.status === "failed"
-                    ? "couldn't answer"
-                    : last.status === "stopped"
-                      ? "stopped"
-                      : "answered"
-                  : status === "Running"
-                    ? "busy with its own run"
-                    : status === "Paused"
-                      ? "paused"
-                      : "not asked";
-              const line = working
-                ? lines[m.id] || "starting…"
-                : last
-                  ? last.result || ""
-                  : "";
+              const { tone, state, line } = memberState(
+                m,
+                last,
+                statusOf(m.id),
+                { plan, lines },
+              );
+              const out =
+                last && last.plan && plan
+                  ? { label: "Plan", open: "plan" }
+                  : last && last.answer
+                    ? {
+                        label: ROLE_OUTPUT[m.role] || "Answer",
+                        open: last.id,
+                      }
+                    : null;
               return (
                 <div
                   key={m.id}
@@ -310,15 +443,16 @@ export const WorkspaceSide = ({
                   data-testid="workspace-member"
                 >
                   <FontAwesomeIcon
-                    icon={
-                      working ? "spinner" : last ? "circle-check" : "circle"
-                    }
-                    className={`h-3 w-3 mt-1 ${working ? "animate-spin" : ""} ${muted}`}
+                    icon={tone === "working" ? "spinner" : "circle"}
+                    className={`h-2 w-2 mt-1.5 ${tone === "working" ? `animate-spin ${muted}` : dot[tone]}`}
+                    aria-hidden="true"
                   />
                   <span className="flex-1 min-w-0 flex flex-col gap-0.5">
                     <span className="text-sm">
-                      <span className={`font-medium ${strong}`}>{m.name}</span>
-                      <span className={muted}> · {state}</span>
+                      <span className={`font-semibold ${strong}`}>
+                        {m.name}
+                      </span>
+                      <span className={`text-xs ${muted}`}> · {state}</span>
                     </span>
                     {line ? (
                       <span className={`text-xs font-mono truncate ${muted}`}>
@@ -326,18 +460,14 @@ export const WorkspaceSide = ({
                       </span>
                     ) : null}
                   </span>
-                  {last && last.plan && plan ? (
-                    <Button3
-                      size="sm"
-                      title="Plan ›"
-                      onClick={() => onOpen("plan")}
-                    />
-                  ) : last && last.answer ? (
-                    <Button3
-                      size="sm"
-                      title="Answer ›"
-                      onClick={() => onOpen(last.id)}
-                    />
+                  {out ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpen(out.open)}
+                      className={`flex-shrink-0 text-sm ${link}`}
+                    >
+                      {out.label} ›
+                    </button>
                   ) : null}
                 </div>
               );
@@ -349,6 +479,18 @@ export const WorkspaceSide = ({
           )}
         </div>
       )}
+
+      {plan ? (
+        <div
+          className="flex flex-row gap-2 text-sm"
+          data-testid="workspace-providers"
+        >
+          <span className={`font-semibold ${strong}`}>Providers</span>
+          <span className={muted}>
+            {providersLine(wp.checklist, connected)}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 };

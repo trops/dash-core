@@ -135,3 +135,79 @@ export function withPlanContext(text, plan, edits = []) {
 export function whoAsks() {
   return "Planner · Dash team";
 }
+
+const SOURCE_LINE = {
+  yours: "Yours",
+  "ai-built": "AI-built",
+  registry: "From the registry",
+  new: "New",
+  update: "Yours, changed",
+};
+
+/** "1 widget" · "3 widgets" */
+const count = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+/** The providers the plan needs connected (Before it builds' connects). */
+const connectItems = (checklist) =>
+  (checklist || []).filter((it) => it && it.kind === "connect");
+const providerName = (it) => String(it.label || "").replace(/^Connect /, "");
+
+/**
+ * The opened plan's line (frame 6): "4 widgets · 1 bot · uses Home
+ * Assistant".
+ */
+export function planSubLine(plan, checklist = []) {
+  const pieces = (plan && Array.isArray(plan.pieces) && plan.pieces) || [];
+  const widgets = pieces.filter((p) => p && p.kind === "widget").length;
+  const bots = pieces.filter((p) => p && p.kind === "bot").length;
+  const uses = connectItems(checklist).map(providerName);
+  return [
+    widgets ? count(widgets, "widget") : null,
+    bots ? count(bots, "bot") : null,
+    uses.length ? `uses ${uses.join(", ")}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * The opened plan's rows (frame 6): one per widget or bot — its name, where
+ * it comes from and what it's for — then a warning row per provider still to
+ * connect. `isDone(item)` says whether a connect is done.
+ * @returns {{ main: string, sub: string, warn?: boolean }[]}
+ */
+export function planRows(plan, checklist = [], isDone = () => false) {
+  const pieces = (plan && Array.isArray(plan.pieces) && plan.pieces) || [];
+  const rows = pieces
+    .filter((p) => p && (p.kind === "widget" || p.kind === "bot") && p.name)
+    .map((p) => {
+      const source = SOURCE_LINE[p.source] || SOURCE_LINE.new;
+      const what = String(p.adds || p.notes || p.package || "").trim();
+      return { main: p.name, sub: what ? `${source} — ${what}` : source };
+    });
+  for (const it of connectItems(checklist)) {
+    if (isDone(it)) continue;
+    rows.push({
+      main: `Needs ${providerName(it)} connected`,
+      sub: "Before it builds, or during the build",
+      warn: true,
+    });
+  }
+  return rows;
+}
+
+/**
+ * The Providers line at the foot of the right column: each provider the plan
+ * needs and whether it's connected; "none needed" for a plan that needs
+ * none.
+ */
+export function providersLine(checklist = [], isDone = () => false) {
+  const items = connectItems(checklist);
+  if (!items.length) return "none needed";
+  return items
+    .map(
+      (it) =>
+        `${providerName(it)} · ${isDone(it) ? "connected" : "not connected yet"}`,
+    )
+    .join(" · ");
+}

@@ -84,6 +84,10 @@ export const AskStep = ({
   // stands goes along), as (text) => text.
   renderAfter = null,
   prepareSend = null,
+  // The reply box's words, when the host has its own (the workspace's
+  // "Reply", no hint line); otherwise it names who is asked.
+  placeholder = null,
+  hint = undefined,
 }) => {
   // [{ who: "you" | "planner" | "lead" | "role" | "note" | "step", text, meta?, plan? }]
   // A step is a hand-off ("Asked Inbox Watch"): { id, bot, label, request,
@@ -424,6 +428,13 @@ export const AskStep = ({
     const box = boxes && boxes.length ? boxes[boxes.length - 1] : null;
     if (box) box.focus();
   };
+  // The conversation follows its newest message (and what shows after it:
+  // the plan's card, the reply choices).
+  const scroller = useRef(null);
+  useEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length, busy]);
   const after = (m, i) =>
     renderAfter ? renderAfter(m, i, { send, focusReply, busy }) : null;
 
@@ -433,7 +444,7 @@ export const AskStep = ({
       className="flex-1 min-h-0 flex flex-col"
       data-testid="ask-step"
     >
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={scroller} className="flex-1 min-h-0 overflow-y-auto">
         <div className="flex flex-col gap-3 px-3 py-3">
           {messages.map((m, i) => (
             <React.Fragment key={m.who === "step" && m.id ? m.id : i}>
@@ -530,11 +541,13 @@ export const AskStep = ({
         placeholder={
           busy
             ? `${replyName.charAt(0).toUpperCase()}${replyName.slice(1)} is looking…`
-            : lead
-              ? `Ask ${lead.leadName} a follow-up…`
-              : teamRole
-                ? `Ask the ${roleName} a follow-up…`
-                : "Ask a follow-up…"
+            : placeholder
+              ? placeholder
+              : lead
+                ? `Ask ${lead.leadName} a follow-up…`
+                : teamRole
+                  ? `Ask the ${roleName} a follow-up…`
+                  : "Ask a follow-up…"
         }
         above={
           !hideTo && (lead || teamRole) ? (
@@ -543,6 +556,7 @@ export const AskStep = ({
             </span>
           ) : null
         }
+        {...(hint !== undefined ? { hint } : {})}
         // Same word as the dock's first question (one label per action).
         sendLabel="Ask"
         className="flex-shrink-0"

@@ -3286,6 +3286,10 @@ const DashboardStageInner = ({
                 key={workspaceRequest.seq}
                 request={workspaceRequest}
                 onClose={() => setWorkspaceRequest(null)}
+                onOpenPage={(page) => {
+                  setWorkspaceRequest(null);
+                  handleOpenPageGuarded(page);
+                }}
               />
             ) : null}
             <BotPageModal
