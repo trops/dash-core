@@ -183,3 +183,29 @@ Frames 13, 18, 30.
   - The dock's **Make something new…** starts a Dash Lead conversation too.
   - Leads don't name the button to press.
 - **A choice made here:** frame 18 shows a new widget on a lead's dashboard as a plain plan, and frame 30 shows a change with before and after. Every plan for a dashboard the user has gets the before and after, the approved release 3 default.
+
+### Release 4 — the bot notifications panel (2026-10-29)
+
+Frames 22, 27–29.
+
+- **The right rail's robot opens one panel for every dashboard** (`Bots/BotNotifications/BotNotificationsPanel`, hosted by dash-electron's `AssistantDock` in place of the old bot list):
+  - The header is the shown dashboard's lead, with **Open conversation with <lead>**. Off a dashboard, it reads "Bot notifications".
+  - **Needs you · N** (`needsYou.js`), newest first. Each item says which bot is asking and which dashboard it's on (tagged when it isn't the shown one), when, and NEW since the user last looked:
+    - **Approvals:** Allow once / Deny.
+    - **A bot whose latest run failed** in the last 7 days (not leads, not the Dash team, not while it runs again): **Retry**, or **Reconnect**, which opens the Providers page on its provider when it has one (a connection problem, read from the error as Bots does).
+    - **A plan waiting for a yes** (a conversation with a plan and no build, in the last 7 days): **Review in conversation** opens that conversation (`dash:open-workspace` with `recentId`). It says which conversation.
+
+    Details opens the lead's conversation, or a lone bot's page.
+  - **Activity** (`activityLog.js`): a line per run, from this dashboard by default or **All**, each tagged; a lead's run opens its conversation.
+  - **Nothing pending:** "Nothing needs you right now."
+- **The panel opens by itself** when something new needs the user (not while editing a dashboard, never in a popout). The rail's robot shows a dot while anything does.
+- **Small doors:** `dash:open-page` (`{ page: "providers", providerName? }` | `{ page: "bots" }`) for the panel; the workspace opens on a conversation (`request.recentId`).
+- **Unchanged:** OS notifications; clicking one opens the panel, and the bot's conversation or page.
+- **Fixed after live testing and review:**
+  - It opens by itself only for what arrives after the dock mounted (not as its lists load, nor after leaving Edit).
+  - A bot running again isn't listed as failed (`listRunning`'s ids).
+  - A plan's time is when it came in (`workspacePlan.madeAt`, Recent's `plannedAt`), not the conversation's last change, and its title is the plan's name (`planName`).
+  - Approvals say what the bot wants to do; "Reconnect Gmail" when the provider is known.
+  - Failure text drops the engine's wrapper and is kept short; a failed bot's Details opens its page.
+  - Under All, only other dashboards are tagged.
+  - One Dash team read instead of a second set of every list; NEW is a pill; the footer is a link; `dash:open-page` is subscribed once.

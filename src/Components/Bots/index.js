@@ -7,6 +7,8 @@ export { useTeamBots } from "./useTeamBots";
 export { BotMonitor, relativeTime } from "./BotMonitor";
 export { useBotMonitor } from "./useBotMonitor";
 export { BotContacts } from "./BotContacts";
+// The right rail's bot notifications (lead-workspace release 4).
+export { BotNotificationsPanel } from "./BotNotifications/BotNotificationsPanel";
 export { BotPage, BOT_PAGE_TABS } from "./BotPage";
 export { BotPageModal } from "./BotPageModal";
 export { BotSpending } from "./BotSpending";

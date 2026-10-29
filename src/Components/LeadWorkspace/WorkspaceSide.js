@@ -485,7 +485,7 @@ export const WorkspaceSide = ({
       >
         <FontAwesomeIcon
           icon={tone === "working" ? "spinner" : "circle"}
-          className={`h-2 w-2 mt-1.5 ${tone === "working" ? `animate-spin ${muted}` : dot[tone]}`}
+          className={`h-2 w-2 mt-1 ${tone === "working" ? `animate-spin ${muted}` : dot[tone]}`}
           aria-hidden="true"
         />
         <span className="flex-1 min-w-0 flex flex-col gap-0.5">

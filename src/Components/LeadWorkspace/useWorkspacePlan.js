@@ -33,6 +33,9 @@ const saved = (st) => ({
   edits: st.edits,
   sent: st.sent,
   builds: st.builds,
+  // When this plan came in (the notifications panel's time for it, release
+  // 4) — not when the conversation last changed.
+  madeAt: st.madeAt || null,
 });
 
 /**
@@ -115,6 +118,7 @@ export function useWorkspacePlan({
           edits: Array.isArray(was.edits) ? was.edits : [],
           sent: !!was.sent,
           builds,
+          madeAt: was.madeAt || null,
         };
       }
       return {
@@ -124,6 +128,7 @@ export function useWorkspacePlan({
         edits: [],
         sent: false,
         builds,
+        madeAt: Date.now(),
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -461,6 +461,8 @@ describe("a plan in the conversation (release 3a)", () => {
             edits: [],
             sent: false,
             builds: [],
+            // When the plan came in (release 4's notifications).
+            madeAt: expect.any(Number),
           },
         },
       }),
@@ -1841,4 +1843,14 @@ describe("release 3c: leads bring in the Dash team; Create opens here; changes s
       "Built",
     );
   });
+});
+
+test("release 4: opened on one of a lead's conversations (Review in conversation)", () => {
+  render(
+    <LeadWorkspace
+      request={{ key: "lead:lead_7", recentId: "q1" }}
+      onClose={jest.fn()}
+    />,
+  );
+  expect(mockAskProps.recentId).toBe("q1");
 });

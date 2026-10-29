@@ -53,6 +53,18 @@ function titleFor(entry) {
  *   built     a question's build (lead workspace, release 3b): its status,
  *             as above, or null
  */
+/** A plan's name: its layout's, the dashboard it changes, its one piece's, or its summary. */
+function planNameOf(plan) {
+  const pieces = Array.isArray(plan && plan.pieces) ? plan.pieces : [];
+  const layout = pieces.find((p) => p && p.kind === "layout" && p.name);
+  const name =
+    (layout && layout.name) ||
+    (plan.dashboard && plan.dashboard.name) ||
+    (pieces.length === 1 && pieces[0] && pieces[0].name) ||
+    String(plan.summary || "").trim();
+  return name ? String(name).slice(0, 80) : null;
+}
+
 // A build's status, in Recent's words.
 const BUILD_STATUS = {
   waiting: "building",
@@ -130,6 +142,12 @@ function summarize(entry) {
     // A conversation with a plan in it (release 3a): Recents tag it "Plan".
     const wp = entry.conversation && entry.conversation.workspacePlan;
     out.planned = !!(wp && wp.plan);
+    // For the notifications panel (release 4): the plan's name, and when it
+    // came in.
+    if (wp && wp.plan) {
+      out.planName = planNameOf(wp.plan);
+      out.plannedAt = wp.madeAt || null;
+    }
     // Built in the conversation (release 3b): Recents say how it went.
     out.built = state ? builtStatus(state, wp, entry.build.buildId) : null;
     return out;

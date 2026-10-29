@@ -144,7 +144,8 @@ function startText(contact) {
  * @param {{ key?: string, seed? }|null} request  who to open on
  *   ("role:dashlead", "lead:<botId>", "bot:<botId>"); default the Dash Lead.
  *   `seed` (Open as a plan, release 3c): a plan from another chat, carried
- *   on as a new Dash Lead conversation
+ *   on as a new Dash Lead conversation. `recentId` (release 4): one of its
+ *   conversations to open on
  * @param {() => void} onClose
  * @param {(page) => void} [onOpenPage]  opens an app page ("dashboards",
  *   "widgets") in the workspace's place — Start from's copy and edit
@@ -181,8 +182,15 @@ export const LeadWorkspace = ({
   const [switchOpen, setSwitchOpen] = useState(false);
   // What's open in the middle: a thread ({ recentId }), a new question just
   // sent ({ question }), or nothing yet (the start).
-  const [open, setOpen] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
+  // Opened on a conversation (release 4: Review in conversation).
+  const [open, setOpen] = useState(() =>
+    request && request.recentId
+      ? { key: request.recentId, recentId: request.recentId }
+      : null,
+  );
+  const [selectedId, setSelectedId] = useState(
+    (request && request.recentId) || null,
+  );
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState(EMPTY);
   // What's open on the right: "plan", a step's id, or the overview (null).
