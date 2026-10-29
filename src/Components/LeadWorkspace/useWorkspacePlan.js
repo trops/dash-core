@@ -8,7 +8,7 @@ import {
   providerLabel,
   providerTypesOf,
 } from "../Create/planChecklist";
-import { latestPlanStep } from "./workspacePlan";
+import { cellBuildPlan, latestPlanStep, planForCell } from "./workspacePlan";
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -52,12 +52,15 @@ const saved = (st) => ({
  * @param {boolean} reopened   a saved conversation: its plan is read first
  * @param {string} convKey     which conversation is open; a new one starts
  *   with no plan
+ * @param {object|null} cell   an empty cell the conversation is about
+ *   (release 6c): the plan is for it (planForCell)
  */
 export function useWorkspacePlan({
   messages,
   recentId,
   reopened = false,
   convKey = "",
+  cell = null,
 }) {
   const app = useContext(AppContext) || {};
   const step = latestPlanStep(messages);
@@ -177,14 +180,19 @@ export function useWorkspacePlan({
     [],
   );
 
-  const plan = state.plan;
+  const plan = useMemo(() => planForCell(state.plan, cell), [state.plan, cell]);
   const have = providerTypesOf(app.providers);
   const checklist = useMemo(
     () => (plan ? buildChecklist(plan, have) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [plan, app.providers],
   );
-  const check = plan ? validatePlan(plan, {}) : null;
+  // A cell's plan is checked as its build will be: one widget (release 6c).
+  const check = plan
+    ? plan.cell
+      ? validatePlan(cellBuildPlan(plan), { cell: true })
+      : validatePlan(plan, {})
+    : null;
   const open = checklist.filter((it) => !isDone(it, state.checks, have)).length;
 
   const edit = (next, note) =>

@@ -69,10 +69,54 @@ export function makingStart(making) {
   };
 }
 
-/** What the conversation saves as its `about` (AskStep): line and note. */
+/** "row 2, column 1" — and its size when it spans more than one cell. */
+export function cellPlace(cell) {
+  const [row, col] = String((cell && cell.cellNumber) || "")
+    .split(".")
+    .map((n) => Number(n));
+  if (!row || !col) return "the empty cell";
+  const span = (cell && cell.span) || {};
+  const wide = Number(span.col) || 1;
+  const tall = Number(span.row) || 1;
+  const size = wide > 1 || tall > 1 ? ` (${wide} × ${tall})` : "";
+  return `the empty cell in row ${row}, column ${col}${size}`;
+}
+
+/**
+ * An empty cell's Build with AI (release 6c, frame 38):
+ * the conversation's "For:" line, greeting and starters, and what the lead
+ * is told — one widget, for that cell, placed by the editor. `cell`:
+ * { workspaceId, gridItemId, cellNumber, pageId, scope, span? }.
+ */
+export function cellStart(cell, { dashboardName = "", leadName = "" } = {}) {
+  if (!cell || cell.gridItemId == null || !cell.cellNumber) return null;
+  const name = dashboardName || "this dashboard";
+  const place = cellPlace(cell);
+  return {
+    label: "For",
+    text: `${dashboardName || "Your dashboard"} — ${place}`,
+    title: "What should go in this cell?",
+    greeting: `Describe it, or pick one below. ${leadName || "The lead"} brings in the Dash team to find or make it, and it goes in the cell you picked — nothing changes until you say yes.`,
+    starters: [
+      "My calendar for today",
+      "The weather",
+      "A clock",
+      "Something from the registry",
+    ],
+    note: `(The user is editing ${name} and picked ${place}. Plan exactly one widget for that cell — no bots, theme or layout. The user previews the widget and it goes into that one cell. Put the connection and settings they want on the widget piece. When you bring in the Dash team, tell the Planner this.)`,
+    cell: { ...cell, dashboardName: dashboardName || "" },
+  };
+}
+
+/** What the conversation saves as its `about` (AskStep): line, note, cell. */
 export function makingAbout(start) {
   return start
-    ? { label: start.label, text: start.text, note: start.note }
+    ? {
+        label: start.label,
+        text: start.text,
+        note: start.note,
+        ...(start.cell ? { cell: start.cell } : {}),
+      }
     : null;
 }
 

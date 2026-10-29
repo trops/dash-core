@@ -57,7 +57,7 @@ export const EditPanel = ({
   widgetConfig = null,
   botEditor = null,
   // Phase 1d: place a picked widget in the selected empty cell; an empty
-  // cell's Build with AI (Create, through the Dash team).
+  // cell's Build with AI (a conversation with its dashboard's lead).
   onPlaceWidget = null,
   onBuildWithAi = null,
   // The selected widget: whose it is ("Built by AI · yours"), whether a

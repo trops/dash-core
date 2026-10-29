@@ -358,10 +358,15 @@ export const PlanOutput = ({
   // A change: what's added, what stays, then what to connect.
   const rows = changes
     ? [
-        ...changes.rows.map((r) => ({ ...r, add: true })),
-        ...(draws && changes.unchanged.length
-          ? [{ main: `${changes.unchanged.join(", ")} — unchanged`, sub: "" }]
-          : []),
+        // A cell plan that doesn't fit: each piece, flagged (release 6c).
+        ...changes.rows.map((r) =>
+          changes.fits === false ? { ...r, warn: true } : { ...r, add: true },
+        ),
+        ...(changes.cellOnly && changes.fits !== false
+          ? [{ main: "Everything else — unchanged", sub: "" }]
+          : draws && changes.unchanged.length
+            ? [{ main: `${changes.unchanged.join(", ")} — unchanged`, sub: "" }]
+            : []),
         ...planned.filter((r) => r.warn),
       ]
     : planned;
@@ -379,9 +384,13 @@ export const PlanOutput = ({
           {target ? `${target.name} — changes` : planName(plan)}
         </span>
         <span className={`text-sm ${muted}`}>
-          {target
-            ? "Nothing changes until you say yes"
-            : planSubLine(plan, checklist) || "Nothing to make yet"}
+          {plan.cell
+            ? changes && changes.fits === false
+              ? "A cell takes one widget — this plan has more"
+              : "Only the cell you picked changes"
+            : target
+              ? "Nothing changes until you say yes"
+              : planSubLine(plan, checklist) || "Nothing to make yet"}
         </span>
       </div>
       {draws ? (

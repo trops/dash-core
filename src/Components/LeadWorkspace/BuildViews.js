@@ -127,7 +127,8 @@ const BuildStepLine = ({ step }) => {
  * @param {string} leadName
  * @param {boolean} current  the conversation's plan's build: choices show
  * @param {object} actions   { fix, retry, leaveOff, approve, carryOn,
- *   openDashboard, open } — open("buildlog" | "check" | "preview")
+ *   openDashboard, open, placeInCell } — open("buildlog" | "check" |
+ *   "preview"); placeInCell: a cell build put in its cell again (6c)
  * @param {string|null} actionError
  */
 export const BuildInChat = ({
@@ -139,11 +140,14 @@ export const BuildInChat = ({
   actionError = null,
   // What the user said yes with: Yes, build it — or Yes, make the changes.
   yes = "Yes, build it",
+  // A cell build (release 6c): { dashboardName, placed }.
+  cell = null,
 }) => {
   const { muted } = useConfigTokens();
   const chat = buildChat(state, {
     kind: build.kind,
     leftOff: build.leftOff || [],
+    cell,
   });
   const card = chat.card;
   const openCard = () => {
@@ -212,6 +216,22 @@ export const BuildInChat = ({
 /** The reply choices under the lead's words about the build. */
 const BuildChoices = ({ chat, state, build, actions }) => {
   const { muted } = useConfigTokens();
+  // A cell build (release 6c): not in its cell — put it in; in it — put
+  // it back if the edits were cancelled (only an empty cell is filled).
+  if (chat.choices === "place" && actions.placeInCell) {
+    return (
+      <div data-testid="workspace-build-choices">
+        <Button title="Put it in the cell" onClick={actions.placeInCell} />
+      </div>
+    );
+  }
+  if (chat.choices === "place-again" && actions.placeInCell) {
+    return (
+      <div data-testid="workspace-build-choices">
+        <Button2 title="Put it in again" onClick={actions.placeInCell} />
+      </div>
+    );
+  }
   if (chat.choices === "open" && state.dashboard && actions.openDashboard) {
     return (
       <div data-testid="workspace-build-choices">

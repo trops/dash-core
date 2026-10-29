@@ -16,9 +16,12 @@ const pieces = (plan) =>
 /**
  * The build a plan gets: one new widget and nothing else → "widget" (built
  * like Create's widget on its own: you look at it before it's installed);
- * one bot and nothing else → "bot"; anything else → "dashboard".
+ * one bot and nothing else → "bot"; anything else → "dashboard". A plan
+ * for an empty cell (release 6c) → "cell": previewed, then the editor
+ * places it.
  */
 export function buildKind(plan) {
+  if (plan && plan.cell) return "cell";
   const all = pieces(plan);
   const layout = all.some((p) => p.kind === "layout");
   const widgets = all.filter((p) => p.kind === "widget");
@@ -33,6 +36,7 @@ export function buildKind(plan) {
 /** startPlanBuild's options for a kind of build. */
 export function buildOptions(kind) {
   if (kind === "widget") return { cell: true, standalone: true };
+  if (kind === "cell") return { cell: true };
   if (kind === "bot") return { bot: true };
   return {};
 }
@@ -411,8 +415,16 @@ export function workingLine(state) {
  *   choices: "open" | "failed" | "preview" | "continue" | "again" | null
  *   continueLabel: Carry on building, or Start it again (nothing built yet)
  *   failed: the step asked about (choices "failed")
+ * A cell build (release 6c): `cell` { dashboardName, placed, canPlace } —
+ * placed: true (in the cell, unsaved; choices "place-again"), "placing", a
+ * reason it didn't go in ("preview", "no-answer", "taken", "gone",
+ * "unknown-widget", "failed"), or unknown (a reopened one): choices "place"
+ * where it can still go in.
  */
-export function buildChat(state, { kind = "dashboard", leftOff = [] } = {}) {
+export function buildChat(
+  state,
+  { kind = "dashboard", leftOff = [], cell = null } = {},
+) {
   const steps = stepsOf(state);
   const status = buildStatus(state, leftOff);
   const built = steps.filter((s) => s.kind === "build");
@@ -464,7 +476,7 @@ export function buildChat(state, { kind = "dashboard", leftOff = [] } = {}) {
     return {
       step: { label: `Builder built ${name}`, status: "done" },
       card: { kind: "widget", title: name, sub: "Widget · preview ready" },
-      reply: `${name} is ready to look at — it's on the right, running. Tell me if anything should change before it goes into your widgets.`,
+      reply: `${name} is ready to look at — it's on the right, running. Tell me if anything should change before it goes ${kind === "cell" ? "in the cell you picked" : "into your widgets"}.`,
       choices: "preview",
     };
   }
@@ -527,6 +539,52 @@ export function buildChat(state, { kind = "dashboard", leftOff = [] } = {}) {
   const waitNote = waiting.length
     ? ` What needs ${andList(waiting)} runs once it's connected — on the right.`
     : "";
+  if (kind === "cell") {
+    const made = steps.find((s) => s.kind === "save" || s.kind === "install");
+    const name = made
+      ? String(made.label).replace(/^Install /, "")
+      : "Your widget";
+    const on = (cell && cell.dashboardName) || "your dashboard";
+    const placed = cell ? cell.placed : null;
+    const canPlace = !!(cell && cell.canPlace);
+    const why = {
+      preview: `${on} isn't being edited any more, so it couldn't go in the cell. Open ${on}, click Edit, then put it in.`,
+      "no-answer": `It couldn't go in the cell: ${on} isn't open for editing on the page with that cell. Open it there, click Edit, then put it in.`,
+      taken:
+        "The cell you picked isn't empty any more, so it wasn't put in — add it to any empty cell with Add widget.",
+      gone: "The cell you picked isn't there any more — add it to any empty cell with Add widget.",
+      "unknown-widget":
+        "It isn't ready to go in the cell yet. Try again in a moment.",
+      failed: "Something went wrong putting it in the cell. Try again.",
+    };
+    // Tried again only where it can still go in.
+    const again =
+      canPlace &&
+      placed !== "taken" &&
+      placed !== "gone" &&
+      placed !== "placing";
+    return {
+      step: { label: builtLine(), status: "done" },
+      card: {
+        kind: "widget",
+        title: name,
+        sub:
+          placed === true
+            ? "Widget · in the cell you picked"
+            : "Widget · in your widgets",
+      },
+      reply:
+        placed === true
+          ? `${name} is in the cell you picked. Save ${on} to keep it.${waitNote}`
+          : placed === "placing"
+            ? `${name} is ready — putting it in the cell you picked…`
+            : why[placed]
+              ? `${name} is in your widgets. ${why[placed]}${waitNote}`
+              : `${name} is in your widgets. If it isn't in the cell you picked yet, put it in while you're editing ${on}.${waitNote}`,
+      // Cancelled edits take it out again: it can be put back.
+      choices: again ? (placed === true ? "place-again" : "place") : null,
+    };
+  }
   if (kind === "widget") {
     const made = steps.find((s) => s.kind === "save" || s.kind === "install");
     const name = made
