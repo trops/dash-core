@@ -685,10 +685,26 @@ const DashboardStageInner = ({
         key: d.key || "role:dashlead",
         seq: Date.now(),
         seed: d.seed || null,
+        // A conversation to open on (the notifications panel, release 4).
+        recentId: d.recentId || null,
       });
     };
     window.addEventListener("dash:open-workspace", onOpen);
     return () => window.removeEventListener("dash:open-workspace", onOpen);
+  }, []);
+  // An app page from outside the stage (the bot notifications panel,
+  // release 4): { page: "providers", providerName? } | { page: "bots" }.
+  // Subscribed once; the latest handler runs (it reads current state).
+  const openPageRef = useRef(null);
+  openPageRef.current = (d) => {
+    if (d.page === "providers")
+      openAppSettings("providers", d.providerName || null);
+    else if (d.page) handleOpenPageGuarded(d.page);
+  };
+  useEffect(() => {
+    const onPage = (e) => openPageRef.current((e && e.detail) || {});
+    window.addEventListener("dash:open-page", onPage);
+    return () => window.removeEventListener("dash:open-page", onPage);
   }, []);
   const openBotSettings = useCallback((botId) => {
     if (botId) setBotPageRequest({ botId, tab: "settings" });

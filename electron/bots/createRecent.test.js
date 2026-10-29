@@ -475,6 +475,21 @@ describe("questions in Recent (phase 5e)", () => {
     const row = r.list()[0];
     assert.equal(row.planned, true);
     assert.equal(row.with, "role:dashlead");
+    // Release 4: the plan's name; plannedAt only once it records madeAt.
+    assert.equal(row.planName, "Home");
+    assert.equal(row.plannedAt, null);
+    r.save({
+      id: e.id,
+      conversation: {
+        workspacePlan: {
+          stepId: "1:t1",
+          plan: { summary: "Home" },
+          checks: {},
+          madeAt: 1234,
+        },
+      },
+    });
+    assert.equal(r.list()[0].plannedAt, 1234);
   });
 
   it("a conversation built in the workspace is tagged by its build (release 3b)", () => {
