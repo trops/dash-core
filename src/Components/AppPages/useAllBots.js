@@ -121,6 +121,8 @@ export function useAllBots() {
       loading,
       bots,
       dashTeam,
+      // Every waiting approval (the Bots page's Needs you, release 5).
+      approvals,
       statusOf: (botId) =>
         botStatus({
           botId,

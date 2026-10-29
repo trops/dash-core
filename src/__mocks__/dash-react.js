@@ -521,6 +521,39 @@ function StatusBadge({ state = "neutral", label, children }) {
     label || children,
   );
 }
+// Table: columns { key, label, render? }, rows clickable when onRowClick.
+function Table({ columns = [], data = [], onRowClick = null }) {
+  return React.createElement(
+    "table",
+    null,
+    React.createElement(
+      "thead",
+      null,
+      React.createElement(
+        "tr",
+        null,
+        columns.map((c) => React.createElement("th", { key: c.key }, c.label)),
+      ),
+    ),
+    React.createElement(
+      "tbody",
+      null,
+      data.map((row, i) =>
+        React.createElement(
+          "tr",
+          { key: i, onClick: onRowClick ? () => onRowClick(row) : undefined },
+          columns.map((c) =>
+            React.createElement(
+              "td",
+              { key: c.key },
+              c.render ? c.render(row[c.key], row) : row[c.key],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
 // DropdownPanel: rendered only while open; MenuItem2 is a button.
 function DropdownPanel({ isOpen, children }) {
   return isOpen ? React.createElement("div", { role: "menu" }, children) : null;
@@ -1153,6 +1186,7 @@ module.exports = {
   Caption2: Caption,
   Caption3: Caption,
   useStatusTokens,
+  Table,
   DASH_ROLES,
   AlertBanner,
   Code,

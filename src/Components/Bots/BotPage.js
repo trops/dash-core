@@ -43,6 +43,9 @@ import { useBotContacts } from "./useBotContacts";
  * @param {React.ReactNode} [actions]  more header buttons (the Bots view's ⋯)
  * @param {React.ReactNode} [below]  shown under the header (that menu's row)
  * @param {object} [chatProps]  more Conversation props for BotChat
+ * @param {boolean} [manageOnly]  the Bots page (lead-workspace release 5):
+ *   no Conversation tab — a lead or a bot on no dashboard has Open
+ *   conversation; a team member says it's talked to through its lead
  */
 export const BOT_PAGE_TABS = [
   { value: "conversation", label: "Conversation" },
@@ -70,15 +73,17 @@ export const BotPage = ({
   actions = null,
   below = null,
   chatProps = null,
+  manageOnly = false,
 }) => {
-  const { muted, strong, hairline } = useConfigTokens();
+  const { muted, strong, hairline, selectedBg } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const appContext = useContext(AppContext) || {};
   const c = useBotContacts();
+  const tabs = manageOnly
+    ? BOT_PAGE_TABS.filter((t) => t.value !== "conversation")
+    : BOT_PAGE_TABS;
   const [tab, setTabState] = useState(
-    BOT_PAGE_TABS.some((t) => t.value === initialTab)
-      ? initialTab
-      : "conversation",
+    tabs.some((t) => t.value === initialTab) ? initialTab : tabs[0].value,
   );
   const setTab = (next) => {
     setTabState(next);
@@ -131,10 +136,18 @@ export const BotPage = ({
   const budget = (c.budgets || {})[bot.id] || null;
   const isOver = !!(budget && budget.over);
   const isLead = bot.role === "lead";
-  const hasDashboard =
-    bot.workspaceId !== null &&
-    bot.workspaceId !== undefined &&
-    bot.workspaceId !== "";
+  const ws =
+    bot.workspaceId === null || bot.workspaceId === undefined
+      ? null
+      : workspaces.find((w) => String(w.id) === String(bot.workspaceId)) ||
+        null;
+  // On the Bots page a bot whose dashboard is gone is on no dashboard
+  // (talked to directly); elsewhere the workspace list may not be passed.
+  const hasDashboard = manageOnly
+    ? !!ws
+    : bot.workspaceId !== null &&
+      bot.workspaceId !== undefined &&
+      bot.workspaceId !== "";
   const status = isOver
     ? "Over budget"
     : botStatus({
@@ -144,15 +157,19 @@ export const BotPage = ({
         approvals,
         lastRun: (c.lastRuns || {})[bot.id] || null,
       });
-  const ws =
-    bot.workspaceId === null || bot.workspaceId === undefined
-      ? null
-      : workspaces.find((w) => String(w.id) === String(bot.workspaceId)) ||
-        null;
   const nameOf = (id) => {
     const b = bots.find((x) => x.id === id);
     return b ? b.name : id;
   };
+  // A team member is talked to through its lead (frame 15).
+  const teamLead =
+    manageOnly && !isLead && hasDashboard
+      ? bots.find(
+          (b) =>
+            b.role === "lead" &&
+            String(b.workspaceId) === String(bot.workspaceId),
+        ) || null
+      : null;
   const toSettings = () => go("settings");
   async function setPaused(pause) {
     await c.setBotPaused(bot.id, pause);
@@ -367,9 +384,19 @@ export const BotPage = ({
           ariaLabel="Show"
           value={tab}
           onChange={go}
-          options={BOT_PAGE_TABS}
+          options={tabs}
         />
       </div>
+      {teamLead ? (
+        <div className="flex-shrink-0 px-5 pb-1">
+          <div
+            data-testid="bot-page-member-note"
+            className={`rounded-lg px-4 py-3 text-sm ${muted} ${selectedBg}`}
+          >
+            {`You talk to this team through ${teamLead.name}. Each run below links to the conversation it came from.`}
+          </div>
+        </div>
+      ) : null}
 
       <div
         className="flex flex-col flex-1 min-h-0"

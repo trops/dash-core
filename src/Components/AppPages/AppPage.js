@@ -123,6 +123,8 @@ export const AppPage = ({
         dashApi={dashApi}
         onOpenBotInBotsView={onOpenBotInBotsView}
         onOpenAppSettings={onOpenAppSettings}
+        // A team's Open dashboard (lead-workspace release 5).
+        onOpenWorkspace={onOpenWorkspace}
         {...createProps}
       />
     );

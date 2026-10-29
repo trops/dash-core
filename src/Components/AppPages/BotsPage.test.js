@@ -1,6 +1,6 @@
 /**
- * BotsPage — the Bots Manage page as list + detail
- * (app-navigation PRD NAV-006).
+ * BotsPage — managing bots, teams first (lead-workspace release 5, frames
+ * 14, 15, 23–26; app-navigation NAV-006 / NAV-016).
  */
 import React from "react";
 import "@testing-library/jest-dom";
@@ -17,30 +17,38 @@ const mockApprove = jest.fn();
 const mockRefresh = jest.fn();
 // The Dash team, listed first when a test sets it.
 let mockDashTeam = [];
+const MOCK_BOTS = [
+  {
+    id: "lead7",
+    name: "Kitchen Sink Lead",
+    role: "lead",
+    workspaceId: 7,
+  },
+  {
+    id: "b1",
+    name: "Inbox Watch",
+    workspaceId: 7,
+    mcpServers: ["Gmail 3"],
+    toolSelections: { "Gmail 3": ["search_emails"] },
+    schedules: [{ cron: "0 9 * * *" }],
+  },
+  { id: "b2", name: "Digest", workspaceId: 9 },
+  { id: "b3", name: "Loose Bot", workspaceId: null },
+];
+let mockBots = MOCK_BOTS;
 jest.mock("./useAllBots", () => ({
   useAllBots: () => ({
     loading: false,
     dashTeam: mockDashTeam,
-    bots: [
-      {
-        id: "lead7",
-        name: "Kitchen Sink Lead",
-        role: "lead",
-        workspaceId: 7,
-      },
-      {
-        id: "b1",
-        name: "Inbox Watch",
-        workspaceId: 7,
-        mcpServers: ["Gmail 3"],
-        toolSelections: { "Gmail 3": ["search_emails"] },
-        schedules: [{ cron: "0 9 * * *" }],
-      },
-      { id: "b2", name: "Digest", workspaceId: 9 },
-      { id: "b3", name: "Loose Bot", workspaceId: null },
-    ],
+    bots: mockBots,
     statusOf: (id) =>
       ({ b1: "Needs approval", b2: "Running", b3: "Paused" })[id] || "Idle",
+    approvals: [
+      {
+        id: "a1",
+        request: { botId: "b1", toolName: "send_email", serverName: "Gmail 3" },
+      },
+    ],
     approvalsFor: (id) =>
       id === "b1"
         ? [
@@ -72,6 +80,7 @@ jest.mock("../Settings/details/BotDetail", () => ({
 jest.mock("../Bots/BotPage", () => ({
   BotPage: ({
     botId,
+    manageOnly,
     onOpenInBotsView,
     onDeleted,
     onDirtyChange,
@@ -79,6 +88,7 @@ jest.mock("../Bots/BotPage", () => ({
   }) => (
     <div data-testid="bot-page-stub">
       <span>bot page {botId}</span>
+      {manageOnly ? <span>manage only</span> : null}
       <button onClick={() => onOpenInBotsView({ id: 9 }, botId)}>
         stub-open-bots-view
       </button>
@@ -89,13 +99,42 @@ jest.mock("../Bots/BotPage", () => ({
   ),
 }));
 jest.mock("../Bots/DashTeamPage", () => ({
-  DashTeamPage: ({ role, onDirtyChange, onRoleChange }) => (
+  DashTeamPage: ({ role, manageOnly, initialTab, onDirtyChange }) => (
     <div data-testid="dash-team-page-stub">
-      dash team to {role}
+      {`dash team ${role} ${initialTab}${manageOnly ? " manage" : ""}`}
       <button onClick={() => onDirtyChange(true)}>team-dirty</button>
-      <button onClick={() => onRoleChange("builder")}>team-to-builder</button>
     </div>
   ),
+}));
+jest.mock("../Bots/useSpending", () => ({
+  useSpending: () => ({
+    summary: {
+      month: "2026-10",
+      overall: {
+        usd: 1.2,
+        tokens: 0,
+        planTokens: 0,
+        budget: null,
+        state: "ok",
+      },
+      bots: [
+        {
+          id: "b1",
+          name: "Inbox Watch",
+          usd: 1.2,
+          tokens: 0,
+          planTokens: 0,
+          budget: null,
+          state: "ok",
+        },
+      ],
+      dashboards: [],
+      providers: [],
+    },
+    setBudget: jest.fn(),
+    keepRunning: jest.fn(),
+    reload: jest.fn(),
+  }),
 }));
 jest.mock("../../ComponentManager", () => ({
   ComponentManager: { config: jest.fn(() => null) },
@@ -106,6 +145,7 @@ import { BotsPage } from "./BotsPage";
 const workspaces = [
   { id: 7, name: "Kitchen Sink" },
   { id: 9, name: "Mail" },
+  { id: 11, name: "Calendar" },
 ];
 
 function setup(props = {}) {
@@ -128,164 +168,247 @@ function setup(props = {}) {
   };
   window.mainApi = { bots: botsApi };
   const onOpenBotInBotsView = jest.fn();
+  const onOpenWorkspace = jest.fn();
   const utils = render(
     <AppContext.Provider value={{ providers: {} }}>
       <BotsPage
         workspaces={workspaces}
         dashApi={{ bots: botsApi }}
         onOpenBotInBotsView={onOpenBotInBotsView}
+        onOpenWorkspace={onOpenWorkspace}
         {...props}
       />
     </AppContext.Provider>,
   );
-  return { ...utils, botsApi, onOpenBotInBotsView };
+  return { ...utils, botsApi, onOpenBotInBotsView, onOpenWorkspace };
 }
 
-const list = () => screen.getByRole("list", { name: "Bots" });
+const list = () => screen.getByRole("list", { name: "Teams and bots" });
 const detail = () => screen.getByTestId("bot-detail");
-const rowNames = () =>
+const teamRows = () =>
+  screen.getAllByTestId("bots-tree-team").map((t) => {
+    const b = within(t).getAllByRole("button")[0];
+    return [
+      b.querySelector("[data-name]").textContent,
+      b.getAttribute("aria-expanded"),
+      b.textContent,
+    ];
+  });
+const botNames = () =>
+  screen
+    .queryAllByTestId("bots-tree-bot")
+    .map((b) => (b.querySelector("[data-name]") || b).textContent);
+const team = (name) =>
   within(list())
-    .queryAllByRole("button")
-    .map((b) => b.querySelector("[data-name]").textContent);
+    .getAllByRole("button", { expanded: expect.anything() })
+    .find((b) => b.textContent.includes(name));
+const teamButton = (name) =>
+  screen
+    .getAllByTestId("bots-tree-team")
+    .map((t) => within(t).getAllByRole("button")[0])
+    .find(
+      (b) => b.textContent.startsWith(name) || b.textContent.includes(name),
+    );
 
 afterEach(() => {
   delete window.mainApi;
   mockApprove.mockReset();
   mockDashTeam = [];
+  mockBots = MOCK_BOTS;
 });
 
-describe("BotsPage list (NAV-006 AC1)", () => {
-  it("groups bots by team, Unassigned last, with a LEAD label", () => {
+describe("BotsPage — teams first (frame 23)", () => {
+  it("teams, closed unless picked or needing you; Needs you on top", () => {
     setup();
-    const labels = within(list())
-      .getAllByText(/Kitchen Sink$|^Mail$|Unassigned/)
-      .map((n) => n.textContent);
-    expect(labels).toEqual(["Kitchen Sink", "Mail", "Unassigned"]);
-    expect(rowNames()).toEqual([
+    const rows = teamRows();
+    expect(rows.map((r) => r[0])).toEqual([
+      "Kitchen Sink",
+      "Mail",
+      "Dashboards with no bots",
+      "On no dashboard",
+    ]);
+    // Kitchen Sink needs you (and is picked by default): open; the rest closed.
+    expect(rows.map((r) => r[1])).toEqual(["true", "false", "false", "true"]);
+    expect(rows[0][2]).toMatch(/1 bot · Kitchen Sink Lead/);
+    expect(rows[0][2]).toMatch(/1 needs you/);
+    expect(rows[1][2]).toMatch(/1 running/);
+    // On no dashboard is open too (talked to directly).
+    expect(botNames()).toEqual([
       "Kitchen Sink Lead",
       "Inbox Watch",
-      "Digest",
       "Loose Bot",
     ]);
-    expect(within(list()).getByText("Lead")).toBeInTheDocument();
+    const needs = screen.getByTestId("bots-tree-needs");
+    expect(needs).toHaveTextContent(/Inbox Watch wants to .* · Kitchen Sink/);
+    // The team needing you is shown first.
+    expect(screen.getByTestId("team-overview")).toHaveTextContent(
+      "Bots on this team",
+    );
   });
 
-  it("shows each bot's avatar, trigger and status", () => {
+  it("a team row opens and closes, and picks the team", () => {
     setup();
-    expect(within(list()).getAllByTestId("bot-avatar")).toHaveLength(4);
-    expect(within(list()).getByText("On a schedule")).toBeInTheDocument();
-    const inbox = within(list()).getByText("Inbox Watch").closest("button");
-    expect(within(inbox).getByText("Needs approval")).toBeInTheDocument();
+    fireEvent.click(teamButton("Mail"));
+    expect(teamButton("Mail")).toHaveAttribute("aria-expanded", "true");
+    expect(botNames()).toContain("Digest");
+    expect(within(detail()).getByText("Mail")).toBeInTheDocument();
+    fireEvent.click(teamButton("Mail"));
+    expect(teamButton("Mail")).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("search matches names and handles", () => {
+  it("dashboards with no bots, as one group (frame 26)", () => {
+    setup();
+    fireEvent.click(teamButton("Dashboards with no bots"));
+    expect(botNames()).toEqual(expect.arrayContaining(["Calendar"]));
+    const overview = screen.getByTestId("team-overview");
+    expect(overview).toHaveTextContent("1 dashboard · each has a lead");
+    expect(within(overview).getByText("Calendar")).toBeInTheDocument();
+  });
+
+  it("search opens only matching teams (frame 25)", () => {
     setup();
     fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "local/digest" },
+      target: { value: "digest" },
     });
-    expect(rowNames()).toEqual(["Digest"]);
-    fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "inbox" },
-    });
-    expect(rowNames()).toEqual(["Inbox Watch"]);
+    expect(teamRows().map((r) => [r[0], r[1]])).toEqual([["Mail", "true"]]);
+    expect(botNames()).toEqual(["Digest"]);
+    expect(screen.queryByTestId("bots-tree-needs")).toBeNull();
   });
 
-  it("filters by team and by status", () => {
+  it("status: Needs you / Running / Paused", () => {
     setup();
-    const team = screen.getByRole("group", { name: "Team filter" });
-    fireEvent.click(within(team).getByLabelText(/Mail/));
-    expect(rowNames()).toEqual(["Digest"]);
-    fireEvent.click(within(team).getByLabelText(/Mail/));
     fireEvent.click(screen.getByRole("radio", { name: "Paused" }));
-    expect(rowNames()).toEqual(["Loose Bot"]);
-    fireEvent.click(screen.getByRole("radio", { name: "Needs approval" }));
-    expect(rowNames()).toEqual(["Inbox Watch"]);
+    expect(botNames()).toEqual(["Loose Bot"]);
+    fireEvent.click(screen.getByRole("radio", { name: "Needs you" }));
+    expect(botNames()).toEqual(["Inbox Watch"]);
   });
 
   it("turns automatic team leads on and off", async () => {
     const { botsApi } = setup();
     const box = await screen.findByLabelText("Create team leads automatically");
-    // A setting under the list, not a filter in the toolbar.
     expect(screen.getByTestId("auto-leads-setting")).toContainElement(box);
-    expect(box).toHaveAttribute("role", "switch");
     expect(box).toBeChecked();
     fireEvent.click(box);
     expect(botsApi.setSettings).toHaveBeenCalledWith({ autoLeads: false });
   });
 });
 
-// The detail is the bot's page (NAV-016) — its header and tabs are tested in
-// Bots/BotPage.test.js.
-describe("BotsPage detail (NAV-006 AC2, NAV-016)", () => {
-  it("shows the first bot's page, then the one you pick", () => {
+describe("BotsPage — a team's overview (frame 23)", () => {
+  it("its bots with how they run, status and this month; Open conversation and Open dashboard", () => {
+    const opened = jest.fn();
+    window.addEventListener("dash:open-workspace", opened);
+    const { onOpenWorkspace } = setup();
+    const overview = screen.getByTestId("team-overview");
+    expect(overview).toHaveTextContent("Kitchen Sink");
+    expect(overview).toHaveTextContent("1 bot · lead: Kitchen Sink Lead");
+    expect(overview).toHaveTextContent(
+      /Inbox Watch.*On a schedule.*Needs approval.*\$1\.20/,
+    );
+    // What needs you: answered in the lead's conversation.
+    expect(screen.getByTestId("team-needs")).toHaveTextContent(
+      "Answer in the conversation",
+    );
+    fireEvent.click(
+      within(overview).getByRole("button", { name: "Open conversation" }),
+    );
+    window.removeEventListener("dash:open-workspace", opened);
+    expect(opened.mock.calls[0][0].detail).toEqual({ key: "lead:lead7" });
+    fireEvent.click(
+      within(overview).getByRole("button", { name: "Open dashboard" }),
+    );
+    expect(onOpenWorkspace).toHaveBeenCalledWith(workspaces[0]);
+    // A row opens that bot.
+    fireEvent.click(
+      within(overview).getByRole("button", { name: "Inbox Watch" }),
+    );
+    expect(within(detail()).getByText("bot page b1")).toBeInTheDocument();
+  });
+
+  it("Needs you on top opens that bot inside its team", () => {
     setup();
-    expect(within(detail()).getByText("bot page lead7")).toBeInTheDocument();
-    fireEvent.click(within(list()).getByText("Digest"));
-    expect(within(detail()).getByText("bot page b2")).toBeInTheDocument();
+    fireEvent.click(teamButton("Kitchen Sink"));
+    expect(teamButton("Kitchen Sink")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    fireEvent.click(
+      within(screen.getByTestId("bots-tree-needs")).getByRole("button"),
+    );
+    expect(within(detail()).getByText("bot page b1")).toBeInTheDocument();
+    expect(teamButton("Kitchen Sink")).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
+// The detail is the bot's page (NAV-016), management only — its header and
+// tabs are tested in Bots/BotPage.test.js.
+describe("BotsPage — a bot: management only (frames 14, 15, 24)", () => {
+  it("opens the bot's page without its conversation", () => {
+    setup();
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
+    expect(within(detail()).getByText("bot page b1")).toBeInTheDocument();
+    expect(within(detail()).getByText("manage only")).toBeInTheDocument();
   });
 
   it("passes Open in Bots view through", () => {
     const { onOpenBotInBotsView } = setup();
-    fireEvent.click(within(list()).getByText("Digest"));
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
     fireEvent.click(screen.getByText("stub-open-bots-view"));
-    expect(onOpenBotInBotsView).toHaveBeenCalledWith({ id: 9 }, "b2");
+    expect(onOpenBotInBotsView).toHaveBeenCalledWith({ id: 9 }, "b1");
   });
 
   it("a deleted bot leaves the detail", async () => {
     setup();
-    fireEvent.click(within(list()).getByText("Digest"));
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
     fireEvent.click(screen.getByText("stub-deleted"));
     await waitFor(() =>
-      expect(within(detail()).queryByText("bot page b2")).toBeNull(),
+      expect(within(detail()).queryByText("bot page b1")).toBeNull(),
     );
+  });
+
+  it("refreshes when the bot's page changes it", () => {
+    setup();
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
+    fireEvent.click(screen.getByText("stub-changed"));
+    expect(mockRefresh).toHaveBeenCalled();
   });
 });
 
 describe("BotsPage — unsaved changes on a bot's page (NAV-016 AC3)", () => {
-  it("asks before another bot replaces it", () => {
+  it("asks before another bot or team replaces it", () => {
     setup();
-    fireEvent.click(within(list()).getByText("Digest"));
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
     fireEvent.click(screen.getByText("stub-dirty"));
-    fireEvent.click(within(list()).getByText("Loose Bot"));
+    fireEvent.click(teamButton("Mail"));
     const modal = screen.getByTestId("confirmation-modal");
     expect(
       within(modal).getByText("Discard unsaved changes?"),
     ).toBeInTheDocument();
-    expect(within(detail()).getByText("bot page b2")).toBeInTheDocument();
+    expect(within(detail()).getByText("bot page b1")).toBeInTheDocument();
     fireEvent.click(within(modal).getByText("Discard"));
-    expect(within(detail()).getByText("bot page b3")).toBeInTheDocument();
+    expect(screen.getByTestId("team-overview")).toHaveTextContent("Mail");
   });
 
   it("asks before switching to Log", () => {
     setup();
-    fireEvent.click(within(list()).getByText("Digest"));
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
     fireEvent.click(screen.getByText("stub-dirty"));
     fireEvent.click(screen.getByRole("radio", { name: "Log" }));
     expect(screen.getByTestId("confirmation-modal")).toBeInTheDocument();
     expect(screen.queryByTestId("audit-log-view")).toBeNull();
   });
 
-  it("keeps showing the bot when a filter would hide it", () => {
+  it("keeps showing the bot when a search would hide it", () => {
     setup();
-    fireEvent.click(within(list()).getByText("Digest"));
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
     fireEvent.click(screen.getByText("stub-dirty"));
     fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "inbox" },
+      target: { value: "digest" },
     });
-    expect(within(detail()).getByText("bot page b2")).toBeInTheDocument();
+    expect(within(detail()).getByText("bot page b1")).toBeInTheDocument();
   });
 });
 
-describe("BotsPage — the list follows Turn on / Pause", () => {
-  it("refreshes when the bot's page changes it", () => {
-    setup();
-    fireEvent.click(within(list()).getByText("Digest"));
-    fireEvent.click(screen.getByText("stub-changed"));
-    expect(mockRefresh).toHaveBeenCalled();
-  });
-});
-
-describe("BotsPage — Spending (bot-factory US-019 AC5)", () => {
+describe("BotsPage — Spending and Log", () => {
   it("Bots | Spending switches the page to this month's spending and back", async () => {
     setup();
     window.mainApi.bots.spendingSummary = jest.fn().mockResolvedValue({
@@ -297,13 +420,11 @@ describe("BotsPage — Spending (bot-factory US-019 AC5)", () => {
     });
     fireEvent.click(screen.getByRole("radio", { name: "Spending" }));
     expect(await screen.findByTestId("spending-view")).toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: "Bots" })).toBeNull();
+    expect(screen.queryByRole("list", { name: "Teams and bots" })).toBeNull();
     fireEvent.click(screen.getByRole("radio", { name: "Bots" }));
-    expect(screen.getByRole("list", { name: "Bots" })).toBeInTheDocument();
+    expect(list()).toBeInTheDocument();
   });
-});
 
-describe("BotsPage — Log (bot-factory US-003 AC5, US-014 AC9)", () => {
   it("Bots | Log shows every bot's log", async () => {
     setup();
     window.mainApi.bots.auditLog = jest
@@ -311,61 +432,95 @@ describe("BotsPage — Log (bot-factory US-003 AC5, US-014 AC9)", () => {
       .mockResolvedValue({ entries: [], more: false });
     fireEvent.click(screen.getByRole("radio", { name: "Log" }));
     expect(await screen.findByTestId("audit-log-view")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(window.mainApi.bots.auditLog).toHaveBeenCalledWith({
-        botIds: [],
-        kinds: [],
-        limit: 50,
-      }),
-    );
   });
 });
 
-describe("BotsPage — the Dash team (QA 2026-10-28)", () => {
-  const team = [
+describe("BotsPage — the Dash team", () => {
+  const dashTeam = [
+    { id: "dt_l", name: "Dash Lead", role: "dashlead", system: "dash-team" },
     { id: "dt_p", name: "Planner", role: "planner", system: "dash-team" },
     { id: "dt_b", name: "Builder", role: "builder", system: "dash-team" },
   ];
 
-  it("opens on the user's first bot, not a Dash team role", () => {
-    mockDashTeam = team;
+  it("is listed first, led by the Dash Lead; a role opens management only", () => {
+    mockDashTeam = dashTeam;
     setup();
-    expect(rowNames()[0]).toBe("Planner");
-    expect(within(detail()).getByText("bot page lead7")).toBeInTheDocument();
+    expect(teamRows()[0][0]).toBe("Dash team");
+    expect(teamRows()[0][2]).toMatch(/2 bots · Dash Lead/);
+    // Still opens on the team that needs you.
+    expect(screen.getByTestId("team-overview")).toHaveTextContent(
+      "Kitchen Sink",
+    );
+    fireEvent.click(teamButton("Dash team"));
+    expect(botNames().slice(0, 3)).toEqual(["Dash Lead", "Planner", "Builder"]);
+    fireEvent.click(within(list()).getByText("Planner"));
+    expect(screen.getByTestId("dash-team-page-stub")).toHaveTextContent(
+      "dash team planner activity manage",
+    );
   });
 
-  it("a role opens the Dash team's page, its conversation to that role", () => {
-    mockDashTeam = team;
+  it("its overview opens the Dash Lead's conversation and the team's settings", () => {
+    mockDashTeam = dashTeam;
+    const opened = jest.fn();
+    window.addEventListener("dash:open-workspace", opened);
     setup();
-    fireEvent.click(within(list()).getByText("Builder"));
-    expect(
-      within(detail()).getByText("dash team to builder"),
-    ).toBeInTheDocument();
-    fireEvent.click(within(list()).getByText("Planner"));
-    expect(
-      within(detail()).getByText("dash team to planner"),
-    ).toBeInTheDocument();
-  });
-
-  it("the page's To: picker moves the list's highlight", () => {
-    mockDashTeam = team;
-    setup();
-    fireEvent.click(within(list()).getByText("Planner"));
-    fireEvent.click(screen.getByText("team-to-builder"));
-    expect(
-      within(list()).getByText("Builder").closest("button"),
-    ).toHaveAttribute("aria-current", "true");
+    fireEvent.click(teamButton("Dash team"));
+    const overview = screen.getByTestId("team-overview");
+    fireEvent.click(
+      within(overview).getByRole("button", { name: "Open conversation" }),
+    );
+    window.removeEventListener("dash:open-workspace", opened);
+    expect(opened.mock.calls[0][0].detail).toEqual({ key: "role:dashlead" });
+    fireEvent.click(
+      within(overview).getByRole("button", { name: "Dash team settings" }),
+    );
+    expect(screen.getByTestId("dash-team-page-stub")).toHaveTextContent(
+      // The team's Settings: no role picked, so the Dash team's header.
+      "dash team null settings manage",
+    );
   });
 
   it("unsaved role edits: picking another bot asks first", () => {
-    mockDashTeam = team;
+    mockDashTeam = dashTeam;
     setup();
-    fireEvent.click(within(list()).getByText("Builder"));
+    fireEvent.click(teamButton("Dash team"));
+    fireEvent.click(within(list()).getByText("Planner"));
     fireEvent.click(screen.getByText("team-dirty"));
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
+    expect(screen.getByTestId("confirmation-modal")).toBeInTheDocument();
+    expect(screen.getByTestId("dash-team-page-stub")).toBeInTheDocument();
+  });
+});
+
+describe("BotsPage — the pick goes away, and leaving unsaved edits from anywhere", () => {
+  it("a picked bot that's gone (deleted elsewhere) falls back to the default", () => {
+    const { rerender } = setup();
+    fireEvent.click(within(list()).getByText("Inbox Watch"));
+    expect(within(detail()).getByText("bot page b1")).toBeInTheDocument();
+    mockBots = MOCK_BOTS.filter((b) => b.id !== "b1");
+    rerender(
+      <AppContext.Provider value={{ providers: {} }}>
+        <BotsPage
+          workspaces={workspaces}
+          dashApi={{ bots: window.mainApi.bots }}
+        />
+      </AppContext.Provider>,
+    );
+    expect(within(detail()).queryByText("bot page b1")).toBeNull();
+    expect(screen.getByTestId("team-overview")).toBeInTheDocument();
+  });
+
+  it("asks first from Needs you and from a team's table", () => {
+    setup();
+    fireEvent.click(teamButton("Mail"));
     fireEvent.click(within(list()).getByText("Digest"));
-    expect(screen.getByText("Discard unsaved changes?")).toBeInTheDocument();
-    expect(
-      within(detail()).getByText("dash team to builder"),
-    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("stub-dirty"));
+    fireEvent.click(
+      within(screen.getByTestId("bots-tree-needs")).getByRole("button"),
+    );
+    expect(screen.getByTestId("confirmation-modal")).toBeInTheDocument();
+    expect(within(detail()).getByText("bot page b2")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Discard"));
+    expect(within(detail()).getByText("bot page b1")).toBeInTheDocument();
   });
 });

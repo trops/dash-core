@@ -7,7 +7,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { askTeamBot, LEAD_ASK_WAIT_MS } = require("./leadAsk");
+const { askTeamBot, leadRunInfo, LEAD_ASK_WAIT_MS } = require("./leadAsk");
 
 const lead = { id: "lead_7", name: "Kitchen Sink Lead" };
 const member = { id: "b1", name: "Inbox Watch" };
@@ -71,6 +71,26 @@ describe("askTeamBot", () => {
     assert.match(res.reason, /from outside Dash/);
     assert.equal(calls.length, 0);
     assert.equal(counted, false);
+  });
+
+  it("the controller's run entry: an MCP-started lead is refused; the conversation goes on the bot's run (release 5)", async () => {
+    // What botController keeps per running lead.
+    const fromMcp = leadRunInfo({ via: "mcp", conversationId: null });
+    const { args, calls } = setup(fromMcp);
+    assert.equal((await askTeamBot(args)).skipped, true);
+    assert.equal(calls.length, 0);
+
+    const fromWorkspace = leadRunInfo({
+      via: "create",
+      conversationId: "q_42",
+    });
+    const ok = setup(fromWorkspace);
+    await askTeamBot(ok.args);
+    assert.equal(ok.calls[0].conversationId, "q_42");
+    // Asked with no conversation: nothing recorded.
+    const plain = setup(leadRunInfo(null));
+    await askTeamBot(plain.args);
+    assert.equal("conversationId" in plain.calls[0], false);
   });
 
   it("asked from Dash (no via, or Create) it runs", async () => {

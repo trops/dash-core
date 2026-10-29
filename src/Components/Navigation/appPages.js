@@ -21,7 +21,8 @@ export const APP_PAGES = [
     key: "bots",
     label: "Bots",
     icon: "robot",
-    description: "Every bot, grouped by the dashboard team it works for.",
+    description:
+      "Your teams and their bots. Open a team to see its lead and bots.",
     settingsSections: ["bots"],
   },
   {

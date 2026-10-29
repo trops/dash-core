@@ -263,12 +263,19 @@ const botApi = {
    * Ask a lead; `continueConversation` resumes its session for follow-ups.
    * Streams on onStream; resolves to the run record (answer in `output`).
    */
-  askLead: (botId, question, continueConversation = false, via = null) =>
+  askLead: (
+    botId,
+    question,
+    continueConversation = false,
+    via = null,
+    conversationId = null,
+  ) =>
     ipcRenderer.invoke(BOTS_ASK_LEAD, {
       botId,
       question,
       continueConversation,
       via,
+      conversationId,
     }),
   /**
    * Team leads by dashboard for the AI Assistant's "To:" picker (TEAM-013):

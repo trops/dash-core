@@ -26,9 +26,17 @@ import { shortTime } from "./contactsList";
 import { BotAvatar } from "./BotAvatar";
 import { DASH_TEAM_CONTACT } from "./dashTeamContact";
 import { DashTeamApprovals } from "./DashTeamApprovals";
+import { BotRunHistory } from "./BotRunHistory";
 
 const TABS = [
   { value: "conversation", label: "Conversation" },
+  { value: "settings", label: "Settings" },
+];
+
+// The Bots page (lead-workspace release 5): managing only — the role's
+// runs and the team's settings; its conversation is the Dash Lead's.
+const MANAGE_TABS = [
+  { value: "activity", label: "Activity" },
   { value: "settings", label: "Settings" },
 ];
 
@@ -423,6 +431,8 @@ const Settings = ({ all, workspaces, setDirty, guard }) => {
  * @param {(seed) => void} [onOpenPlan]  Open as a plan
  * @param {() => void} [onClose]
  * @param {(dirty: boolean) => void} [onDirtyChange]
+ * @param {boolean} [manageOnly]  the Bots page: the picked role's Activity
+ *   and the team's Settings, no conversation (lead-workspace release 5)
  */
 export const DashTeamPage = ({
   initialTab = "conversation",
@@ -432,10 +442,12 @@ export const DashTeamPage = ({
   onOpenPlan = null,
   onClose = null,
   onDirtyChange = null,
+  manageOnly = false,
 }) => {
-  const { muted, strong, hairline } = useConfigTokens();
+  const { muted, strong, hairline, selectedBg } = useConfigTokens();
+  const firstTab = manageOnly ? "activity" : "conversation";
   const [tab, setTab] = useState(
-    initialTab === "settings" ? "settings" : "conversation",
+    initialTab === "settings" ? "settings" : firstTab,
   );
   const [dirty, setDirtyState] = useState(false);
   const setDirty = (v) => {
@@ -449,7 +461,7 @@ export const DashTeamPage = ({
     if (roleSeen.current === role) return;
     roleSeen.current = role;
     setDirty(false);
-    setTab("conversation");
+    setTab(firstTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
   // A way out waiting on "Discard unsaved changes?".
@@ -462,6 +474,7 @@ export const DashTeamPage = ({
   const team = ROLE_ORDER.map((r) =>
     all.dashTeam.find((b) => b && b.role === r),
   ).filter(Boolean);
+  const roleBot = team.find((b) => b.role === role) || null;
   const turnOn = async (role) => {
     const b = botsApi();
     if (!role || !b || !b.resumeBot) return;
@@ -481,29 +494,41 @@ export const DashTeamPage = ({
         className={`flex-shrink-0 flex flex-row items-start justify-between gap-3 px-5 pt-4 pb-3 border-b ${hairline}`}
       >
         <div className="flex flex-row items-center gap-3 min-w-0">
-          <BotAvatar bot={DASH_TEAM_CONTACT} icon="people-group" large />
+          <BotAvatar
+            bot={manageOnly && roleBot ? roleBot : DASH_TEAM_CONTACT}
+            icon={manageOnly && roleBot ? "robot" : "people-group"}
+            large
+          />
           <div className="flex flex-col gap-0.5 min-w-0">
-            <h3 className="text-lg font-semibold truncate">Dash team</h3>
+            <h3 className="text-lg font-semibold truncate">
+              {manageOnly && roleBot ? roleBot.name : "Dash team"}
+            </h3>
             <span className={`text-xs ${muted}`}>
-              Dash Lead · Planner · Scout · Builder · Checker
+              {manageOnly && roleBot
+                ? `On the Dash team${roleBot.summary ? ` · ${roleBot.summary}` : ""}`
+                : "Dash Lead · Planner · Scout · Builder · Checker"}
             </span>
           </div>
         </div>
         <div className="flex flex-row items-center gap-2 flex-shrink-0">
-          <Button
-            title="Talk to the Dash Lead"
-            size="sm"
-            // Unsaved role edits are asked about first.
-            onClick={() =>
-              guard(() =>
-                window.dispatchEvent(
-                  new CustomEvent("dash:open-workspace", {
-                    detail: { key: "role:dashlead" },
-                  }),
-                ),
-              )
-            }
-          />
+          {manageOnly && roleBot && role !== "dashlead" ? null : (
+            <Button
+              // On the Bots page only the Dash Lead has a conversation (frame
+              // 14); a role says it's talked to through it.
+              title={manageOnly ? "Open conversation" : "Talk to the Dash Lead"}
+              size="sm"
+              // Unsaved role edits are asked about first.
+              onClick={() =>
+                guard(() =>
+                  window.dispatchEvent(
+                    new CustomEvent("dash:open-workspace", {
+                      detail: { key: "role:dashlead" },
+                    }),
+                  ),
+                )
+              }
+            />
+          )}
           {onClose ? (
             <ButtonIcon3
               icon="xmark"
@@ -523,13 +548,27 @@ export const DashTeamPage = ({
               setTab(v);
             })
           }
-          options={TABS}
+          options={manageOnly ? MANAGE_TABS : TABS}
         />
       </div>
+      {manageOnly && roleBot && role !== "dashlead" ? (
+        <div className="flex-shrink-0 px-5 pb-2">
+          <div
+            data-testid="dash-team-member-note"
+            className={`rounded-lg px-4 py-3 text-sm ${muted} ${selectedBg}`}
+          >
+            You talk to the Dash team through the Dash Lead.
+          </div>
+        </div>
+      ) : null}
       <div className="flex-shrink-0 px-5">
         <DashTeamApprovals compact />
       </div>
-      {tab === "conversation" ? (
+      {tab === "activity" ? (
+        <div className="flex-1 min-h-0 overflow-y-auto pb-6">
+          {roleBot ? <BotRunHistory bot={roleBot} /> : null}
+        </div>
+      ) : tab === "conversation" ? (
         <Conversation
           team={team}
           role={role}

@@ -339,6 +339,8 @@ describe("asking a team lead (5e-2a)", () => {
       "Anything urgent?",
       false,
       "create",
+      // The conversation asking: the bots the lead asks record it (release 5).
+      "plan_q1",
     );
     expect(bots.run).not.toHaveBeenCalled();
     expect(
@@ -355,6 +357,7 @@ describe("asking a team lead (5e-2a)", () => {
       "And tomorrow?",
       true,
       "create",
+      "plan_q1",
     ]);
     expect(screen.queryByRole("button", { name: "Open as a plan" })).toBeNull();
   });

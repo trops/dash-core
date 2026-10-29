@@ -530,6 +530,8 @@ class BotRunner {
     if (opts.source) runRecord.source = opts.source;
     // Who asked, when not the user directly (e.g. "assistant" — TEAM-004).
     if (opts.via) runRecord.via = opts.via;
+    // The lead-workspace conversation it came from (release 5).
+    if (opts.conversationId) runRecord.conversationId = opts.conversationId;
     this._store.appendRun(botId, runRecord);
 
     // Feed usage to budgets (Slice 5). Optional hook; only when we captured

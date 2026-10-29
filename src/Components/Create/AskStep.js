@@ -198,6 +198,7 @@ export const AskStep = ({
         (leadsRef.current || []).find((l) => l.botId === to.botId) || to;
       res = await askTeamLead(live, request, {
         continueConversation: cont,
+        conversationId: askId.current,
         onText,
         onEvent,
       });

@@ -46,6 +46,8 @@ test("asks the lead directly, labelled from Create, streaming its text", async (
     "Anything urgent?",
     true,
     "create",
+    // No conversation given: none recorded on the bots it asks.
+    null,
   );
   expect(onText).toHaveBeenCalledTimes(1);
   expect(onText).toHaveBeenCalledWith("No.");

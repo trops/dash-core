@@ -129,7 +129,11 @@ const allWidgetItems = (ws) => {
   return out;
 };
 // A plan build that's still going (fix / retry / resume / remove wait).
-const { askTeamBot, withPlanDashboard } = require("../bots/leadAsk");
+const {
+  askTeamBot,
+  leadRunInfo,
+  withPlanDashboard,
+} = require("../bots/leadAsk");
 const isBuildBusy = (state) =>
   !state || state.status === "running" || state.status === "waiting";
 const {
@@ -1237,7 +1241,11 @@ const botController = {
    * lead run with trigger "ask". Resolves to the run record (answer in
    * `output`).
    */
-  askLead(botId, question, { continueConversation = false, via = null } = {}) {
+  askLead(
+    botId,
+    question,
+    { continueConversation = false, via = null, conversationId = null } = {},
+  ) {
     const bot = this._store.get(botId);
     if (!isLead(bot)) {
       return Promise.resolve({ error: "Not a team lead.", status: "failed" });
@@ -1247,6 +1255,9 @@ const botController = {
       trigger: "ask",
       continueSession: !!continueConversation,
       via,
+      // The lead-workspace conversation asking (release 5): the bots it
+      // asks record it on their runs.
+      conversationId,
     });
   },
 
@@ -2443,7 +2454,10 @@ const botController = {
     let viaEntry = null;
     if (!this._runner.listActive().includes(botId)) {
       if (!this._runVia) this._runVia = new Map();
-      viaEntry = { via: opts.via || null };
+      viaEntry = {
+        via: opts.via || null,
+        conversationId: opts.conversationId || null,
+      };
       this._runVia.set(botId, viaEntry);
     }
     const p = this._runner.run(botId, {
@@ -2453,6 +2467,10 @@ const botController = {
       source: opts.source || null,
       // Who asked, when not the user directly (the AI Assistant, TEAM-004).
       via: opts.via || null,
+      // The conversation it came from (release 5).
+      ...(opts.conversationId
+        ? { conversationId: String(opts.conversationId) }
+        : {}),
       // Follow-ups (Ask the lead) resume the session; runs start fresh.
       continueSession: !!opts.continueSession,
       // A plan build's own team runs: no prompts (the plan was the consent).
@@ -3893,7 +3911,9 @@ const botController = {
       lead,
       member,
       request,
-      leadVia: this._runVia ? this._runVia.get(lead.id) : null,
+      // Who started the lead's run (its `via` — an outside caller can't
+      // run its bots) and the conversation it's in.
+      ...leadRunInfo(this._runVia ? this._runVia.get(lead.id) : null),
       takeHandoff: () => this._handoffs.take(lead.id, runKey),
       run: (opts) => this._run(member.id, opts),
       // Stopping the lead stops the bots it's waiting on (stop()).

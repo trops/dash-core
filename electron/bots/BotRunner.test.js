@@ -653,6 +653,17 @@ describe("BotRunner — via (TEAM-004)", () => {
     const { runner, runs } = makeRunner(mockEngine([{ type: "done" }]));
     await runner.run("bot_1", { trigger: "ask" });
     assert.equal(runs[0].run.via, undefined);
+    assert.equal(runs[0].run.conversationId, undefined);
+  });
+
+  it("records the lead conversation it came from (lead-workspace release 5)", async () => {
+    const { runner, runs } = makeRunner(mockEngine([{ type: "done" }]));
+    await runner.run("bot_1", {
+      trigger: "ask",
+      via: "lead:lead_7",
+      conversationId: "q_42",
+    });
+    assert.equal(runs[0].run.conversationId, "q_42");
   });
 });
 
