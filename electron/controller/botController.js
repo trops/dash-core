@@ -70,6 +70,7 @@ const {
   blankDashboard,
   placeWidget,
   setWidgetPrefs,
+  setItemPrefs,
   addWidgetListener,
 } = require("../utils/placeWidget");
 
@@ -2677,10 +2678,39 @@ const botController = {
       standalone = false,
       bot = false,
       edit = null,
+      // Only a widget's settings (lead-workspace release 6c): { workspaceId,
+      // itemId, pageId, scope, component, displayName } — that copy.
+      settings = null,
     } = {},
   ) {
     if (!plan || !Array.isArray(plan.pieces) || !plan.pieces.length) {
       return { error: "The plan has nothing to build." };
+    }
+    const settingsOf =
+      settings &&
+      typeof settings === "object" &&
+      settings.workspaceId != null &&
+      settings.itemId != null &&
+      typeof settings.component === "string"
+        ? {
+            workspaceId: settings.workspaceId,
+            itemId: settings.itemId,
+            pageId: settings.pageId ?? null,
+            scope: settings.scope || "main",
+            component: settings.component,
+            displayName:
+              typeof settings.displayName === "string"
+                ? settings.displayName.slice(0, 80)
+                : "",
+          }
+        : null;
+    if (settings && !settingsOf) {
+      return { error: "Couldn't tell which widget's settings to change." };
+    }
+    if (settingsOf) {
+      // A settings change goes to that copy — never a dashboard plan.
+      const { dashboard: _d, ...rest } = plan;
+      plan = rest;
     }
     let editTarget = null;
     if (edit) {
@@ -2696,6 +2726,7 @@ const botController = {
       cell: !!cell,
       standalone: !!(cell && standalone),
       bot: !!bot,
+      settings: !!settingsOf,
       edit: editTarget
         ? { package: editTarget.package, mode: editTarget.mode }
         : null,
@@ -2756,6 +2787,7 @@ const botController = {
           this._planCreateDashboard(name, count, pages),
         useDashboard: (id) => this._planUseDashboard(id),
         applyTheme: (req) => this._planApplyTheme(req),
+        setWidgetSettings: (req) => this._planSetWidgetSettings(req),
         // A cell build's own Builder / Checker: while they run, the Dash
         // team's place_widget / installDraft refuse (Phase 2b).
         askRole: editTarget
@@ -2855,6 +2887,7 @@ const botController = {
         standalone: !!(cell && standalone),
         bot: !!bot,
         edit: editTarget,
+        settings: settingsOf,
       },
     );
     entry.build = build;
@@ -3275,6 +3308,78 @@ const botController = {
     const saved = this._saveWorkspace(ws);
     if (saved && saved.error) throw new Error(saved.error);
     return { id: ws.id, name: ws.name };
+  },
+
+  /**
+   * A plan's settings change (lead-workspace release 6c): sets them on that
+   * one copy of the widget (its page, or the pinned sidebar), on its
+   * dashboard as saved — only settings the widget has, and only plain
+   * values (text, a number, on/off). Nothing is changed when its settings
+   * can't be read. Throws when the widget isn't there or nothing can be set.
+   * @returns {{ dashboard: { id, name }, changed: string[], dropped: string[] }}
+   */
+  async _planSetWidgetSettings({
+    workspaceId,
+    itemId,
+    pageId = null,
+    scope = "main",
+    component,
+    settings = {},
+  }) {
+    const ws = this._loadWorkspace(workspaceId);
+    if (!ws) throw new Error("That dashboard isn't there any more.");
+    const wanted =
+      settings && typeof settings === "object" && !Array.isArray(settings)
+        ? settings
+        : {};
+    let keys = null;
+    const parts = String(component || "").split(".");
+    if (parts.length >= 3) {
+      try {
+        const src = await require("../widgetRegistry").readWidgetSources({
+          widgetName: `@${parts[0]}/${parts[1]}`,
+          componentName: component,
+        });
+        keys = src && src.success ? settingKeys(src.configCode) : null;
+      } catch (_e) {
+        keys = null;
+      }
+    }
+    if (!keys) {
+      throw new Error("Its settings couldn't be read, so nothing was changed.");
+    }
+    const plain = (v) =>
+      typeof v === "boolean" ||
+      (typeof v === "number" && Number.isFinite(v)) ||
+      (typeof v === "string" && v.length <= 2000);
+    const changed = [];
+    const dropped = [];
+    const prefs = {};
+    for (const [key, value] of Object.entries(wanted)) {
+      if (!keys.includes(key) || !plain(value)) dropped.push(key);
+      else {
+        prefs[key] = value;
+        changed.push(key);
+      }
+    }
+    if (!changed.length) {
+      throw new Error(
+        dropped.length
+          ? `It has no setting it can take for ${dropped.join(", ")}.`
+          : "There were no settings to change.",
+      );
+    }
+    const next = setItemPrefs(ws, { itemId, component, pageId, scope }, prefs);
+    if (!next) {
+      throw new Error("That widget isn't on the dashboard any more.");
+    }
+    const saved = this._saveWorkspace(next);
+    if (saved && saved.error) throw new Error(saved.error);
+    return {
+      dashboard: { id: String(ws.id), name: ws.name || ws.label || "" },
+      changed,
+      dropped,
+    };
   },
 
   /**

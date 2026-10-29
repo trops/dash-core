@@ -9,6 +9,7 @@
 import { formatTokens } from "../../utils/runCostLabel";
 import { providerLabel } from "../Create/planChecklist";
 import { planTarget } from "../../utils/teamPlan";
+import { isSettingsChange } from "./workspacePlan";
 
 const pieces = (plan) =>
   ((plan && Array.isArray(plan.pieces) && plan.pieces) || []).filter(Boolean);
@@ -22,6 +23,9 @@ const pieces = (plan) =>
  */
 export function buildKind(plan) {
   if (plan && plan.cell) return "cell";
+  // A change to one widget (release 6c): only its settings, or what it does.
+  if (plan && plan.widgetChange)
+    return isSettingsChange(plan) ? "settings" : "edit";
   const all = pieces(plan);
   const layout = all.some((p) => p.kind === "layout");
   const widgets = all.filter((p) => p.kind === "widget");
@@ -33,8 +37,35 @@ export function buildKind(plan) {
   return "dashboard";
 }
 
-/** startPlanBuild's options for a kind of build. */
-export function buildOptions(kind) {
+/**
+ * startPlanBuild's options for a kind of build — a change to one widget
+ * (release 6c) says which, from the plan's `widgetChange`.
+ */
+export function buildOptions(kind, plan = null) {
+  const w = (plan && plan.widgetChange) || null;
+  if (kind === "settings" && w) {
+    return {
+      settings: {
+        workspaceId: w.workspaceId,
+        itemId: w.itemId,
+        pageId: w.pageId ?? null,
+        scope: w.scope || "main",
+        component: w.component,
+        displayName: w.displayName || "",
+      },
+    };
+  }
+  if (kind === "edit" && w) {
+    return {
+      edit: {
+        component: w.component,
+        mode: w.mode,
+        displayName: w.displayName || "",
+        settings: w.settingsNow || null,
+        providers: w.providers || null,
+      },
+    };
+  }
   if (kind === "widget") return { cell: true, standalone: true };
   if (kind === "cell") return { cell: true };
   if (kind === "bot") return { bot: true };
@@ -420,10 +451,14 @@ export function workingLine(state) {
  * reason it didn't go in ("preview", "no-answer", "taken", "gone",
  * "unknown-widget", "failed"), or unknown (a reopened one): choices "place"
  * where it can still go in.
+ * A change to one widget (release 6c): kind "settings" (set on that copy)
+ * or "edit" (built, previewed, then saved) — `change` { displayName, mode,
+ * dashboardName, onDashboard, settingLabels, placed, canPlace }: placed as
+ * a cell build's, for a new widget taking that copy's place.
  */
 export function buildChat(
   state,
-  { kind = "dashboard", leftOff = [], cell = null } = {},
+  { kind = "dashboard", leftOff = [], cell = null, change = null } = {},
 ) {
   const steps = stepsOf(state);
   const status = buildStatus(state, leftOff);
@@ -476,7 +511,15 @@ export function buildChat(
     return {
       step: { label: `Builder built ${name}`, status: "done" },
       card: { kind: "widget", title: name, sub: "Widget · preview ready" },
-      reply: `${name} is ready to look at — it's on the right, running. Tell me if anything should change before it goes ${kind === "cell" ? "in the cell you picked" : "into your widgets"}.`,
+      reply: `${name} is ready to look at — it's on the right, running. Tell me if anything should change before ${
+        kind === "cell"
+          ? "it goes in the cell you picked"
+          : kind === "edit" && change && change.mode === "update"
+            ? `${change.displayName || "it"} changes everywhere it's used`
+            : kind === "edit"
+              ? "it's saved as a new widget"
+              : "it goes into your widgets"
+      }.`,
       choices: "preview",
     };
   }
@@ -539,6 +582,83 @@ export function buildChat(
   const waitNote = waiting.length
     ? ` What needs ${andList(waiting)} runs once it's connected — on the right.`
     : "";
+  if (kind === "settings") {
+    const name = (change && change.displayName) || "The widget";
+    const labels = (change && change.settingLabels) || {};
+    const at = steps.find((s) => s.kind === "settings");
+    const keys = at && at.detail ? String(at.detail).split(", ") : [];
+    const which = keys.map((k) => labels[k] || k);
+    const on = dashboard
+      ? dashboard.name
+      : (change && change.dashboardName) || "";
+    return {
+      step: { label: `Changed ${name}'s settings`, status: "done" },
+      card: {
+        kind: "widget",
+        title: name,
+        sub: `Settings · ${plural(keys.length, "change")}`,
+      },
+      reply: `${name}'s settings are changed${on ? ` on ${on}` : ""}${
+        which.length ? `: ${andList(which)}` : ""
+      }. Only this copy changed.`,
+      choices: dashboard ? "open" : null,
+    };
+  }
+  if (kind === "edit") {
+    const made = steps.find((s) => s.kind === "save");
+    const was = (change && change.displayName) || "The widget";
+    const name = made
+      ? String(made.label).replace(/^(Install|Update) /, "")
+      : was;
+    const on = (change && change.dashboardName) || "your dashboard";
+    if (!change || change.mode === "update") {
+      return {
+        step: { label: builtLine(), status: "done" },
+        card: { kind: "widget", title: was, sub: "Widget · updated" },
+        reply: `${was} is updated — everywhere it's used shows the change.${waitNote}`,
+        choices: null,
+      };
+    }
+    if (!change.onDashboard) {
+      return {
+        step: { label: builtLine(), status: "done" },
+        card: { kind: "widget", title: name, sub: "Widget · in your widgets" },
+        reply: `${name} is in your widgets — ${was} stays as it is. Put it on a dashboard from any empty cell's Add widget.${waitNote}`,
+        choices: null,
+      };
+    }
+    // A new widget taking that copy's place: the editor swaps it in.
+    const placed = change.placed;
+    const why = {
+      preview: `${on} isn't being edited, so it isn't in ${was}'s place yet. Open ${on}, click Edit, then put it in.`,
+      "no-answer": `It isn't in ${was}'s place yet: ${on} isn't open for editing on the page with it. Open it there, click Edit, then put it in.`,
+      gone: `${was} isn't on ${on} any more — add the new one to any empty cell with Add widget.`,
+      "unknown-widget": "It isn't ready to go in yet. Try again in a moment.",
+      failed: "Something went wrong putting it in. Try again.",
+    };
+    const again =
+      !!change.canPlace && placed !== "gone" && placed !== "placing";
+    return {
+      step: { label: builtLine(), status: "done" },
+      card: {
+        kind: "widget",
+        title: name,
+        sub:
+          placed === true
+            ? `Widget · in ${was}'s place`
+            : "Widget · in your widgets",
+      },
+      reply:
+        placed === true
+          ? `${name} is in ${was}'s place on ${on}. Save ${on} to keep it.${waitNote}`
+          : placed === "placing"
+            ? `${name} is ready — putting it in ${was}'s place…`
+            : why[placed]
+              ? `${name} is in your widgets. ${why[placed]}${waitNote}`
+              : `${name} is in your widgets. If it isn't in ${was}'s place yet, put it in while you're editing ${on}.${waitNote}`,
+      choices: again && placed !== true ? "swap" : null,
+    };
+  }
   if (kind === "cell") {
     const made = steps.find((s) => s.kind === "save" || s.kind === "install");
     const name = made

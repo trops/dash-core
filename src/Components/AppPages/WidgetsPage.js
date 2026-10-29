@@ -65,9 +65,9 @@ const openBuilder = (detail) =>
   );
 
 /**
- * An installed widget's one door: Change <widget> (Create › Change, the same
- * event as a dashboard widget's — consolidation Phase 3P). Create offers the
- * Dash team, and "Edit the code yourself" for your own widgets.
+ * An installed widget's one door: Change <widget> (the same event as a
+ * dashboard widget's — consolidation Phase 3P): a conversation with the
+ * Dash Lead about it, with "Edit the code yourself" (lead-workspace 6c).
  */
 const openWidget = (event, widget, pkg) => {
   const component =

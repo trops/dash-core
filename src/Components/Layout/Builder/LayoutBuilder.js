@@ -342,8 +342,14 @@ export const LayoutBuilder = ({
         workspaceId,
         pageId: targetPage = null,
         scope: targetScope = null,
+        onPlaced = null,
       } = e.detail || {};
       if (!widgetComponentName || !widgetId) return;
+      // A conversation that asks (lead-workspace release 6c) is told: true,
+      // or why not — "preview", "gone", "unknown-widget", "failed".
+      const told = (result) => {
+        if (typeof onPlaced === "function") onPlaced(result);
+      };
       if (targetScope && targetScope !== (scope || "main")) return;
       if (
         (scope || "main") === "main" &&
@@ -366,6 +372,12 @@ export const LayoutBuilder = ({
         );
         return;
       }
+      // A conversation's swap only happens while editing (it says so
+      // otherwise); Create's, from before 6c, is as it was.
+      if (typeof onPlaced === "function" && previewRef.current) {
+        told("preview");
+        return;
+      }
 
       const config = ComponentManager.config(widgetComponentName);
       if (!config) {
@@ -380,6 +392,7 @@ export const LayoutBuilder = ({
         console.warn(
           `[LayoutBuilder] Widget ${widgetComponentName} not found in ComponentManager`,
         );
+        told("unknown-widget");
         return;
       }
 
@@ -397,17 +410,20 @@ export const LayoutBuilder = ({
           console.warn(
             `[LayoutBuilder] Could not find layout item ${widgetId} to swap`,
           );
+          told("gone");
           return;
         }
 
         const newWorkspace = JSON.parse(JSON.stringify(ws));
         newWorkspace.layout = newLayout;
         commitWorkspace(newWorkspace);
+        told(true);
         console.log(
           `[LayoutBuilder] AI widget swapped: ${widgetComponentName} → item ${widgetId}`,
         );
       } catch (err) {
         console.error("[LayoutBuilder] Failed to swap AI widget:", err);
+        told("failed");
       }
     };
 

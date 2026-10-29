@@ -128,7 +128,8 @@ const BuildStepLine = ({ step }) => {
  * @param {boolean} current  the conversation's plan's build: choices show
  * @param {object} actions   { fix, retry, leaveOff, approve, carryOn,
  *   openDashboard, open, placeInCell } — open("buildlog" | "check" |
- *   "preview"); placeInCell: a cell build put in its cell again (6c)
+ *   "preview"); placeInCell: a cell build put in its cell again (6c);
+ *   swapInPlace: a new widget put in the changed one's place (6c)
  * @param {string|null} actionError
  */
 export const BuildInChat = ({
@@ -142,12 +143,15 @@ export const BuildInChat = ({
   yes = "Yes, build it",
   // A cell build (release 6c): { dashboardName, placed }.
   cell = null,
+  // A change to one widget (release 6c): see buildChat.
+  change = null,
 }) => {
   const { muted } = useConfigTokens();
   const chat = buildChat(state, {
     kind: build.kind,
     leftOff: build.leftOff || [],
     cell,
+    change,
   });
   const card = chat.card;
   const openCard = () => {
@@ -222,6 +226,14 @@ const BuildChoices = ({ chat, state, build, actions }) => {
     return (
       <div data-testid="workspace-build-choices">
         <Button title="Put it in the cell" onClick={actions.placeInCell} />
+      </div>
+    );
+  }
+  // A new widget made from one on a dashboard: into its place (6c).
+  if (chat.choices === "swap" && actions.swapInPlace) {
+    return (
+      <div data-testid="workspace-build-choices">
+        <Button title="Put it in its place" onClick={actions.swapInPlace} />
       </div>
     );
   }

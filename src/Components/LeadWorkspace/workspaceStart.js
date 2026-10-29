@@ -5,6 +5,8 @@
  */
 import { providerLabel } from "../Create/planChecklist";
 import { starterToPlan } from "../Create/starters";
+import { usageText } from "../Create/editCreate";
+import { normalizeUserConfig } from "../../utils/userConfigFields";
 
 const MAKING = {
   widget: {
@@ -108,6 +110,151 @@ export function cellStart(cell, { dashboardName = "", leadName = "" } = {}) {
   };
 }
 
+/** A setting's value in a few words: "on", "not set", the text. */
+export const shownSetting = (v) => {
+  if (v === undefined || v === null || v === "") return "not set";
+  if (typeof v === "boolean") return v ? "on" : "off";
+  const t = typeof v === "object" ? JSON.stringify(v) : String(v);
+  return t.length > 40 ? `${t.slice(0, 39)}…` : t;
+};
+
+/**
+ * A widget's "Change with AI" (release 6c, frame 40): the conversation's
+ * "Changing:" line, greeting and starters, and what the lead is told — that
+ * widget only; on a dashboard, a change to only its settings is a
+ * "settings" piece (nothing is built, only that copy changes); otherwise in
+ * place (`mode` "update") or as a new widget ("new").
+ * @param {object} widget  the door's { component, itemId, workspaceId,
+ *   pageId, scope, gridItemId, cellNumber, settings, providers, error }
+ * @param {{ target, mode, usedOn, dashboardName, leadName }} found
+ *   (useWidgetTarget)
+ */
+export function widgetStart(
+  widget,
+  {
+    target,
+    mode,
+    usedOn = [],
+    dashboardName = "",
+    leadName = "",
+    canInPlace = false,
+    canSignIn = false,
+  } = {},
+) {
+  if (!widget || !target || !mode) return null;
+  const name = target.displayName || target.componentName;
+  const onDashboard = widget.itemId != null && widget.workspaceId != null;
+  const dash = dashboardName || "your dashboard";
+  const fields = normalizeUserConfig((target.config || {}).userConfig);
+  const settingsNow = {};
+  const settingLabels = {};
+  const settingOptions = {};
+  // A key, token or password: its value isn't told to the AI or saved with
+  // the conversation.
+  const secret = (key, field) =>
+    /key|token|secret|password|passwd|credential|auth/i.test(key) ||
+    /password|secret/i.test(String((field && field.type) || ""));
+  for (const [key, field] of Object.entries(fields)) {
+    const mine = widget.settings && widget.settings[key];
+    const value = mine !== undefined ? mine : field && field.defaultValue;
+    if (!secret(key, field)) settingsNow[key] = value;
+    settingLabels[key] = (field && (field.displayName || field.label)) || key;
+    const options = Array.isArray(field && field.options) ? field.options : [];
+    if (options.length) {
+      settingOptions[key] = {};
+      for (const o of options) {
+        if (o && typeof o === "object" && o.value !== undefined)
+          settingOptions[key][String(o.value)] = String(
+            o.displayName || o.label || o.value,
+          );
+      }
+    }
+  }
+  const settingsList = Object.keys(fields)
+    .map((k) =>
+      k in settingsNow
+        ? `${k} (now ${shownSetting(settingsNow[k])})`
+        : `${k} (set — not shown)`,
+    )
+    .join(", ");
+  const where =
+    mode === "update"
+      ? `the change goes into ${target.componentName} itself (in place)${
+          usedOn.length ? `, which is on ${usageText(usedOn)}` : ""
+        }: its piece is source "update" with package "${target.package}" and the name "${target.componentName}".`
+      : `the change is saved as a new widget — ${target.componentName} stays as it is: its piece is source "new" with a new name${
+          onDashboard ? `, and it takes this copy's place on ${dash}` : ""
+        }.`;
+  const error = widget.error
+    ? ` It stopped working with this error, quoted from the app: ${JSON.stringify(
+        String(widget.error).replace(/\s+/g, " ").trim().slice(0, 400),
+      )}.`
+    : "";
+  const settingsRule =
+    onDashboard && settingsList
+      ? `If the change is only to its settings — ${settingsList} — plan one widget piece {"kind": "widget", "name": "${name}", "source": "settings", "settings": {only the settings that change, by those names}}: nothing is built, and only this copy changes. Otherwise `
+      : "";
+  return {
+    label: "Changing",
+    text: onDashboard ? `${name} — on ${dash}` : name,
+    title: `What should change in ${name}?`,
+    greeting: [
+      "Say what you want different.",
+      // Only a widget with settings can change just them (live check).
+      onDashboard && settingsList
+        ? `Its settings change right here on ${dash}; a change to what it does goes to the Builder, and you see it running before it's saved.`
+        : "The Builder makes the change, and you see it running before it's saved.",
+      mode === "update"
+        ? `${name} changes everywhere it's used${usedOn.length ? ` (${usageText(usedOn)})` : ""}.`
+        : `It's saved as a new widget — ${name} stays as it is.`,
+      `${leadName || "The lead"} brings in the Dash team.`,
+    ].join(" "),
+    starters: widget.error
+      ? ["Fix the error so it works again"]
+      : onDashboard && settingsList
+        ? [
+            "Change its settings",
+            "Show more",
+            "Make it look different",
+            "Something's wrong with it",
+          ]
+        : [
+            "Show more",
+            "Make it look different",
+            "Add an option",
+            "Something's wrong with it",
+          ],
+    note: `(The user wants to change their widget ${target.componentName} — package ${target.package}, component ${target.component}${
+      onDashboard ? `, the copy on ${dash}` : ""
+    }. Read it with read_widget first. ${settingsRule}${settingsRule ? where.charAt(0) : where.charAt(0).toUpperCase()}${where.slice(1)} Plan only that widget — no other widgets, bots, theme, layout or dashboard — and say what the change adds and what it keeps.${error} When you bring in the Dash team, tell the Planner all of this.)`,
+    widget: {
+      component: target.component,
+      componentName: target.componentName,
+      displayName: name,
+      package: target.package,
+      mode,
+      usedOn,
+      onDashboard,
+      dashboardName: onDashboard ? dashboardName : "",
+      workspaceId: widget.workspaceId ?? null,
+      itemId: widget.itemId ?? null,
+      pageId: widget.pageId ?? null,
+      scope: widget.scope || "main",
+      gridItemId: widget.gridItemId ?? null,
+      cellNumber: widget.cellNumber ?? null,
+      settingsNow,
+      settingLabels,
+      settingOptions,
+      canInPlace: !!canInPlace,
+      canSignIn: !!canSignIn,
+      providers:
+        widget.providers && typeof widget.providers === "object"
+          ? widget.providers
+          : null,
+    },
+  };
+}
+
 /** What the conversation saves as its `about` (AskStep): line, note, cell. */
 export function makingAbout(start) {
   return start
@@ -116,6 +263,7 @@ export function makingAbout(start) {
         text: start.text,
         note: start.note,
         ...(start.cell ? { cell: start.cell } : {}),
+        ...(start.widget ? { widget: start.widget } : {}),
       }
     : null;
 }

@@ -29,10 +29,13 @@ import { WorkspaceSide } from "./WorkspaceSide";
 import {
   cellStart,
   makingAbout,
+  widgetStart,
   makingStart,
   registrySeed,
 } from "./workspaceStart";
 import { useDashboard } from "./useDashboard";
+import { useWidgetTarget } from "./useWidgetTarget";
+import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { useWorkspacePlan } from "./useWorkspacePlan";
 import { PlanCard, PlanChoices } from "./PlanViews";
 import { BuildInChat, BuildWalk, PastBuild } from "./BuildViews";
@@ -44,6 +47,7 @@ import {
   withPlanContext,
   yesLabel,
   cellBuildPlan,
+  widgetBuildPlan,
 } from "./workspacePlan";
 import {
   buildKind,
@@ -221,24 +225,45 @@ export const LeadWorkspace = ({
     request.cell.cellNumber
       ? request.cell
       : null;
-  const cellLead = cellReq
-    ? (leads || []).find(
-        (l) => l && String(l.dashboardId) === String(cellReq.workspaceId),
-      ) || null
-    : null;
+  // A widget's Change with AI (release 6c, frame 40): the door's
+  // { component, sourcePackage, itemId, workspaceId, pageId, scope, … } —
+  // with its dashboard's lead; from the Widgets page (no dashboard), the
+  // Dash Lead.
+  const widgetReq =
+    request && request.widget && request.widget.component
+      ? request.widget
+      : null;
+  const found = useWidgetTarget(widgetReq);
+  // The dashboard the door is on, and its lead.
+  const doorDashboardId = cellReq
+    ? cellReq.workspaceId
+    : widgetReq && widgetReq.itemId != null
+      ? widgetReq.workspaceId
+      : null;
+  const cellLead =
+    doorDashboardId != null
+      ? (leads || []).find(
+          (l) => l && String(l.dashboardId) === String(doorDashboardId),
+        ) || null
+      : null;
   const [cellKeyed, setCellKeyed] = useState(
-    !cellReq || !!(request && request.key),
+    !(cellReq || widgetReq) || !!(request && request.key),
   );
   if (!cellKeyed && leadsLoaded) {
     setCellKeyed(true);
     setKey(cellLead ? `lead:${cellLead.botId}` : "role:dashlead");
   }
   const cellDashboard = useDashboard(
-    cellReq && !cellLead ? cellReq.workspaceId : null,
+    doorDashboardId != null && !cellLead ? doorDashboardId : null,
   );
   // Until the lists are in, nothing is asked: a question must never go to a
-  // stand-in while the lead you picked is still loading.
-  const loading = !!all.loading || !leadsLoaded || !cellKeyed;
+  // stand-in while the lead you picked is still loading — nor before the
+  // widget being changed is worked out.
+  const loading =
+    !!all.loading ||
+    !leadsLoaded ||
+    !cellKeyed ||
+    (!!widgetReq && found.status === "loading");
   const picked = findContact(groups, key);
   const missing = !loading && !picked;
   const contact = loading ? null : picked;
@@ -258,17 +283,40 @@ export const LeadWorkspace = ({
       cellStart(cellReq, {
         dashboardName: cellDashboardName,
         leadName: contactName,
-      }),
-    [request, cellReq, cellDashboardName, contactName],
+      }) ||
+      widgetStart(widgetReq, {
+        target: found.target,
+        mode: found.mode,
+        usedOn: found.usedOn,
+        dashboardName: cellDashboardName,
+        leadName: contactName,
+        canInPlace: found.canInPlace,
+        canSignIn: found.canSignIn,
+      }) ||
+      (widgetReq && found.status === "missing"
+        ? {
+            label: "Changing",
+            text: widgetReq.component.split(".").pop(),
+            title: "That widget isn't installed any more",
+            greeting:
+              "It may have been removed or renamed. Open the dashboard it's on and choose Change on it again.",
+            starters: [],
+            note: "",
+            gone: true,
+          }
+        : null),
+    [request, cellReq, widgetReq, found, cellDashboardName, contactName],
   );
   const [makingOn, setMakingOn] = useState(
-    !!(request && request.making) || !!cellReq,
+    !!(request && request.making) || !!cellReq || !!widgetReq,
   );
   const makingShown =
     !!making &&
     makingOn &&
     !!contact &&
-    (making.cell ? contact.kind !== "bot" : contact.kind === "dashlead");
+    (making.cell || making.widget || making.gone
+      ? contact.kind !== "bot"
+      : contact.kind === "dashlead");
   const [switchOpen, setSwitchOpen] = useState(false);
   // What's open in the middle: a thread ({ recentId }), a new question just
   // sent ({ question }), or nothing yet (the start).
@@ -359,6 +407,24 @@ export const LeadWorkspace = ({
       : open && open.recentId && reopenedAbout && reopenedAbout.cell
         ? reopenedAbout.cell
         : null;
+  // The widget this conversation changes (release 6c): the door's, or a
+  // reopened one's.
+  const convWidgetAsIs =
+    makingShown && making.widget && (!open || open.making)
+      ? making.widget
+      : open && open.recentId && reopenedAbout && reopenedAbout.widget
+        ? reopenedAbout.widget
+        : null;
+  // In place or a new widget, when it can go either way: the user's pick
+  // on the plan (review fix — Create › Change let them choose too).
+  const [modePick, setModePick] = useState(null);
+  const convWidget = useMemo(
+    () =>
+      convWidgetAsIs && modePick && convWidgetAsIs.canInPlace
+        ? { ...convWidgetAsIs, mode: modePick }
+        : convWidgetAsIs,
+    [convWidgetAsIs, modePick],
+  );
   // The plan this conversation is about (release 3a) — for its cell, if any.
   const wp = useWorkspacePlan({
     messages,
@@ -366,6 +432,7 @@ export const LeadWorkspace = ({
     reopened: !!(open && open.recentId),
     convKey: open ? `${key}:${open.key}` : key,
     cell: convCell,
+    widget: convWidget,
   });
   const { width: sideWidth, handleProps } = useResizableWidth({
     defaultWidth: 420,
@@ -380,6 +447,39 @@ export const LeadWorkspace = ({
     [entries, now, contact],
   );
 
+  // Edit the code yourself: the Widget Builder on this widget, by hand
+  // (dash-electron hears dash:edit-widget-code), with this copy's settings
+  // and connections; a new widget saved there takes this one's place.
+  const editByHand = () => {
+    const w = making && making.widget;
+    if (!w || typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("dash:edit-widget-code", {
+        detail: {
+          widgetComponentName: w.component,
+          sourcePackage: w.package,
+          widgetId: w.itemId != null ? w.itemId : `${w.package}/${w.component}`,
+          workspaceId: w.workspaceId ?? null,
+          gridItemId: w.gridItemId ?? null,
+          cellNumber: w.cellNumber ?? null,
+          userPrefs: (widgetReq && widgetReq.settings) || null,
+          selectedProviders: w.providers || null,
+        },
+      }),
+    );
+    onClose();
+  };
+  // Signed out, a widget the user published can't change in place: sign
+  // in, then work it out again (review fix — Create › Change offered it).
+  const { ensureAuthed, authGate } = useRegistryAuthGate();
+  const signInToChange = async () => {
+    const ok = await ensureAuthed({
+      message: `Sign in to the registry to change ${
+        (making && making.widget && making.widget.displayName) || "it"
+      } in place.`,
+    });
+    if (ok && found.refresh) found.refresh();
+  };
   // Moving on — another lead, a new or other conversation, a question —
   // leaves what was being started behind: a seed still saving doesn't open
   // over it afterwards.
@@ -395,6 +495,7 @@ export const LeadWorkspace = ({
     moves.current += 1;
     setSeedError(null);
     setReopenedAbout(null);
+    setModePick(null);
   };
   const switchTo = (next) => {
     setSwitchOpen(false);
@@ -487,7 +588,12 @@ export const LeadWorkspace = ({
     moveOn();
     setDraft("");
     setSideOpen(null);
-    setOpen({ key: `new:${Date.now()}`, question: q, making: makingShown });
+    setOpen({
+      key: `new:${Date.now()}`,
+      question: q,
+      // A widget that's gone isn't what this question is about.
+      making: makingShown && !making.gone,
+    });
   };
 
   // The plan's build, live (release 3b) — from how it last ended until the
@@ -533,11 +639,18 @@ export const LeadWorkspace = ({
     const from = { key: wp.key, stepId: wp.step ? wp.step.id : null };
     const at = carryOn && wp.build ? wp.build.at : messages.length - 1;
     const start = (resumeFrom) =>
-      b.startPlanBuild(kind === "cell" ? cellBuildPlan(wp.plan) : wp.plan, {
-        ...buildOptions(kind),
-        ...(resumeFrom ? { resumeFrom } : {}),
-        ...(conversationId ? { recentId: conversationId } : {}),
-      });
+      b.startPlanBuild(
+        kind === "cell"
+          ? cellBuildPlan(wp.plan)
+          : kind === "settings" || kind === "edit"
+            ? widgetBuildPlan(wp.plan)
+            : wp.plan,
+        {
+          ...buildOptions(kind, wp.plan),
+          ...(resumeFrom ? { resumeFrom } : {}),
+          ...(conversationId ? { recentId: conversationId } : {}),
+        },
+      );
     setStarting(true);
     try {
       let res = await start(earlier ? earlier.buildId : null);
@@ -684,8 +797,79 @@ export const LeadWorkspace = ({
       placeInCell();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cellBuildId, cellStatus]);
+  // A change to one widget that's done (release 6c), once, when it
+  // finishes here: in place, it reloads everywhere it runs; a new widget
+  // goes in your widgets and, made from one on a dashboard, the editor puts
+  // it in that one's place — an unsaved change, told back as a cell build's
+  // is (`placements`).
+  const changeBuildId =
+    wp.build && wp.build.kind === "edit" ? wp.build.buildId : null;
+  const changeStatus =
+    changeBuildId && pb.state
+      ? buildStatus(pb.state, (wp.build && wp.build.leftOff) || [])
+      : null;
+  const changeDone =
+    changeStatus === "done" || changeStatus === "waiting-for-providers";
+  const canSwap = !!(
+    convWidget &&
+    convWidget.onDashboard &&
+    convWidget.mode === "new" &&
+    madeForCell &&
+    madeForCell.component
+  );
+  const swapInPlace = () => {
+    if (!canSwap || !wp.build) return;
+    const id = wp.build.buildId;
+    const w = convWidget;
+    const set = (v) =>
+      alive.current && setPlacements((cur) => ({ ...cur, [id]: v }));
+    set("placing");
+    let answered = false;
+    let timer = null;
+    const answer = (result) => {
+      if (answered) return;
+      answered = true;
+      if (timer) clearTimeout(timer);
+      set(result === true ? true : String(result || "failed"));
+    };
+    timer = setTimeout(() => answer("no-answer"), 8000);
+    window.dispatchEvent(
+      new CustomEvent("dash:swap-widget-in-cell", {
+        detail: {
+          widgetComponentName: madeForCell.component,
+          widgetId: w.itemId,
+          workspaceId: w.workspaceId,
+          pageId: w.pageId ?? null,
+          scope: w.scope || "main",
+          onPlaced: answer,
+        },
+      }),
+    );
+  };
+  const sawChanging = useRef(null);
+  useEffect(() => {
+    if (!changeBuildId || !changeStatus) return;
+    if (!changeDone) {
+      sawChanging.current = changeBuildId;
+      return;
+    }
+    if (sawChanging.current !== changeBuildId) return;
+    sawChanging.current = null;
+    const w = convWidget;
+    if (w && w.mode === "update") {
+      window.dispatchEvent(
+        new CustomEvent("dash:widget-changed", {
+          detail: { package: w.package, component: w.component },
+        }),
+      );
+    }
+    window.dispatchEvent(new Event("dash:widgets-updated"));
+    if (canSwap && placements[changeBuildId] === undefined) swapInPlace();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [changeBuildId, changeStatus]);
   const buildActions = {
     placeInCell,
+    swapInPlace,
     fix: pb.fix,
     retry: pb.retry,
     approve: pb.approve,
@@ -735,6 +919,23 @@ export const LeadWorkspace = ({
                 current
                 yes={yesLabel(wp.plan)}
                 actions={buildActions}
+                change={
+                  b.kind === "edit" || b.kind === "settings"
+                    ? {
+                        displayName: convWidget ? convWidget.displayName : "",
+                        mode: convWidget ? convWidget.mode : null,
+                        dashboardName: convWidget
+                          ? convWidget.dashboardName
+                          : "",
+                        onDashboard: !!(convWidget && convWidget.onDashboard),
+                        settingLabels: convWidget
+                          ? convWidget.settingLabels
+                          : null,
+                        placed: placements[b.buildId],
+                        canPlace: canSwap,
+                      }
+                    : null
+                }
                 cell={
                   b.kind === "cell"
                     ? {
@@ -1203,6 +1404,17 @@ export const LeadWorkspace = ({
                       />
                     ))}
                   </div>
+                  {/* Change with AI (release 6c): the Widget Builder, by
+                      hand, as Create › Change offered. */}
+                  {makingShown && making.widget ? (
+                    <div>
+                      <Button3
+                        size="sm"
+                        title="Edit the code yourself"
+                        onClick={editByHand}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <ChatComposer
@@ -1274,6 +1486,16 @@ export const LeadWorkspace = ({
           {contact ? (
             <WorkspaceSide
               contact={contact}
+              // A change to one widget (release 6c): in place or new, and
+              // signing in to change it in place.
+              onWidgetMode={
+                convWidget && convWidget.canInPlace ? setModePick : null
+              }
+              onSignIn={
+                convWidget && convWidget.canSignIn && making && making.widget
+                  ? signInToChange
+                  : null
+              }
               messages={messages}
               statusOf={all.statusOf}
               wp={wp}
@@ -1306,6 +1528,7 @@ export const LeadWorkspace = ({
           onCancel={() => setWalking(false)}
         />
       ) : null}
+      {authGate}
     </Modal>
   );
 };

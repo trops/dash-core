@@ -9,7 +9,7 @@
  *   3. For installed widgets (a scoped id, or AI-built), a "Fix with AI"
  *      button is rendered (consolidation Phase 3).
  *   4. That button dispatches `dash:edit-widget-with-ai` with the error, so
- *      Create › Change <widget> opens on the failing widget.
+ *      a Change with AI conversation opens on the failing widget.
  *   5. Which widgets get it is canFixWithAi (tested below on real ids);
  *      new code for the widget clears the box (keyed to its version).
  *

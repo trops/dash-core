@@ -187,7 +187,7 @@ describe("botController — bot builds (Phase 2c-1)", () => {
   it("checks a bot plan as one bot and builds in bot mode", () => {
     assert.match(
       ctrl,
-      /cell: !!cell,\s*standalone: !!\(cell && standalone\),\s*bot: !!bot,\s*edit: editTarget[\s\S]{0,160}?\}\);/,
+      /cell: !!cell,\s*standalone: !!\(cell && standalone\),\s*bot: !!bot,\s*(settings: !!settingsOf,\s*)?edit: editTarget[\s\S]{0,160}?\}\);/,
     );
     assert.match(
       ctrl,

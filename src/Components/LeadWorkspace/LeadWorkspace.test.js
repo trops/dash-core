@@ -83,6 +83,15 @@ jest.mock("../AiAssistant/components/RecipientPicker", () => ({
   }),
 }));
 
+// Which widget a Change with AI is about (release 6c): set per test.
+let mockWidgetTarget = { status: "none", target: null, mode: null, usedOn: [] };
+jest.mock("./useWidgetTarget", () => ({
+  useWidgetTarget: (widget) =>
+    widget
+      ? mockWidgetTarget
+      : { status: "none", target: null, mode: null, usedOn: [] },
+}));
+
 import { LeadWorkspace } from "./LeadWorkspace";
 import { WorkspaceSide } from "./WorkspaceSide";
 
@@ -2639,5 +2648,371 @@ describe("an empty cell (release 6c, frames 38, 39)", () => {
     expect(
       within(chat()).getByRole("button", { name: "Put it in the cell" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Change with AI (release 6c, frame 40)", () => {
+  const DOOR = {
+    component: "trops.weather.Weather",
+    sourcePackage: "@trops/weather",
+    itemId: 12,
+    workspaceId: "7",
+    pageId: "p1",
+    scope: "main",
+    settings: { units: "f" },
+  };
+  const TARGET = {
+    component: "trops.weather.Weather",
+    componentName: "Weather",
+    displayName: "Weather",
+    package: "@trops/weather",
+    config: {
+      userConfig: {
+        units: { displayName: "Units", defaultValue: "f" },
+        days: { displayName: "Forecast", defaultValue: 5 },
+      },
+    },
+  };
+  const you = (text) => ({ who: "you", text });
+  const reply = { who: "role", text: "Change it?" };
+  const api = { busy: false, send: jest.fn(), focusReply: jest.fn() };
+  const planStep = (plan) => ({
+    who: "step",
+    id: "1:t1",
+    bot: "the Planner",
+    label: "Asked the Planner",
+    status: "done",
+    answer: "Here's a plan.",
+    result: "Here's a plan.",
+    plan,
+  });
+  let push = null;
+  beforeEach(() => {
+    push = null;
+    mockWidgetTarget = {
+      status: "ready",
+      target: TARGET,
+      mode: "new",
+      usedOn: ["Kitchen Sink"],
+    };
+    Object.assign(window.mainApi.bots, {
+      startPlanBuild: jest
+        .fn()
+        .mockResolvedValue({ buildId: "build_w", state: null }),
+      getPlanBuild: jest.fn().mockResolvedValue(null),
+      onPlanBuild: jest.fn((cb) => {
+        push = (state) => act(() => cb({ buildId: "build_w", state }));
+        return 9;
+      }),
+    });
+  });
+  afterEach(() => {
+    mockWidgetTarget = { status: "none", target: null, mode: null, usedOn: [] };
+  });
+
+  test("opens with its dashboard's lead: Changing: Weather — on Kitchen Sink", () => {
+    render(<LeadWorkspace request={{ widget: DOOR }} onClose={jest.fn()} />);
+    expect(screen.getByTestId("workspace-switcher")).toHaveTextContent(
+      "Kitchen Sink Lead",
+    );
+    expect(screen.getByTestId("workspace-about")).toHaveTextContent(
+      "Changing: Weather — on Kitchen Sink",
+    );
+    expect(screen.getByTestId("workspace-start")).toHaveTextContent(
+      "What should change in Weather?",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Change its settings" }),
+    );
+    expect(mockAskProps.recipient).toMatchObject({ botId: "lead_7" });
+    expect(mockAskProps.about.widget).toMatchObject({
+      component: "trops.weather.Weather",
+      itemId: 12,
+      mode: "new",
+    });
+  });
+
+  test("from the Widgets page: the Dash Lead", () => {
+    render(
+      <LeadWorkspace
+        request={{ widget: { ...DOOR, itemId: null, workspaceId: null } }}
+        onClose={jest.fn()}
+      />,
+    );
+    expect(screen.getByTestId("workspace-switcher")).toHaveTextContent(
+      "Dash Lead",
+    );
+    expect(screen.getByTestId("workspace-about")).toHaveTextContent(
+      "Changing: Weather",
+    );
+  });
+
+  test("Edit the code yourself: the Widget Builder on it, by hand; the window closes", () => {
+    const onClose = jest.fn();
+    render(<LeadWorkspace request={{ widget: DOOR }} onClose={onClose} />);
+    const heard = [];
+    const listen = (e) => heard.push(e.detail);
+    window.addEventListener("dash:edit-widget-code", listen);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit the code yourself" }),
+    );
+    window.removeEventListener("dash:edit-widget-code", listen);
+    expect(heard[0]).toMatchObject({
+      widgetComponentName: "trops.weather.Weather",
+      sourcePackage: "@trops/weather",
+      widgetId: 12,
+      workspaceId: "7",
+      userPrefs: { units: "f" },
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test("in place or new, when it can go either way: the plan's switch decides the build", async () => {
+    mockWidgetTarget = {
+      ...mockWidgetTarget,
+      mode: "update",
+      canInPlace: true,
+    };
+    const CODE = {
+      summary: "Hourly",
+      pieces: [
+        {
+          kind: "widget",
+          name: "Weather",
+          source: "update",
+          package: "@trops/weather",
+        },
+      ],
+    };
+    render(<LeadWorkspace request={{ widget: DOOR }} onClose={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([you("Show more"), planStep(CODE), reply]);
+    });
+    fireEvent.click(screen.getByTestId("workspace-output-plan"));
+    const sw = within(
+      screen.getByTestId("workspace-plan-widget-mode"),
+    ).getByRole("switch");
+    fireEvent.click(sw);
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    const choices = render(node);
+    fireEvent.click(
+      within(choices.container).getByRole("button", { name: "Yes, change it" }),
+    );
+    choices.unmount();
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
+    );
+    expect(window.mainApi.bots.startPlanBuild.mock.calls[0][1].edit.mode).toBe(
+      "new",
+    );
+  });
+
+  test("signed out, theirs perhaps: Sign in to change it in place", () => {
+    mockWidgetTarget = { ...mockWidgetTarget, mode: "new", canSignIn: true };
+    const CODE = {
+      summary: "Hourly",
+      pieces: [{ kind: "widget", name: "Weather 2", source: "new" }],
+    };
+    render(<LeadWorkspace request={{ widget: DOOR }} onClose={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([you("Show more"), planStep(CODE), reply]);
+    });
+    fireEvent.click(screen.getByTestId("workspace-output-plan"));
+    expect(screen.getByTestId("workspace-plan-widget-mode")).toHaveTextContent(
+      "Published Weather yourself? Sign in to change it in place.",
+    );
+  });
+
+  test("a widget that isn't installed any more says so", () => {
+    mockWidgetTarget = {
+      status: "missing",
+      target: null,
+      mode: null,
+      usedOn: [],
+    };
+    render(<LeadWorkspace request={{ widget: DOOR }} onClose={jest.fn()} />);
+    expect(screen.getByTestId("workspace-start")).toHaveTextContent(
+      "That widget isn't installed any more",
+    );
+  });
+
+  const yesChangeIt = async (plan) => {
+    render(<LeadWorkspace request={{ widget: DOOR }} onClose={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([you("Show more"), planStep(plan), reply]);
+    });
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    const choices = render(node);
+    fireEvent.click(
+      within(choices.container).getByRole("button", { name: "Yes, change it" }),
+    );
+    choices.unmount();
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
+    );
+    await waitFor(() => expect(push).not.toBeNull());
+  };
+  const chat = () => {
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    return render(node).container;
+  };
+
+  test("only its settings: set on that copy, without the Builder", async () => {
+    const SETTINGS = {
+      summary: "°C",
+      pieces: [
+        {
+          kind: "widget",
+          name: "Weather",
+          source: "settings",
+          settings: { units: "c" },
+        },
+      ],
+    };
+    await yesChangeIt(SETTINGS);
+    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(SETTINGS, {
+      settings: {
+        workspaceId: "7",
+        itemId: 12,
+        pageId: "p1",
+        scope: "main",
+        component: "trops.weather.Weather",
+        displayName: "Weather",
+      },
+      recentId: "q_new",
+    });
+    push({
+      status: "done",
+      dashboard: { id: "7", name: "Kitchen Sink", targeted: true },
+      steps: [
+        {
+          id: "settings:0",
+          kind: "settings",
+          status: "done",
+          label: "Change Weather's settings",
+          detail: "units",
+        },
+      ],
+    });
+    expect(
+      within(chat()).getByTestId("workspace-build-reply"),
+    ).toHaveTextContent(
+      "Weather's settings are changed on Kitchen Sink: Units. Only this copy changed.",
+    );
+  });
+
+  test("what it does: an edit build; done, the new one goes in its place", async () => {
+    const CODE = {
+      summary: "Hourly",
+      pieces: [{ kind: "widget", name: "Weather Hourly", source: "new" }],
+    };
+    await yesChangeIt(CODE);
+    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(CODE, {
+      edit: {
+        component: "trops.weather.Weather",
+        mode: "new",
+        displayName: "Weather",
+        settings: { units: "f", days: 5 },
+        providers: null,
+      },
+      recentId: "q_new",
+    });
+    const heard = [];
+    const listen = (e) => heard.push(e.detail);
+    window.addEventListener("dash:swap-widget-in-cell", listen);
+    push({
+      status: "running",
+      steps: [
+        {
+          kind: "build",
+          status: "running",
+          label: "Write the change into a draft",
+        },
+      ],
+    });
+    push({
+      status: "done",
+      made: [{ component: "ai-built.weatherhourly.WeatherHourly" }],
+      steps: [
+        {
+          kind: "build",
+          status: "done",
+          label: "Write the change into a draft",
+        },
+        { kind: "save", status: "done", label: "Install Weather Hourly" },
+      ],
+    });
+    window.removeEventListener("dash:swap-widget-in-cell", listen);
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toMatchObject({
+      widgetComponentName: "ai-built.weatherhourly.WeatherHourly",
+      widgetId: 12,
+      workspaceId: "7",
+      pageId: "p1",
+      scope: "main",
+    });
+    act(() => heard[0].onPlaced(true));
+    expect(
+      within(chat()).getByTestId("workspace-build-reply"),
+    ).toHaveTextContent(
+      "Weather Hourly is in Weather's place on Kitchen Sink. Save Kitchen Sink to keep it.",
+    );
+  });
+
+  test("in place: done, it's reloaded everywhere; nothing is swapped", async () => {
+    mockWidgetTarget = { ...mockWidgetTarget, mode: "update" };
+    const CODE = {
+      summary: "Hourly",
+      pieces: [
+        {
+          kind: "widget",
+          name: "Weather",
+          source: "update",
+          package: "@trops/weather",
+        },
+      ],
+    };
+    await yesChangeIt(CODE);
+    const changed = [];
+    const swapped = [];
+    const onChanged = (e) => changed.push(e.detail);
+    const onSwap = (e) => swapped.push(e.detail);
+    window.addEventListener("dash:widget-changed", onChanged);
+    window.addEventListener("dash:swap-widget-in-cell", onSwap);
+    push({
+      status: "running",
+      steps: [{ kind: "build", status: "running", label: "x" }],
+    });
+    push({
+      status: "done",
+      made: [{ component: "trops.weather.Weather" }],
+      steps: [{ kind: "save", status: "done", label: "Update Weather" }],
+    });
+    window.removeEventListener("dash:widget-changed", onChanged);
+    window.removeEventListener("dash:swap-widget-in-cell", onSwap);
+    expect(changed).toEqual([
+      { package: "@trops/weather", component: "trops.weather.Weather" },
+    ]);
+    expect(swapped).toHaveLength(0);
+    expect(
+      within(chat()).getByTestId("workspace-build-reply"),
+    ).toHaveTextContent(
+      "Weather is updated — everywhere it's used shows the change.",
+    );
   });
 });

@@ -100,16 +100,16 @@ describe("an empty cell's AI doors open its lead's conversation (lead-workspace 
   });
 });
 
-// Consolidation Phase 3: every Change with AI door opens Create › Change
-// <widget> — the card menu, the Edit panel and Ask AI, the error box, the
-// Widgets page — through one event DashboardStage turns into Create.
-describe("Change with AI doors open Create on the widget", () => {
-  it("DashboardStage opens Create with the change", () => {
+// Lead-workspace release 6c-3: every Change with AI door — the card menu,
+// the Edit panel and Ask AI, the error box, the Widgets page — opens a
+// conversation about that widget, through one event.
+describe("Change with AI doors open a conversation about the widget", () => {
+  it("DashboardStage opens the workspace with the widget, no lead key (its dashboard's lead is found)", () => {
     expect(stageSrc).toMatch(
       /window\.addEventListener\("dash:edit-widget-with-ai", handler\)/,
     );
     expect(stageSrc).toMatch(
-      /edit=\{createRequest \? createRequest\.edit \|\| null : null\}/,
+      /setWorkspaceRequest\(\{\s*key: null,\s*seq: Date\.now\(\),\s*widget: \{\s*component: String\(d\.widgetComponentName\),/,
     );
   });
   it("the card menu and the Edit panel have one Change <widget>; no Ask AI tab (Phase 3P)", () => {

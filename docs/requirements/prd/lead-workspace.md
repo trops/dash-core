@@ -110,7 +110,38 @@ Smaller windows (35–36), light theme, carrying existing Dash team questions in
       - A finished build that is reopened isn't put in again by itself; it offers Put it in the cell.
     - **A plan that doesn't fit one cell** (more widgets, a bot, a theme): the card says "Plan · doesn't fit one cell" and the opened plan lists each piece. It's checked as the cell build will check it (`validatePlan` with `cell`), so instead of Yes, add it there's **Ask the Planner to fix it**.
     - **Not done:** with no lead, the dashboard's name comes from the saved dashboard, which loads after the window opens. A question sent in that moment saves "Your dashboard" in its "For:" line.
-  - **6c-3 — Change with AI** (frame 40), **6c-4 — the Create window and the dock's Create panel removed.**
+  - **6c-3 — Change with AI (frame 40).**
+    - **The doors:** every Change with AI door (the widget's ⋮ menu, the Edit panel and Ask AI, the error box, the Widgets page) opens a conversation about that widget instead of Create › Change. One event (`dash:edit-widget-with-ai`) sends `dash:open-workspace`'s `widget`. A widget on a dashboard is talked over with that dashboard's lead, or the Dash Lead when it has none. From the Widgets page, it's the Dash Lead.
+    - **Which widget it is** is worked out as Create › Change did (`useWidgetTarget`): its component and package, its name, and the dashboards it's on.
+      - The change goes in place ("update") when it's the user's own widget, from a package that can change in place. Otherwise it's saved as a new widget ("new").
+      - A widget that isn't installed any more says so.
+    - **The conversation:** "Changing: Weather — on Kitchen Sink", "What should change in Weather?", and the lead's greeting, which says where the change goes. From the error box, its one starter is "Fix the error so it works again".
+      - The note tells the lead to read the widget, and to plan only that widget. On a dashboard, a change to only its settings is one piece with source **"settings"** and the settings that change. Otherwise the piece is source "update" (in place) or "new" (taking that copy's place).
+      - What it's about is saved with the conversation (`about.widget`), with its settings now and their names.
+    - **The plan** says which widget (`planForWidget` → `widgetChange`):
+      - The card reads "Weather — changes", "Plan · 2 settings change" or "Plan · a change to what it does", and the button is **Yes, change it**.
+      - The opened plan lists each setting as "Units — f → c" (a setting), then "Place and size — unchanged". A code change instead lists "What it does — the Builder changes it", then in place (where it's used) or a new widget (taking this copy's place).
+      - A plan that's more than that widget says so, and is checked as its build will be, so instead of Yes there's **Ask the Planner to fix it**.
+    - **A settings change** (new in this release; `teamPlan` source "settings", context `settings`; `planBuild` `opts.settings`, one "settings" step; `botController._planSetWidgetSettings`):
+      - It sets only the settings the widget has on that item of its dashboard, as saved (`setWidgetPrefs`), and saves it. Nothing is built and no AI runs.
+      - Unsaved edits on that dashboard come first.
+      - The lead says "Weather's settings are changed on Kitchen Sink: Units and Forecast. Only this copy changed."
+    - **A change to what it does** is Create's edit build (`opts.edit`): the Builder, the Checker, and the preview in the conversation ("…before Weather changes everywhere it's used" or "…before it's saved as a new widget").
+      - Once it's done here: in place, `dash:widget-changed` and `dash:widgets-updated` ("Weather is updated — everywhere it's used shows the change").
+      - A new widget made from one on a dashboard goes into that one's place through the editor (`dash:swap-widget-in-cell` with `onPlaced`, now answered by LayoutBuilder; only while editing). The lead says "Weather Hourly is in Weather's place on Kitchen Sink. Save Kitchen Sink to keep it." Otherwise it says why, and offers **Put it in its place**.
+      - From the Widgets page, a new widget goes in your widgets.
+    - **Review fixes:**
+      - A settings change writes one copy only: that page's item (and the top-level mirror when it's the page shown), or the pinned sidebar's (`placeWidget.setItemPrefs`). It also matches a dashboard saved with the bare component name.
+      - Only settings the widget has, with plain values (text up to 2,000 characters, a number, on/off), are set. Nothing is set when its settings can't be read. The plan flags a setting it doesn't have.
+      - A settings change from the Widgets page doesn't fit, and asks the Planner to fix it.
+      - A setting that looks like a key, token or password keeps its value out of the note and the saved conversation.
+      - A choice setting shows its label.
+      - When a change can go either way, the plan has a Switch, "Change Weather everywhere it's used". Off, it's saved as a new widget.
+      - Signed out, with a widget the user may have published: "Sign in to change it in place", then the widget is worked out again.
+      - **Edit the code yourself** (the Widget Builder by hand) is on the start of the conversation.
+      - A widget with no settings isn't promised a settings change.
+    - **Not done:** Create's code diff of the change (the preview runs it), and the Scout's "what it does now" card (the lead reads the widget).
+  - **6c-4 — the Create window and the dock's Create panel removed.**
 
 ## Risks
 

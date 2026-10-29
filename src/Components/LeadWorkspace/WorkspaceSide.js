@@ -268,6 +268,9 @@ export const WorkspaceSide = ({
   dashTeam = [],
   onSummary = null,
   onUseRegistry = null,
+  // A change to one widget (release 6c): in place or new; sign in.
+  onWidgetMode = null,
+  onSignIn = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const { currentTheme } = useContext(ThemeContext) || {};
@@ -390,6 +393,8 @@ export const WorkspaceSide = ({
         onBuild={onBuild}
         buildLine={buildLine}
         leadName={contact ? contact.name : undefined}
+        onWidgetMode={onWidgetMode}
+        onSignIn={onSignIn}
       />,
     );
   }
@@ -492,7 +497,8 @@ export const WorkspaceSide = ({
             : last && last.plan && plan
               ? {
                   // A change to a dashboard the user has (frame 30).
-                  label: planTarget(plan) ? "Changes" : "Plan",
+                  label:
+                    planTarget(plan) || plan.widgetChange ? "Changes" : "Plan",
                   open: "plan",
                 }
               : last && last.answer
@@ -589,7 +595,7 @@ export const WorkspaceSide = ({
       {plan ? (
         <OutputCard
           testId="workspace-output-plan"
-          title={`${planName(plan)} — ${planTarget(plan) ? "changes" : "plan"}`}
+          title={`${planName(plan)} — ${planTarget(plan) || plan.widgetChange ? "changes" : "plan"}`}
           sub={
             buildLine || planStatus({ plan, check: wp.check, open: wp.open })
           }

@@ -604,8 +604,10 @@ const DashboardStageInner = ({
   }, []);
 
   // Change with AI (consolidation Phase 3): every door — a widget's ⋮ menu,
-  // the Edit panel, Ask AI, the error box, the Widgets page — opens Create
-  // › Change <widget> on it. detail: { widgetComponentName, sourcePackage,
+  // the Edit panel, Ask AI, the error box, the Widgets page — opens a
+  // conversation about that widget (lead-workspace release 6c, frame 40):
+  // with its dashboard's lead, or the Dash Lead from the Widgets page.
+  // detail: { widgetComponentName, sourcePackage,
   // widgetId (its layout item; the Widgets page sends "<pkg>/<component>"),
   // gridItemId, workspaceId, userPrefs, selectedProviders, error }
   useEffect(() => {
@@ -620,10 +622,11 @@ const DashboardStageInner = ({
         !String(d.widgetId).includes("/")
           ? d.widgetId
           : null;
-      setCreateRequest({
-        type: "widget",
-        workspaceId: d.workspaceId ?? null,
-        edit: {
+      setBotPageRequest(null);
+      setWorkspaceRequest({
+        key: null,
+        seq: Date.now(),
+        widget: {
           component: String(d.widgetComponentName),
           sourcePackage: d.sourcePackage || null,
           itemId,
