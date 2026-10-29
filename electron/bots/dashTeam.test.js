@@ -87,7 +87,34 @@ describe("planEnsureDashTeam", () => {
       "claude-haiku-5-5",
     );
     assert.match(def.instructions, /ask_role/);
-    assert.match(def.instructions, /open Create in the left menu/);
+    // Release 3a: the plan shows beside its answer, to approve or change —
+    // no more sending the user to Create.
+    assert.match(def.instructions, /approve it or change it right there/);
+    assert.doesNotMatch(def.instructions, /open Create in the left menu/);
+  });
+
+  it("a Dash Lead still on release 1's words upgrades; edited ones stay", () => {
+    const spec = ROLES.find((r) => r.role === "dashlead");
+    assert.equal(spec.history.length, 1);
+    assert.match(spec.history[0], /open Create in the left menu/);
+    const old = { ...teamBot("dashlead"), instructions: spec.history[0] };
+    const plan = planEnsureDashTeam([
+      ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
+      old,
+    ]);
+    assert.equal(plan.length, 1);
+    assert.match(
+      JSON.stringify(plan[0]),
+      /approve it or change it right there/,
+    );
+    const edited = { ...old, instructions: "My own words." };
+    assert.deepEqual(
+      planEnsureDashTeam([
+        ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
+        edited,
+      ]),
+      [],
+    );
   });
 
   it("leaves a complete team alone, including edited instructions", () => {

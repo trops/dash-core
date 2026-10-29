@@ -25,6 +25,15 @@ import {
   findContact,
 } from "./workspaceContacts";
 import { WorkspaceSide } from "./WorkspaceSide";
+import { useWorkspacePlan } from "./useWorkspacePlan";
+import { PlanCard, PlanChoices } from "./PlanViews";
+import {
+  choicesIndex,
+  createMessages,
+  planName,
+  stillAnswering,
+  withPlanContext,
+} from "./workspacePlan";
 
 const EMPTY = [];
 const TICK_MS = 60000;
@@ -72,12 +81,13 @@ function startText(contact) {
   if (!contact) return { title: "", text: "", starters: [] };
   if (contact.kind === "dashlead") {
     return {
-      title: "Ask the Dash team",
-      text: "The Dash Lead passes your question to the Planner, Scout, Builder or Checker and sums up the answer — about your dashboards and bots, or what something new would take.",
+      title: "What should we make?",
+      text: "Describe it in your own words — a dashboard, a widget, a bot, or a question about what you have. The Dash Lead brings in the Planner, Scout, Builder and Checker, and nothing is made until you say yes.",
       starters: [
-        "What did my bots do today?",
+        "Plan me a dashboard for my smart home",
+        "A widget that shows my calendar",
         "Do I already have a weather widget?",
-        "What would a smart home dashboard need?",
+        "What did my bots do today?",
       ],
     };
   }
@@ -138,7 +148,16 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
   const [selectedId, setSelectedId] = useState(null);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState(EMPTY);
+  // What's open on the right: "plan", a step's id, or the overview (null).
+  const [sideOpen, setSideOpen] = useState(null);
   const [wide, setWide] = useState(false);
+  // The plan this conversation is about (release 3a).
+  const wp = useWorkspacePlan({
+    messages,
+    recentId: open ? open.recentId || selectedId : null,
+    reopened: !!(open && open.recentId),
+    convKey: open ? `${key}:${open.key}` : key,
+  });
   const { width: sideWidth, handleProps } = useResizableWidth({
     defaultWidth: 420,
     min: SIDE_MIN,
@@ -159,17 +178,68 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
     setOpen(null);
     setSelectedId(null);
     setMessages(EMPTY);
+    setSideOpen(null);
   };
   const startNew = () => {
     setOpen(null);
     setSelectedId(null);
     setMessages(EMPTY);
+    setSideOpen(null);
   };
   const ask = (text) => {
     const q = String(text || draft).trim();
     if (!q || !contact) return;
     setDraft("");
+    setSideOpen(null);
     setOpen({ key: `new:${Date.now()}`, question: q });
+  };
+
+  // Yes, build it: the plan goes to Create's build, with what's already
+  // done before building (building in the conversation is release 3b).
+  // The conversation says it went, so it isn't built twice; Create gets
+  // what the user said, so a change asked there has it.
+  const buildInCreate = () => {
+    if (!wp.plan || wp.sent || typeof window === "undefined") return;
+    wp.markSent();
+    window.dispatchEvent(
+      new CustomEvent("dash:open-create", {
+        detail: {
+          type: "dashboard",
+          seed: {
+            plan: wp.plan,
+            label: planName(wp.plan),
+            checks: wp.checks,
+            messages: createMessages(messages, contact ? contact.name : ""),
+          },
+        },
+      }),
+    );
+    // One window at a time: Create opens in this one's place.
+    onClose();
+  };
+  // The lead is still answering: the plan isn't changed meanwhile.
+  const answering = stillAnswering(messages);
+
+  // After a message: the plan's card under the step that brought it, and
+  // the reply choices under the lead's answer to it.
+  const choicesAt = choicesIndex(messages);
+  const renderAfter = (m, i, api) => {
+    if (m.who === "step" && wp.step && m.id === wp.step.id && wp.plan) {
+      return <PlanCard plan={wp.plan} onOpen={() => setSideOpen("plan")} />;
+    }
+    if (i === choicesAt && wp.plan && !api.busy) {
+      return (
+        <PlanChoices
+          plan={wp.plan}
+          check={wp.check}
+          sent={wp.sent}
+          onSend={api.send}
+          onBuild={buildInCreate}
+          onChange={api.focusReply}
+        />
+      );
+    }
+    return null;
   };
 
   const isBot = contact && contact.kind === "bot";
@@ -277,12 +347,18 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
                       testId="workspace-thread"
                       title={t.title}
                       // Its age; "asked <this lead>" would repeat on every row.
-                      meta={String(t.sub || "").split(" · ")[0]}
+                      meta={[
+                        String(t.sub || "").split(" · ")[0],
+                        t.planned ? "Plan" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                       selected={t.id === selectedId}
                       onClick={() => {
                         if (open && t.id === selectedId) return;
                         setSelectedId(t.id);
                         setMessages(EMPTY);
+                        setSideOpen(null);
                         setOpen({ key: t.id, recentId: t.id });
                       }}
                     />
@@ -341,6 +417,10 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
               ]}
               onStarted={setSelectedId}
               onMessagesChange={setMessages}
+              renderAfter={renderAfter}
+              // A typed reply takes the plan (and the changes made to it on
+              // the right) along, so a change reaches the Planner whole.
+              prepareSend={(t) => withPlanContext(t, wp.plan, wp.takeEdits())}
             />
           ) : (
             <>
@@ -407,6 +487,11 @@ export const LeadWorkspace = ({ request = null, onClose }) => {
               contact={contact}
               messages={messages}
               statusOf={all.statusOf}
+              wp={wp}
+              planReadOnly={answering}
+              onBuild={buildInCreate}
+              open={sideOpen}
+              onOpen={setSideOpen}
               wide={wide}
               onToggleWide={() => setWide((v) => !v)}
             />

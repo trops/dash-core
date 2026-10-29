@@ -85,6 +85,9 @@ function summarize(entry) {
       to && to.botId && !to.role
         ? `lead:${to.botId}`
         : `role:${(to && to.role) || "planner"}`;
+    // A conversation with a plan in it (release 3a): Recents tag it "Plan".
+    const wp = entry.conversation && entry.conversation.workspacePlan;
+    out.planned = !!(wp && wp.plan);
     return out;
   }
   if (!state) return out;

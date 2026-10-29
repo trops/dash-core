@@ -3,6 +3,8 @@ import { Button3, FontAwesomeIcon, ListRow } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { toolName } from "./handoffSteps";
+import { BeforeItBuilds, PlanOutput } from "./PlanViews";
+import { planName, planStatus } from "./workspacePlan";
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -105,17 +107,26 @@ function shortTime(at) {
  * @param {object} contact     workspaceContacts' contact
  * @param {object[]} messages  the conversation (AskStep's), with its steps
  * @param {(id) => string} statusOf  "Running" | "Paused" | "Idle" | …
+ * @param {object|null} wp    the conversation's plan (useWorkspacePlan)
+ * @param {boolean} planReadOnly  the lead is answering: a new plan may come
+ * @param {() => void} onBuild  Yes, build it
+ * @param {string|null} open  what's opened: "plan", a step's id, or null
+ * @param {(what) => void} onOpen
  * @param {boolean} wide, onToggleWide  the column's size
  */
 export const WorkspaceSide = ({
   contact,
   messages = [],
   statusOf = () => "Idle",
+  wp = null,
+  planReadOnly = false,
+  onBuild = null,
+  open = null,
+  onOpen = () => {},
   wide = false,
   onToggleWide = null,
 }) => {
   const { muted, strong, hairline, selectedBg } = useConfigTokens();
-  const [openStep, setOpenStep] = useState(null);
   const members = (contact && contact.members) || [];
   const lines = useLiveLines(members.map((m) => m.id));
   const runs = useRuns(
@@ -124,25 +135,34 @@ export const WorkspaceSide = ({
   const steps = (messages || []).filter((m) => m && m.who === "step");
 
   // A step opened from Outputs or a bot's row: the latest version of it.
-  const step = openStep ? steps.find((s) => s.id === openStep) || null : null;
+  const plan = wp && wp.plan ? wp.plan : null;
+  const back = (
+    <div className="flex flex-row items-center gap-2">
+      <Button3 size="sm" title="← Outputs" onClick={() => onOpen(null)} />
+      <span className="flex-1" />
+      {onToggleWide ? (
+        <Button3
+          size="sm"
+          title={wide ? "Shrink" : "Expand"}
+          onClick={onToggleWide}
+        />
+      ) : null}
+    </div>
+  );
+  if (open === "plan" && plan) {
+    return (
+      <div className="flex flex-col gap-4 p-5 min-h-0 overflow-y-auto">
+        {back}
+        <PlanOutput wp={wp} readOnly={planReadOnly} onBuild={onBuild} />
+      </div>
+    );
+  }
+  const step =
+    open && open !== "plan" ? steps.find((s) => s.id === open) || null : null;
   if (step) {
     return (
       <div className="flex flex-col gap-4 p-5 min-h-0 overflow-y-auto">
-        <div className="flex flex-row items-center gap-2">
-          <Button3
-            size="sm"
-            title="← Outputs"
-            onClick={() => setOpenStep(null)}
-          />
-          <span className="flex-1" />
-          {onToggleWide ? (
-            <Button3
-              size="sm"
-              title={wide ? "Shrink" : "Expand"}
-              onClick={onToggleWide}
-            />
-          ) : null}
-        </div>
+        {back}
         <div className="flex flex-col gap-1">
           <span className={`text-xs ${muted}`}>{step.bot} · answer</span>
           <span className={`text-lg font-semibold ${strong}`}>
@@ -170,7 +190,9 @@ export const WorkspaceSide = ({
     );
   }
 
-  const answered = steps.filter((s) => s.status !== "asking" && s.answer);
+  const answered = steps.filter(
+    (s) => s.status !== "asking" && s.answer && !s.plan,
+  );
   const isBot = contact && contact.kind === "bot";
   const approvalBots = contact
     ? [{ id: contact.botId, name: contact.name }, ...members]
@@ -182,10 +204,25 @@ export const WorkspaceSide = ({
       data-testid="workspace-side"
     >
       <DashTeamApprovals compact bots={approvalBots} />
+      {wp ? <BeforeItBuilds wp={wp} readOnly={planReadOnly} /> : null}
 
       <div className="flex flex-col gap-2">
         <span className={`text-sm font-semibold ${strong}`}>Outputs</span>
-        {answered.length ? (
+        {plan ? (
+          <ListRow
+            testId="workspace-output-plan"
+            icon={
+              <FontAwesomeIcon
+                icon="table-cells-large"
+                className={`h-4 w-4 ${muted}`}
+              />
+            }
+            title={`${planName(plan)} — plan`}
+            meta={planStatus({ plan, check: wp.check, open: wp.open })}
+            onClick={() => onOpen("plan")}
+          />
+        ) : null}
+        {answered.length || plan ? (
           answered.map((s) => (
             <ListRow
               key={s.id}
@@ -198,7 +235,7 @@ export const WorkspaceSide = ({
               }
               title={`${cap(s.bot)}'s answer`}
               meta={s.result}
-              onClick={() => setOpenStep(s.id)}
+              onClick={() => onOpen(s.id)}
             />
           ))
         ) : (
@@ -289,11 +326,17 @@ export const WorkspaceSide = ({
                       </span>
                     ) : null}
                   </span>
-                  {last && last.answer ? (
+                  {last && last.plan && plan ? (
+                    <Button3
+                      size="sm"
+                      title="Plan ›"
+                      onClick={() => onOpen("plan")}
+                    />
+                  ) : last && last.answer ? (
                     <Button3
                       size="sm"
                       title="Answer ›"
-                      onClick={() => setOpenStep(last.id)}
+                      onClick={() => onOpen(last.id)}
                     />
                   ) : null}
                 </div>

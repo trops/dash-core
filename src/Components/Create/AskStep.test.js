@@ -764,3 +764,78 @@ describe("Stop and step ids (release 2 review)", () => {
     finish({ status: "stopped" });
   });
 });
+
+describe("a plan in the workspace conversation (lead-workspace release 3a)", () => {
+  const DASHLEAD = { role: "dashlead", roleName: "Dash Lead" };
+  const planText = `Here's a plan.\n<plan>${JSON.stringify(PLAN)}</plan>`;
+
+  test("the Planner's plan rides on its step; the host draws after messages and words what's sent", async () => {
+    let stream = null;
+    const bots = api({
+      listDashTeam: jest
+        .fn()
+        .mockResolvedValue([
+          ...team,
+          { id: "b_dashlead", role: "dashlead", name: "Dash Lead" },
+        ]),
+      onStream: jest.fn((cb) => {
+        stream = cb;
+        return 1;
+      }),
+      run: jest.fn(async (botId) => {
+        stream({
+          botId,
+          event: {
+            type: "tool_call",
+            id: "t1",
+            name: "mcp__role-mcp__ask_role",
+            input: { role: "planner", request: "Plan a brief widget" },
+          },
+        });
+        stream({
+          botId,
+          event: {
+            type: "tool_result",
+            id: "t1",
+            output: `<dash_data>\nPlanner: ${planText}\n</dash_data>`,
+          },
+        });
+        return answered("The Planner has a plan: one new widget. Build it?");
+      }),
+    });
+    const seen = [];
+    const renderAfter = jest.fn((m, i, ctx) =>
+      m.who === "step" && m.plan ? (
+        <button type="button" onClick={() => ctx.send("Make it blue")}>
+          Plan card {m.plan.summary}
+        </button>
+      ) : null,
+    );
+    render(
+      <AskStep
+        question="Plan me a brief widget"
+        recipient={DASHLEAD}
+        hideTo
+        onMessagesChange={(m) => seen.push(m)}
+        renderAfter={renderAfter}
+        prepareSend={(t) => `${t} [with the plan]`}
+      />,
+    );
+    expect(await screen.findByTestId("ask-answer")).toHaveTextContent(
+      "Build it?",
+    );
+    // The step shows the Planner's words, never the plan's JSON.
+    const step = seen[seen.length - 1].find((m) => m.who === "step");
+    expect(step.plan).toEqual(PLAN);
+    expect(step.answer).toBe("Here's a plan.");
+    expect(screen.getByTestId("handoff-step")).not.toHaveTextContent("<plan>");
+    // The host's card shows after the step; a reply from it is worded by
+    // the host (the plan goes along) but shows as typed.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Plan card A brief widget" }),
+    );
+    await waitFor(() => expect(bots.run).toHaveBeenCalledTimes(2));
+    expect(bots.run.mock.calls[1][1]).toBe("Make it blue [with the plan]");
+    expect(screen.getAllByText("Make it blue").length).toBeGreaterThan(0);
+  });
+});

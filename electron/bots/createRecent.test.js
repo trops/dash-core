@@ -447,6 +447,34 @@ describe("questions in Recent (phase 5e)", () => {
     assert.equal(row.status, "answered");
     assert.equal(row.to, "Builder");
     assert.equal(row.with, "role:builder");
+    assert.equal(row.planned, false);
+  });
+
+  it("a conversation with a plan in it is tagged planned (release 3a)", () => {
+    const r = make();
+    const e = r.save({
+      kind: "question",
+      prompt: "Plan me a home dashboard",
+      conversation: { recipient: { role: "dashlead", roleName: "Dash Lead" } },
+    });
+    r.save({
+      id: e.id,
+      conversation: {
+        workspacePlan: {
+          stepId: "1:t1",
+          plan: { summary: "Home" },
+          checks: {},
+        },
+      },
+    });
+    // A later save of the messages keeps it (conversation fields merge).
+    r.save({
+      id: e.id,
+      conversation: { messages: [{ who: "you", text: "x" }] },
+    });
+    const row = r.list()[0];
+    assert.equal(row.planned, true);
+    assert.equal(row.with, "role:dashlead");
   });
 
   it("an unknown kind is a plan", () => {
