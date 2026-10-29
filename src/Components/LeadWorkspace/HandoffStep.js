@@ -22,7 +22,10 @@ export const HandoffStep = ({ step }) => {
       ? "couldn't answer"
       : stopped
         ? "stopped"
-        : step.result || "answered";
+        : // A plan says so, not the Planner's first words (release 3b).
+          step.plan
+          ? "drafted a plan"
+          : step.result || "answered";
   return (
     <div className="flex flex-col gap-1" data-testid="handoff-step">
       <button

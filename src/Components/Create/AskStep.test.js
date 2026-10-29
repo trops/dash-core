@@ -839,3 +839,39 @@ describe("a plan in the workspace conversation (lead-workspace release 3a)", () 
     expect(screen.getAllByText("Make it blue").length).toBeGreaterThan(0);
   });
 });
+
+describe("while the team builds (lead-workspace release 3b)", () => {
+  test("the reply box says what's going on, its Stop stops the build, and nothing is sent", async () => {
+    const bots = api({
+      getCreateRecent: jest.fn().mockResolvedValue({
+        prompt: "Plan it",
+        conversation: {
+          recipient: { role: "dashlead", roleName: "Dash Lead" },
+          messages: [
+            { who: "you", text: "Plan it" },
+            { who: "role", text: "Want it built?" },
+          ],
+        },
+      }),
+    });
+    const onStop = jest.fn();
+    render(
+      <AskStep
+        recentId="q1"
+        working={{
+          text: "The team is working · the Builder is building 2 widgets",
+          onStop,
+        }}
+      />,
+    );
+    expect(await screen.findByText("Want it built?")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText(
+        "The team is working · the Builder is building 2 widgets",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /stop/i }));
+    expect(onStop).toHaveBeenCalled();
+    expect(bots.run).not.toHaveBeenCalled();
+  });
+});

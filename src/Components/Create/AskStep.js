@@ -88,6 +88,11 @@ export const AskStep = ({
   // "Reply", no hint line); otherwise it names who is asked.
   placeholder = null,
   hint = undefined,
+  // Lead workspace (release 3b): the team is building — { text, onStop }:
+  // the reply box says what's going on and its Stop stops the build. And a
+  // value that changes as the build goes, so the chat follows it.
+  working = null,
+  follow = null,
 }) => {
   // [{ who: "you" | "planner" | "lead" | "role" | "note" | "step", text, meta?, plan? }]
   // A step is a hand-off ("Asked Inbox Watch"): { id, bot, label, request,
@@ -412,7 +417,7 @@ export const AskStep = ({
   // problems behind "Ask the Planner to fix it").
   const send = (text, details = "") => {
     const t = String(text || "").trim();
-    if (!t || busy) return;
+    if (!t || busy || working) return;
     const history = messages;
     setReply("");
     setMessages((m) => [...m, { who: "you", text: t }]);
@@ -434,7 +439,7 @@ export const AskStep = ({
   useEffect(() => {
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length, busy]);
+  }, [messages.length, busy, follow]);
   const after = (m, i) =>
     renderAfter ? renderAfter(m, i, { send, focusReply, busy }) : null;
 
@@ -536,18 +541,20 @@ export const AskStep = ({
         value={reply}
         onChange={(v) => setReply(v)}
         onSend={() => send(reply)}
-        busy={busy}
-        onStop={stopNow}
+        busy={busy || !!working}
+        onStop={busy || !working ? stopNow : working.onStop}
         placeholder={
-          busy
-            ? `${replyName.charAt(0).toUpperCase()}${replyName.slice(1)} is looking…`
-            : placeholder
-              ? placeholder
-              : lead
-                ? `Ask ${lead.leadName} a follow-up…`
-                : teamRole
-                  ? `Ask the ${roleName} a follow-up…`
-                  : "Ask a follow-up…"
+          working && !busy
+            ? working.text
+            : busy
+              ? `${replyName.charAt(0).toUpperCase()}${replyName.slice(1)} is looking…`
+              : placeholder
+                ? placeholder
+                : lead
+                  ? `Ask ${lead.leadName} a follow-up…`
+                  : teamRole
+                    ? `Ask the ${roleName} a follow-up…`
+                    : "Ask a follow-up…"
         }
         above={
           !hideTo && (lead || teamRole) ? (

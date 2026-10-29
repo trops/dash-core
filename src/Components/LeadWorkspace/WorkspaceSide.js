@@ -8,9 +8,21 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
-import { isDone } from "../Create/planChecklist";
+import { normalizeType } from "../Create/planChecklist";
 import { toolName } from "./handoffSteps";
 import { BeforeItBuilds, OutputCard, PlanOutput } from "./PlanViews";
+import {
+  BuildLogOutput,
+  BuildNeedsYou,
+  CheckReportOutput,
+  PreviewOutput,
+} from "./BuildViews";
+import {
+  buildMemberState,
+  buildPlanLine,
+  buildStatus,
+  waitingFor,
+} from "./workspaceBuild";
 import {
   planName,
   planStatus,
@@ -57,6 +69,11 @@ const ROLE_LINES = {
   checker: "checks what's built",
 };
 const ROLE_OUTPUT = { scout: "Findings" };
+// The roles a build uses, and their output (release 3b, frames 4, 7).
+const BUILD_ROLES = {
+  builder: { label: "Build log", open: "buildlog" },
+  checker: { label: "Report", open: "check" },
+};
 
 /**
  * Where you can start a new Dash Lead conversation from (frame 13).
@@ -99,6 +116,9 @@ function useLiveLines(botIds) {
     const id = b.onStream(({ botId, event } = {}) => {
       if (!want.has(botId) || !event) return;
       let line = null;
+      // Its notes to itself aren't what it's doing (memory_list…).
+      if (event.type === "tool_call" && /^memory/.test(toolName(event.name)))
+        return;
       if (event.type === "tool_call") line = `› ${plainTool(event.name)}`;
       else if (event.type === "text") line = "writing its answer…";
       else if (event.type === "done" || event.type === "error") line = "";
@@ -214,6 +234,9 @@ function memberState(m, last, status, { plan, lines }) {
  * @param {boolean} wide, onToggleWide  the column's size
  * @param {boolean} isNew  a new conversation, nothing asked yet
  * @param {(kind) => void} onStartFrom  a Start from choice
+ * @param {object|null} build  the plan's build (release 3b: { buildId, kind,
+ *   leftOff }); its outputs open as "buildlog", "check" and "preview"
+ * @param {object|null} pb     the build, live (usePlanBuild)
  */
 export const WorkspaceSide = ({
   contact,
@@ -228,6 +251,8 @@ export const WorkspaceSide = ({
   onToggleWide = null,
   isNew = false,
   onStartFrom = null,
+  build = null,
+  pb = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const { currentTheme } = useContext(ThemeContext) || {};
@@ -256,13 +281,51 @@ export const WorkspaceSide = ({
       ) : null}
     </div>
   );
-  if (open === "plan" && plan) {
-    return (
-      <div className="flex flex-col gap-4 p-5 min-h-0 overflow-y-auto">
-        {back}
-        <PlanOutput wp={wp} readOnly={planReadOnly} onBuild={onBuild} />
+  // The plan's build (release 3b), as it stands.
+  const buildState = build && pb ? pb.state : null;
+  const leftOff = (build && build.leftOff) || [];
+  const buildLine = build
+    ? buildState
+      ? buildPlanLine(buildState, leftOff)
+      : "Starting the build…"
+    : null;
+  // An opened output: ← Outputs and Expand stay put; what's opened scrolls.
+  const opened = (body) => (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-shrink-0 px-5 pt-5 pb-2">{back}</div>
+      <div
+        // Each opened output starts at its top.
+        key={String(open)}
+        className="flex-1 flex flex-col gap-4 px-5 pb-5 pt-2 min-h-0 overflow-y-auto"
+      >
+        {body}
       </div>
+    </div>
+  );
+  if (open === "plan" && plan) {
+    return opened(
+      <PlanOutput
+        wp={wp}
+        readOnly={planReadOnly}
+        onBuild={onBuild}
+        buildLine={buildLine}
+      />,
     );
+  }
+  if (open === "buildlog" && build) {
+    return opened(
+      <BuildLogOutput
+        build={build}
+        state={buildState}
+        onRemoved={() => onOpen(null)}
+      />,
+    );
+  }
+  if (open === "check" && build) {
+    return opened(<CheckReportOutput state={buildState} />);
+  }
+  if (open === "preview" && build && pb) {
+    return opened(<PreviewOutput state={buildState} pb={pb} />);
   }
   // An earlier plan, from its card in the chat.
   const earlierStep =
@@ -270,19 +333,13 @@ export const WorkspaceSide = ({
       ? steps.find((s) => s.id === open.slice(5) && s.plan) || null
       : null;
   if (earlierStep && wp) {
-    return (
-      <div className="flex flex-col gap-4 p-5 min-h-0 overflow-y-auto">
-        {back}
-        <PlanOutput wp={wp} plan={earlierStep.plan} />
-      </div>
-    );
+    return opened(<PlanOutput wp={wp} plan={earlierStep.plan} />);
   }
   const step =
     open && open !== "plan" ? steps.find((s) => s.id === open) || null : null;
   if (step) {
-    return (
-      <div className="flex flex-col gap-4 p-5 min-h-0 overflow-y-auto">
-        {back}
+    return opened(
+      <>
         <div className="flex flex-col gap-1">
           <span className={`text-xs ${muted}`}>{step.bot} · answer</span>
           <span className={`text-lg font-semibold ${strong}`}>
@@ -306,7 +363,7 @@ export const WorkspaceSide = ({
             {step.answer || ""}
           </span>
         </div>
-      </div>
+      </>,
     );
   }
 
@@ -319,7 +376,34 @@ export const WorkspaceSide = ({
     : [];
   const startFrom =
     isNew && contact && contact.kind === "dashlead" && onStartFrom;
-  const connected = (it) => (wp ? isDone(it, wp.checks, wp.have) : false);
+  // Connected for real — a connect skipped before building isn't.
+  const connected = (it) =>
+    !!(wp && wp.have && wp.have.has(normalizeType(it.providerType)));
+  // What the build waits for that still isn't connected (Needs you).
+  const needs = buildState
+    ? waitingFor(buildState)
+        .map(normalizeType)
+        .filter((t) => t && !(wp && wp.have && wp.have.has(t)))
+    : [];
+  const status = buildState ? buildStatus(buildState, leftOff) : null;
+  // A new widget waiting for your look (frame 31).
+  const previewStep =
+    status === "waiting-for-you"
+      ? (buildState.steps || []).find((x) => x.status === "needs-you") || null
+      : null;
+  const builtDashboard =
+    buildState &&
+    buildState.dashboard &&
+    (status === "done" || status === "waiting-for-providers")
+      ? buildState.dashboard
+      : null;
+  const placed = buildState
+    ? (buildState.steps || []).filter(
+        (x) => x.kind === "place" && x.status === "done",
+      ).length
+    : 0;
+  const hasCheck =
+    !!buildState && (buildState.steps || []).some((x) => x.kind === "check");
   const dot = {
     ok: statusTokens.success.icon,
     bad: statusTokens.error.icon,
@@ -328,7 +412,7 @@ export const WorkspaceSide = ({
 
   return (
     <div
-      className="flex flex-col gap-4 p-5 min-h-0 overflow-y-auto"
+      className="flex-1 flex flex-col gap-4 p-5 min-h-0 overflow-y-auto"
       data-testid="workspace-side"
     >
       <span className={`text-sm font-semibold ${strong}`}>Outputs</span>
@@ -352,16 +436,49 @@ export const WorkspaceSide = ({
         </div>
       ) : null}
 
-      {wp ? <BeforeItBuilds wp={wp} readOnly={planReadOnly} /> : null}
+      {/* Once it builds, what's left is asked for as Needs you (frame 3). */}
+      {wp && !build ? <BeforeItBuilds wp={wp} readOnly={planReadOnly} /> : null}
+      <BuildNeedsYou
+        types={needs}
+        onConnected={() => {
+          if (wp && wp.refreshProviders)
+            Promise.resolve(wp.refreshProviders()).catch(() => {});
+        }}
+      />
       <DashTeamApprovals compact bots={approvalBots} />
 
+      {previewStep ? (
+        <OutputCard
+          testId="workspace-output-preview"
+          icon="puzzle-piece"
+          title={String(previewStep.label || "New widget").replace(
+            /^Preview /,
+            "",
+          )}
+          sub="Preview ready"
+          kind="Widget"
+          onClick={() => onOpen("preview")}
+        />
+      ) : null}
       {plan ? (
         <OutputCard
           testId="workspace-output-plan"
           title={`${planName(plan)} — plan`}
-          sub={planStatus({ plan, check: wp.check, open: wp.open })}
+          sub={
+            buildLine || planStatus({ plan, check: wp.check, open: wp.open })
+          }
           kind="Plan"
           onClick={() => onOpen("plan")}
+        />
+      ) : null}
+      {builtDashboard ? (
+        <OutputCard
+          testId="workspace-output-dashboard"
+          icon="table-cells-large"
+          title={builtDashboard.name}
+          sub={`${placed} ${placed === 1 ? "widget" : "widgets"}${builtDashboard.targeted ? " · changed" : ""}`}
+          kind="Dashboard"
+          onClick={() => onOpen(hasCheck ? "check" : "buildlog")}
         />
       ) : null}
       {answered.map((s) => (
@@ -421,21 +538,32 @@ export const WorkspaceSide = ({
             members.map((m) => {
               const mine = steps.filter((s) => norm(s.bot) === norm(m.name));
               const last = mine[mine.length - 1] || null;
-              const { tone, state, line } = memberState(
-                m,
-                last,
-                statusOf(m.id),
-                { plan, lines },
-              );
+              // Once it builds, the Builder and Checker follow the build
+              // (frames 3, 8, 33) — or weren't needed for it.
+              const inBuild =
+                buildState && BUILD_ROLES[m.role]
+                  ? buildMemberState(m.role, buildState, leftOff, {
+                      [m.role]: lines[m.id],
+                    }) || { tone: "idle", state: "not needed", line: "" }
+                  : null;
+              const { tone, state, line } =
+                inBuild ||
+                memberState(m, last, statusOf(m.id), { plan, lines });
               const out =
-                last && last.plan && plan
-                  ? { label: "Plan", open: "plan" }
-                  : last && last.answer
-                    ? {
-                        label: ROLE_OUTPUT[m.role] || "Answer",
-                        open: last.id,
-                      }
-                    : null;
+                inBuild && inBuild.out === "preview"
+                  ? { label: "Preview", open: "preview" }
+                  : inBuild && inBuild.out === false
+                    ? null
+                    : inBuild && inBuild.state !== "not needed"
+                      ? BUILD_ROLES[m.role]
+                      : last && last.plan && plan
+                        ? { label: "Plan", open: "plan" }
+                        : last && last.answer
+                          ? {
+                              label: ROLE_OUTPUT[m.role] || "Answer",
+                              open: last.id,
+                            }
+                          : null;
               return (
                 <div
                   key={m.id}

@@ -22,6 +22,7 @@ import {
   useRegistryAuthGate,
   isRegistryAuthError,
 } from "../../hooks/useRegistryAuthGate";
+import { usePlanBuild } from "../LeadWorkspace/usePlanBuild";
 
 /**
  * CreateBuildingStep — building an approved plan (create-entry PRD CRE-004
@@ -122,12 +123,17 @@ export const CreateBuildingStep = ({
 }) => {
   const app = useContext(AppContext) || {};
   const { muted, strong, hairline } = useConfigTokens();
-  const [state, setState] = useState(initialState);
-  const [stopping, setStopping] = useState(false);
-  // botId → "starting" | "started" | error text
-  const [runs, setRuns] = useState({});
-  // A fix / retry / resume / remove that couldn't start.
-  const [actionError, setActionError] = useState(null);
+  // The build, live — shared with the lead workspace (release 3b).
+  const {
+    state,
+    stopping,
+    actionError,
+    setActionError,
+    stop,
+    act,
+    fix,
+    retry,
+  } = usePlanBuild(buildId, initialState);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   // The provider type being connected (waiting steps).
@@ -135,25 +141,6 @@ export const CreateBuildingStep = ({
   // A registry install that failed because the user isn't signed in: sign
   // in (the Widgets page's prompt), then it's tried again.
   const { ensureAuthed, authGate } = useRegistryAuthGate();
-
-  useEffect(() => {
-    const bots = window.mainApi && window.mainApi.bots;
-    if (!bots) return undefined;
-    const id = bots.onPlanBuild
-      ? bots.onPlanBuild((payload) => {
-          if (payload && payload.buildId === buildId) setState(payload.state);
-        })
-      : null;
-    // Catch up on anything sent before we subscribed.
-    if (bots.getPlanBuild) {
-      Promise.resolve(bots.getPlanBuild(buildId))
-        .then((res) => res && res.state && setState(res.state))
-        .catch(() => {});
-    }
-    return () => {
-      if (id != null && bots.removeListener) bots.removeListener(id);
-    };
-  }, [buildId]);
 
   const steps = (state && state.steps) || [];
   const status = (state && state.status) || "waiting";
@@ -199,70 +186,6 @@ export const CreateBuildingStep = ({
   const savedBots = Object.values((state && state.bots) || {}).filter(
     (b) => b && b.id,
   );
-  // Which of them are paused — Turn on is offered only for those.
-  const [pausedBots, setPausedBots] = useState([]);
-  const savedIds = savedBots.map((b) => b.id).join(",");
-  useEffect(() => {
-    const bots = window.mainApi && window.mainApi.bots;
-    if (!savedIds || !bots || !bots.getPauseState) return undefined;
-    let alive = true;
-    Promise.resolve(bots.getPauseState())
-      .then((p) => {
-        if (alive) setPausedBots((p && p.bots) || []);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [savedIds]);
-  // The bots a build saves start paused (Phase 1d): trying one is a test
-  // run, and a pass offers Turn on.
-  const runBot = async (bot) => {
-    setRuns((r) => ({ ...r, [bot.id]: "starting" }));
-    try {
-      const res = await window.mainApi.bots.run(bot.id);
-      setRuns((r) => ({
-        ...r,
-        [bot.id]:
-          res && res.skipped
-            ? `It didn't run: ${res.reason || "it was skipped"}.`
-            : res && (res.error || res.status === "failed")
-              ? String(res.error || "The run failed.")
-              : "passed",
-      }));
-    } catch (err) {
-      setRuns((r) => ({
-        ...r,
-        [bot.id]: (err && err.message) || "It couldn't start.",
-      }));
-    }
-  };
-
-  const stop = async () => {
-    setStopping(true);
-    try {
-      await window.mainApi.bots.stopPlanBuild(buildId);
-    } catch (_e) {
-      setStopping(false);
-    }
-  };
-
-  // Fix / retry / resume start in the main process; progress comes back on
-  // onPlanBuild like the first pass.
-  const act = async (call) => {
-    setActionError(null);
-    setStopping(false);
-    try {
-      const res = await call();
-      if (res && res.error) setActionError(res.error);
-    } catch (err) {
-      setActionError((err && err.message) || "That didn't start.");
-    }
-  };
-  const fix = (step) =>
-    act(() => window.mainApi.bots.fixPlanBuild(buildId, step.id));
-  const retry = (step) =>
-    act(() => window.mainApi.bots.retryPlanBuild(buildId, step.id));
   const signInAndRetry = async (step) => {
     const ok = await ensureAuthed({
       message: "Sign in to the Dash registry to install this widget.",
@@ -657,49 +580,7 @@ export const CreateBuildingStep = ({
         ) : null}
 
         {finished && status !== "removed" && savedBots.length ? (
-          <div className="flex flex-col gap-2" data-testid="building-run-bots">
-            <SectionLabel text="Try the bots" />
-            <span className={`text-xs ${muted}`}>
-              New bots start paused — try one, then turn it on.
-            </span>
-            {savedBots.map((b) => {
-              const run = runs[b.id];
-              return (
-                <div key={b.id} className="flex flex-row items-center gap-3">
-                  <Button3
-                    title={`Run ${b.name} now`}
-                    onClick={() => runBot(b)}
-                    disabled={run === "starting"}
-                  />
-                  <span className={`text-xs ${muted}`}>
-                    {run === "starting"
-                      ? "Running…"
-                      : run === "passed"
-                        ? "It worked — turn it on?"
-                        : run === "on"
-                          ? `${b.name} is on.`
-                          : run || ""}
-                  </span>
-                  {pausedBots.includes(b.id) && run !== "on" ? (
-                    <Button3
-                      title={`Turn ${b.name} on`}
-                      onClick={async () => {
-                        try {
-                          await window.mainApi.bots.resumeBot(b.id);
-                          setRuns((r) => ({ ...r, [b.id]: "on" }));
-                        } catch (err) {
-                          setRuns((r) => ({
-                            ...r,
-                            [b.id]: `Couldn't turn it on: ${(err && err.message) || "unknown error"}`,
-                          }));
-                        }
-                      }}
-                    />
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
+          <TryBots bots={savedBots} />
         ) : null}
 
         {finished &&
@@ -994,6 +875,98 @@ export const RemoveSummary = ({ built, muted = "", strong = "" }) => {
           ))}
         </>
       ) : null}
+    </div>
+  );
+};
+
+/**
+ * The bots a build saved (they start paused, Phase 1d): Run <bot> now is a
+ * test run, and a pass offers Turn on. In Create's build and the lead
+ * workspace's Build log (release 3b).
+ */
+export const TryBots = ({ bots: saved = [] }) => {
+  const { muted } = useConfigTokens();
+  // botId → "starting" | "passed" | "on" | error text
+  const [runs, setRuns] = useState({});
+  // Which of them are paused — Turn on is offered only for those.
+  const [pausedBots, setPausedBots] = useState([]);
+  const savedIds = saved.map((b) => b.id).join(",");
+  useEffect(() => {
+    const bots = window.mainApi && window.mainApi.bots;
+    if (!savedIds || !bots || !bots.getPauseState) return undefined;
+    let alive = true;
+    Promise.resolve(bots.getPauseState())
+      .then((p) => {
+        if (alive) setPausedBots((p && p.bots) || []);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [savedIds]);
+  const runBot = async (bot) => {
+    setRuns((r) => ({ ...r, [bot.id]: "starting" }));
+    try {
+      const res = await window.mainApi.bots.run(bot.id);
+      setRuns((r) => ({
+        ...r,
+        [bot.id]:
+          res && res.skipped
+            ? `It didn't run: ${res.reason || "it was skipped"}.`
+            : res && (res.error || res.status === "failed")
+              ? String(res.error || "The run failed.")
+              : "passed",
+      }));
+    } catch (err) {
+      setRuns((r) => ({
+        ...r,
+        [bot.id]: (err && err.message) || "It couldn't start.",
+      }));
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2" data-testid="building-run-bots">
+      <SectionLabel text="Try the bots" />
+      <span className={`text-xs ${muted}`}>
+        New bots start paused — try one, then turn it on.
+      </span>
+      {saved.map((b) => {
+        const run = runs[b.id];
+        return (
+          <div key={b.id} className="flex flex-row items-center gap-3">
+            <Button3
+              title={`Run ${b.name} now`}
+              onClick={() => runBot(b)}
+              disabled={run === "starting"}
+            />
+            <span className={`text-xs ${muted}`}>
+              {run === "starting"
+                ? "Running…"
+                : run === "passed"
+                  ? "It worked — turn it on?"
+                  : run === "on"
+                    ? `${b.name} is on.`
+                    : run || ""}
+            </span>
+            {pausedBots.includes(b.id) && run !== "on" ? (
+              <Button3
+                title={`Turn ${b.name} on`}
+                onClick={async () => {
+                  try {
+                    await window.mainApi.bots.resumeBot(b.id);
+                    setRuns((r) => ({ ...r, [b.id]: "on" }));
+                  } catch (err) {
+                    setRuns((r) => ({
+                      ...r,
+                      [b.id]: `Couldn't turn it on: ${(err && err.message) || "unknown error"}`,
+                    }));
+                  }
+                }}
+              />
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 };

@@ -93,11 +93,22 @@ describe("planEnsureDashTeam", () => {
     assert.doesNotMatch(def.instructions, /open Create in the left menu/);
   });
 
-  it("a Dash Lead still on release 1's words upgrades; edited ones stay", () => {
+  it("a Dash Lead still on release 1's or 3a's words upgrades; edited ones stay", () => {
     const spec = ROLES.find((r) => r.role === "dashlead");
-    assert.equal(spec.history.length, 1);
-    assert.match(spec.history[0], /open Create in the left menu/);
-    const old = { ...teamBot("dashlead"), instructions: spec.history[0] };
+    assert.equal(spec.history.length, 2);
+    assert.match(spec.history[1], /open Create in the left menu/);
+    // 3a's could say it updated the plan when the Planner sent none.
+    assert.doesNotMatch(spec.history[0], /still as it was/);
+    assert.match(spec.instructions, /the plan is still as it was/);
+    const was3a = { ...teamBot("dashlead"), instructions: spec.history[0] };
+    assert.equal(
+      planEnsureDashTeam([
+        ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
+        was3a,
+      ]).length,
+      1,
+    );
+    const old = { ...teamBot("dashlead"), instructions: spec.history[1] };
     const plan = planEnsureDashTeam([
       ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
       old,

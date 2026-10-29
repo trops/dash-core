@@ -16,13 +16,32 @@ function botsApi() {
     : null;
 }
 
-const NONE = { stepId: null, plan: null, checks: {}, edits: [], sent: false };
+const NONE = {
+  stepId: null,
+  plan: null,
+  checks: {},
+  edits: [],
+  sent: false,
+  builds: [],
+};
+
+/** What a conversation saves of its plan (and its builds). */
+const saved = (st) => ({
+  stepId: st.stepId,
+  plan: st.plan,
+  checks: st.checks,
+  edits: st.edits,
+  sent: st.sent,
+  builds: st.builds,
+});
 
 /**
  * The plan a workspace conversation is about (lead-workspace release 3a):
  * the latest plan the Planner sent, with the user's changes to it (pieces
  * removed or swapped, a provider picked), Before it builds as they work
- * through it, and whether it was sent to Create to build. Saved with the
+ * through it, and its builds (release 3b: { buildId, stepId, at, kind,
+ * leftOff } — built in the conversation, after message `at`; 3a sent it to
+ * Create instead, `sent`). Saved with the
  * conversation (`workspacePlan`), so it reopens as it was left.
  *
  * @param {object[]} messages  the conversation, with its hand-off steps
@@ -53,6 +72,10 @@ export function useWorkspacePlan({
     setLoaded(!reopened);
     savedRef.current = null;
   }
+  // Which conversation is open now — a build that started in another one
+  // (the user switched while it was starting) isn't added here.
+  const keyRef = useRef(convKey);
+  keyRef.current = convKey;
 
   useEffect(() => {
     if (!reopened || !recentId) return undefined;
@@ -79,22 +102,28 @@ export function useWorkspacePlan({
     if (!loaded || !step) return;
     setState((cur) => {
       if (cur.stepId === step.id) return cur;
-      const saved = savedRef.current;
-      if (saved && saved.stepId === step.id && saved.plan) {
+      const was = savedRef.current;
+      // Builds stay with the conversation: each shows where it happened.
+      const builds = cur.builds.length
+        ? cur.builds
+        : (was && Array.isArray(was.builds) && was.builds) || [];
+      if (was && was.stepId === step.id && was.plan) {
         return {
           stepId: step.id,
-          plan: saved.plan,
-          checks: saved.checks || {},
-          edits: Array.isArray(saved.edits) ? saved.edits : [],
-          sent: !!saved.sent,
+          plan: was.plan,
+          checks: was.checks || {},
+          edits: Array.isArray(was.edits) ? was.edits : [],
+          sent: !!was.sent,
+          builds,
         };
       }
       return {
         stepId: step.id,
         plan: step.plan,
-        checks: (cur.stepId ? cur.checks : saved && saved.checks) || {},
+        checks: (cur.stepId ? cur.checks : was && was.checks) || {},
         edits: [],
         sent: false,
+        builds,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,15 +145,7 @@ export function useWorkspacePlan({
     if (!loaded || !recentId || !state.stepId) return undefined;
     const payload = {
       id: recentId,
-      conversation: {
-        workspacePlan: {
-          stepId: state.stepId,
-          plan: state.plan,
-          checks: state.checks,
-          edits: state.edits,
-          sent: state.sent,
-        },
-      },
+      conversation: { workspacePlan: saved(state) },
     };
     pending.current = payload;
     const t = setTimeout(() => {
@@ -133,6 +154,16 @@ export function useWorkspacePlan({
     }, 300);
     return () => clearTimeout(t);
   }, [loaded, recentId, state]);
+  // A build just added: saved at once (the window may close next).
+  const saveNow = useRef(false);
+  useEffect(() => {
+    if (!saveNow.current) return;
+    saveNow.current = false;
+    if (!recentId || !state.stepId) return;
+    pending.current = null;
+    save({ id: recentId, conversation: { workspacePlan: saved(state) } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
   useEffect(
     () => () => {
       if (pending.current) save(pending.current);
@@ -190,26 +221,73 @@ export function useWorkspacePlan({
       if (e.length) setState((cur) => ({ ...cur, edits: [] }));
       return e;
     },
-    // Sent to Create to build: saved now (the window closes next), so a
-    // reopened conversation doesn't offer to build it again.
-    markSent: () => {
-      setState((cur) => ({ ...cur, sent: true }));
-      if (recentId && state.stepId) {
-        pending.current = null;
-        save({
-          id: recentId,
-          conversation: {
-            workspacePlan: {
-              stepId: state.stepId,
-              plan: state.plan,
-              checks: state.checks,
-              edits: state.edits,
-              sent: true,
-            },
-          },
-        });
-      }
+    builds: state.builds,
+    // Which conversation this is: a build is added only to the one it
+    // started in (`addBuild`'s `key`).
+    key: convKey,
+    // This plan's latest build (release 3b), or null — built again after a
+    // Remove, the newest; and the last build of any plan (a changed plan's
+    // build reuses what it made).
+    build:
+      [...state.builds].reverse().find((b) => b.stepId === state.stepId) ||
+      null,
+    lastBuild: state.builds[state.builds.length - 1] || null,
+    // A build started: saved at once, so a reopened conversation finds it
+    // even if the window closes. `checks`: what was done before it built;
+    // `replaces`: the build it carries on (Carry on building), in its place;
+    // `key` / `stepId`: the conversation and plan it started from — if
+    // either changed meanwhile, it isn't added (false).
+    addBuild: ({
+      checks,
+      replaces = null,
+      key = null,
+      stepId: from = null,
+      ...build
+    }) => {
+      if (key !== null && key !== keyRef.current) return false;
+      setState((cur) => {
+        if (from !== null && cur.stepId !== from) return cur;
+        const entry = { stepId: cur.stepId, leftOff: [], ...build };
+        saveNow.current = true;
+        return {
+          ...cur,
+          checks: checks || cur.checks,
+          builds: replaces
+            ? cur.builds.map((b) => (b.buildId === replaces ? entry : b))
+            : [...cur.builds, entry],
+        };
+      });
+      return true;
     },
+    // A build as it ended, kept with it: an earlier build still shows after
+    // a restart (the main process keeps only a conversation's latest).
+    keepLast: (buildId, last) =>
+      setState((cur) => {
+        const b = cur.builds.find((x) => x.buildId === buildId);
+        if (
+          !b ||
+          (b.last &&
+            b.last.status === last.status &&
+            b.last.finishedAt === last.finishedAt)
+        )
+          return cur;
+        return {
+          ...cur,
+          builds: cur.builds.map((x) =>
+            x.buildId === buildId ? { ...x, last } : x,
+          ),
+        };
+      }),
+    // Leave it off: a failed piece is accepted as not built.
+    leaveOff: (buildId, key) =>
+      setState((cur) => ({
+        ...cur,
+        builds: cur.builds.map((b) =>
+          b.buildId === buildId && !b.leftOff.includes(key)
+            ? { ...b, leftOff: [...b.leftOff, key] }
+            : b,
+        ),
+      })),
   };
 }
 

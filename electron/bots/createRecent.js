@@ -50,7 +50,49 @@ function titleFor(entry) {
  *   waitingFor  provider names the build waits for
  *   widget      a Create › Widget plan (one widget on its own)
  *   widgetAdded its widget was added to the user's widgets (Looks good)
+ *   built     a question's build (lead workspace, release 3b): its status,
+ *             as above, or null
  */
+// A build's status, in Recent's words.
+const BUILD_STATUS = {
+  waiting: "building",
+  running: "building",
+  done: "built",
+  "waiting-for-you": "ready",
+  "finished-with-problems": "problems",
+  "waiting-for-providers": "waiting",
+  stopped: "stopped",
+  interrupted: "interrupted",
+  removed: "removed",
+};
+
+/**
+ * A question's build in Recent's words, with what the user left off in the
+ * conversation (lead workspace, release 3b): a build whose only failures
+ * were left off is built.
+ */
+function builtStatus(state, wp, buildId) {
+  const word = BUILD_STATUS[state.status] || null;
+  if (word !== "problems") return word;
+  const mine = ((wp && wp.builds) || []).find(
+    (b) => b && b.buildId === buildId,
+  );
+  const off = (mine && mine.leftOff) || [];
+  if (!off.length) return word;
+  const steps = Array.isArray(state.steps) ? state.steps : [];
+  const key = (s) =>
+    s.piece != null
+      ? `piece:${s.piece}`
+      : s.bot != null
+        ? `bot:${s.bot}`
+        : String(s.id || "");
+  const open = steps.some(
+    (s) => s.status === "failed" && !off.includes(key(s)),
+  );
+  if (open) return word;
+  return steps.some((s) => s.status === "needs-provider") ? "waiting" : "built";
+}
+
 function summarize(entry) {
   const state = entry.build && entry.build.state;
   const out = {
@@ -88,6 +130,8 @@ function summarize(entry) {
     // A conversation with a plan in it (release 3a): Recents tag it "Plan".
     const wp = entry.conversation && entry.conversation.workspacePlan;
     out.planned = !!(wp && wp.plan);
+    // Built in the conversation (release 3b): Recents say how it went.
+    out.built = state ? builtStatus(state, wp, entry.build.buildId) : null;
     return out;
   }
   if (!state) return out;
@@ -104,18 +148,7 @@ function summarize(entry) {
         .flatMap((s) => s.waitingFor || []),
     ),
   ];
-  out.status =
-    {
-      waiting: "building",
-      running: "building",
-      done: "built",
-      "waiting-for-you": "ready",
-      "finished-with-problems": "problems",
-      "waiting-for-providers": "waiting",
-      stopped: "stopped",
-      interrupted: "interrupted",
-      removed: "removed",
-    }[state.status] || "draft";
+  out.status = BUILD_STATUS[state.status] || "draft";
   return out;
 }
 

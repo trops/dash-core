@@ -92,8 +92,9 @@ export function questionThreads(plans = [], now = Date.now()) {
       id: p.id,
       title: p.title || "Question",
       to: p.to || null,
-      // A plan in it (lead workspace, release 3a).
+      // A plan in it (lead workspace, release 3a), and its build (3b).
       planned: !!p.planned,
+      built: p.built || null,
       updatedAt: ms(p.updatedAt),
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt)

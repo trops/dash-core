@@ -136,7 +136,7 @@ export function removedText(res) {
  * The dashboard with unsaved edits in this window, if any (DashboardStage
  * mirrors it): a plan doesn't change a dashboard mid-edit (5e-2b).
  */
-function dirtyDashboardId() {
+export function dirtyDashboardId() {
   const id = typeof globalThis !== "undefined" && globalThis.__dashboardDirtyId;
   return id === undefined || id === null ? null : String(id);
 }
