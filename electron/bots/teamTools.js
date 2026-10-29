@@ -1,10 +1,13 @@
 /**
  * teamTools.js
  *
- * A team lead's read-only tools (bot-teams PRD TEAM-002 AC4): what the
- * dashboard's other bots are, what they did, and what's in the dashboard's
- * shared memory. Served in-process under a virtual "bot-team" server (like
- * memory tools), so they work on every engine and need no consent prompt.
+ * A team lead's tools (bot-teams PRD TEAM-002 AC4): what the dashboard's
+ * other bots are, what they did, and what's in the dashboard's shared
+ * memory — and (lead-workspace PRD, release 1) team_ask_bot, which runs one
+ * of its bots with a request and hands back the answer, so the lead is the
+ * user's go-between. Served in-process under a virtual "bot-team" server
+ * (like memory tools), so they work on every engine and need no consent
+ * prompt: the asked bot uses its own tools and asks for its own approvals.
  *
  * Every tool is scoped to the lead's own dashboard and never exposes
  * credentials or grants. Results are fenced as untrusted data: run answers
@@ -83,6 +86,23 @@ const TEAM_TOOLS = [
     description:
       "List the user's providers (from the Providers page): name, type, and the tools each one offers. Use it to say what the user has connected.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "team_ask_bot",
+    description:
+      "Ask one of your team's bots to run now with a request, and get its answer back. It does its job with its own tools; anything it needs approved, the user approves. Use it when the user wants something only that bot can find out or do now (e.g. 'check my inbox now'); use team_recent_runs for what bots already did. One request per bot at a time; a busy or paused bot is reported, not run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        bot: { type: "string", description: "The bot's name." },
+        request: {
+          type: "string",
+          description:
+            "What to ask it, in full — it sees only this, not your conversation.",
+        },
+      },
+      required: ["bot", "request"],
+    },
   },
   {
     name: "find_providers",
@@ -272,6 +292,57 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
             )
             .join("\n"),
         );
+      }
+      case "team_ask_bot": {
+        // Async (it runs the bot); callers await tool results.
+        const b = findMember(team, args && args.bot);
+        if (!b) {
+          return ok(
+            `No bot named "${args && args.bot}" on your team. Your team: ${
+              team.map((m) => m.name).join(", ") || "no bots yet"
+            }.`,
+          );
+        }
+        const request = String((args && args.request) || "").trim();
+        if (!request) return fail("Say what to ask it.");
+        if (deps.isPaused(b.id)) {
+          return ok(
+            `${b.name} is paused, so it wasn't asked. Tell the user to turn it on if they want it to run.`,
+          );
+        }
+        if (deps.isRunning(b.id)) {
+          return ok(
+            `${b.name} is busy with another run right now, so it wasn't asked. Tell the user, and offer to ask again when it's done.`,
+          );
+        }
+        if (typeof deps.askBot !== "function") {
+          return fail("Asking a bot isn't available here.");
+        }
+        return Promise.resolve()
+          .then(() => deps.askBot(ctx, b, request))
+          .then((res) => {
+            if (!res || res.skipped) {
+              return ok(
+                `${b.name} didn't run: ${(res && res.reason) || "unknown reason"}.`,
+              );
+            }
+            if (res.pending) {
+              return ok(
+                `${b.name} is still working — it may be waiting for the user to approve something. Tell the user; its answer will show in its activity when it's done.`,
+              );
+            }
+            if (res.status === "failed") {
+              return ok(
+                `${b.name} failed: ${clip(res.error || "no details", 300)}`,
+              );
+            }
+            return ok(
+              `${b.name}'s answer:\n${clip(res.output || "(no answer)", RUN_ANSWER_LIMIT * 2)}`,
+            );
+          })
+          .catch((err) =>
+            fail(`Couldn't ask ${b.name}: ${err.message || String(err)}`),
+          );
       }
       case "find_providers": {
         // Async (the registry search); callers await tool results.

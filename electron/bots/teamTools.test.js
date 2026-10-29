@@ -100,6 +100,7 @@ describe("teamTools definitions", () => {
         "team_recent_runs",
         "team_memory_read",
         "team_providers",
+        "team_ask_bot",
         "find_providers",
       ],
     );
@@ -295,5 +296,105 @@ describe("find_providers (bot-capabilities CAP-003)", () => {
     );
     assert.equal(r.isError, true);
     assert.match(r.text, /boom/);
+  });
+});
+
+// Lead-workspace release 1: the lead asks one of its bots to run.
+describe("team_ask_bot", () => {
+  const asked = [];
+  const askDeps = (over = {}) => ({
+    ...deps,
+    isRunning: () => false,
+    askBot: async (ctx, bot, request) => {
+      asked.push({ ctx, bot: bot.id, request });
+      return { status: "completed", output: "2 emails need attention." };
+    },
+    ...over,
+  });
+
+  it("runs the named bot with the request and hands back its answer, fenced", async () => {
+    asked.length = 0;
+    const r = await handleTeamTool(askDeps(), lead, "team_ask_bot", {
+      bot: "inbox watch",
+      request: "Anything urgent since 9:00?",
+    });
+    assert.equal(r.isError, false);
+    assert.match(r.text, /Inbox Watch's answer:\n2 emails need attention\./);
+    assert.match(r.text, /<team_data>/);
+    assert.deepEqual(
+      asked.map((a) => [a.bot, a.request, a.ctx.botId]),
+      [["b1", "Anything urgent since 9:00?", "lead_7"]],
+    );
+  });
+
+  it("only its own team: another dashboard's bot isn't found or run", async () => {
+    asked.length = 0;
+    const r = await handleTeamTool(askDeps(), lead, "team_ask_bot", {
+      bot: "Other Team Bot",
+      request: "x",
+    });
+    assert.match(
+      r.text,
+      /No bot named "Other Team Bot" on your team\. Your team: Inbox Watch, CRM Sync\./,
+    );
+    assert.equal(asked.length, 0);
+  });
+
+  it("a paused or busy bot isn't run; the lead is told to say so", async () => {
+    asked.length = 0;
+    const paused = await handleTeamTool(
+      askDeps({ isPaused: (id) => id === "b1" }),
+      lead,
+      "team_ask_bot",
+      { bot: "Inbox Watch", request: "x" },
+    );
+    assert.match(paused.text, /Inbox Watch is paused, so it wasn't asked/);
+    const busy = await handleTeamTool(
+      askDeps({ isRunning: (id) => id === "b1" }),
+      lead,
+      "team_ask_bot",
+      { bot: "Inbox Watch", request: "x" },
+    );
+    assert.match(busy.text, /Inbox Watch is busy with another run/);
+    assert.equal(asked.length, 0);
+  });
+
+  it("still going (waiting on an approval), skipped, failed: said plainly", async () => {
+    const say = async (res) =>
+      (
+        await handleTeamTool(
+          askDeps({ askBot: async () => res }),
+          lead,
+          "team_ask_bot",
+          { bot: "Inbox Watch", request: "x" },
+        )
+      ).text;
+    assert.match(
+      await say({ pending: true }),
+      /still working — it may be waiting for the user to approve something/,
+    );
+    assert.match(
+      await say({ skipped: true, reason: "over budget" }),
+      /Inbox Watch didn't run: over budget\./,
+    );
+    assert.match(
+      await say({ status: "failed", error: "Gmail token expired" }),
+      /Inbox Watch failed: Gmail token expired/,
+    );
+  });
+
+  it("needs a request; no runner here is an error", async () => {
+    const empty = await handleTeamTool(askDeps(), lead, "team_ask_bot", {
+      bot: "Inbox Watch",
+      request: "  ",
+    });
+    assert.equal(empty.isError, true);
+    const none = await handleTeamTool(
+      { ...deps, isRunning: () => false },
+      lead,
+      "team_ask_bot",
+      { bot: "Inbox Watch", request: "x" },
+    );
+    assert.equal(none.isError, true);
   });
 });

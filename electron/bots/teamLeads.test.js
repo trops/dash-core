@@ -161,6 +161,15 @@ describe("planEnsureLead", () => {
     assert.equal(text.includes(CURRENT_LEAD_ACTION), true);
   });
 
+  // Lead-workspace release 1: the lead asks its bots to run.
+  it("tells the lead to ask its bots with team_ask_bot, with the full request", () => {
+    const text = leadInstructions("Kitchen Sink");
+    assert.match(text, /ask it with team_ask_bot/);
+    assert.match(text, /it doesn't see this conversation/);
+    assert.match(text, /saying which bot it came from/);
+    assert.match(text, /busy, paused, or waiting for the user to approve/);
+  });
+
   it("upgrades a lead still on any earlier generated instructions", () => {
     for (const oldAction of LEAD_ACTION_HISTORY) {
       const old = leadInstructions("Kitchen Sink").replace(

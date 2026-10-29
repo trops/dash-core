@@ -9,6 +9,8 @@
 
 ---
 
+> **2026-10-28 — new direction:** teams are talked to only through their lead, in a conversation workspace; the Dash team gets a Dash Lead; Create folds into it; the right-edge rail becomes one notifications panel; the Bots page becomes management only. See [lead-workspace.md](./lead-workspace.md). Where this PRD says otherwise, lead-workspace.md wins.
+
 ## Executive Summary
 
 Dash's left sidebar lists only dashboards; every other first-class area — Bots, Providers, Widgets, Themes, and dashboard management — is hidden inside the Settings modal. This PRD adds a **Manage** group to the sidebar (Dashboards, Bots, Providers, Widgets, Themes). Each opens **full-screen in the main area as a tab** beside open dashboards, with a consistent **list + detail** layout, search and filters. Settings keeps only true settings.

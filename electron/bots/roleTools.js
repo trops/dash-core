@@ -9,7 +9,8 @@
  *                                         or bots: yours and registry (2c-1)
  *   read_widget     all four roles        an installed widget's source
  *   list_providers  every role            each tool marked can read / can change
- *   ask_role        Planner               hand a request to another role
+ *   ask_role        Dash Lead, Planner    hand a request to another role
+ *                                         (the Dash Lead may ask the Planner)
  *   widget_guide    Builder               the widget rules + provider tool names
  *   build_widget    Builder               compile + install into @ai-built/
  *   check_widget    Checker               compile, code checks, scorecard, config
@@ -250,7 +251,21 @@ const TOOL_DEFS = {
   },
 };
 
+// Who a role may hand a request to with ask_role: the Dash Lead to any
+// working role, the Planner to the roles below it.
+const ASK_TARGETS = {
+  dashlead: ["planner", "scout", "builder", "checker"],
+  planner: ["scout", "builder", "checker"],
+};
+
 const ROLE_TOOL_NAMES = {
+  dashlead: [
+    "ask_role",
+    "list_dashboards",
+    "list_providers",
+    "bot_results",
+    "bot_runs",
+  ],
   planner: [
     "search_library",
     "read_widget",
@@ -280,7 +295,21 @@ function serverForTool(toolName) {
 
 /** The tool definitions a role gets (none for an unknown role). */
 function roleToolsFor(role) {
-  return (ROLE_TOOL_NAMES[role] || []).map((n) => ({ ...TOOL_DEFS[n] }));
+  return (ROLE_TOOL_NAMES[role] || []).map((n) =>
+    n === "ask_role" && role === "dashlead"
+      ? {
+          ...TOOL_DEFS.ask_role,
+          description: `Hand the user's request to a Dash team role and get its answer: "planner" to plan something new or a change, "scout" to find what the user already has, "builder" for how something would be built, "checker" for what was checked. Be specific — the role sees only your request. At most ${MAX_HANDOFFS} per run.`,
+          inputSchema: {
+            ...TOOL_DEFS.ask_role.inputSchema,
+            properties: {
+              ...TOOL_DEFS.ask_role.inputSchema.properties,
+              role: { type: "string", enum: ASK_TARGETS.dashlead },
+            },
+          },
+        }
+      : { ...TOOL_DEFS[n] },
+  );
 }
 
 function fence(text) {
@@ -795,8 +824,11 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
       case "ask_role": {
         const target = String(a.role || "").toLowerCase();
         const request = String(a.request || "").trim();
-        if (!["scout", "builder", "checker"].includes(target)) {
-          return fail('ask_role needs role "scout", "builder" or "checker".');
+        const allowed = ASK_TARGETS[ctx.role] || ASK_TARGETS.planner;
+        if (!allowed.includes(target)) {
+          return fail(
+            `ask_role needs role ${allowed.map((r) => `"${r}"`).join(", ")}.`,
+          );
         }
         if (!request) return fail("ask_role needs a request.");
         const res = await deps.askRole({

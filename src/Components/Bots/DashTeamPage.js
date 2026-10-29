@@ -31,7 +31,7 @@ const TABS = [
   { value: "settings", label: "Settings" },
 ];
 
-const ROLE_ORDER = ["planner", "scout", "builder", "checker"];
+const ROLE_ORDER = ["dashlead", "planner", "scout", "builder", "checker"];
 
 const EMPTY = [];
 
@@ -85,6 +85,8 @@ function useThreads() {
 
 // What each role is for, under the To: picker.
 const ROLE_HINT = {
+  dashlead:
+    "Your contact for the team: passes your question to the right role and sums up the answer.",
   planner: "Answers questions and plans new things for you to approve.",
   scout: "Finds widgets and bots you have, or can get from the registry.",
   builder:
@@ -482,7 +484,7 @@ export const DashTeamPage = ({
           <div className="flex flex-col gap-0.5 min-w-0">
             <h3 className="text-lg font-semibold truncate">Dash team</h3>
             <span className={`text-xs ${muted}`}>
-              Planner · Scout · Builder · Checker
+              Dash Lead · Planner · Scout · Builder · Checker
             </span>
           </div>
         </div>

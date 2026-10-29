@@ -122,7 +122,15 @@ export const AskStep = ({
     const other = to ? null : teamRoleRef.current;
     const role = other ? other.role : "planner";
     const name = other ? other.roleName || other.role : "Planner";
-    const wrap = to ? leadQuestion : other ? roleQuestion : questionRequest;
+    // The Dash Lead takes the words as typed (it can ask the Planner);
+    // the other roles are told they only answer from a chat.
+    const wrap = to
+      ? leadQuestion
+      : other
+        ? other.role === "dashlead"
+          ? leadQuestion
+          : roleQuestion
+        : questionRequest;
     let request = wrap(text);
     let cont = continueConversation;
     if (reopened.current) {
