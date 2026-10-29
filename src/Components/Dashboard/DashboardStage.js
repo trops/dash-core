@@ -3290,6 +3290,10 @@ const DashboardStageInner = ({
                   setWorkspaceRequest(null);
                   handleOpenPageGuarded(page);
                 }}
+                onOpenDashboard={(id) => {
+                  setWorkspaceRequest(null);
+                  handleOpenBuiltDashboard(id);
+                }}
               />
             ) : null}
             <BotPageModal

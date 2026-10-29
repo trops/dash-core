@@ -477,6 +477,56 @@ describe("questions in Recent (phase 5e)", () => {
     assert.equal(row.with, "role:dashlead");
   });
 
+  it("a conversation built in the workspace is tagged by its build (release 3b)", () => {
+    const r = make();
+    const e = r.save({
+      kind: "question",
+      prompt: "Plan me a home dashboard",
+      conversation: { recipient: { role: "dashlead", roleName: "Dash Lead" } },
+    });
+    assert.equal(r.list()[0].built, null);
+    r.saveBuild(e.id, {
+      buildId: "build_1",
+      plan: { summary: "Home" },
+      state: { status: "running", steps: [] },
+    });
+    assert.equal(r.list()[0].built, "building");
+    r.saveBuild(e.id, {
+      buildId: "build_1",
+      plan: { summary: "Home" },
+      state: { status: "done", steps: [] },
+    });
+    const row = r.list()[0];
+    assert.equal(row.built, "built");
+    // Still a question: Recents keep it with its lead.
+    assert.equal(row.kind, "question");
+    assert.equal(row.status, "asked");
+    // A failure left off in the conversation: built.
+    r.saveBuild(e.id, {
+      buildId: "build_1",
+      plan: { summary: "Home" },
+      state: {
+        status: "finished-with-problems",
+        steps: [
+          { id: "build:1", piece: 1, status: "failed" },
+          { id: "place:1", piece: 1, status: "skipped" },
+        ],
+      },
+    });
+    assert.equal(r.list()[0].built, "problems");
+    r.save({
+      id: e.id,
+      conversation: {
+        workspacePlan: {
+          stepId: "1:t1",
+          plan: { summary: "Home" },
+          builds: [{ buildId: "build_1", leftOff: ["piece:1"] }],
+        },
+      },
+    });
+    assert.equal(r.list()[0].built, "built");
+  });
+
   it("an unknown kind is a plan", () => {
     const r = make();
     assert.equal(r.save({ kind: "gadget", prompt: "x" }).kind, "plan");

@@ -7,7 +7,11 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { createdFor, isDone, removePiece } from "../Create/planChecklist";
+import {
+  createdFor,
+  normalizeType,
+  removePiece,
+} from "../Create/planChecklist";
 import {
   ConnectDialog,
   InstallReviewDialog,
@@ -88,7 +92,7 @@ export const PlanCard = ({ plan, earlier = false, onOpen }) => (
  * ready to go — Yes, build it / Change something.
  *
  * @param {(text) => void} onSend   sends a reply to the lead
- * @param {() => void} onBuild      Yes, build it
+ * @param {() => void} onBuild      Yes, build it (null while it starts)
  * @param {() => void} onChange     Change something (the reply box)
  * @param {boolean} sent            already sent to Create to build
  */
@@ -216,8 +220,14 @@ export const PlanChoices = ({
       className="flex flex-row flex-wrap items-center gap-2"
       data-testid="workspace-plan-choices"
     >
-      <Button title="Yes, build it" onClick={onBuild} />
-      <Button2 title="Change something" onClick={onChange} />
+      {onBuild ? (
+        <>
+          <Button title="Yes, build it" onClick={onBuild} />
+          <Button2 title="Change something" onClick={onChange} />
+        </>
+      ) : (
+        <span className={`text-sm ${muted}`}>Starting the build…</span>
+      )}
     </div>
   );
 };
@@ -313,19 +323,23 @@ export const BeforeItBuilds = ({ wp, readOnly = false }) => {
  * what still needs connecting. Changes are asked for in the chat (Change
  * something). The current plan has Yes, build it, so it can be built
  * whatever the chat ended on; an earlier one (`plan` given) is only shown.
+ * Once it builds (release 3b), `buildLine` says where the build stands.
  */
 export const PlanOutput = ({
   wp,
   plan: earlier = null,
   readOnly = false,
   onBuild = null,
+  buildLine = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const plan = earlier || wp.plan;
   if (!plan) return null;
   const checklist = earlier ? [] : wp.checklist;
-  const connected = (it) => isDone(it, wp.checks, wp.have);
+  // Connected for real — a connect skipped before building still needs it.
+  const connected = (it) =>
+    !!(wp.have && wp.have.has(normalizeType(it.providerType)));
   const rows = planRows(plan, checklist, connected);
   return (
     <div className="flex flex-col gap-4" data-testid="workspace-plan-output">
@@ -376,6 +390,10 @@ export const PlanOutput = ({
       {earlier ? (
         <span className={`text-sm ${muted}`}>
           The Planner changed this plan since — the latest is under Outputs.
+        </span>
+      ) : buildLine ? (
+        <span className={`text-sm ${muted}`} data-testid="workspace-plan-built">
+          {buildLine}
         </span>
       ) : readOnly ? (
         <span className={`text-sm ${muted}`}>

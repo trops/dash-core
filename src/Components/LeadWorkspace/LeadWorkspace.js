@@ -27,19 +27,36 @@ import {
 import { WorkspaceSide } from "./WorkspaceSide";
 import { useWorkspacePlan } from "./useWorkspacePlan";
 import { PlanCard, PlanChoices } from "./PlanViews";
+import { BuildInChat, BuildWalk, PastBuild } from "./BuildViews";
+import { usePlanBuild } from "./usePlanBuild";
+import { choicesIndex, stillAnswering, withPlanContext } from "./workspacePlan";
 import {
-  choicesIndex,
-  createMessages,
-  planName,
-  stillAnswering,
-  withPlanContext,
-} from "./workspacePlan";
+  buildKind,
+  buildOptions,
+  isBuilding,
+  waitingFor,
+  workingLine,
+} from "./workspaceBuild";
+import { normalizeType } from "../Create/planChecklist";
+import { dirtyDashboardId } from "../Create/CreatePlanStep";
+import { planTarget } from "../../utils/teamPlan";
 
 const EMPTY = [];
 const TICK_MS = 60000;
 const SIDE_MIN = 320;
 const SIDE_MAX = 900;
 const WIDE = 760;
+// A conversation's build in its Recents row (release 3b, frame 8).
+const BUILT_TAG = {
+  building: "Building",
+  built: "Built",
+  ready: "Ready to look at",
+  problems: "Built, with problems",
+  waiting: "Built, waiting",
+  stopped: "Stopped",
+  interrupted: "Interrupted",
+  removed: "Removed",
+};
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -122,11 +139,14 @@ function startText(contact) {
  * @param {() => void} onClose
  * @param {(page) => void} [onOpenPage]  opens an app page ("dashboards",
  *   "widgets") in the workspace's place — Start from's copy and edit
+ * @param {(dashboardId) => void} [onOpenDashboard]  opens a built dashboard
+ *   in the workspace's place (release 3b)
  */
 export const LeadWorkspace = ({
   request = null,
   onClose,
   onOpenPage = null,
+  onOpenDashboard = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext) || {};
   const panel = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -202,28 +222,126 @@ export const LeadWorkspace = ({
     setOpen({ key: `new:${Date.now()}`, question: q });
   };
 
-  // Yes, build it: the plan goes to Create's build, with what's already
-  // done before building (building in the conversation is release 3b).
-  // The conversation says it went, so it isn't built twice; Create gets
-  // what the user said, so a change asked there has it.
-  const buildInCreate = () => {
-    if (!wp.plan || wp.sent || typeof window === "undefined") return;
-    wp.markSent();
-    window.dispatchEvent(
-      new CustomEvent("dash:open-create", {
-        detail: {
-          type: "dashboard",
-          seed: {
-            plan: wp.plan,
-            label: planName(wp.plan),
-            checks: wp.checks,
-            messages: createMessages(messages, contact ? contact.name : ""),
-          },
-        },
-      }),
-    );
-    // One window at a time: Create opens in this one's place.
-    onClose();
+  // The plan's build, live (release 3b) — from how it last ended until the
+  // main process says more.
+  const pb = usePlanBuild(
+    wp.build ? wp.build.buildId : null,
+    wp.build ? wp.build.last || null : null,
+  );
+  const [walking, setWalking] = useState(false);
+  // Between Yes, build it and the build being there: it can't be pressed
+  // twice.
+  const [starting, setStarting] = useState(false);
+  const [buildError, setBuildError] = useState(null);
+  const conversationId = open ? open.recentId || selectedId : null;
+  const removed = !!(pb.state && pb.state.status === "removed");
+
+  // Builds the plan here, in the conversation, after its last message. A
+  // changed plan reuses what an earlier build made (resumeFrom); Carry on
+  // building continues this plan's build.
+  const startBuild = async ({ checks = null, carryOn = false } = {}) => {
+    setBuildError(null);
+    const b = botsApi();
+    if (!wp.plan || !b || !b.startPlanBuild) {
+      setBuildError("Building from a plan isn't available in this version.");
+      return;
+    }
+    // Two saves at once would overwrite each other (as Create, 5e-2b).
+    const target = planTarget(wp.plan);
+    if (target && dirtyDashboardId() === target.id) {
+      setBuildError(
+        `Save or cancel your edits to ${target.name} first, then say yes again.`,
+      );
+      return;
+    }
+    const kind = carryOn && wp.build ? wp.build.kind : buildKind(wp.plan);
+    const earlier = carryOn
+      ? wp.build
+      : wp.lastBuild && wp.lastBuild.stepId !== (wp.step && wp.step.id)
+        ? wp.lastBuild
+        : null;
+    // Where it started: if the user moves on meanwhile, it isn't added there.
+    const from = { key: wp.key, stepId: wp.step ? wp.step.id : null };
+    const at = carryOn && wp.build ? wp.build.at : messages.length - 1;
+    const start = (resumeFrom) =>
+      b.startPlanBuild(wp.plan, {
+        ...buildOptions(kind),
+        ...(resumeFrom ? { resumeFrom } : {}),
+        ...(conversationId ? { recentId: conversationId } : {}),
+      });
+    setStarting(true);
+    try {
+      let res = await start(earlier ? earlier.buildId : null);
+      // An earlier plan's build that can't be reused (removed, or another
+      // dashboard): this one starts fresh.
+      if (res && res.error && earlier && !carryOn) res = await start(null);
+      if (!res || res.error) {
+        setBuildError((res && res.error) || "The build couldn't start.");
+        return;
+      }
+      wp.addBuild({
+        buildId: res.buildId,
+        kind,
+        at,
+        ...from,
+        ...(carryOn && wp.build
+          ? { replaces: wp.build.buildId, leftOff: wp.build.leftOff }
+          : {}),
+        ...(checks ? { checks } : {}),
+      });
+    } catch (err) {
+      setBuildError((err && err.message) || "The build couldn't start.");
+    } finally {
+      setStarting(false);
+    }
+  };
+  // Yes, build it: what's left to review first, then the build. Once —
+  // again only after what was built was removed.
+  const buildIt = () => {
+    if (!wp.plan || walking || starting || (wp.build && !removed)) return;
+    setBuildError(null);
+    setWalking(true);
+  };
+  const building = isBuilding(pb.state);
+  // How it ended, kept with the build (an earlier one shows after a restart).
+  const ended = pb.state && !building ? pb.state : null;
+  useEffect(() => {
+    if (ended && wp.build) wp.keepLast(wp.build.buildId, ended);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ended && ended.status, ended && ended.finishedAt]);
+  // A provider the build waits for got connected (here, or anywhere): the
+  // steps that need it carry on. Once per change in what's connected — if
+  // the build still waits after that, it waits for the user.
+  const resumed = useRef(null);
+  const waitingTypes = pb.state
+    ? waitingFor(pb.state)
+        .map(normalizeType)
+        // A provider type, not a description of what's missing.
+        .filter((t) => t && /^[a-z0-9][a-z0-9._-]*$/.test(t))
+    : [];
+  const ready =
+    !!pb.state &&
+    !building &&
+    waitingTypes.length > 0 &&
+    waitingTypes.every((t) => wp.have.has(t));
+  const resumeKey = ready
+    ? `${wp.build.buildId}:${[...wp.have].sort().join(",")}`
+    : null;
+  useEffect(() => {
+    if (!resumeKey || resumed.current === resumeKey) return;
+    resumed.current = resumeKey;
+    pb.resume();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeKey]);
+  const buildActions = {
+    fix: pb.fix,
+    retry: pb.retry,
+    approve: pb.approve,
+    leaveOff: wp.leaveOff,
+    carryOn: () => !starting && startBuild({ carryOn: true }),
+    buildAgain: buildIt,
+    openDashboard: onOpenDashboard,
+    open: setSideOpen,
   };
   // The lead is still answering: the plan isn't changed meanwhile.
   const answering = stillAnswering(messages);
@@ -255,7 +373,36 @@ export const LeadWorkspace = ({
   // After a message: the plan's card under the step that brought it, and
   // the reply choices under the lead's answer to it.
   const choicesAt = choicesIndex(messages);
+  const leadName = contact ? contact.name : "Dash Lead";
   const renderAfter = (m, i, api) => {
+    // A build shows after the message it started from (release 3b).
+    const builds = wp.builds.filter((b) => b.at === i);
+    if (builds.length) {
+      return (
+        <>
+          {builds.map((b) =>
+            b === wp.build ? (
+              <BuildInChat
+                key={b.buildId}
+                build={b}
+                state={pb.state}
+                leadName={leadName}
+                current
+                actions={buildActions}
+                actionError={pb.actionError || buildError}
+              />
+            ) : (
+              <PastBuild
+                key={b.buildId}
+                build={b}
+                leadName={leadName}
+                onOpen={() => setSideOpen(null)}
+              />
+            ),
+          )}
+        </>
+      );
+    }
     if (m.who === "step" && wp.step && m.id === wp.step.id && wp.plan) {
       return <PlanCard plan={wp.plan} onOpen={() => setSideOpen("plan")} />;
     }
@@ -269,16 +416,26 @@ export const LeadWorkspace = ({
         />
       );
     }
-    if (i === choicesAt && wp.plan && !api.busy) {
+    if (i === choicesAt && wp.plan && !wp.build && !api.busy) {
       return (
-        <PlanChoices
-          plan={wp.plan}
-          check={wp.check}
-          sent={wp.sent}
-          onSend={api.send}
-          onBuild={buildInCreate}
-          onChange={api.focusReply}
-        />
+        <>
+          <PlanChoices
+            plan={wp.plan}
+            check={wp.check}
+            sent={wp.sent}
+            onSend={api.send}
+            onBuild={starting || walking ? null : buildIt}
+            onChange={api.focusReply}
+          />
+          {buildError ? (
+            <span
+              className={`text-xs ${muted}`}
+              data-testid="workspace-build-error"
+            >
+              {buildError}
+            </span>
+          ) : null}
+        </>
       );
     }
     return null;
@@ -429,7 +586,11 @@ export const LeadWorkspace = ({
                       // Its age; "asked <this lead>" would repeat on every row.
                       meta={[
                         String(t.sub || "").split(" · ")[0],
-                        t.planned ? "Plan" : null,
+                        t.built
+                          ? BUILT_TAG[t.built] || null
+                          : t.planned
+                            ? "Plan"
+                            : null,
                       ]
                         .filter(Boolean)
                         .join(" · ")}
@@ -503,6 +664,23 @@ export const LeadWorkspace = ({
               prepareSend={(t) => withPlanContext(t, wp.plan, wp.takeEdits())}
               placeholder="Reply"
               hint={null}
+              // While it builds, the reply box says what's going on and Stop
+              // stops the build; the chat follows it as it goes.
+              working={
+                building
+                  ? {
+                      text: pb.stopping
+                        ? "Stopping after this step…"
+                        : workingLine(pb.state),
+                      onStop: pb.stop,
+                    }
+                  : null
+              }
+              follow={
+                pb.state
+                  ? `${pb.state.status}:${(pb.state.steps || []).filter((x) => x.status !== "waiting").length}`
+                  : null
+              }
             />
           ) : (
             <>
@@ -582,7 +760,9 @@ export const LeadWorkspace = ({
               statusOf={all.statusOf}
               wp={wp}
               planReadOnly={answering}
-              onBuild={buildInCreate}
+              onBuild={starting || walking ? null : buildIt}
+              build={wp.build}
+              pb={pb}
               open={sideOpen}
               onOpen={setSideOpen}
               wide={wide}
@@ -593,6 +773,16 @@ export const LeadWorkspace = ({
           ) : null}
         </aside>
       </div>
+      {walking ? (
+        <BuildWalk
+          wp={wp}
+          onReady={(checks) => {
+            setWalking(false);
+            startBuild({ checks });
+          }}
+          onCancel={() => setWalking(false)}
+        />
+      ) : null}
     </Modal>
   );
 };

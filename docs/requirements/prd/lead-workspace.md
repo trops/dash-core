@@ -127,3 +127,30 @@ A screenshot-to-mockup check after merging found the workspace off the approved 
 - Change something is a bordered button; Expand is "⇤ Expand"; expanded, the column is 760 wide (at most half the screen); the close is a plain ×; the reply box says "Reply" with no hint line.
 - Left as they are: the lead's reply keeps dash-react's ChatMessage box, the composer keeps its Ask button and the drag edge has no grip (dash-react primitives).
 - A second check found: the cards' fill and tile, the link colour (Aurora role classes), the Planner's line ("drafted a plan — 2 widgets", not its first words), the Scout "not needed" when the plan came without it, hollow ○ for what's still to do, and the chat now follows its newest message (AskStep) so the reply choices are never below the fold.
+
+### Release 3b — building in the conversation (2026-10-29)
+
+Frames 3, 4, 7, 8, 31, 33.
+
+- **Yes, build it** builds the plan in the conversation; the workspace stays open. What's left to review (installs, the Planner's approvals) opens first, one window at a time, as in Create (`BuildWalk`). A provider still to connect doesn't hold it up: what needs it waits, and it shows under **Needs you** with Connect (`BuildNeedsYou`). Once it's connected, here or anywhere, the waiting steps carry on by themselves.
+- Which build a plan gets (`workspaceBuild.buildKind`): one new widget and nothing else is built like Create's widget on its own (`cell` + `standalone`) and waits on its live preview (frame 31: Looks good in the chat, or the preview on the right with Change something); one bot alone is a bot build; anything else builds a dashboard. A dashboard build doesn't stop for previews (decided for release 3).
+- The build is the main process's plan build, kept on the conversation (`recentId`), so a reopened conversation, or one opened after a restart, picks it up. The conversation keeps its builds in `workspacePlan.builds` (`{ buildId, stepId, at, kind, leftOff }`): each shows after the message it started from, and earlier ones (a plan changed since) stay as they ended. A changed plan's build reuses what the earlier one made (`resumeFrom`), or starts fresh when it can't.
+- In the chat (`BuildInChat`): "Yes, build it", the build's step line, its card (the dashboard, the widget or the bot), and the Dash Lead's words, written from the build's state, with no AI call per update. The reply choices:
+  - Open <dashboard> when it's built;
+  - Try again / Let the Builder fix it / Leave it off when a step fails (frame 33);
+  - Looks good / Change something at a preview;
+  - Carry on building when it stopped or the app closed mid-build.
+
+  **Leave it off** is the conversation's own: the failed piece, and what was skipped because of it, count as left off, and the build reads as built ("Built · Camera strip left off").
+- While it builds, the reply box says what's going on ("The team is working · the Builder is building 2 widgets"), and its Stop stops the build (AskStep `working`; `follow` keeps the chat on the newest step).
+- On the right:
+  - the plan's line follows the build ("Building · 3 of 7 done", "4 of 7 done · 1 failed", "Built");
+  - the built dashboard is an output;
+  - the Builder and Checker follow the build: working with their live line, failed with why, done with their tokens. Build log › opens a time and a line per step, then the new bots to try (Create's `TryBots`) and Remove what was built. Report › opens the Check report.
+  - Before it builds goes once it builds; Providers says connected only when a provider really is (a skipped connect isn't).
+- Shared with Create: the build subscription and its actions (`usePlanBuild`, now used by CreateBuildingStep too), Try the bots (`TryBots`), the unsaved-edits check (`dirtyDashboardId`).
+- Recents tag a conversation by its build ("Building", "Built", "Built, with problems"…): `createRecent` `built`.
+- The Dash Lead's instructions: it says the plan changed only when the Planner's answer has a new plan in it, and that a yes builds right there. 3a's text is kept in its history, so a generated Dash Lead upgrades.
+- Seen live and in review, fixed: "Checker checked it" for one widget; the Build log in words (no draft or package ids); the Check report's first sentence only; the Planner's step says "drafted a plan"; the Checker "stopped" (and no Report ›) when a build stops before it checks; at a preview the Builder is "waiting for you" with Preview › (frame 31); the Builder's live line skips its memory notes; an opened output keeps ← Outputs and Expand in place and starts at its top; Yes, build it can't start two builds ("Starting the build…"); a build that started as the user switched conversation isn't added to the new one; each build keeps how it ended (`last`), so an earlier build still shows after a restart; a waiting provider resumes the build once per change in what's connected (never in a loop, and only for real provider types); after Remove what was built, **Build it again**; stopped before anything was built, "Start it again"; Recents count what was left off as built, and say Removed.
+- Found live, not 3b: an AI-built widget that throws when it renders passes the Checker, and its preview stays on "Preview ready." with no error (CellPreview / the preview host — Create's widget preview too); the Planner, asked by the Dash Lead, says it can't use its memory tools.
+- Not in 3b: the Bots' own rows during a build (a bot waiting for a provider shows under Needs you, not as a team row), and the mockup's per-piece counts ("2 of 5"), which count steps instead.

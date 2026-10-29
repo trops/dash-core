@@ -59,6 +59,8 @@ jest.mock("../AppPages/useAllBots", () => ({
       { id: "d_p", role: "planner", name: "Planner" },
       { id: "d_s", role: "scout", name: "Scout" },
       { id: "d_l", role: "dashlead", name: "Dash Lead" },
+      { id: "d_b", role: "builder", name: "Builder" },
+      { id: "d_c", role: "checker", name: "Checker" },
     ],
     statusOf: () => "Idle",
   }),
@@ -392,11 +394,11 @@ describe("a plan in the conversation (release 3a)", () => {
     ).toBeNull();
   });
 
-  test("Yes, build it hands the plan to Create's build, with what's done; Change something goes to the reply box", async () => {
+  test("Yes, build it asks what's left to review, then builds here; Change something goes to the reply box", async () => {
+    window.mainApi.bots.startPlanBuild = jest
+      .fn()
+      .mockResolvedValue({ buildId: "build_1", state: null });
     const onClose = await openWithPlan();
-    const heard = [];
-    const listen = (e) => heard.push(e.detail);
-    window.addEventListener("dash:open-create", listen);
     const choices = render(after(2));
     fireEvent.click(
       within(choices.container).getByRole("button", {
@@ -407,22 +409,40 @@ describe("a plan in the conversation (release 3a)", () => {
     fireEvent.click(
       within(choices.container).getByRole("button", { name: "Yes, build it" }),
     );
-    window.removeEventListener("dash:open-create", listen);
-    expect(heard).toEqual([
-      {
-        type: "dashboard",
-        seed: {
-          plan: PLAN,
-          label: "Home",
-          checks: {},
-          messages: [
-            { who: "you", text: "Plan me a home dashboard" },
-            { who: "note", text: "Planned with Dash Lead." },
-          ],
+    // The Planner's approval is asked first, as Create does.
+    await waitFor(() =>
+      expect(screen.getAllByText("Turn on the lights-off bot")).toHaveLength(2),
+    );
+    expect(window.mainApi.bots.startPlanBuild).not.toHaveBeenCalled();
+    // The window's OK (the last one; the row's own is first).
+    fireEvent.click(screen.getAllByRole("button", { name: "OK" }).pop());
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(PLAN, {
+        recentId: "q_new",
+      }),
+    );
+    // Built here: the window stays, and the build is saved with the
+    // conversation, after the message it started from.
+    expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalledWith({
+        id: "q_new",
+        conversation: {
+          workspacePlan: expect.objectContaining({
+            checks: { "approve:Turn on the lights-off bot": "done" },
+            builds: [
+              {
+                stepId: "1:t1",
+                leftOff: [],
+                buildId: "build_1",
+                kind: "dashboard",
+                at: 2,
+              },
+            ],
+          }),
         },
-      },
-    ]);
-    expect(onClose).toHaveBeenCalled();
+      }),
+    );
   });
 
   test("a typed reply takes the plan along; the plan is saved with the conversation", async () => {
@@ -440,6 +460,7 @@ describe("a plan in the conversation (release 3a)", () => {
             checks: {},
             edits: [],
             sent: false,
+            builds: [],
           },
         },
       }),
@@ -601,30 +622,28 @@ describe("release 3a review fixes", () => {
         { who: "note", text: "Stopped." },
       ]);
     });
-    const heard = [];
-    const listen = (e) => heard.push(e.detail);
-    window.addEventListener("dash:open-create", listen);
+    window.mainApi.bots.startPlanBuild = jest
+      .fn()
+      .mockResolvedValue({ buildId: "build_1", state: null });
     fireEvent.click(
       within(screen.getByTestId("workspace-plan-output")).getByRole("button", {
         name: "Yes, build it",
       }),
     );
-    window.removeEventListener("dash:open-create", listen);
-    expect(heard).toHaveLength(1);
-    expect(heard[0].seed.messages.map((m) => m.text)).toEqual([
-      "Plan it",
-      "Bigger",
-      "Planned with Dash Lead.",
-    ]);
-    expect(onClose).toHaveBeenCalled();
-    // Saved as sent at once (the window closes next).
-    expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "q_new",
-        conversation: {
-          workspacePlan: expect.objectContaining({ sent: true }),
-        },
-      }),
+    // The plan is open on the right: the window's OK is the only one.
+    fireEvent.click(await screen.findByRole("button", { name: "OK" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledTimes(1),
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    // Built once: the plan now says where the build stands, with no second yes.
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId("workspace-plan-output")).queryByRole(
+          "button",
+          { name: "Yes, build it" },
+        ),
+      ).toBeNull(),
     );
   });
 
@@ -858,5 +877,731 @@ describe("release 3a: matches the mockup", () => {
     expect(
       within(out).queryByRole("button", { name: "Yes, build it" }),
     ).toBeNull();
+  });
+});
+
+describe("release 3b: building in the conversation", () => {
+  const PLAN = {
+    summary: "A home dashboard with your lights",
+    pieces: [
+      { kind: "widget", name: "Lights panel", source: "new" },
+      { kind: "widget", name: "Camera strip", source: "new" },
+      { kind: "layout", name: "Home", source: "new" },
+    ],
+  };
+  const planStep = (id, plan = PLAN) => ({
+    who: "step",
+    id,
+    bot: "the Planner",
+    label: "Asked the Planner",
+    status: "done",
+    answer: "Here's a plan.",
+    result: "Here's a plan.",
+    plan,
+  });
+  const you = (text) => ({ who: "you", text });
+  const reply = { who: "role", text: "Want it built?" };
+  const api = { busy: false, send: jest.fn(), focusReply: jest.fn() };
+  const at = (hh, mm) => new Date(2026, 9, 29, hh, mm).toISOString();
+  const s = (over) => ({ status: "waiting", role: "dash", ...over });
+  const RUNNING = {
+    status: "running",
+    startedAt: at(21, 14),
+    steps: [
+      s({
+        id: "dashboard",
+        kind: "dashboard",
+        label: 'Create the "Home" dashboard',
+        status: "done",
+        finishedAt: at(21, 14),
+      }),
+      s({
+        id: "build:0",
+        kind: "build",
+        piece: 0,
+        role: "builder",
+        label: "Build Lights panel",
+        status: "done",
+        finishedAt: at(21, 15),
+      }),
+      s({
+        id: "check:0",
+        kind: "check",
+        piece: 0,
+        role: "checker",
+        label: "Check Lights panel",
+        status: "done",
+        detail: "Renders.\nVERDICT: PASSED",
+        finishedAt: at(21, 16),
+      }),
+      s({
+        id: "build:1",
+        kind: "build",
+        piece: 1,
+        role: "builder",
+        label: "Build Camera strip",
+        status: "running",
+        startedAt: at(21, 16),
+      }),
+      s({
+        id: "check:1",
+        kind: "check",
+        piece: 1,
+        role: "checker",
+        label: "Check Camera strip",
+      }),
+      s({
+        id: "place:0",
+        kind: "place",
+        piece: 0,
+        label: "Place Lights panel",
+      }),
+      s({
+        id: "place:1",
+        kind: "place",
+        piece: 1,
+        label: "Place Camera strip",
+      }),
+    ],
+  };
+  const FAILED = {
+    ...RUNNING,
+    status: "finished-with-problems",
+    finishedAt: at(21, 18),
+    dashboard: { id: "12", name: "Home" },
+    steps: RUNNING.steps.map((x) =>
+      x.id === "build:1"
+        ? {
+            ...x,
+            status: "failed",
+            error: "cameras timed out after 30s",
+            canFix: true,
+            fixesLeft: 2,
+            finishedAt: at(21, 17),
+          }
+        : x.id === "check:1" || x.id === "place:1"
+          ? {
+              ...x,
+              status: "skipped",
+              error: "Build Camera strip didn't finish",
+            }
+          : x.id === "place:0"
+            ? { ...x, status: "done", finishedAt: at(21, 18) }
+            : x,
+    ),
+  };
+
+  let push = null;
+  beforeEach(() => {
+    push = null;
+    Object.assign(window.mainApi.bots, {
+      startPlanBuild: jest
+        .fn()
+        .mockResolvedValue({ buildId: "build_1", state: null }),
+      getPlanBuild: jest.fn().mockResolvedValue(null),
+      onPlanBuild: jest.fn((cb) => {
+        push = (state) => act(() => cb({ buildId: "build_1", state }));
+        return 9;
+      }),
+      stopPlanBuild: jest.fn().mockResolvedValue({ ok: true }),
+      fixPlanBuild: jest.fn().mockResolvedValue({ ok: true }),
+      retryPlanBuild: jest.fn().mockResolvedValue({ ok: true }),
+      resumePlanBuild: jest.fn().mockResolvedValue({ ok: true }),
+      approvePlanStep: jest.fn().mockResolvedValue({ ok: true }),
+    });
+  });
+
+  // Asks the Dash Lead, gets the plan, and says Yes, build it.
+  const buildIt = async (plan = PLAN, props = {}) => {
+    render(
+      <LeadWorkspace
+        request={{ key: "role:dashlead" }}
+        onClose={jest.fn()}
+        {...props}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "A dashboard for my smart home" }),
+    );
+    const msgs = [you("Plan it"), planStep("1:t1", plan), reply];
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange(msgs);
+    });
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    const choices = render(node);
+    fireEvent.click(
+      within(choices.container).getByRole("button", { name: "Yes, build it" }),
+    );
+    choices.unmount();
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
+    );
+    await waitFor(() => expect(push).not.toBeNull());
+  };
+  // The chat after the message the build started from.
+  const chat = () => {
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    return render(node).container;
+  };
+
+  test("it builds here: the step, the lead's words, Stop in the reply box, the team at work (frame 3)", async () => {
+    await buildIt();
+    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(PLAN, {
+      recentId: "q_new",
+    });
+    push(RUNNING);
+    const c = chat();
+    expect(c).toHaveTextContent("Yes, build it");
+    expect(within(c).getByTestId("workspace-build-step")).toHaveTextContent(
+      "Builder is building 2 widgets",
+    );
+    expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
+      "Building now",
+    );
+    // The reply box says what's going on, and its Stop stops the build.
+    expect(mockAskProps.working.text).toBe(
+      "The team is working · the Builder is building 2 widgets",
+    );
+    await act(async () => {
+      await mockAskProps.working.onStop();
+    });
+    expect(window.mainApi.bots.stopPlanBuild).toHaveBeenCalledWith("build_1");
+
+    const side = screen.getByTestId("workspace-side");
+    expect(within(side).getByTestId("workspace-output-plan")).toHaveTextContent(
+      "Building · 3 of 7 done",
+    );
+    const rows = screen.getAllByTestId("workspace-member");
+    const builder = rows.find((r) => r.textContent.startsWith("Builder"));
+    const checker = rows.find((r) => r.textContent.startsWith("Checker"));
+    expect(builder).toHaveTextContent("Builder · working");
+    expect(builder).toHaveTextContent("› Build Camera strip");
+    expect(checker).toHaveTextContent("Checker · waiting");
+    // The Build log, from the Builder's row (frame 4).
+    fireEvent.click(
+      within(builder).getByRole("button", { name: "Build log ›" }),
+    );
+    const log = screen.getByTestId("workspace-build-log");
+    expect(log).toHaveTextContent("In progress");
+    expect(
+      screen
+        .getAllByTestId("workspace-build-log-row")
+        .map((r) => r.textContent),
+    ).toEqual([
+      '21:14Create the "Home" dashboard',
+      "21:15Build Lights panel",
+      "21:16Check Lights panel",
+      "21:16Build Camera strip…",
+    ]);
+  });
+
+  test("a failure: Let the Builder fix it, or leave it off — then Open Home (frames 33, 8)", async () => {
+    const onOpenDashboard = jest.fn();
+    await buildIt(PLAN, { onOpenDashboard });
+    push(FAILED);
+    let c = chat();
+    expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
+      "Camera strip didn't work — cameras timed out after 30s.",
+    );
+    fireEvent.click(
+      within(c).getByRole("button", { name: "Let the Builder fix it" }),
+    );
+    await waitFor(() =>
+      expect(window.mainApi.bots.fixPlanBuild).toHaveBeenCalledWith(
+        "build_1",
+        "build:1",
+      ),
+    );
+    expect(
+      screen
+        .getAllByTestId("workspace-member")
+        .find((r) => r.textContent.startsWith("Builder")),
+    ).toHaveTextContent("Builder · failed");
+    c = chat();
+    fireEvent.click(within(c).getByRole("button", { name: "Leave it off" }));
+    c = chat();
+    expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
+      "Camera strip is left off.",
+    );
+    expect(
+      within(screen.getByTestId("workspace-side")).getByTestId(
+        "workspace-output-plan",
+      ),
+    ).toHaveTextContent("Built · Camera strip left off");
+    // The built dashboard is an output; it opens the Check report (frame 7).
+    fireEvent.click(screen.getByTestId("workspace-output-dashboard"));
+    expect(screen.getByTestId("workspace-check-report")).toHaveTextContent(
+      "Lights panel — passed",
+    );
+    fireEvent.click(within(c).getByRole("button", { name: "Open Home" }));
+    expect(onOpenDashboard).toHaveBeenCalledWith("12");
+  });
+
+  test("a provider it waits for: Needs you on the right; connected, it carries on", async () => {
+    await buildIt();
+    const waiting = {
+      ...RUNNING,
+      status: "waiting-for-providers",
+      finishedAt: at(21, 20),
+      steps: [
+        ...RUNNING.steps.map((x) => ({ ...x, status: "done" })),
+        s({
+          id: "bot:0",
+          kind: "bot",
+          label: "Save the Lights-off bot",
+          status: "needs-provider",
+          waitingFor: ["home-assistant"],
+        }),
+      ],
+    };
+    push(waiting);
+    const needs = screen.getByTestId("workspace-build-needs");
+    expect(needs).toHaveTextContent("Needs you: connect");
+    expect(
+      within(needs).getByRole("button", { name: "Connect" }),
+    ).toBeInTheDocument();
+    expect(window.mainApi.bots.resumePlanBuild).not.toHaveBeenCalled();
+  });
+
+  test("one widget on its own: built to look at first — Looks good adds it (frame 31)", async () => {
+    const ONE = {
+      summary: "A calendar widget",
+      pieces: [{ kind: "widget", name: "Calendar", source: "new" }],
+    };
+    await buildIt(ONE);
+    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(ONE, {
+      cell: true,
+      standalone: true,
+      recentId: "q_new",
+    });
+    push({
+      status: "waiting-for-you",
+      steps: [
+        s({
+          id: "build:0",
+          kind: "build",
+          piece: 0,
+          role: "builder",
+          label: "Build Calendar",
+          status: "done",
+        }),
+        s({
+          id: "check:0",
+          kind: "check",
+          piece: 0,
+          role: "checker",
+          label: "Check Calendar",
+          status: "done",
+        }),
+        s({
+          id: "preview:0",
+          kind: "preview",
+          piece: 0,
+          role: "you",
+          label: "Preview Calendar",
+          status: "needs-you",
+        }),
+        s({ id: "save:0", kind: "save", piece: 0, label: "Install Calendar" }),
+      ],
+    });
+    expect(screen.getByTestId("workspace-output-preview")).toHaveTextContent(
+      "Calendar",
+    );
+    const c = chat();
+    fireEvent.click(within(c).getByRole("button", { name: "Looks good" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.approvePlanStep).toHaveBeenCalledWith(
+        "build_1",
+        "preview:0",
+        {},
+      ),
+    );
+  });
+
+  test("stopped: Carry on building continues the same build in its place", async () => {
+    await buildIt();
+    push({ ...RUNNING, status: "stopped" });
+    window.mainApi.bots.startPlanBuild.mockResolvedValue({
+      buildId: "build_2",
+      state: null,
+    });
+    fireEvent.click(
+      within(chat()).getByRole("button", { name: "Carry on building" }),
+    );
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenLastCalledWith(
+        PLAN,
+        { resumeFrom: "build_1", recentId: "q_new" },
+      ),
+    );
+    await waitFor(() =>
+      expect(window.mainApi.bots.saveCreateRecent).toHaveBeenLastCalledWith({
+        id: "q_new",
+        conversation: {
+          workspacePlan: expect.objectContaining({
+            builds: [expect.objectContaining({ buildId: "build_2", at: 2 })],
+          }),
+        },
+      }),
+    );
+  });
+
+  test("Recents tag a conversation by its build", async () => {
+    window.mainApi.bots.listCreateRecent.mockResolvedValue([
+      {
+        id: "q3",
+        kind: "question",
+        title: "Plan me a Home dashboard",
+        with: "role:dashlead",
+        planned: true,
+        built: "built",
+        updatedAt: "2026-10-28T09:00:00Z",
+      },
+    ]);
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    const row = await screen.findByText("Plan me a Home dashboard");
+    expect(row.closest("[data-testid='workspace-thread']")).toHaveTextContent(
+      "Built",
+    );
+  });
+  test("Yes, build it pressed twice starts one build", async () => {
+    let finish;
+    window.mainApi.bots.startPlanBuild = jest.fn(
+      () => new Promise((r) => (finish = r)),
+    );
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "A dashboard for my smart home" }),
+    );
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([you("Plan it"), planStep("1:t1"), reply]);
+    });
+    const yes = () => {
+      let node = null;
+      act(() => {
+        node = mockAskProps.renderAfter(reply, 2, api);
+      });
+      const r = render(node);
+      const b = within(r.container).queryByRole("button", {
+        name: "Yes, build it",
+      });
+      if (b) fireEvent.click(b);
+      return { r, pressed: !!b };
+    };
+    expect(yes().pressed).toBe(true);
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledTimes(1),
+    );
+    // While it starts: no second yes, here or on the right.
+    const again = yes();
+    expect(again.pressed).toBe(false);
+    expect(again.r.container).toHaveTextContent("Starting the build…");
+    fireEvent.click(screen.getByTestId("workspace-output-plan"));
+    expect(
+      within(screen.getByTestId("workspace-plan-output")).queryByRole(
+        "button",
+        { name: "Yes, build it" },
+      ),
+    ).toBeNull();
+    await act(async () => finish({ buildId: "build_1", state: null }));
+    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledTimes(1);
+  });
+
+  test("switched to another conversation while it started: the build isn't added there", async () => {
+    let finish;
+    window.mainApi.bots.startPlanBuild = jest.fn(
+      () => new Promise((r) => (finish = r)),
+    );
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "A dashboard for my smart home" }),
+    );
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([you("Plan it"), planStep("1:t1"), reply]);
+    });
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    const c = render(node);
+    fireEvent.click(
+      within(c.container).getByRole("button", { name: "Yes, build it" }),
+    );
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
+    );
+    // Another conversation, then the build comes back.
+    fireEvent.click(await screen.findByText("Do I have a clock?"));
+    await act(async () => finish({ buildId: "build_1", state: null }));
+    expect(window.mainApi.bots.saveCreateRecent).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversation: {
+          workspacePlan: expect.objectContaining({
+            builds: [expect.objectContaining({ buildId: "build_1" })],
+          }),
+        },
+      }),
+    );
+  });
+
+  test("a waiting provider resumes once per change in what's connected, not in a loop", async () => {
+    await buildIt();
+    const waiting = (finishedAt) => ({
+      ...RUNNING,
+      status: "waiting-for-providers",
+      finishedAt,
+      steps: [
+        ...RUNNING.steps.map((x) => ({ ...x, status: "done" })),
+        s({
+          id: "bot:0",
+          kind: "bot",
+          label: "Save the bot",
+          status: "needs-provider",
+          waitingFor: ["a way to read cameras"],
+        }),
+      ],
+    });
+    push(waiting(at(21, 20)));
+    push(waiting(at(21, 21)));
+    // Not a provider type: nothing to resume by itself.
+    expect(window.mainApi.bots.resumePlanBuild).not.toHaveBeenCalled();
+  });
+
+  test("removed: Build it again builds the plan anew", async () => {
+    await buildIt();
+    push({ ...FAILED, status: "removed" });
+    window.mainApi.bots.startPlanBuild.mockResolvedValue({
+      buildId: "build_2",
+      state: null,
+    });
+    const c = chat();
+    expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
+      "I removed what the build made.",
+    );
+    fireEvent.click(within(c).getByRole("button", { name: "Build it again" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenLastCalledWith(
+        PLAN,
+        { recentId: "q_new" },
+      ),
+    );
+    await waitFor(() =>
+      expect(window.mainApi.bots.saveCreateRecent).toHaveBeenLastCalledWith({
+        id: "q_new",
+        conversation: {
+          workspacePlan: expect.objectContaining({
+            builds: [
+              expect.objectContaining({ buildId: "build_1" }),
+              expect.objectContaining({ buildId: "build_2" }),
+            ],
+          }),
+        },
+      }),
+    );
+  });
+
+  test("reopened: an earlier build shows as it ended, even when the app no longer has it", async () => {
+    window.mainApi.bots.getCreateRecent = jest.fn().mockResolvedValue({
+      conversation: {
+        workspacePlan: {
+          stepId: "2:t1",
+          plan: PLAN,
+          checks: {},
+          edits: [],
+          builds: [
+            {
+              buildId: "build_old",
+              stepId: "1:t1",
+              at: 2,
+              kind: "dashboard",
+              leftOff: [],
+              last: { ...FAILED, status: "stopped" },
+            },
+          ],
+        },
+      },
+    });
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(await screen.findByText("Do I have a clock?"));
+    await waitFor(() =>
+      expect(window.mainApi.bots.getCreateRecent).toHaveBeenCalledWith("q2"),
+    );
+    const msgs = [
+      you("Plan it"),
+      planStep("1:t1"),
+      reply,
+      you("Bigger"),
+      planStep("2:t1"),
+      reply,
+    ];
+    act(() => {
+      mockAskProps.onMessagesChange(msgs);
+    });
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    const c = render(node).container;
+    await waitFor(() =>
+      expect(within(c).getByTestId("workspace-build-step")).toHaveTextContent(
+        "The build stopped",
+      ),
+    );
+    // An earlier build offers nothing to press.
+    expect(within(c).queryByTestId("workspace-build-choices")).toBeNull();
+  });
+
+  test("a second plan's build reuses the first one's work, or starts fresh if it can't", async () => {
+    await buildIt();
+    push({ ...FAILED, dashboard: { id: "12", name: "Home" } });
+    const msgs = [
+      you("Plan it"),
+      planStep("1:t1"),
+      reply,
+      you("Bigger"),
+      planStep("2:t1"),
+      reply,
+    ];
+    act(() => {
+      mockAskProps.onMessagesChange(msgs);
+    });
+    window.mainApi.bots.startPlanBuild = jest
+      .fn()
+      .mockResolvedValueOnce({
+        error: "What the earlier build made was removed.",
+      })
+      .mockResolvedValueOnce({ buildId: "build_2", state: null });
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 5, api);
+    });
+    fireEvent.click(
+      within(render(node).container).getByRole("button", {
+        name: "Yes, build it",
+      }),
+    );
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledTimes(2),
+    );
+    expect(window.mainApi.bots.startPlanBuild.mock.calls[0][1]).toEqual({
+      resumeFrom: "build_1",
+      recentId: "q_new",
+    });
+    expect(window.mainApi.bots.startPlanBuild.mock.calls[1][1]).toEqual({
+      recentId: "q_new",
+    });
+  });
+
+  test("unsaved edits on the dashboard it changes: it waits for them", async () => {
+    globalThis.__dashboardDirtyId = "7";
+    try {
+      await (async () => {
+        render(
+          <LeadWorkspace
+            request={{ key: "role:dashlead" }}
+            onClose={jest.fn()}
+          />,
+        );
+        fireEvent.click(
+          screen.getByRole("button", { name: "A dashboard for my smart home" }),
+        );
+        const TARGETED = {
+          summary: "Lights on the kitchen dashboard",
+          dashboard: { id: "7", name: "Kitchen Sink" },
+          pieces: PLAN.pieces.filter((p) => p.kind === "widget"),
+        };
+        act(() => {
+          mockAskProps.onStarted("q_new");
+          mockAskProps.onMessagesChange([
+            you("Plan it"),
+            planStep("1:t1", TARGETED),
+            reply,
+          ]);
+        });
+        let node = null;
+        act(() => {
+          node = mockAskProps.renderAfter(reply, 2, api);
+        });
+        fireEvent.click(
+          within(render(node).container).getByRole("button", {
+            name: "Yes, build it",
+          }),
+        );
+        await waitFor(() => {
+          act(() => {
+            node = mockAskProps.renderAfter(reply, 2, api);
+          });
+          expect(render(node).container).toHaveTextContent(
+            "Save or cancel your edits to Kitchen Sink first",
+          );
+        });
+        expect(window.mainApi.bots.startPlanBuild).not.toHaveBeenCalled();
+      })();
+    } finally {
+      delete globalThis.__dashboardDirtyId;
+    }
+  });
+  test("the walk: an install is reviewed first; Skip takes it out of the plan and waits for another yes", async () => {
+    const REG = {
+      ...PLAN,
+      pieces: [
+        {
+          kind: "widget",
+          name: "Weather",
+          source: "registry",
+          package: "@trops/weather",
+        },
+        ...PLAN.pieces,
+      ],
+    };
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "A dashboard for my smart home" }),
+    );
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([
+        you("Plan it"),
+        planStep("1:t1", REG),
+        reply,
+      ]);
+    });
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, api);
+    });
+    fireEvent.click(
+      within(render(node).container).getByRole("button", {
+        name: "Yes, build it",
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Skip this piece" }),
+    );
+    // Weather is out of the plan; nothing was built.
+    fireEvent.click(screen.getByTestId("workspace-output-plan"));
+    expect(screen.getByTestId("workspace-plan-output")).not.toHaveTextContent(
+      "Weather",
+    );
+    expect(window.mainApi.bots.startPlanBuild).not.toHaveBeenCalled();
   });
 });
