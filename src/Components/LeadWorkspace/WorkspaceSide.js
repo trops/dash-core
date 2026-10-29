@@ -244,6 +244,8 @@ function memberState(m, last, status, { plan, lines }) {
  * @param {object[]} dashTeam  the Dash team's working roles ({ id, name,
  *   role }), shown under a dashboard lead's own bots once it brings them in
  *   (release 3c, frame 18)
+ * @param {({ count, needsYou }) => void} [onSummary]  told what the column
+ *   holds — the folded column's button (release 6a)
  */
 export const WorkspaceSide = ({
   contact,
@@ -261,6 +263,7 @@ export const WorkspaceSide = ({
   build = null,
   pb = null,
   dashTeam = [],
+  onSummary = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const { currentTheme } = useContext(ThemeContext) || {};
@@ -311,6 +314,49 @@ export const WorkspaceSide = ({
   // The plan's build (release 3b), as it stands.
   const buildState = build && pb ? pb.state : null;
   const leftOff = (build && build.leftOff) || [];
+
+  const answered = steps.filter(
+    (s) => s.status !== "asking" && s.answer && !s.plan,
+  );
+  const isBot = contact && contact.kind === "bot";
+  const approvalBots = contact
+    ? [{ id: contact.botId, name: contact.name }, ...members]
+    : [];
+  const startFrom =
+    isNew && contact && contact.kind === "dashlead" && onStartFrom;
+  // Connected for real — a connect skipped before building isn't.
+  const connected = (it) =>
+    !!(wp && wp.have && wp.have.has(normalizeType(it.providerType)));
+  // What the build waits for that still isn't connected (Needs you).
+  const needs = buildState
+    ? waitingFor(buildState)
+        .map(normalizeType)
+        .filter((t) => t && !(wp && wp.have && wp.have.has(t)))
+    : [];
+  const status = buildState ? buildStatus(buildState, leftOff) : null;
+  // A new widget waiting for your look (frame 31).
+  const previewStep =
+    status === "waiting-for-you"
+      ? (buildState.steps || []).find((x) => x.status === "needs-you") || null
+      : null;
+  const builtDashboard =
+    buildState &&
+    buildState.dashboard &&
+    (status === "done" || status === "waiting-for-providers")
+      ? buildState.dashboard
+      : null;
+
+  // For the folded column's button (frames 35, 36): how many outputs, and
+  // whether something waits on the user.
+  const outputCount =
+    (previewStep ? 1 : 0) +
+    (plan ? 1 : 0) +
+    (builtDashboard ? 1 : 0) +
+    answered.length;
+  const needsYou = needs.length > 0 || !!previewStep;
+  useEffect(() => {
+    if (onSummary) onSummary({ count: outputCount, needsYou });
+  }, [onSummary, outputCount, needsYou]);
   const buildLine = build
     ? buildState
       ? buildPlanLine(buildState, leftOff)
@@ -395,36 +441,6 @@ export const WorkspaceSide = ({
     );
   }
 
-  const answered = steps.filter(
-    (s) => s.status !== "asking" && s.answer && !s.plan,
-  );
-  const isBot = contact && contact.kind === "bot";
-  const approvalBots = contact
-    ? [{ id: contact.botId, name: contact.name }, ...members]
-    : [];
-  const startFrom =
-    isNew && contact && contact.kind === "dashlead" && onStartFrom;
-  // Connected for real — a connect skipped before building isn't.
-  const connected = (it) =>
-    !!(wp && wp.have && wp.have.has(normalizeType(it.providerType)));
-  // What the build waits for that still isn't connected (Needs you).
-  const needs = buildState
-    ? waitingFor(buildState)
-        .map(normalizeType)
-        .filter((t) => t && !(wp && wp.have && wp.have.has(t)))
-    : [];
-  const status = buildState ? buildStatus(buildState, leftOff) : null;
-  // A new widget waiting for your look (frame 31).
-  const previewStep =
-    status === "waiting-for-you"
-      ? (buildState.steps || []).find((x) => x.status === "needs-you") || null
-      : null;
-  const builtDashboard =
-    buildState &&
-    buildState.dashboard &&
-    (status === "done" || status === "waiting-for-providers")
-      ? buildState.dashboard
-      : null;
   const placed = buildState
     ? (buildState.steps || []).filter(
         (x) => x.kind === "place" && x.status === "done",

@@ -11,6 +11,7 @@ import {
   getStylesForItem,
   themeObjects,
   useResizableWidth,
+  useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useAllBots } from "../AppPages/useAllBots";
@@ -52,6 +53,23 @@ const TICK_MS = 60000;
 const SIDE_MIN = 320;
 const SIDE_MAX = 900;
 const WIDE = 760;
+// Narrower than this (frames 35, 36): the left column folds to ☰ and
+// Outputs becomes a button that slides over the conversation.
+export const NARROW_AT = 1100;
+
+/** The window's width, live. */
+function useWindowWidth() {
+  const [w, setW] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1600,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const on = () => setW(window.innerWidth);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return w;
+}
 const WORK_ROLES = ["scout", "planner", "builder", "checker"];
 // A conversation's build in its Recents row (release 3b, frame 8).
 const BUILT_TAG = {
@@ -163,7 +181,17 @@ export const LeadWorkspace = ({
     grow: false,
   });
   const { muted, strong, hairline, selectedBg } = useConfigTokens();
+  const statusTokens = useStatusTokens();
   const composer = useRef(null);
+  // A smaller window (frames 35, 36): the columns fold away.
+  const narrow = useWindowWidth() < NARROW_AT;
+  const [navOpen, setNavOpen] = useState(false);
+  const [outsOpen, setOutsOpen] = useState(false);
+  // What the right column holds, for its button: { count, needsYou }.
+  const [sideSummary, setSideSummary] = useState({
+    count: 0,
+    needsYou: false,
+  });
   const all = useAllBots();
   const { leads, loaded: leadsLoaded } = useTeamLeads(true);
   const { entries, now } = useRecentEntries();
@@ -196,6 +224,69 @@ export const LeadWorkspace = ({
   // What's open on the right: "plan", a step's id, or the overview (null).
   const [sideOpen, setSideOpen] = useState(null);
   const [wide, setWide] = useState(false);
+  // Folded drawers close when the window grows.
+  useEffect(() => {
+    if (!narrow) {
+      setNavOpen(false);
+      setOutsOpen(false);
+    }
+  }, [narrow]);
+  // Another lead (or none while loading): the old Outputs count goes.
+  useEffect(() => {
+    setSideSummary({ count: 0, needsYou: false });
+  }, [key]);
+  // The drawers open under the header, so ☰ and Outputs stay in reach.
+  const headerRef = useRef(null);
+  const navBtn = useRef(null);
+  const outsBtn = useRef(null);
+  const navRef = useRef(null);
+  const asideRef = useRef(null);
+  const [headerH, setHeaderH] = useState(0);
+  useEffect(() => {
+    if (!narrow || !headerRef.current) return;
+    setHeaderH(headerRef.current.offsetHeight || 0);
+  });
+  const drawerOpen = narrow && (navOpen || outsOpen);
+  // Focus goes into an opened drawer, and back to its button when it
+  // closes.
+  const lastDrawer = useRef(null);
+  useEffect(() => {
+    const opened = navOpen
+      ? navRef.current
+      : outsOpen
+        ? asideRef.current
+        : null;
+    if (opened) {
+      lastDrawer.current = navOpen ? navBtn.current : outsBtn.current;
+      const first = opened.querySelector(
+        "button, [href], input, textarea, select",
+      );
+      if (first) first.focus();
+    } else if (lastDrawer.current) {
+      const back = lastDrawer.current;
+      lastDrawer.current = null;
+      if (back && back.isConnected) back.focus();
+    }
+  }, [navOpen, outsOpen]);
+  // Escape closes an open drawer — not the window (the Modal listens on
+  // the window, so this runs first and stops it).
+  useEffect(() => {
+    if (!drawerOpen || typeof window === "undefined") return undefined;
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      e.stopPropagation();
+      e.preventDefault();
+      if (switchOpen) {
+        setSwitchOpen(false);
+        return;
+      }
+      setNavOpen(false);
+      setOutsOpen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [drawerOpen, switchOpen]);
   // The plan this conversation is about (release 3a).
   const wp = useWorkspacePlan({
     messages,
@@ -218,6 +309,7 @@ export const LeadWorkspace = ({
 
   const switchTo = (next) => {
     setSwitchOpen(false);
+    setNavOpen(false);
     if (next === key) return;
     setKey(next);
     setOpen(null);
@@ -266,6 +358,7 @@ export const LeadWorkspace = ({
       .catch(lost);
   }, [request, contact]);
   const startNew = () => {
+    setNavOpen(false);
     setOpen(null);
     setSelectedId(null);
     setMessages(EMPTY);
@@ -508,6 +601,16 @@ export const LeadWorkspace = ({
       ).filter(Boolean),
     [all.dashTeam],
   );
+  // The folded Outputs button's dot: something on the right needs you, or
+  // one of this conversation's bots waits for an approval (frame 35).
+  const askingIds = contact
+    ? [contact.botId, ...(contact.members || []).map((m) => m.id)]
+    : [];
+  const needsYou =
+    sideSummary.needsYou ||
+    (all.approvals || []).some(
+      (a) => a && a.request && askingIds.includes(a.request.botId),
+    );
   const isBot = contact && contact.kind === "bot";
   const lone = isBot ? all.bots.find((b) => b.id === contact.botId) : null;
   const start = startText(contact);
@@ -532,13 +635,45 @@ export const LeadWorkspace = ({
         className={`relative flex flex-row h-full w-full rounded-xl overflow-hidden border ${panel.backgroundColor || ""} ${panel.borderColor || ""} ${panel.textColor || ""}`}
         data-testid="lead-workspace"
       >
+        {/* A folded column open over the conversation (frames 35, 36):
+            clicking beside it, or Escape, closes it. Under the header, so ☰
+            and Outputs still toggle; the window's × waits until it closes. */}
+        {drawerOpen ? (
+          <button
+            type="button"
+            aria-label="Close panel"
+            tabIndex={-1}
+            data-testid="workspace-scrim"
+            // Classes the app's prebuilt CSS has (no inset-x-0 / bottom-0 / z-20).
+            className="absolute left-0 right-0 z-10 cursor-default"
+            style={{ top: headerH, bottom: 0 }}
+            onClick={() => {
+              setNavOpen(false);
+              setOutsOpen(false);
+            }}
+          />
+        ) : null}
         {/* Left: who you're talking to, and their conversations */}
         <nav
+          ref={navRef}
           aria-label="Conversations"
           onKeyDown={(e) => {
-            if (e.key === "Escape") setSwitchOpen(false);
+            // Folded, the window-level Escape handles it (above).
+            if (e.key === "Escape" && !narrow) setSwitchOpen(false);
           }}
-          className={`relative w-64 flex-shrink-0 flex flex-col gap-1 border-r p-3 min-h-0 ${hairline}`}
+          className={
+            narrow
+              ? navOpen
+                ? `absolute left-0 z-30 w-64 flex flex-col gap-1 border-r p-3 min-h-0 shadow-lg ${hairline} ${panel.backgroundColor || ""}`
+                : "hidden"
+              : `relative w-64 flex-shrink-0 flex flex-col gap-1 border-r p-3 min-h-0 ${hairline}`
+          }
+          style={
+            narrow && navOpen
+              ? { top: headerH, bottom: 0, maxWidth: "100%" }
+              : undefined
+          }
+          data-testid="workspace-nav"
         >
           <button
             type="button"
@@ -663,6 +798,7 @@ export const LeadWorkspace = ({
                         .join(" · ")}
                       selected={t.id === selectedId}
                       onClick={() => {
+                        setNavOpen(false);
                         if (open && t.id === selectedId) return;
                         setSelectedId(t.id);
                         setMessages(EMPTY);
@@ -688,11 +824,64 @@ export const LeadWorkspace = ({
           className="flex-1 min-w-0 flex flex-col min-h-0"
         >
           <header
+            ref={headerRef}
             className={`flex-shrink-0 flex flex-row items-center px-6 py-3 border-b ${hairline}`}
           >
-            <span className={`text-sm font-semibold truncate ${strong}`}>
+            {/* Folded (frame 35): plain bordered toggles — Button3 can't
+                say it's open (aria-expanded). */}
+            {narrow ? (
+              <button
+                ref={navBtn}
+                type="button"
+                aria-label="Conversations and leads"
+                aria-expanded={navOpen}
+                onClick={() => {
+                  setOutsOpen(false);
+                  setNavOpen((v) => !v);
+                }}
+                className={`flex-shrink-0 mr-3 max-w-xs truncate rounded-lg border px-2.5 py-1 text-sm ${hairline} ${strong} ${navOpen ? selectedBg : ""}`}
+              >
+                {`☰ ${contact ? contact.name : "Conversations"}`}
+              </button>
+            ) : null}
+            <span
+              className={`flex-1 min-w-0 text-sm font-semibold truncate ${strong}`}
+            >
               {title}
             </span>
+            {narrow ? (
+              <span className="flex-shrink-0 flex flex-row items-center gap-2 ml-3">
+                <button
+                  ref={outsBtn}
+                  type="button"
+                  aria-label={`Outputs ${sideSummary.count}${needsYou ? " — something needs you" : ""}`}
+                  aria-expanded={outsOpen}
+                  onClick={() => {
+                    setNavOpen(false);
+                    setOutsOpen((v) => !v);
+                  }}
+                  className={`flex flex-row items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm ${hairline} ${strong} ${outsOpen ? selectedBg : ""}`}
+                >
+                  {`Outputs ${sideSummary.count}`}
+                  {/* Something needs you (frame 35). */}
+                  {needsYou ? (
+                    <span
+                      aria-hidden="true"
+                      data-testid="workspace-outputs-dot"
+                      className={`inline-block h-2 w-2 rounded-full ${statusTokens.warning.solidBg}`}
+                    />
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={onClose}
+                  className={`flex items-center justify-center h-8 w-8 rounded-lg ${muted}`}
+                >
+                  <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
+                </button>
+              </span>
+            ) : null}
           </header>
           {loading ? (
             <div
@@ -797,33 +986,51 @@ export const LeadWorkspace = ({
         </section>
 
         {/* Right: outputs and the team, resizable */}
-        <ResizeHandle {...handleProps} ariaLabel="Resize outputs" />
+        {narrow ? null : (
+          <ResizeHandle {...handleProps} ariaLabel="Resize outputs" />
+        )}
         <aside
+          ref={asideRef}
           aria-label="Outputs"
-          className={`flex-shrink-0 flex flex-col min-h-0 border-l ${hairline}`}
-          style={{
-            // Expanded (frame 37): 760 wide, and never more than half the
-            // screen, so the conversation keeps room.
-            width: wide
-              ? Math.min(
-                  WIDE,
-                  Math.round(
-                    (typeof window !== "undefined" ? window.innerWidth : 1600) *
-                      0.5,
-                  ),
-                )
-              : sideWidth,
-          }}
+          // Folded (frame 36): it slides over the conversation; closed, it
+          // stays mounted (hidden) so its button keeps count.
+          className={
+            narrow
+              ? outsOpen
+                ? `absolute right-0 z-30 flex flex-col min-h-0 border-l shadow-lg ${hairline} ${panel.backgroundColor || ""}`
+                : "hidden"
+              : `flex-shrink-0 flex flex-col min-h-0 border-l ${hairline}`
+          }
+          style={
+            narrow
+              ? // Frame 36: 380 wide, under the header, never past the window.
+                { width: 380, maxWidth: "100%", top: headerH, bottom: 0 }
+              : {
+                  // Expanded (frame 37): 760 wide, and never more than half the
+                  // screen, so the conversation keeps room.
+                  width: wide
+                    ? Math.min(
+                        WIDE,
+                        Math.round(
+                          (typeof window !== "undefined"
+                            ? window.innerWidth
+                            : 1600) * 0.5,
+                        ),
+                      )
+                    : sideWidth,
+                }
+          }
         >
           {/* The window's close, in its own row above the column. */}
           <div
             className={`flex-shrink-0 flex flex-row items-center justify-end px-3 py-2 border-b ${hairline}`}
           >
-            {/* A plain ×, quiet until it's wanted (frame 1). */}
+            {/* A plain ×, quiet until it's wanted (frame 1). Folded, it
+                closes the outputs; the window's × is in the header. */}
             <button
               type="button"
-              aria-label="Close"
-              onClick={onClose}
+              aria-label={narrow ? "Close outputs" : "Close"}
+              onClick={narrow ? () => setOutsOpen(false) : onClose}
               className={`flex items-center justify-center h-8 w-8 rounded-lg ${muted}`}
             >
               <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
@@ -843,7 +1050,9 @@ export const LeadWorkspace = ({
               open={sideOpen}
               onOpen={setSideOpen}
               wide={wide}
-              onToggleWide={() => setWide((v) => !v)}
+              // No Expand in a small window: the column already covers it.
+              onToggleWide={narrow ? null : () => setWide((v) => !v)}
+              onSummary={setSideSummary}
               isNew={!open && !isBot}
               onStartFrom={startFrom}
             />

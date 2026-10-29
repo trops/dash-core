@@ -43,8 +43,10 @@ jest.mock("../Create/AskStep", () => ({
 jest.mock("../Bots/BotChat", () => ({
   BotChat: ({ bot }) => <div data-testid="bot-chat">chat with {bot.name}</div>,
 }));
+let mockApprovals = [];
 jest.mock("../AppPages/useAllBots", () => ({
   useAllBots: () => ({
+    approvals: mockApprovals,
     bots: [
       {
         id: "lead_7",
@@ -86,6 +88,7 @@ import { WorkspaceSide } from "./WorkspaceSide";
 
 beforeEach(() => {
   mockAskProps = null;
+  mockApprovals = [];
   mockLeadsLoaded = true;
   window.mainApi = {
     bots: {
@@ -238,6 +241,18 @@ describe("WorkspaceSide", () => {
     expect(rows[0]).toHaveTextContent("Inbox Watch · done");
     expect(rows[0]).toHaveTextContent("2 need attention.");
     expect(rows[1]).toHaveTextContent("Morning Briefer · ready");
+  });
+
+  test("it tells the folded button how many outputs it holds (release 6a)", () => {
+    const onSummary = jest.fn();
+    render(
+      <WorkspaceSide
+        contact={contact}
+        messages={messages}
+        onSummary={onSummary}
+      />,
+    );
+    expect(onSummary).toHaveBeenLastCalledWith({ count: 1, needsYou: false });
   });
 
   test("opening an answer shows what it was asked and said; Expand asks for room", () => {
@@ -1853,4 +1868,131 @@ test("release 4: opened on one of a lead's conversations (Review in conversation
     />,
   );
   expect(mockAskProps.recentId).toBe("q1");
+});
+
+// Release 6a (frames 35, 36): a smaller window folds the columns away.
+describe("a smaller window", () => {
+  const wideAs = window.innerWidth;
+  afterEach(() => {
+    window.innerWidth = wideAs;
+  });
+
+  it("the left column folds to ☰, Outputs is a button that slides over; a waiting approval puts a dot on it", async () => {
+    window.innerWidth = 1024;
+    mockApprovals = [
+      { id: "a1", request: { botId: "b1", toolName: "gmail_send" } },
+    ];
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    expect(screen.getByTestId("workspace-nav")).toHaveClass("hidden");
+    expect(
+      screen.getByRole("complementary", { hidden: true, name: "Outputs" }),
+    ).toHaveClass("hidden");
+    const outputs = screen.getByRole("button", {
+      name: "Outputs 0 — something needs you",
+    });
+    expect(screen.getByTestId("workspace-outputs-dot")).toBeInTheDocument();
+    // Outputs slides over the conversation; its × closes it, not the window.
+    fireEvent.click(outputs);
+    const aside = screen.getByRole("complementary", { name: "Outputs" });
+    expect(aside).toHaveClass("absolute");
+    expect(screen.queryByRole("button", { name: "Expand" })).toBeNull();
+    fireEvent.click(
+      within(aside).getByRole("button", { name: "Close outputs" }),
+    );
+    expect(aside).toHaveClass("hidden");
+    // ☰ opens the leads and conversations; picking one closes it.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Conversations and leads" }),
+    );
+    const nav = screen.getByTestId("workspace-nav");
+    expect(nav).toHaveClass("absolute");
+    // The drawer covers ☰: clicking beside it, or Escape, closes it.
+    fireEvent.click(screen.getByTestId("workspace-scrim"));
+    expect(screen.getByTestId("workspace-nav")).toHaveClass("hidden");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Conversations and leads" }),
+    );
+    fireEvent.keyDown(screen.getByTestId("workspace-nav"), { key: "Escape" });
+    expect(screen.getByTestId("workspace-nav")).toHaveClass("hidden");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Conversations and leads" }),
+    );
+    fireEvent.click(
+      await within(screen.getByTestId("workspace-nav")).findByText(
+        "Anything urgent?",
+      ),
+    );
+    expect(screen.getByTestId("workspace-nav")).toHaveClass("hidden");
+  });
+
+  it("Escape closes a drawer, not the window; the header toggles say they're open; the window's × is in the header", () => {
+    window.innerWidth = 1024;
+    const onClose = jest.fn();
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={onClose} />,
+    );
+    const nav = screen.getByRole("button", { name: "Conversations and leads" });
+    expect(nav).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(nav);
+    expect(nav).toHaveAttribute("aria-expanded", "true");
+    // Focus goes into the drawer.
+    expect(screen.getByTestId("workspace-nav")).toContainElement(
+      document.activeElement,
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByTestId("workspace-nav")).toHaveClass("hidden");
+    expect(onClose).not.toHaveBeenCalled();
+    // …and back to the button that opened it.
+    expect(document.activeElement).toBe(nav);
+    const outs = screen.getByRole("button", { name: /^Outputs \d/ });
+    fireEvent.click(outs);
+    expect(outs).toHaveAttribute("aria-expanded", "true");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(
+      screen.getByRole("complementary", { hidden: true, name: "Outputs" }),
+    ).toHaveClass("hidden");
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("the drawer closes on + New conversation and on switching lead", () => {
+    window.innerWidth = 1024;
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Conversations and leads" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "+ New conversation" }));
+    expect(screen.getByTestId("workspace-nav")).toHaveClass("hidden");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Conversations and leads" }),
+    );
+    fireEvent.click(screen.getByTestId("workspace-switcher"));
+    fireEvent.click(
+      within(screen.getByTestId("workspace-switcher-menu")).getByText(
+        "Dash Lead",
+      ),
+    );
+    expect(screen.getByTestId("workspace-nav")).toHaveClass("hidden");
+  });
+
+  it("growing the window brings the columns back", () => {
+    window.innerWidth = 1024;
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    expect(screen.getByTestId("workspace-nav")).toHaveClass("hidden");
+    act(() => {
+      window.innerWidth = 1600;
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(screen.getByTestId("workspace-nav")).not.toHaveClass("hidden");
+    expect(
+      screen.queryByRole("button", { name: "Conversations and leads" }),
+    ).toBeNull();
+  });
 });
