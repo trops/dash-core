@@ -11,20 +11,21 @@ const read = (...p) =>
 const stageSrc = read("Dashboard", "DashboardStage.js");
 
 describe("DashboardStage — one door (Phase 2a)", () => {
-  it("the empty screen's New Dashboard opens Create on Dashboard, with no Wizard", () => {
+  // Lead-workspace release 3c (frame 13): making something starts a new
+  // Dash Lead conversation.
+  it("the empty screen's New Dashboard starts a Dash Lead conversation, with no Wizard", () => {
+    expect(stageSrc).toMatch(/text="New Dashboard"\s*onClick=\{openDashLead\}/);
     expect(stageSrc).toMatch(
-      /text="New Dashboard"\s*onClick=\{\(\) => openCreate\("dashboard"\)\}/,
+      /function openDashLead\(\) \{[\s\S]{0,120}setWorkspaceRequest\(\{ key: "role:dashlead"/,
     );
     expect(stageSrc).not.toMatch(/Wizard/);
   });
 
-  it("the palette's New Dashboard opens Create on Dashboard", () => {
-    expect(stageSrc).toMatch(
-      /onCreateNewWorkspace=\{\(\) => openCreate\("dashboard"\)\}/,
-    );
+  it("the palette's New Dashboard starts a Dash Lead conversation", () => {
+    expect(stageSrc).toMatch(/onCreateNewWorkspace=\{openDashLead\}/);
   });
 
-  it("⌘N (Mac) / Ctrl+N opens Create — not while editing, over a dialog, or in a popout", () => {
+  it("⌘N (Mac) / Ctrl+N starts a Dash Lead conversation — not while editing, over a dialog, or in a popout", () => {
     expect(stageSrc).toMatch(
       /isMac \? e\.metaKey && !e\.ctrlKey : e\.ctrlKey && !e\.metaKey/,
     );
@@ -33,7 +34,7 @@ describe("DashboardStage — one door (Phase 2a)", () => {
     expect(stageSrc).toMatch(/if \(editingRef\.current\) return;/);
     expect(stageSrc).toMatch(/document\.querySelector\('\[role="dialog"\]'\)/);
     expect(stageSrc).toMatch(
-      /setCreateRequest\(\(r\) => r \|\| \{ type: "auto", workspaceId: null \}\)/,
+      /setWorkspaceRequest\(\s*\(r\) => r \|\| \{ key: "role:dashlead", seq: Date\.now\(\) \},?\s*\)/,
     );
     expect(stageSrc).toMatch(/if \(popout\) return undefined;/);
   });

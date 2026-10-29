@@ -29,7 +29,13 @@ import { useWorkspacePlan } from "./useWorkspacePlan";
 import { PlanCard, PlanChoices } from "./PlanViews";
 import { BuildInChat, BuildWalk, PastBuild } from "./BuildViews";
 import { usePlanBuild } from "./usePlanBuild";
-import { choicesIndex, stillAnswering, withPlanContext } from "./workspacePlan";
+import {
+  choicesIndex,
+  seedConversation,
+  stillAnswering,
+  withPlanContext,
+  yesLabel,
+} from "./workspacePlan";
 import {
   buildKind,
   buildOptions,
@@ -46,6 +52,7 @@ const TICK_MS = 60000;
 const SIDE_MIN = 320;
 const SIDE_MAX = 900;
 const WIDE = 760;
+const WORK_ROLES = ["scout", "planner", "builder", "checker"];
 // A conversation's build in its Recents row (release 3b, frame 8).
 const BUILT_TAG = {
   building: "Building",
@@ -134,8 +141,10 @@ function startText(contact) {
  * A conversation always stays with the lead it was started with: switching
  * lead shows that lead's own conversations.
  *
- * @param {{ key?: string }|null} request  who to open on ("role:dashlead",
- *   "lead:<botId>", "bot:<botId>"); default the Dash Lead
+ * @param {{ key?: string, seed? }|null} request  who to open on
+ *   ("role:dashlead", "lead:<botId>", "bot:<botId>"); default the Dash Lead.
+ *   `seed` (Open as a plan, release 3c): a plan from another chat, carried
+ *   on as a new Dash Lead conversation
  * @param {() => void} onClose
  * @param {(page) => void} [onOpenPage]  opens an app page ("dashboards",
  *   "widgets") in the workspace's place — Start from's copy and edit
@@ -208,6 +217,46 @@ export const LeadWorkspace = ({
     setMessages(EMPTY);
     setSideOpen(null);
   };
+  // Open as a plan (release 3c): the plan from another chat becomes a new
+  // Dash Lead conversation — saved, then opened like any in Recents.
+  const seeded = useRef(false);
+  const [seedError, setSeedError] = useState(null);
+  useEffect(() => {
+    const seed = request && request.seed;
+    if (!seed || seeded.current || !contact || contact.kind !== "dashlead")
+      return;
+    seeded.current = true;
+    const b = botsApi();
+    // Never lost without a word: the start says it didn't come over.
+    const lost = () =>
+      setSeedError(
+        "The plan from your chat didn't come over. Ask for it here, or open it again from that chat.",
+      );
+    if (!b || !b.saveCreateRecent) {
+      lost();
+      return;
+    }
+    Promise.resolve(
+      b.saveCreateRecent({
+        kind: "question",
+        prompt: seed.label || "From the Dash team chat",
+        conversation: {
+          recipient: contact.recipient,
+          messages: seedConversation(seed),
+        },
+      }),
+    )
+      .then((res) => {
+        if (!res || !res.id) {
+          lost();
+          return;
+        }
+        setSelectedId(res.id);
+        setSideOpen(null);
+        setOpen({ key: res.id, recentId: res.id });
+      })
+      .catch(lost);
+  }, [request, contact]);
   const startNew = () => {
     setOpen(null);
     setSelectedId(null);
@@ -388,6 +437,7 @@ export const LeadWorkspace = ({
                 state={pb.state}
                 leadName={leadName}
                 current
+                yes={yesLabel(wp.plan)}
                 actions={buildActions}
                 actionError={pb.actionError || buildError}
               />
@@ -441,6 +491,15 @@ export const LeadWorkspace = ({
     return null;
   };
 
+  // The Dash team's working roles, in the order they work — under a
+  // dashboard lead's bots once it brings them in (release 3c).
+  const dashTeamRoles = useMemo(
+    () =>
+      WORK_ROLES.map((r) =>
+        (all.dashTeam || []).find((b) => b && b.role === r),
+      ).filter(Boolean),
+    [all.dashTeam],
+  );
   const isBot = contact && contact.kind === "bot";
   const lone = isBot ? all.bots.find((b) => b.id === contact.botId) : null;
   const start = startText(contact);
@@ -693,6 +752,15 @@ export const LeadWorkspace = ({
                     {start.title}
                   </span>
                   <span className={`text-sm ${muted}`}>{start.text}</span>
+                  {seedError ? (
+                    <span
+                      className={`text-sm ${muted}`}
+                      role="status"
+                      data-testid="workspace-seed-error"
+                    >
+                      {seedError}
+                    </span>
+                  ) : null}
                   <div className="flex flex-row flex-wrap gap-2">
                     {start.starters.map((s) => (
                       <Button2
@@ -763,6 +831,7 @@ export const LeadWorkspace = ({
               onBuild={starting || walking ? null : buildIt}
               build={wp.build}
               pb={pb}
+              dashTeam={dashTeamRoles}
               open={sideOpen}
               onOpen={setSideOpen}
               wide={wide}

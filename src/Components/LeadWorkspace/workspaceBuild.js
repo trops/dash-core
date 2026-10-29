@@ -559,7 +559,10 @@ export function buildChat(state, { kind = "dashboard", leftOff = [] } = {}) {
       ? {
           kind: "dashboard",
           title: dashboard.name,
-          sub: `Dashboard · ${dashboard.targeted ? "changed" : "built"} · ${plural(placed, "widget")}`,
+          // A dashboard the user had: what was added, not its size.
+          sub: dashboard.targeted
+            ? `Dashboard · changed · ${placed} added`
+            : `Dashboard · built · ${plural(placed, "widget")}`,
         }
       : null,
     reply: [

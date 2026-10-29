@@ -24,7 +24,11 @@ import {
   planRows,
   planSubLine,
   whoAsks,
+  yesLabel,
 } from "./workspacePlan";
+import { planTarget } from "../../utils/teamPlan";
+import { planChanges } from "./planChanges";
+import { useDashboard } from "./useDashboard";
 
 /**
  * The plan in a workspace conversation (lead-workspace release 3a, frames 1,
@@ -79,7 +83,8 @@ export const OutputCard = ({
 export const PlanCard = ({ plan, earlier = false, onOpen }) => (
   <div className="self-start w-full max-w-md" data-testid="workspace-plan-card">
     <OutputCard
-      title={planName(plan)}
+      // A change to a dashboard the user has says so (frame 30).
+      title={planTarget(plan) ? `${planName(plan)} — changes` : planName(plan)}
       sub={earlier ? `${planLine(plan)} · changed since` : planLine(plan)}
       bordered={false}
       onClick={onOpen}
@@ -222,7 +227,7 @@ export const PlanChoices = ({
     >
       {onBuild ? (
         <>
-          <Button title="Yes, build it" onClick={onBuild} />
+          <Button title={yesLabel(plan)} onClick={onBuild} />
           <Button2 title="Change something" onClick={onChange} />
         </>
       ) : (
@@ -324,6 +329,8 @@ export const BeforeItBuilds = ({ wp, readOnly = false }) => {
  * something). The current plan has Yes, build it, so it can be built
  * whatever the chat ended on; an earlier one (`plan` given) is only shown.
  * Once it builds (release 3b), `buildLine` says where the build stands.
+ * A plan for a dashboard the user has (release 3c, frame 30) shows what
+ * changes: the dashboard now and after, and a row per change.
  */
 export const PlanOutput = ({
   wp,
@@ -331,29 +338,61 @@ export const PlanOutput = ({
   readOnly = false,
   onBuild = null,
   buildLine = null,
+  leadName = "The Dash Lead",
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const plan = earlier || wp.plan;
+  const target = plan ? planTarget(plan) : null;
+  const dashboard = useDashboard(target ? target.id : null);
   if (!plan) return null;
+  // Now and after only before it's built: once it is, the dashboard read
+  // now already has what was added.
+  const changes = target && !buildLine ? planChanges(dashboard, plan) : null;
+  const draws = !!(changes && changes.added && changes.now.length);
   const checklist = earlier ? [] : wp.checklist;
   // Connected for real — a connect skipped before building still needs it.
   const connected = (it) =>
     !!(wp.have && wp.have.has(normalizeType(it.providerType)));
-  const rows = planRows(plan, checklist, connected);
+  const planned = planRows(plan, checklist, connected);
+  // A change: what's added, what stays, then what to connect.
+  const rows = changes
+    ? [
+        ...changes.rows.map((r) => ({ ...r, add: true })),
+        ...(draws && changes.unchanged.length
+          ? [{ main: `${changes.unchanged.join(", ")} — unchanged`, sub: "" }]
+          : []),
+        ...planned.filter((r) => r.warn),
+      ]
+    : planned;
   return (
     <div className="flex flex-col gap-4" data-testid="workspace-plan-output">
       <div className="flex flex-col gap-1">
         <span className={`text-xs ${muted}`}>
-          {earlier ? "Planner · an earlier plan" : "Planner · the plan"}
+          {earlier
+            ? "Planner · an earlier plan"
+            : target
+              ? "Planner · the changes"
+              : "Planner · the plan"}
         </span>
         <span className={`text-lg font-semibold ${strong}`}>
-          {planName(plan)}
+          {target ? `${target.name} — changes` : planName(plan)}
         </span>
         <span className={`text-sm ${muted}`}>
-          {planSubLine(plan, checklist) || "Nothing to make yet"}
+          {target
+            ? "Nothing changes until you say yes"
+            : planSubLine(plan, checklist) || "Nothing to make yet"}
         </span>
       </div>
+      {draws ? (
+        <div
+          className="grid grid-cols-2 gap-3"
+          data-testid="workspace-plan-changes"
+        >
+          <ChangesGrid label="Now" rows={changes.now} cols={changes.cols} />
+          <ChangesGrid label="After" rows={changes.after} cols={changes.cols} />
+        </div>
+      ) : null}
       {rows.length ? (
         <div
           className={`flex flex-col rounded-xl border overflow-hidden ${hairline}`}
@@ -371,6 +410,13 @@ export const PlanOutput = ({
                   className={`h-3 w-3 mt-1 ${statusTokens.warning.icon}`}
                   aria-hidden="true"
                 />
+              ) : r.add ? (
+                <span role="img" aria-label="Added">
+                  <FontAwesomeIcon
+                    icon="plus"
+                    className={`h-3 w-3 mt-1 ${statusTokens.success.icon}`}
+                  />
+                </span>
               ) : (
                 <span
                   className={`inline-block flex-shrink-0 h-2.5 w-2.5 mt-1 rounded-full border ${hairline}`}
@@ -397,7 +443,7 @@ export const PlanOutput = ({
         </span>
       ) : readOnly ? (
         <span className={`text-sm ${muted}`}>
-          The Dash Lead is answering — the plan may change.
+          {leadName} is answering — the plan may change.
         </span>
       ) : wp.sent ? (
         <span className={`text-sm ${muted}`} data-testid="workspace-plan-sent">
@@ -409,10 +455,62 @@ export const PlanOutput = ({
             Want something different? Say so in the chat.
           </span>
           <div>
-            <Button title="Yes, build it" onClick={onBuild} />
+            <Button title={yesLabel(plan)} onClick={onBuild} />
           </div>
         </div>
       ) : null}
+    </div>
+  );
+};
+
+/**
+ * A dashboard's grid, small (frame 30): each cell's widget, an added one in
+ * the success colour, an empty one dashed.
+ */
+const ChangesGrid = ({ label, rows, cols }) => {
+  const { muted, strong, hairline } = useConfigTokens();
+  const statusTokens = useStatusTokens();
+  return (
+    <div
+      className="flex flex-col gap-1.5"
+      role="group"
+      aria-label={`${label}: the dashboard's cells`}
+      data-testid="workspace-plan-grid"
+    >
+      <span className={`text-xs ${muted}`} aria-hidden="true">
+        {label}
+      </span>
+      <div
+        className={`grid gap-1 rounded-lg border p-1.5 ${hairline}`}
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
+        {rows.flat().map((c) =>
+          // A cell another one spans keeps its place, unseen.
+          c.kind === "hidden" ? (
+            <span key={c.key} aria-hidden="true" />
+          ) : (
+            <span
+              key={c.key}
+              data-testid="workspace-plan-tile"
+              data-kind={c.kind}
+              className={`truncate rounded-md px-1 py-2 text-center text-xs ${
+                c.kind === "add"
+                  ? `border ${statusTokens.success.accentBorder} ${statusTokens.success.icon}`
+                  : c.kind === "keep"
+                    ? `border ${hairline} ${strong}`
+                    : `border border-dashed ${hairline}`
+              }`}
+            >
+              {c.name || "\u00a0"}
+              {c.kind === "add" ? (
+                <span className="sr-only"> (added)</span>
+              ) : c.kind === "empty" ? (
+                <span className="sr-only">empty cell</span>
+              ) : null}
+            </span>
+          ),
+        )}
+      </div>
     </div>
   );
 };

@@ -1541,7 +1541,7 @@ describe("release 3b: building in the conversation", () => {
         });
         fireEvent.click(
           within(render(node).container).getByRole("button", {
-            name: "Yes, build it",
+            name: "Yes, make the changes",
           }),
         );
         await waitFor(() => {
@@ -1603,5 +1603,242 @@ describe("release 3b: building in the conversation", () => {
       "Weather",
     );
     expect(window.mainApi.bots.startPlanBuild).not.toHaveBeenCalled();
+  });
+});
+
+describe("release 3c: leads bring in the Dash team; Create opens here; changes show before and after", () => {
+  const you = (text) => ({ who: "you", text });
+  const PLAN = {
+    summary: "Weather on Kitchen Sink",
+    dashboard: { id: "7", name: "Kitchen Sink" },
+    pieces: [
+      {
+        kind: "widget",
+        name: "Weather",
+        source: "registry",
+        package: "@trops/weather",
+      },
+    ],
+  };
+  const dashStep = {
+    who: "step",
+    id: "1:t1",
+    bot: "the Planner",
+    label: "Brought in the Dash team · asked the Planner",
+    status: "done",
+    answer: "Here's a plan.",
+    result: "Here's a plan.",
+    dashTeam: true,
+    plan: PLAN,
+  };
+  const reply = {
+    who: "lead",
+    text: "I brought in the Dash team. Want it built?",
+  };
+  const KITCHEN = {
+    id: 7,
+    name: "Kitchen Sink",
+    layout: [
+      {
+        id: 1,
+        component: "LayoutGridContainer",
+        grid: {
+          rows: 1,
+          cols: 3,
+          1.1: { component: 2 },
+          1.2: { component: null },
+          1.3: { component: null },
+        },
+      },
+      { id: 2, component: "trops.inbox.InboxWatch" },
+    ],
+  };
+
+  const openLead = () => {
+    window.mainApi.workspace = {
+      listWorkspacesForApplication: jest.fn().mockResolvedValue([KITCHEN]),
+    };
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "What did my bots do today?" }),
+    );
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([you("Add the weather"), dashStep, reply]);
+    });
+  };
+
+  test("a dashboard lead's Dash team shows under its own bots, brought in by it (frame 18)", () => {
+    openLead();
+    expect(screen.getByTestId("workspace-team-group")).toHaveTextContent(
+      "Dash team · brought in by Kitchen Sink Lead",
+    );
+    const rows = screen
+      .getAllByTestId("workspace-member")
+      .map((r) => r.textContent);
+    // Its own bot wasn't asked for this plan; the Planner drafted it, and
+    // the Builder waits for the yes — only the roles in it (frame 18).
+    expect(rows[0]).toMatch(/^Inbox Watch · not needed/);
+    expect(rows.slice(1).map((r) => r.split(" · ")[0])).toEqual([
+      "Planner",
+      "Builder",
+    ]);
+    expect(rows[1]).toMatch(/Planner · done/);
+    // Its link says what the Planner made: the changes (frame 30).
+    expect(
+      screen.getByRole("button", { name: "Changes ›" }),
+    ).toBeInTheDocument();
+  });
+
+  test("a plan for this dashboard shows what changes: now and after, and Yes, make the changes (frame 30)", async () => {
+    openLead();
+    const side = screen.getByTestId("workspace-side");
+    expect(within(side).getByTestId("workspace-output-plan")).toHaveTextContent(
+      "Kitchen Sink — changes",
+    );
+    fireEvent.click(within(side).getByTestId("workspace-output-plan"));
+    const out = screen.getByTestId("workspace-plan-output");
+    expect(out).toHaveTextContent("Planner · the changes");
+    expect(out).toHaveTextContent("Nothing changes until you say yes");
+    await waitFor(() =>
+      expect(screen.getAllByTestId("workspace-plan-grid")).toHaveLength(2),
+    );
+    const [now, after] = screen.getAllByTestId("workspace-plan-grid");
+    const tiles = (g) =>
+      within(g)
+        .getAllByTestId("workspace-plan-tile")
+        .map((t) => `${t.textContent.trim()}:${t.getAttribute("data-kind")}`);
+    // What's added and what's empty is said, not only shown.
+    expect(tiles(now)).toEqual([
+      "Inbox Watch:keep",
+      "empty cell:empty",
+      "empty cell:empty",
+    ]);
+    expect(tiles(after)).toEqual([
+      "Inbox Watch:keep",
+      "Weather (added):add",
+      "empty cell:empty",
+    ]);
+    expect(
+      screen.getByRole("group", { name: "After: the dashboard's cells" }),
+    ).toBeInTheDocument();
+    expect(out).toHaveTextContent("Weather — added");
+    expect(out).toHaveTextContent("Inbox Watch — unchanged");
+    expect(
+      within(out).getByRole("button", { name: "Yes, make the changes" }),
+    ).toBeInTheDocument();
+    // The card in the chat says what it changes.
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(dashStep, 1, {
+        busy: false,
+        send: jest.fn(),
+        focusReply: jest.fn(),
+      });
+    });
+    expect(render(node).container).toHaveTextContent(
+      "Plan · 1 added · on Kitchen Sink",
+    );
+  });
+
+  test("Open as a plan: the plan carries on as a new Dash Lead conversation", async () => {
+    render(
+      <LeadWorkspace
+        request={{
+          key: "role:dashlead",
+          seed: {
+            plan: PLAN,
+            label: "Weather on my kitchen dashboard",
+            messages: [
+              { who: "you", text: "Weather on my kitchen dashboard" },
+              { who: "planner", text: "Here's a plan." },
+            ],
+          },
+        }}
+        onClose={jest.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalledWith({
+        kind: "question",
+        prompt: "Weather on my kitchen dashboard",
+        conversation: {
+          recipient: { role: "dashlead", roleName: "Dash Lead" },
+          messages: expect.arrayContaining([
+            expect.objectContaining({ who: "step", plan: PLAN }),
+          ]),
+        },
+      }),
+    );
+    // Opened like any conversation in Recents.
+    await waitFor(() => expect(mockAskProps.recentId).toBe("q_new"));
+  });
+
+  test("Open as a plan that can't be saved says so, rather than losing it", async () => {
+    window.mainApi.bots.saveCreateRecent = jest
+      .fn()
+      .mockRejectedValue(new Error("disk full"));
+    render(
+      <LeadWorkspace
+        request={{ key: "role:dashlead", seed: { plan: PLAN, messages: [] } }}
+        onClose={jest.fn()}
+      />,
+    );
+    expect(await screen.findByTestId("workspace-seed-error")).toHaveTextContent(
+      "didn't come over",
+    );
+  });
+
+  test("once it's built, the changed plan shows no before and after (the dashboard has it now)", async () => {
+    window.mainApi.bots.startPlanBuild = jest
+      .fn()
+      .mockResolvedValue({ buildId: "build_9", state: null });
+    window.mainApi.bots.getPlanBuild = jest.fn().mockResolvedValue({
+      buildId: "build_9",
+      state: {
+        status: "done",
+        dashboard: { id: "7", name: "Kitchen Sink", targeted: true },
+        steps: [],
+      },
+    });
+    window.mainApi.bots.onPlanBuild = jest.fn(() => 9);
+    openLead();
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(reply, 2, {
+        busy: false,
+        send: jest.fn(),
+        focusReply: jest.fn(),
+      });
+    });
+    fireEvent.click(
+      within(render(node).container).getByRole("button", {
+        name: "Yes, make the changes",
+      }),
+    );
+    // The registry widget is reviewed first.
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
+    );
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId("workspace-side")).getByTestId(
+          "workspace-output-plan",
+        ),
+      ).toHaveTextContent("Built"),
+    );
+    fireEvent.click(
+      within(screen.getByTestId("workspace-side")).getByTestId(
+        "workspace-output-plan",
+      ),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryAllByTestId("workspace-plan-grid")).toHaveLength(0);
+    expect(screen.getByTestId("workspace-plan-output")).toHaveTextContent(
+      "Built",
+    );
   });
 });

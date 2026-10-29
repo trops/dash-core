@@ -101,6 +101,7 @@ describe("teamTools definitions", () => {
         "team_memory_read",
         "team_providers",
         "team_ask_bot",
+        "team_ask_dash_team",
         "find_providers",
       ],
     );
@@ -164,10 +165,10 @@ describe("handleTeamTool", () => {
   });
 
   it("every result is fenced as untrusted team data", () => {
-    // The read tools return team data (fenced); find_providers is async
-    // (its own test below).
+    // The read tools return team data (fenced); find_providers and
+    // team_ask_dash_team are async (their own tests below).
     for (const name of TEAM_TOOLS.map((t) => t.name).filter(
-      (n) => n !== "find_providers",
+      (n) => n !== "find_providers" && n !== "team_ask_dash_team",
     )) {
       const r = handleTeamTool(deps, lead, name, { name: "Inbox Watch" });
       assert.match(r.text, /<team_data>/, name);
@@ -395,6 +396,68 @@ describe("team_ask_bot", () => {
       "team_ask_bot",
       { bot: "Inbox Watch", request: "x" },
     );
+    assert.equal(none.isError, true);
+  });
+});
+
+// Lead-workspace release 3c: a dashboard's lead brings in the Dash team.
+describe("team_ask_dash_team", () => {
+  it("asks the Planner or the Scout with the request, and hands back the answer, fenced", async () => {
+    const asked = [];
+    const r = await handleTeamTool(
+      {
+        ...deps,
+        askDashTeam: async (ctx, role, request) => {
+          asked.push([ctx.botId, role, request]);
+          return { text: "Planner: Here's a plan.", isError: false };
+        },
+      },
+      lead,
+      "team_ask_dash_team",
+      { role: "Planner", request: "A widget with my AWS bill" },
+    );
+    assert.equal(r.isError, false);
+    assert.match(r.text, /<team_data>\nPlanner: Here's a plan\./);
+    assert.deepEqual(asked, [
+      ["lead_7", "planner", "A widget with my AWS bill"],
+    ]);
+  });
+
+  it("only the Planner or the Scout, with a request; a failure comes back as one", async () => {
+    const d = {
+      ...deps,
+      askDashTeam: async () => ({
+        text: "The Planner is busy.",
+        isError: true,
+      }),
+    };
+    assert.equal(
+      (
+        await handleTeamTool(d, lead, "team_ask_dash_team", {
+          role: "builder",
+          request: "x",
+        })
+      ).isError,
+      true,
+    );
+    assert.equal(
+      (
+        await handleTeamTool(d, lead, "team_ask_dash_team", {
+          role: "scout",
+          request: " ",
+        })
+      ).isError,
+      true,
+    );
+    const busy = await handleTeamTool(d, lead, "team_ask_dash_team", {
+      role: "planner",
+      request: "x",
+    });
+    assert.deepEqual(busy, { text: "The Planner is busy.", isError: true });
+    const none = await handleTeamTool(deps, lead, "team_ask_dash_team", {
+      role: "planner",
+      request: "x",
+    });
     assert.equal(none.isError, true);
   });
 });

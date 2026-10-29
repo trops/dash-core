@@ -129,7 +129,7 @@ const allWidgetItems = (ws) => {
   return out;
 };
 // A plan build that's still going (fix / retry / resume / remove wait).
-const { askTeamBot } = require("../bots/leadAsk");
+const { askTeamBot, withPlanDashboard } = require("../bots/leadAsk");
 const isBuildBusy = (state) =>
   !state || state.status === "running" || state.status === "waiting";
 const {
@@ -3906,6 +3906,47 @@ const botController = {
     });
   },
 
+  /**
+   * team_ask_dash_team (lead-workspace release 3c): a dashboard's lead
+   * brings in the Dash team — the Planner or the Scout answers, as it does
+   * for the Dash Lead (_askRole: answer only, counted with the lead's other
+   * hand-offs). The lead's dashboard goes with the request, so a plan goes
+   * on it. Stopping the lead stops the role too.
+   */
+  async _leadAskDashTeam(lead, role, request) {
+    const target = dashTeamBot(this._store.list(), role);
+    const id = lead && lead.workspaceId != null ? String(lead.workspaceId) : "";
+    const dashboard = id
+      ? this._dashboardsWithBots().find((d) => d.id === id) || null
+      : null;
+    const where = dashboard
+      ? `(From the ${JSON.stringify(dashboard.name)} dashboard's team lead. This is for that dashboard — id ${JSON.stringify(dashboard.id)}. A plan for it changes it: set "dashboard": ${JSON.stringify({ id: dashboard.id, name: dashboard.name })} in the plan; new widgets go in its next free cells.)`
+      : "";
+    // Stopping the lead stops the role — only a run it really started (a
+    // busy role isn't asked; _askRole says so).
+    if (!this._leadAsked) this._leadAsked = new Map();
+    const asked = this._leadAsked.get(lead.id) || new Set();
+    const tracked =
+      !!target && !this._runner.isRunning(target.id) && !asked.has(target.id);
+    if (tracked) {
+      asked.add(target.id);
+      this._leadAsked.set(lead.id, asked);
+    }
+    try {
+      const res = await this._askRole({
+        callerId: lead.id,
+        role,
+        request: where ? `${request}\n\n${where}` : request,
+      });
+      // The plan goes on the lead's dashboard even if the Planner left it out.
+      return role === "planner" && dashboard && res && !res.isError
+        ? { ...res, text: withPlanDashboard(res.text, dashboard) }
+        : res;
+    } finally {
+      if (tracked) asked.delete(target.id);
+    }
+  },
+
   _connectedServers() {
     return this._mcp && this._mcp.listConnectedServers
       ? this._mcp.listConnectedServers()
@@ -4048,6 +4089,8 @@ const botController = {
           listProviders: () => this.listToolSources(caller.workspaceId),
           askBot: (_teamCtx, member, request) =>
             this._leadAskBot(caller, member, request),
+          askDashTeam: (_teamCtx, role, request) =>
+            this._leadAskDashTeam(caller, role, request),
         },
         { workspaceId: caller.workspaceId, botId: caller.id },
         toolName,

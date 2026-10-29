@@ -3,7 +3,8 @@
  * (lead-workspace release 2): "Asked Inbox Watch ▸", opening to what it was
  * asked and what it answered. Read from the lead's stream: a tool_call to
  * team_ask_bot (a dashboard lead) or ask_role (the Dash Lead), then its
- * tool_result. Pure.
+ * tool_result. A dashboard lead bringing in the Dash team (release 3c,
+ * team_ask_dash_team) is a step too, marked `dashTeam`. Pure.
  */
 
 import { extractPlan } from "../../utils/teamPlan";
@@ -33,15 +34,18 @@ function inputOf(event) {
 
 /**
  * A step for a hand-off tool call, or null for any other event.
- * @returns {{ who: "step", id, bot, label, request, status: "asking" } | null}
+ * @returns {{ who: "step", id, bot, label, request, status: "asking",
+ *   dashTeam? } | null}
  */
 export function stepFromCall(event) {
   if (!event || event.type !== "tool_call") return null;
   const name = toolName(event.name);
   const input = inputOf(event);
   let bot = null;
+  // A dashboard lead's Dash team: brought in, not on its own team.
+  const dashTeam = name === "team_ask_dash_team";
   if (name === "team_ask_bot") bot = String(input.bot || "").trim() || null;
-  else if (name === "ask_role") {
+  else if (name === "ask_role" || dashTeam) {
     const role = String(input.role || "").toLowerCase();
     bot = ROLE_NAMES[role] || null;
   }
@@ -50,9 +54,12 @@ export function stepFromCall(event) {
     who: "step",
     id: String(event.id || `${name}:${bot}`),
     bot,
-    label: `Asked ${bot}`,
+    label: dashTeam
+      ? `Brought in the Dash team · asked ${bot}`
+      : `Asked ${bot}`,
     request: String(input.request || "").trim(),
     status: "asking",
+    ...(dashTeam ? { dashTeam: true } : {}),
   };
 }
 

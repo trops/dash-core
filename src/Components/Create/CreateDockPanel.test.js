@@ -79,17 +79,18 @@ test("nothing folded: no Recent list — says how a plan gets here (QA 2026-10-2
   expect(window.mainApi.bots.listCreateRecent).not.toHaveBeenCalled();
 });
 
-test("Make something new opens Create full size", async () => {
+// Lead-workspace release 3c: making something starts a Dash Lead conversation.
+test("Make something new starts a new Dash Lead conversation", async () => {
   render(<CreateDockPanel />);
   const onOpen = jest.fn();
-  window.addEventListener("dash:open-create", onOpen);
+  window.addEventListener("dash:open-workspace", onOpen);
   fireEvent.click(
     await screen.findByRole("button", {
-      name: "Make something new — opens Create full size",
+      name: "Make something new — opens the Dash Lead",
     }),
   );
-  window.removeEventListener("dash:open-create", onOpen);
-  expect(onOpen.mock.calls[0][0].detail).toEqual({ type: "dashboard" });
+  window.removeEventListener("dash:open-workspace", onOpen);
+  expect(onOpen.mock.calls[0][0].detail).toEqual({ key: "role:dashlead" });
 });
 
 test("a fold lands here as the conversation; Expand reopens it in Create", async () => {

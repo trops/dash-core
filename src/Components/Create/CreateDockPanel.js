@@ -70,12 +70,19 @@ export const CreateDockPanel = ({ collapsed = false, onCollapse = null }) => {
     if (onCollapse) onCollapse();
     openCreate({ type: "dashboard", recentId });
   };
-  // A secondary button, not a link: it leaves the dock for Create full size.
+  // A secondary button, not a link: making something starts a new Dash Lead
+  // conversation (lead-workspace release 3c).
   const makeNew = (
     <Button2
       size="sm"
-      onClick={() => openCreate({ type: "dashboard" })}
-      ariaLabel="Make something new — opens Create full size"
+      onClick={() =>
+        window.dispatchEvent(
+          new CustomEvent("dash:open-workspace", {
+            detail: { key: "role:dashlead" },
+          }),
+        )
+      }
+      ariaLabel="Make something new — opens the Dash Lead"
     >
       <span className="inline-flex items-center gap-2">
         <FontAwesomeIcon
