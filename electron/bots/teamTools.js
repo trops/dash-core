@@ -14,8 +14,10 @@
  * and memory can contain email or web text (TEAM-003 AC3).
  *
  * Nothing here makes anything: asked to make a bot, a widget or a layout
- * change, the lead hands it to the Dash team (consolidation Phase 2c-2,
- * handoff.js) — its drafts (propose_bot, TEAM-005) are gone.
+ * change, the lead brings in the Dash team (lead-workspace release 3c,
+ * team_ask_dash_team): it asks the Planner or the Scout, in its own
+ * conversation, and the plan comes back for the user to approve there.
+ * They only answer — the build is the user's Yes, build it.
  *
  * Portable (NFR-006): no Electron. botController injects the store, memory,
  * status lookups and the provider search. Result shape: { text, isError }.
@@ -102,6 +104,23 @@ const TEAM_TOOLS = [
         },
       },
       required: ["bot", "request"],
+    },
+  },
+  {
+    name: "team_ask_dash_team",
+    description:
+      "Bring in the Dash team — the people who make things. Ask the Planner to plan something new for this dashboard (a widget, a bot, a change), or the Scout what the user already has or what the registry offers. Give the full request, with every detail the user gave — they see only this. Your dashboard is passed along, so the Planner's plan goes on it. They only answer: the user sees the plan beside your reply and approves it there.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        role: { type: "string", enum: ["planner", "scout"] },
+        request: {
+          type: "string",
+          description:
+            "What you need from them, in full — they don't see this conversation.",
+        },
+      },
+      required: ["role", "request"],
     },
   },
   {
@@ -342,6 +361,26 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
           })
           .catch((err) =>
             fail(`Couldn't ask ${b.name}: ${err.message || String(err)}`),
+          );
+      }
+      case "team_ask_dash_team": {
+        // Async (it runs a Dash team role); callers await tool results.
+        const role = String((args && args.role) || "").toLowerCase();
+        if (role !== "planner" && role !== "scout") {
+          return fail('team_ask_dash_team needs role "planner" or "scout".');
+        }
+        const request = String((args && args.request) || "").trim();
+        if (!request) return fail("Say what to ask them.");
+        if (typeof deps.askDashTeam !== "function") {
+          return fail("Bringing in the Dash team isn't available here.");
+        }
+        return Promise.resolve()
+          .then(() => deps.askDashTeam(ctx, role, request))
+          .then((res) =>
+            res && !res.isError ? ok(res.text) : res || fail("No answer."),
+          )
+          .catch((err) =>
+            fail(`Couldn't ask the Dash team: ${err.message || String(err)}`),
           );
       }
       case "find_providers": {

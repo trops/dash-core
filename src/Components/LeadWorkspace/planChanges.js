@@ -1,0 +1,174 @@
+/**
+ * planChanges.js — a plan for a dashboard the user has, as what changes
+ * (lead-workspace release 3c, frame 30): the dashboard's grid now and after,
+ * and a row per change. Plans only add for now (removals and moves come
+ * later): each new widget — and each new bot's results card — goes in the
+ * next free cell of the page the dashboard shows, or a new row when the grid
+ * is full, as the build places them (electron/utils/placeWidget.js). Pure.
+ */
+import { planTarget } from "../../utils/teamPlan";
+
+/** The page the dashboard shows, or null (activeLayout.js shownPage). */
+function shownPage(ws) {
+  if (!ws || !Array.isArray(ws.pages) || !ws.pages.length) return null;
+  return ws.pages.find((p) => p && p.id === ws.activePageId) || ws.pages[0];
+}
+
+/** The layout the build places into: the shown page's, else the top one. */
+export function shownLayout(ws) {
+  const page = shownPage(ws);
+  if (page) return Array.isArray(page.layout) ? page.layout : [];
+  return Array.isArray(ws && ws.layout) ? ws.layout : [];
+}
+
+/** "ai-built.fridaycountdown.FridayCountdown" → "Friday Countdown". */
+export function widgetLabel(item) {
+  if (!item) return "";
+  const title =
+    item.userPrefs && typeof item.userPrefs.title === "string"
+      ? item.userPrefs.title.trim()
+      : "";
+  if (title) return title;
+  const tail = String(item.component || "")
+    .split(".")
+    .pop();
+  return tail.replace(/([a-z0-9])([A-Z])/g, "$1 $2") || "Widget";
+}
+
+/** What the plan adds to the dashboard, in the order the build places it. */
+function additions(plan) {
+  const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+  return [
+    ...pieces
+      .filter((p) => p.kind === "widget" && p.name)
+      .map((p) => ({
+        name: p.name,
+        sub:
+          p.source === "registry" && p.package
+            ? `${p.package} from the registry`
+            : p.source === "new"
+              ? "New — the Builder makes it"
+              : p.source === "update"
+                ? "Yours, changed"
+                : "Yours",
+      })),
+    ...pieces
+      .filter((p) => p.kind === "bot" && p.source === "new" && p.showResults)
+      .map((p) => ({
+        name: `${p.name} results`,
+        sub: "The new bot's results",
+      })),
+  ];
+}
+
+/** What a change does that isn't a cell: new bots, a theme. */
+function others(plan) {
+  const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+  return [
+    ...pieces
+      .filter(
+        (p) =>
+          p.kind === "bot" && p.source === "new" && !p.showResults && p.name,
+      )
+      .map((p) => ({
+        mark: "+",
+        main: `${p.name} — new bot`,
+        sub: "Saved paused, on this dashboard's team",
+      })),
+    ...pieces
+      .filter((p) => p.kind === "theme" && p.name)
+      .map((p) => ({ mark: "+", main: `${p.name} theme — applied`, sub: "" })),
+  ];
+}
+
+/**
+ * What a plan changes on a dashboard the user has — or null for a plan that
+ * makes a new one.
+ * @param {object} workspace  the dashboard as saved
+ * @param {object} plan
+ * @returns {null | { name, cols, now: Cell[][], after: Cell[][],
+ *   rows: [{ mark: "+", main, sub }], unchanged: string[], added: number }}
+ *   Cell = { name, kind: "add" | "keep" | "empty" | "hidden" } — hidden: a
+ *   cell another one spans, kept so the columns stay in place. added: how
+ *   many cells it fills (0: nothing to draw)
+ */
+export function planChanges(workspace, plan) {
+  const target = planTarget(plan);
+  if (!target || !workspace) return null;
+  const layout = shownLayout(workspace);
+  const byId = new Map(layout.map((i) => [String(i && i.id), i]));
+  const gridNode = layout.find(
+    (i) => i && i.component === "LayoutGridContainer" && i.grid,
+  );
+  const grid = gridNode ? gridNode.grid : null;
+  const rows = grid ? Number(grid.rows) || 0 : 0;
+  const cols = grid ? Number(grid.cols) || 1 : 1;
+  // Now: each cell, by its widget's name.
+  const now = [];
+  for (let r = 1; r <= rows; r += 1) {
+    const line = [];
+    for (let c = 1; c <= cols; c += 1) {
+      const key = `${r}.${c}`;
+      const cell = grid[key];
+      // Empty exactly as the build sees it (placeWidget findNextEmptyCell).
+      const empty = !cell || (cell.component === null && !cell.hide);
+      if (empty) line.push({ name: "", kind: "empty", key });
+      else if (cell.hide) line.push({ name: "", kind: "hidden", key });
+      else {
+        const item = byId.get(String(cell.component));
+        line.push({
+          name: item ? widgetLabel(item) : "Widget",
+          kind: "keep",
+          key,
+        });
+      }
+    }
+    now.push(line);
+  }
+  // After: the additions in the next free cells, then new rows.
+  const after = now.map((line) => line.map((c) => ({ ...c })));
+  const adds = additions(plan);
+  for (const add of adds) {
+    let slot = null;
+    for (const line of after) {
+      slot = line.find((c) => c.kind === "empty");
+      if (slot) break;
+    }
+    if (!slot) {
+      const r = after.length + 1;
+      const line = [];
+      for (let c = 1; c <= cols; c += 1)
+        line.push({ name: "", kind: "empty", key: `${r}.${c}` });
+      after.push(line);
+      slot = line[0];
+    }
+    slot.name = add.name;
+    slot.kind = "add";
+  }
+  const unchanged = now
+    .flat()
+    .filter((c) => c.kind === "keep")
+    .map((c) => c.name);
+  return {
+    name: target.name,
+    cols,
+    now,
+    after,
+    rows: [
+      ...adds.map((a) => ({
+        mark: "+",
+        main: `${a.name} — added`,
+        sub: a.sub,
+      })),
+      ...others(plan),
+    ],
+    unchanged,
+    added: adds.length,
+  };
+}
+
+/** "1 added" · "2 added" — the plan card's line for a change. */
+export function changesLine(changes) {
+  if (!changes) return "";
+  return `${changes.added} added`;
+}

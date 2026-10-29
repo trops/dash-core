@@ -154,3 +154,32 @@ Frames 3, 4, 7, 8, 31, 33.
 - Seen live and in review, fixed: "Checker checked it" for one widget; the Build log in words (no draft or package ids); the Check report's first sentence only; the Planner's step says "drafted a plan"; the Checker "stopped" (and no Report ›) when a build stops before it checks; at a preview the Builder is "waiting for you" with Preview › (frame 31); the Builder's live line skips its memory notes; an opened output keeps ← Outputs and Expand in place and starts at its top; Yes, build it can't start two builds ("Starting the build…"); a build that started as the user switched conversation isn't added to the new one; each build keeps how it ended (`last`), so an earlier build still shows after a restart; a waiting provider resumes the build once per change in what's connected (never in a loop, and only for real provider types); after Remove what was built, **Build it again**; stopped before anything was built, "Start it again"; Recents count what was left off as built, and say Removed.
 - Found live, not 3b: an AI-built widget that throws when it renders passes the Checker, and its preview stays on "Preview ready." with no error (CellPreview / the preview host — Create's widget preview too); the Planner, asked by the Dash Lead, says it can't use its memory tools.
 - Not in 3b: the Bots' own rows during a build (a bot waiting for a provider shows under Needs you, not as a team row), and the mockup's per-piece counts ("2 of 5"), which count steps instead.
+
+### Release 3c — leads bring in the Dash team; Create opens here; changes before and after (2026-10-29)
+
+Frames 13, 18, 30.
+
+- **A dashboard's lead brings in the Dash team** in its own conversation (frame 18):
+  - It has a new team tool, `team_ask_dash_team` (the Planner or the Scout). botController `_leadAskDashTeam` asks the role through `_askRole`: the role only answers, and the call counts with the lead's other hand-offs. The lead's dashboard goes with the request, so the plan goes on it (`plan.dashboard`), and stopping the lead stops the role (`_leadAsked`).
+  - The lead's instructions say to bring the team in, not to end with a `<handoff>` for Create. The release 1 text is kept in its history, so generated leads upgrade; old conversations keep their button.
+  - The step reads "Brought in the Dash team · asked the Planner" (`handoffSteps`, `dashTeam`).
+  - On the right, under the lead's own bots (now "not needed" for that plan), a group "Dash team · brought in by Kitchen Sink Lead" with the Scout, Planner, Builder and Checker indented.
+  - The plan, Yes, build it and the build are 3a's and 3b's, and stay in the lead's conversation and Recents.
+- **Making something starts a new Dash Lead conversation** (frame 13): the sidebar's Create, the rail's +, New Dashboard (the empty screen and the palette) and ⌘N / Ctrl+N (`openDashLead`).
+  - **Open as a plan**, from the Dash team's chats on the Bots page and a bot's page, carries the plan on as a new Dash Lead conversation (`dash:open-workspace` with a `seed`; `workspacePlan.seedConversation`: the user's words, the Planner's answers as steps, the last one bringing the plan, and the lead asking whether to build).
+  - An empty cell, Change with AI, the pages' own New buttons and Start from's registry dashboards still open Create, until release 6.
+- **A plan for a dashboard the user has shows what changes** (frame 30, additions only for now):
+  - **The opened plan:** "Planner · the changes", "Kitchen Sink — changes", "Nothing changes until you say yes"; then the dashboard's grid **Now** and **After** (`planChanges`, read through `useDashboard`), with each addition in the next free cell of the page it shows, or a new row when the grid is full, as the build places it. Then a row per addition and one for what's unchanged.
+  - **The plan card** reads "Plan · 1 added · on Kitchen Sink", and the choices say **Yes, make the changes**.
+- **Fixed after live testing and review:**
+  - The Planner's plan for a lead always goes on the lead's dashboard: one that leaves `dashboard` out gets it (`leadAsk.withPlanDashboard`).
+  - Stop reaches only a role the lead really started.
+  - The group lists only the roles in it (asked, building, or the Builder waiting for the yes), matched by their Dash team steps; the Planner's link says **Changes ›**, and the chat's card "Kitchen Sink — changes".
+  - The grids keep spanned cells in place, and treat a cell as empty exactly as the build does.
+  - A change that fills no cell (a new bot, a theme) has its rows and no grids, and its card says what it makes.
+  - Once it's built, the plan shows no before and after (the dashboard has it now).
+  - The grids say "added" and "empty cell" to screen readers.
+  - A plan from Open as a plan that can't be saved says so.
+  - The dock's **Make something new…** starts a Dash Lead conversation too.
+  - Leads don't name the button to press.
+- **A choice made here:** frame 18 shows a new widget on a lead's dashboard as a plain plan, and frame 30 shows a change with before and after. Every plan for a dashboard the user has gets the before and after, the approved release 3 default.

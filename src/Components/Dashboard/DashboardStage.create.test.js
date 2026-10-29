@@ -19,12 +19,13 @@ const source = fs.readFileSync(
 );
 
 describe("DashboardStage — Create screen", () => {
-  test("the rail's + opens Create (not the New Dashboard modal)", () => {
-    expect(source).toMatch(/onNewDashboard=\{\(\) => openCreate\(\)\}/);
+  // Lead-workspace release 3c (frame 13): a new Dash Lead conversation.
+  test("the rail's + starts a Dash Lead conversation (not the New Dashboard modal)", () => {
+    expect(source).toMatch(/onNewDashboard=\{openDashLead\}/);
   });
 
-  test("the palette's Create… opens Create", () => {
-    expect(source).toMatch(/onCreate=\{\(\) => openCreate\(\)\}/);
+  test("the palette's Create… starts a Dash Lead conversation", () => {
+    expect(source).toMatch(/onCreate=\{openDashLead\}/);
   });
 
   test("dash:open-create opens it on the requested type and dashboard", () => {
@@ -118,9 +119,7 @@ describe("DashboardStage — Create screen", () => {
     expect(source).toMatch(
       /onOpenTheme=\{\(theme\) => \{[\s\S]{0,200}setThemeInitial\(theme\);[\s\S]{0,60}setIsThemeManagerOpen\(true\);/,
     );
-    expect(source).toMatch(
-      /function openCreate\(type = "auto", workspaceId = null\)/,
-    );
+    expect(source).toMatch(/type: cell \? "widget" : d\.type \|\| "auto"/);
     const modal = require("fs").readFileSync(
       require("path").join(__dirname, "..", "Theme", "ThemeManagerModal.js"),
       "utf8",

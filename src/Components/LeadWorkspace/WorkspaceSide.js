@@ -23,6 +23,7 @@ import {
   buildStatus,
   waitingFor,
 } from "./workspaceBuild";
+import { planTarget } from "../../utils/teamPlan";
 import {
   planName,
   planStatus,
@@ -40,6 +41,7 @@ function botsApi() {
 // tools in words.
 const TOOL_WORDS = {
   team_ask_bot: "asking a bot",
+  team_ask_dash_team: "bringing in the Dash team",
   team_recent_runs: "reading what the bots did",
   team_list_bots: "looking at the team",
   team_memory_read: "reading the team's notes",
@@ -197,6 +199,8 @@ function memberState(m, last, status, { plan, lines }) {
     }
     return { tone: "ok", state: "done", line: last.result || "" };
   }
+  // A dashboard lead's own bot, not asked for this plan (frame 18).
+  if (plan && !m.role) return { tone: "idle", state: "not needed", line: "" };
   if (status === "Running")
     return { tone: "idle", state: "busy with its own run", line: "" };
   if (status === "Paused") return { tone: "idle", state: "paused", line: "" };
@@ -237,6 +241,9 @@ function memberState(m, last, status, { plan, lines }) {
  * @param {object|null} build  the plan's build (release 3b: { buildId, kind,
  *   leftOff }); its outputs open as "buildlog", "check" and "preview"
  * @param {object|null} pb     the build, live (usePlanBuild)
+ * @param {object[]} dashTeam  the Dash team's working roles ({ id, name,
+ *   role }), shown under a dashboard lead's own bots once it brings them in
+ *   (release 3c, frame 18)
  */
 export const WorkspaceSide = ({
   contact,
@@ -253,6 +260,7 @@ export const WorkspaceSide = ({
   onStartFrom = null,
   build = null,
   pb = null,
+  dashTeam = [],
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const { currentTheme } = useContext(ThemeContext) || {};
@@ -260,11 +268,30 @@ export const WorkspaceSide = ({
   const link = `${(currentTheme && currentTheme["text-primary-medium"]) || ""} dr-role-accent`;
   const statusTokens = useStatusTokens();
   const members = (contact && contact.members) || [];
-  const lines = useLiveLines(members.map((m) => m.id));
+  const lines = useLiveLines(
+    [...members, ...(dashTeam || [])].map((m) => m.id),
+  );
   const runs = useRuns(
     contact && contact.kind === "bot" ? contact.botId : null,
   );
   const steps = (messages || []).filter((m) => m && m.who === "step");
+  // A dashboard lead that brought in the Dash team (release 3c): the team
+  // shows under its own bots, "brought in by" it.
+  // Only the roles in it (frames 18, 30): asked, building, or — a plan
+  // waiting for a yes — the Builder.
+  const broughtInRoles = (dashTeam || []).filter(
+    (m) =>
+      steps.some((st) => st.dashTeam && norm(st.bot) === norm(m.name)) ||
+      (build && pb && pb.state
+        ? !!BUILD_ROLES[m.role] &&
+          !!buildMemberState(m.role, pb.state, (build && build.leftOff) || [])
+        : !!(wp && wp.plan) && m.role === "builder"),
+  );
+  const broughtIn =
+    !!contact &&
+    contact.kind === "lead" &&
+    (dashTeam || []).length > 0 &&
+    (steps.some((st) => st.dashTeam) || !!(wp && wp.plan) || !!build);
 
   const plan = wp && wp.plan ? wp.plan : null;
   const back = (
@@ -309,6 +336,7 @@ export const WorkspaceSide = ({
         readOnly={planReadOnly}
         onBuild={onBuild}
         buildLine={buildLine}
+        leadName={contact ? contact.name : undefined}
       />,
     );
   }
@@ -410,6 +438,80 @@ export const WorkspaceSide = ({
     idle: muted,
   };
 
+  // A team member's row: its state, live line and output (frames 1, 3, 18).
+  // `dash`: one of the Dash team a dashboard lead brought in — matched to
+  // its own steps only (a lead's bot could share a role's name).
+  const renderMember = (m, dash = false) => {
+    const mine = steps.filter(
+      (s) =>
+        norm(s.bot) === norm(m.name) &&
+        (contact.kind !== "lead" || !!s.dashTeam === dash),
+    );
+    const last = mine[mine.length - 1] || null;
+    // Once it builds, the Builder and Checker follow the build
+    // (frames 3, 8, 33) — or weren't needed for it.
+    const inBuild =
+      buildState && BUILD_ROLES[m.role]
+        ? buildMemberState(m.role, buildState, leftOff, {
+            [m.role]: lines[m.id],
+          }) || { tone: "idle", state: "not needed", line: "" }
+        : null;
+    const { tone, state, line } =
+      inBuild || memberState(m, last, statusOf(m.id), { plan, lines });
+    const out =
+      inBuild && inBuild.out === "preview"
+        ? { label: "Preview", open: "preview" }
+        : inBuild && inBuild.out === false
+          ? null
+          : inBuild && inBuild.state !== "not needed"
+            ? BUILD_ROLES[m.role]
+            : last && last.plan && plan
+              ? {
+                  // A change to a dashboard the user has (frame 30).
+                  label: planTarget(plan) ? "Changes" : "Plan",
+                  open: "plan",
+                }
+              : last && last.answer
+                ? {
+                    label: ROLE_OUTPUT[m.role] || "Answer",
+                    open: last.id,
+                  }
+                : null;
+    return (
+      <div
+        key={m.id}
+        className={`flex flex-row items-start gap-3 ${dash ? "pl-4" : ""}`}
+        data-testid="workspace-member"
+      >
+        <FontAwesomeIcon
+          icon={tone === "working" ? "spinner" : "circle"}
+          className={`h-2 w-2 mt-1.5 ${tone === "working" ? `animate-spin ${muted}` : dot[tone]}`}
+          aria-hidden="true"
+        />
+        <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+          <span className="text-sm">
+            <span className={`font-semibold ${strong}`}>{m.name}</span>
+            <span className={`text-xs ${muted}`}> · {state}</span>
+          </span>
+          {line ? (
+            <span className={`text-xs font-mono truncate ${muted}`}>
+              {line}
+            </span>
+          ) : null}
+        </span>
+        {out ? (
+          <button
+            type="button"
+            onClick={() => onOpen(out.open)}
+            className={`flex-shrink-0 text-sm ${link}`}
+          >
+            {out.label} ›
+          </button>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <div
       className="flex-1 flex flex-col gap-4 p-5 min-h-0 overflow-y-auto"
@@ -463,7 +565,7 @@ export const WorkspaceSide = ({
       {plan ? (
         <OutputCard
           testId="workspace-output-plan"
-          title={`${planName(plan)} — plan`}
+          title={`${planName(plan)} — ${planTarget(plan) ? "changes" : "plan"}`}
           sub={
             buildLine || planStatus({ plan, check: wp.check, open: wp.open })
           }
@@ -476,7 +578,11 @@ export const WorkspaceSide = ({
           testId="workspace-output-dashboard"
           icon="table-cells-large"
           title={builtDashboard.name}
-          sub={`${placed} ${placed === 1 ? "widget" : "widgets"}${builtDashboard.targeted ? " · changed" : ""}`}
+          sub={
+            builtDashboard.targeted
+              ? `changed · ${placed} added`
+              : `${placed} ${placed === 1 ? "widget" : "widgets"}`
+          }
           kind="Dashboard"
           onClick={() => onOpen(hasCheck ? "check" : "buildlog")}
         />
@@ -534,77 +640,24 @@ export const WorkspaceSide = ({
           <span className={`text-sm font-semibold ${strong}`}>
             Team in this conversation
           </span>
-          {members.length ? (
-            members.map((m) => {
-              const mine = steps.filter((s) => norm(s.bot) === norm(m.name));
-              const last = mine[mine.length - 1] || null;
-              // Once it builds, the Builder and Checker follow the build
-              // (frames 3, 8, 33) — or weren't needed for it.
-              const inBuild =
-                buildState && BUILD_ROLES[m.role]
-                  ? buildMemberState(m.role, buildState, leftOff, {
-                      [m.role]: lines[m.id],
-                    }) || { tone: "idle", state: "not needed", line: "" }
-                  : null;
-              const { tone, state, line } =
-                inBuild ||
-                memberState(m, last, statusOf(m.id), { plan, lines });
-              const out =
-                inBuild && inBuild.out === "preview"
-                  ? { label: "Preview", open: "preview" }
-                  : inBuild && inBuild.out === false
-                    ? null
-                    : inBuild && inBuild.state !== "not needed"
-                      ? BUILD_ROLES[m.role]
-                      : last && last.plan && plan
-                        ? { label: "Plan", open: "plan" }
-                        : last && last.answer
-                          ? {
-                              label: ROLE_OUTPUT[m.role] || "Answer",
-                              open: last.id,
-                            }
-                          : null;
-              return (
-                <div
-                  key={m.id}
-                  className="flex flex-row items-start gap-3"
-                  data-testid="workspace-member"
-                >
-                  <FontAwesomeIcon
-                    icon={tone === "working" ? "spinner" : "circle"}
-                    className={`h-2 w-2 mt-1.5 ${tone === "working" ? `animate-spin ${muted}` : dot[tone]}`}
-                    aria-hidden="true"
-                  />
-                  <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                    <span className="text-sm">
-                      <span className={`font-semibold ${strong}`}>
-                        {m.name}
-                      </span>
-                      <span className={`text-xs ${muted}`}> · {state}</span>
-                    </span>
-                    {line ? (
-                      <span className={`text-xs font-mono truncate ${muted}`}>
-                        {line}
-                      </span>
-                    ) : null}
-                  </span>
-                  {out ? (
-                    <button
-                      type="button"
-                      onClick={() => onOpen(out.open)}
-                      className={`flex-shrink-0 text-sm ${link}`}
-                    >
-                      {out.label} ›
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })
-          ) : (
+          {members.map((m) => renderMember(m))}
+          {!members.length && !broughtIn ? (
             <span className={`text-sm ${muted}`}>
               This team has no bots yet.
             </span>
-          )}
+          ) : null}
+          {/* A dashboard lead's Dash team, brought in (frame 18). */}
+          {broughtIn ? (
+            <>
+              <span className="text-sm" data-testid="workspace-team-group">
+                <span className={`font-semibold ${strong}`}>Dash team</span>
+                <span className={`text-xs ${muted}`}>
+                  {` · brought in by ${contact.name}`}
+                </span>
+              </span>
+              {broughtInRoles.map((m) => renderMember(m, true))}
+            </>
+          ) : null}
         </div>
       )}
 

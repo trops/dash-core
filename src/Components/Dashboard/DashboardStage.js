@@ -674,13 +674,18 @@ const DashboardStageInner = ({
   }, []);
   // The lead workspace (lead-workspace release 2): talk to a team through
   // its lead, or to a bot on no dashboard. detail.key: "role:dashlead" |
-  // "lead:<botId>" | "bot:<botId>".
+  // "lead:<botId>" | "bot:<botId>"; detail.seed: a plan from another chat
+  // (Open as a plan, release 3c) to carry on with the Dash Lead.
   const [workspaceRequest, setWorkspaceRequest] = useState(null);
   useEffect(() => {
     const onOpen = (e) => {
       const d = (e && e.detail) || {};
       setBotPageRequest(null);
-      setWorkspaceRequest({ key: d.key || "role:dashlead", seq: Date.now() });
+      setWorkspaceRequest({
+        key: d.key || "role:dashlead",
+        seq: Date.now(),
+        seed: d.seed || null,
+      });
     };
     window.addEventListener("dash:open-workspace", onOpen);
     return () => window.removeEventListener("dash:open-workspace", onOpen);
@@ -1477,12 +1482,15 @@ const DashboardStageInner = ({
 
   // ─── Create screen (create-entry PRD CRE-001 / CRE-008) ──────────
 
-  // Auto by default (phase 5c): Create works out what to make. Every
-  // "make" button opens it (consolidation Phase 2a).
-  function openCreate(type = "auto", workspaceId = null) {
-    setCreateRequest({ type, workspaceId });
+  // Making something starts a new Dash Lead conversation (lead-workspace
+  // release 3c, frame 13): the Create button, New dashboard, ⌘N. An empty
+  // cell, Change with AI and the pages' own New buttons still open Create
+  // until release 6.
+  function openDashLead() {
+    setBotPageRequest(null);
+    setWorkspaceRequest({ key: "role:dashlead", seq: Date.now() });
   }
-  // ⌘N (Mac) / Ctrl+N opens Create — like every other door, not while
+  // ⌘N (Mac) / Ctrl+N starts one too — like every other door, not while
   // editing a dashboard, nor over another dialog; never in a popout. On a
   // Mac, Ctrl+N stays the text fields' "next line".
   const editingRef = useRef(isEditingDashboard);
@@ -1506,7 +1514,9 @@ const DashboardStageInner = ({
       if (editingRef.current) return;
       if (document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
-      setCreateRequest((r) => r || { type: "auto", workspaceId: null });
+      setWorkspaceRequest(
+        (r) => r || { key: "role:dashlead", seq: Date.now() },
+      );
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -2870,7 +2880,7 @@ const DashboardStageInner = ({
                 authStatus={authStatus}
                 authProfile={authProfile}
                 onOpenWorkspace={handleOpenTabGuarded}
-                onNewDashboard={() => openCreate()}
+                onNewDashboard={openDashLead}
                 onOpenSettings={(section) =>
                   openAppSettings(section || "general")
                 }
@@ -3120,7 +3130,7 @@ const DashboardStageInner = ({
                         <ButtonIcon
                           icon="plus"
                           text="New Dashboard"
-                          onClick={() => openCreate("dashboard")}
+                          onClick={openDashLead}
                           size="sm"
                         />
                       </div>
@@ -3516,7 +3526,7 @@ const DashboardStageInner = ({
           menuItems={menuItems}
           onOpenPage={handleOpenPageGuarded}
           onOpenWorkspace={handleOpenTab}
-          onCreateNewWorkspace={() => openCreate("dashboard")}
+          onCreateNewWorkspace={openDashLead}
           onCreateNewFolder={() => openAppSettings("folders")}
           onLoadDashboard={() => setIsDashboardLoaderOpen(true)}
           providers={appContext?.providers || {}}
@@ -3535,7 +3545,7 @@ const DashboardStageInner = ({
             appContext.changeDebugMode(!appContext.debugMode)
           }
           onOpenDiscover={() => openAppSettings("widgets")}
-          onCreate={() => openCreate()}
+          onCreate={openDashLead}
         />
       )}
 

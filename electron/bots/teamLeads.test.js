@@ -144,20 +144,20 @@ describe("planEnsureLead", () => {
     );
   });
 
-  // Consolidation Phase 2c-2: no drafts — the lead hands off to the Dash team.
-  it("tells the lead to hand making things to the Dash team, with a note", () => {
+  // Lead-workspace release 3c: the lead brings in the Dash team itself.
+  it("tells the lead to bring in the Dash team, in its own conversation", () => {
     const text = leadInstructions("Kitchen Sink");
     assert.doesNotMatch(text, /propose_bot|Drafts/);
     assert.match(text, /the Dash team makes things/);
-    assert.match(text, /<handoff><\/handoff>/);
-    assert.match(text, /"type": "bot" \| "widget"/);
+    assert.match(text, /team_ask_dash_team/);
+    assert.doesNotMatch(text, /<handoff>/);
+    assert.match(text, /don't repeat it or list its pieces/);
+    assert.match(text, /Only say the plan changed when/);
     assert.match(
       text,
       /to move, remove or resize widgets, tell them to use Edit/i,
     );
-    assert.match(text, /written as they would say it/);
-    assert.match(text, /"note"/);
-    assert.match(text, /never for a question/);
+    assert.match(text, /with their words in full and every detail they gave/);
     assert.equal(text.includes(CURRENT_LEAD_ACTION), true);
   });
 
@@ -183,7 +183,7 @@ describe("planEnsureLead", () => {
         dashboardName: "Kitchen Sink",
       });
       assert.equal(plan.action, "upgrade", oldAction.slice(0, 40));
-      assert.match(plan.instructions, /<handoff>/);
+      assert.match(plan.instructions, /team_ask_dash_team/);
     }
   });
 

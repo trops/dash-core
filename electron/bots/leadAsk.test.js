@@ -106,3 +106,28 @@ describe("askTeamBot", () => {
     assert.equal(LEAD_ASK_WAIT_MS, 180000);
   });
 });
+
+// Lead-workspace release 3c: a dashboard lead's plan goes on its dashboard.
+describe("withPlanDashboard", () => {
+  const { withPlanDashboard } = require("./leadAsk");
+  const K = { id: "7", name: 'Kitchen "Sink"' };
+  it("fills in a plan's missing dashboard", () => {
+    const out = withPlanDashboard(
+      'Here.\n<plan>{"summary":"x","pieces":[]}</plan>',
+      K,
+    );
+    const plan = JSON.parse(/<plan>([\s\S]*)<\/plan>/.exec(out)[1]);
+    assert.deepEqual(plan.dashboard, { id: "7", name: 'Kitchen "Sink"' });
+    assert.match(out, /^Here\./);
+  });
+  it("leaves a plan that names one, an answer with no plan, and broken JSON alone", () => {
+    const named = '<plan>{"dashboard":{"id":"9","name":"Other"}}</plan>';
+    assert.equal(withPlanDashboard(named, K), named);
+    assert.equal(withPlanDashboard("No plan here.", K), "No plan here.");
+    assert.equal(
+      withPlanDashboard("<plan>{nope</plan>", K),
+      "<plan>{nope</plan>",
+    );
+    assert.equal(withPlanDashboard(named, null), named);
+  });
+});

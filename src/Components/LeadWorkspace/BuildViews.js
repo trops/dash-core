@@ -137,6 +137,8 @@ export const BuildInChat = ({
   current = false,
   actions = {},
   actionError = null,
+  // What the user said yes with: Yes, build it — or Yes, make the changes.
+  yes = "Yes, build it",
 }) => {
   const { muted } = useConfigTokens();
   const chat = buildChat(state, {
@@ -158,7 +160,7 @@ export const BuildInChat = ({
   };
   return (
     <div className="flex flex-col gap-3" data-testid="workspace-build">
-      <ChatMessage role="you">Yes, build it</ChatMessage>
+      <ChatMessage role="you">{yes}</ChatMessage>
       {state ? (
         <>
           <BuildStepLine step={chat.step} />

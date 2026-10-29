@@ -94,8 +94,9 @@ export const BotPageModal = ({
             onOpenPlan={(seed) => {
               close();
               window.dispatchEvent(
-                new CustomEvent("dash:open-create", {
-                  detail: { type: "dashboard", seed },
+                // Carried on with the Dash Lead (lead-workspace release 3c).
+                new CustomEvent("dash:open-workspace", {
+                  detail: { key: "role:dashlead", seed },
                 }),
               );
             }}

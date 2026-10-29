@@ -5,6 +5,7 @@
  * Pure.
  */
 import { countsLine, editNote } from "../Create/planChecklist";
+import { planTarget } from "../../utils/teamPlan";
 
 /** The latest hand-off step that brought a plan, or null. */
 export function latestPlanStep(messages) {
@@ -30,10 +31,34 @@ export function planName(plan) {
   return name.length > 60 ? `${name.slice(0, 57)}…` : name;
 }
 
-/** "Plan · 2 new widgets and 1 new bot" — the card's line. */
+/**
+ * "Plan · 2 new widgets and 1 new bot" — the card's line; a change to a
+ * dashboard the user has (release 3c): "Plan · 1 added · on Kitchen Sink".
+ */
 export function planLine(plan) {
+  const target = plan ? planTarget(plan) : null;
+  const added = target ? addedCount(plan) : 0;
+  if (added) return `Plan · ${added} added · on ${target.name}`;
   const counts = plan ? countsLine(plan) : "";
-  return counts ? `Plan · ${counts}` : "Plan";
+  // A change that fills no cells (a new bot, a theme): what it makes.
+  const on = target ? ` · on ${target.name}` : "";
+  return counts ? `Plan · ${counts}${on}` : `Plan${on}`;
+}
+
+/** What a change adds: its widgets, and new bots' results cards. */
+function addedCount(plan) {
+  const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+  return (
+    pieces.filter((p) => p.kind === "widget" && p.name).length +
+    pieces.filter(
+      (p) => p.kind === "bot" && p.source === "new" && p.showResults,
+    ).length
+  );
+}
+
+/** Yes, build it — or, for a dashboard the user has, Yes, make the changes. */
+export function yesLabel(plan) {
+  return plan && planTarget(plan) ? "Yes, make the changes" : "Yes, build it";
 }
 
 /**
@@ -210,4 +235,59 @@ export function providersLine(checklist = [], isDone = () => false) {
         `${providerName(it)} · ${isDone(it) ? "connected" : "not connected yet"}`,
     )
     .join(" · ");
+}
+
+const firstLineOf = (t) =>
+  String(t || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .find(Boolean) || "";
+
+/**
+ * A plan from another chat (Open as a plan, release 3c) as a Dash Lead
+ * conversation: what the user said, the Planner's answers as its steps —
+ * the last one bringing the plan — and the lead asking whether to build it.
+ * @param {{ plan, messages: [{ who: "you"|"planner"|"note", text }] }} seed
+ * @returns {object[]} messages for a saved conversation
+ */
+export function seedConversation(seed) {
+  const list = (seed && Array.isArray(seed.messages) && seed.messages) || [];
+  const lastPlanner = list.map((m) => m && m.who).lastIndexOf("planner");
+  const out = [];
+  list.forEach((m, i) => {
+    if (!m || !String(m.text || "").trim()) return;
+    if (m.who === "you") out.push({ who: "you", text: String(m.text) });
+    else if (m.who === "planner") {
+      out.push({
+        who: "step",
+        id: `seed:${i}`,
+        bot: "the Planner",
+        label: "Asked the Planner",
+        status: "done",
+        answer: String(m.text),
+        result: firstLineOf(m.text),
+        ...(i === lastPlanner && seed.plan ? { plan: seed.plan } : {}),
+      });
+    } else if (m.who === "note") {
+      out.push({ who: "note", text: String(m.text) });
+    }
+  });
+  // No Planner answer kept: the plan still needs its step.
+  if (lastPlanner < 0 && seed && seed.plan) {
+    out.push({
+      who: "step",
+      id: "seed:plan",
+      bot: "the Planner",
+      label: "Asked the Planner",
+      status: "done",
+      answer: String(seed.plan.summary || ""),
+      result: firstLineOf(seed.plan.summary),
+      plan: seed.plan,
+    });
+  }
+  out.push({
+    who: "role",
+    text: "Here's the plan from your chat with the Planner — it's on the right. Want me to build it?",
+  });
+  return out;
 }

@@ -182,16 +182,16 @@ describe("the Dash team (consolidation Phase 4a)", () => {
     expect(screen.getByText("dash team on settings")).toBeInTheDocument();
   });
 
-  test("Open as a plan closes the modal and opens Create on the plan", () => {
+  test("Open as a plan closes the modal and carries the plan on with the Dash Lead (release 3c)", () => {
     const opened = jest.fn();
-    window.addEventListener("dash:open-create", opened);
+    window.addEventListener("dash:open-workspace", opened);
     const { onClose } = setup({ dashTeam: true, tab: "conversation" });
     fireEvent.click(screen.getByText("open-plan"));
     expect(onClose).toHaveBeenCalled();
     expect(opened.mock.calls[0][0].detail).toEqual({
-      type: "dashboard",
+      key: "role:dashlead",
       seed: { prompt: "p" },
     });
-    window.removeEventListener("dash:open-create", opened);
+    window.removeEventListener("dash:open-workspace", opened);
   });
 });

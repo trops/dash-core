@@ -77,4 +77,36 @@ async function askTeamBot({
   }
 }
 
-module.exports = { askTeamBot, LEAD_ASK_WAIT_MS, OUTSIDE_CALLERS };
+/**
+ * A Planner's answer to a dashboard's lead (release 3c): its plan goes on
+ * that dashboard. A plan that left `dashboard` out gets it — otherwise a
+ * yes would build a new dashboard. Anything else is left as it is.
+ * @param {string} text  the Planner's answer, with its <plan>…</plan>
+ * @param {{ id, name }} dashboard
+ */
+function withPlanDashboard(text, dashboard) {
+  const src = String(text == null ? "" : text);
+  if (!dashboard) return src;
+  const m = /<plan>([\s\S]*?)<\/plan>/i.exec(src);
+  if (!m) return src;
+  const body = m[1].trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
+  let plan;
+  try {
+    plan = JSON.parse(body);
+  } catch (_e) {
+    return src;
+  }
+  if (!plan || typeof plan !== "object" || plan.dashboard) return src;
+  const next = {
+    ...plan,
+    dashboard: { id: String(dashboard.id), name: String(dashboard.name) },
+  };
+  return src.replace(m[0], `<plan>${JSON.stringify(next)}</plan>`);
+}
+
+module.exports = {
+  askTeamBot,
+  withPlanDashboard,
+  LEAD_ASK_WAIT_MS,
+  OUTSIDE_CALLERS,
+};
