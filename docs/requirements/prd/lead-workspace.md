@@ -85,7 +85,11 @@ Frames 14, 15, 23–26.
 
 ### Release 6 — finishing
 
-Smaller windows (35–36), light theme, carrying existing Dash team questions into Dash Lead conversations, removing old chat entry points.
+Smaller windows (35–36), light theme, carrying existing Dash team questions into Dash Lead conversations, removing old chat entry points. Split in three (approved 2026-10-29):
+
+- **6a — smaller windows and light theme.** Below 1100px wide (`NARROW_AT`) the left column folds to "☰ <lead>" (a drawer over the conversation that closes when a conversation or lead is picked), and Outputs becomes an "Outputs N" button that slides over the conversation, with a dot when something needs you (a waiting approval for this conversation's bots, a provider the build waits for, or a preview to look at). Its × closes the outputs; the window's × moves to the header. No resize handle or Expand while folded. Growing the window brings the columns back. The drawers open under the header (☰ and Outputs stay in reach and say they're open), take focus and give it back; clicking beside one or Escape closes it — Escape never closes the window then. While one is open the window's × waits. `WorkspaceSide` reports `{ count, needsYou }` (`onSummary`).
+- **6b — one way to talk.** Bot pages without their own conversation, the Dash team page without its chat, the dock's Create panel removed; older Dash team questions listed under the Dash Lead.
+- **6c — the last Create doors** (an empty cell, Change with AI, New buttons, registry dashboards): new mockup frames first.
 
 ## Risks
 
