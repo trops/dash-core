@@ -49,13 +49,18 @@ const THEME_COLORS = [
 ];
 export function themeColorRows(piece) {
   const colors = (piece && piece.colors) || {};
-  return THEME_COLORS.filter(([key]) => colors[key]).map(
-    ([key, name, sub]) => ({
-      main: `${name} — ${String(colors[key]).toLowerCase()}`,
-      sub,
-      swatch: colors[key],
-    }),
-  );
+  // The Planner's plain names ("rust"); the hex when it gave none.
+  const names =
+    piece && piece.colorNames && typeof piece.colorNames === "object"
+      ? piece.colorNames
+      : {};
+  return THEME_COLORS.filter(([key]) => colors[key]).map(([key, name, sub]) => {
+    const word =
+      typeof names[key] === "string" && names[key].trim()
+        ? names[key].trim().slice(0, 40)
+        : String(colors[key]).toLowerCase();
+    return { main: `${name} — ${word}`, sub, swatch: colors[key] };
+  });
 }
 
 /** The plan's name: its layout's, the dashboard it changes, or its summary. */

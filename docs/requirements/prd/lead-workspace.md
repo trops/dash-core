@@ -318,4 +318,5 @@ Frames 22, 27–29.
 - **Instructions:** the Planner's `NEW_THEMES` (the old Create theme maker's color rules); dashboard leads bring in the Dash team for "a new theme for it". Earlier texts are in their history.
 - **Workspace:** `isThemeOnly` / `newTheme` / `themeColorRows` (`workspacePlan`), `ThemeLooks` (`PlanViews`, with `ThemePreview compact`), build kind `"theme"` with choices `"theme"`, and `onOpenThemeEditor` → DashboardStage's `handleOpenThemeManager(key)`.
 - **Wizard:** `ThemeNewChooser onDescribe`; `makingStart({ kind: "theme", from: "themes" })`.
+- **Mockup follow-up:** the Planner names each color (`colorNames`, rows read "Primary — rust", the hex when there is none); Describe it is bordered in the theme's primary color; a dashboard change names the theme it replaces ("Kitchen Sink's theme — Dusk → Autumn", from the app's saved themes).
 - **Later:** changing a saved theme through the team; `themeFromPrompt` and DashboardStage's `themeInitial` are no longer reached.

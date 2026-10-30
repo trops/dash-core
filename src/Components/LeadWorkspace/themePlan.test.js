@@ -237,3 +237,73 @@ describe("the Themes page's New Theme (frame 44)", () => {
     expect(screen.queryByText("Describe it")).toBeNull();
   });
 });
+
+describe("mockup follow-up", () => {
+  test("the colors' plain names, the hex when there's none (frame 45)", () => {
+    const rows = planRows({
+      summary: "Autumn",
+      pieces: [
+        {
+          ...autumn,
+          colorNames: { primary: "rust", secondary: "amber", tertiary: " " },
+        },
+      ],
+    });
+    expect(rows.map((r) => r.main)).toEqual([
+      "Primary — rust",
+      "Secondary — amber",
+      "Tertiary — #6b7f3a",
+      "Neutral — #7a6a5c",
+    ]);
+  });
+
+  test("a dashboard change names the theme it replaces (frame 46)", () => {
+    const { planChanges } = require("./planChanges");
+    const ws = {
+      id: "7",
+      name: "Kitchen Sink",
+      themeKey: "theme-dusk",
+      layout: [],
+    };
+    const named = planChanges(ws, onKitchen, {
+      themeName: (k) => (k === "theme-dusk" ? "Dusk" : null),
+    });
+    const row = named.rows.find((r) => /theme —/.test(r.main));
+    expect(row.main).toBe("Kitchen Sink's theme — Dusk → Autumn");
+    expect(row.sub).toBe("Dusk stays in your themes");
+    const unnamed = planChanges(ws, onKitchen);
+    expect(unnamed.rows.find((r) => /theme —/.test(r.main)).main).toBe(
+      "Kitchen Sink's theme — Autumn",
+    );
+    // The app's theme; the same name on both sides; the plan's id only.
+    const appTheme = planChanges({ ...ws, themeKey: null }, onKitchen, {
+      themeName: () => "Dusk",
+    }).rows.find((r) => /theme —/.test(r.main));
+    expect(appTheme.sub).toBe("It uses the app's theme now");
+    const same = planChanges(ws, onKitchen, { themeName: () => "Autumn" });
+    expect(same.rows.find((r) => /theme —/.test(r.main)).main).toBe(
+      "Kitchen Sink's theme — Autumn",
+    );
+    const byId = planChanges(
+      ws,
+      { ...onKitchen, dashboard: { id: "7" } },
+      { themeName: () => "Dusk" },
+    );
+    expect(byId.rows.find((r) => /theme —/.test(r.main)).main).toBe(
+      "Kitchen Sink's theme — Dusk → Autumn",
+    );
+  });
+
+  test("Describe it is the one highlighted (frame 44)", () => {
+    const { container } = render(
+      <ThemeNewChooser
+        onSearchThemes={jest.fn()}
+        onSelectMethod={jest.fn()}
+        onDescribe={jest.fn()}
+      />,
+    );
+    const accented = container.querySelectorAll('[data-accent="true"]');
+    expect(accented).toHaveLength(1);
+    expect(accented[0]).toHaveTextContent("Describe it");
+  });
+});

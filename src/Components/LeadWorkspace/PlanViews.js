@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useContext, useMemo, useState } from "react";
 import {
   Button,
   Button2,
@@ -6,6 +6,7 @@ import {
   ButtonIcon2,
   FontAwesomeIcon,
   Switch,
+  ThemeContext,
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
@@ -366,13 +367,18 @@ export const PlanOutput = ({
   const plan = earlier || wp.plan;
   const target = plan ? planTarget(plan) : null;
   const dashboard = useDashboard(target ? target.id : null);
+  // Saved themes' names: which theme a new one replaces (frame 46).
+  const { rawThemes } = useContext(ThemeContext) || {};
   if (!plan) return null;
   // Now and after only before it's built: once it is, the dashboard read
   // now already has what was added.
   // A change to one widget has its own rows, no grids (release 6c).
   const changes =
     target && !buildLine && !plan.widgetChange
-      ? planChanges(dashboard, plan)
+      ? planChanges(dashboard, plan, {
+          themeName: (key) =>
+            (rawThemes && rawThemes[key] && rawThemes[key].name) || null,
+        })
       : null;
   const draws = !!(changes && changes.added && changes.now.length);
   const checklist = earlier ? [] : wp.checklist;
