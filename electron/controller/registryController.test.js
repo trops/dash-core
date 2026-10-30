@@ -1,26 +1,37 @@
-const { describe, it, before } = require("node:test");
+const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
+const os = require("os");
 
-// We can't easily mock fetchRegistryIndex, but we can test searchRegistry
-// by pre-populating the cache. The cache variables are module-scoped,
-// so we call fetchRegistryIndex once and then the cache is used.
-// Instead, we test the filter logic by calling searchRegistry with
-// the existing search + type + compatibleWidgets filters.
-//
-// Since the controller fetches from network/filesystem, we test the
-// pure filtering by importing and calling searchRegistry after seeding
-// the module cache via a test registry file.
-
-// For these tests, set NODE_ENV to development and ensure a test registry exists.
-const path = require("path");
-const fs = require("fs");
-
-const TEST_REGISTRY_PATH = path.join(
-  __dirname,
-  "..",
-  "registry",
-  "test-registry-index.json",
+// The controller loads electron (app paths): a stub, as other main-process
+// tests do — this file failed to load without one.
+const Module = require("node:module");
+const electronStubDir = require("fs").mkdtempSync(
+  require("path").join(os.tmpdir(), "zz-electron-registryctl-"),
 );
+const originalResolve = Module._resolveFilename;
+Module._resolveFilename = function (request, parent, ...rest) {
+  if (request === "electron") return "__stub_electron_registryctl__";
+  return originalResolve.call(this, request, parent, ...rest);
+};
+require.cache["__stub_electron_registryctl__"] = {
+  id: "__stub_electron_registryctl__",
+  filename: "__stub_electron_registryctl__",
+  loaded: true,
+  exports: {
+    app: {
+      getPath: () => electronStubDir,
+      getAppPath: () => electronStubDir,
+      isPackaged: false,
+      getVersion: () => "0.0.0",
+    },
+    ipcMain: { handle() {}, on() {} },
+    BrowserWindow: { getAllWindows: () => [] },
+    shell: {},
+    dialog: {},
+  },
+};
+
+const fs = require("fs");
 
 const testRegistryData = {
   version: "1.0.0",
@@ -96,17 +107,36 @@ const testRegistryData = {
   ],
 };
 
-// Write test registry and set env before importing controller
+// The registry comes through registryAuthController.authedFetch: a stub that
+// answers with the test data, so the controller takes its normal (non-dev)
+// path and the tracked test-registry-index.json is never touched — this test
+// used to overwrite it and, on master, failed to load without an electron
+// stub.
+const authPath = require.resolve("./registryAuthController");
+require.cache[authPath] = {
+  id: authPath,
+  filename: authPath,
+  loaded: true,
+  exports: {
+    getStoredToken: () => null,
+    authedFetch: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => JSON.parse(JSON.stringify(testRegistryData)),
+    }),
+  },
+};
+const previousNodeEnv = process.env.NODE_ENV;
+
 before(() => {
-  const registryDir = path.dirname(TEST_REGISTRY_PATH);
-  if (!fs.existsSync(registryDir)) {
-    fs.mkdirSync(registryDir, { recursive: true });
-  }
-  fs.writeFileSync(
-    TEST_REGISTRY_PATH,
-    JSON.stringify(testRegistryData, null, 2),
-  );
-  process.env.NODE_ENV = "development";
+  // Not dev mode: no local test file, the stubbed fetch instead.
+  delete process.env.NODE_ENV;
+});
+
+after(() => {
+  if (previousNodeEnv !== undefined) process.env.NODE_ENV = previousNodeEnv;
+  Module._resolveFilename = originalResolve;
+  fs.rmSync(electronStubDir, { recursive: true, force: true });
 });
 
 describe("searchRegistry — type filter", () => {
