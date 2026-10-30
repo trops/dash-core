@@ -402,7 +402,7 @@ describe("validatePlan — changing a dashboard you have (5e-2b)", () => {
       validatePlan(targeted([{ ...theme, source: "registry" }])).errors.join(
         " ",
       ),
-      /must be one of your saved themes/,
+      /is one of your saved themes, or a new one with its colors/,
     );
     assert.match(
       validatePlan(targeted([theme, { ...theme, name: "Dusk" }])).errors.join(
@@ -903,5 +903,41 @@ describe("a change to one widget (consolidation Phase 3)", () => {
     const res = validatePlan(plan, { edit });
     assert.deepEqual(res.errors, []);
     assert.equal(res.warnings.filter((w) => /adds|keeps/.test(w)).length, 2);
+  });
+});
+
+describe("validatePlan — a new theme (lead-workspace theme round)", () => {
+  const autumn = {
+    kind: "theme",
+    name: "Autumn",
+    source: "new",
+    colors: {
+      primary: "#c2562b",
+      secondary: "#d9a441",
+      tertiary: "#6b7f3a",
+      neutral: "#7a6a5c",
+    },
+  };
+  it("a name and four #rrggbb colors; no checks needed", () => {
+    const r = validatePlan(
+      { summary: "Autumn", pieces: [autumn] },
+      { themes: ["Dusk"] },
+    );
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.warnings.filter((w) => /no checks/.test(w)).length, 0);
+  });
+  it("colors that aren't #rrggbb are named", () => {
+    const r = validatePlan({
+      summary: "x",
+      pieces: [{ ...autumn, colors: { ...autumn.colors, neutral: "bark" } }],
+    });
+    assert.match(r.errors.join(" "), /needs its colors as #rrggbb: neutral/);
+  });
+  it("a name the user already has is refused", () => {
+    const r = validatePlan(
+      { summary: "x", pieces: [autumn] },
+      { themes: ["autumn"] },
+    );
+    assert.match(r.errors.join(" "), /already a theme called "Autumn"/);
   });
 });

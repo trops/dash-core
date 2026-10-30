@@ -17,6 +17,7 @@
  *                   name,
  *                   source: "yours" | "ai-built" | "registry" | "new" | "update"
  *                     | "settings",  // settings: only that widget's settings (6c)
+ *                   colors?,         // a new theme: { primary, secondary, tertiary, neutral } as #rrggbb
  *                   package?,        // yours / ai-built / registry / update
  *                   component?,      // which widget, when the package has several
  *                   providers?: [type],
@@ -514,9 +515,34 @@ function validatePlan(plan, context = {}) {
           `${at}: a plan that changes a dashboard you have can't add a layout.`,
         );
       }
-      if (p.kind === "theme") {
+      // A theme: one of the user's saved ones (source "yours"), or a new
+      // one made from four colors (source "new", lead-workspace theme round).
+      if (p.kind === "theme" && p.source === "new") {
+        const colors = isObject(p.colors) ? p.colors : null;
+        const bad = ["primary", "secondary", "tertiary", "neutral"].filter(
+          (c) => !colors || !/^#[0-9a-f]{6}$/i.test(String(colors[c] || "")),
+        );
+        if (bad.length) {
+          errors.push(
+            `${at} (a new theme) needs its colors as #rrggbb: ${bad.join(", ")}.`,
+          );
+        }
+        if (
+          isStr(p.name) &&
+          Array.isArray(context.themes) &&
+          context.themes.some(
+            (n) => String(n).toLowerCase() === p.name.trim().toLowerCase(),
+          )
+        ) {
+          errors.push(
+            `${at}: there's already a theme called "${p.name}" — name the new one differently.`,
+          );
+        }
+      } else if (p.kind === "theme") {
         if (p.source !== "yours") {
-          errors.push(`${at} (a theme) must be one of your saved themes.`);
+          errors.push(
+            `${at} (a theme) is one of your saved themes, or a new one with its colors.`,
+          );
         } else if (
           isStr(p.name) &&
           Array.isArray(context.themes) &&
@@ -706,7 +732,9 @@ function validatePlan(plan, context = {}) {
     warnings.push("checks must be a list.");
   } else if (
     Array.isArray(pieces) &&
-    pieces.some((p) => p && ["new", "update"].includes(p.source)) &&
+    pieces.some(
+      (p) => p && p.kind !== "theme" && ["new", "update"].includes(p.source),
+    ) &&
     !(plan.checks || []).length
   ) {
     warnings.push("Something gets built, but there are no checks.");

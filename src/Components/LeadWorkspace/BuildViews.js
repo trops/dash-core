@@ -39,6 +39,7 @@ const CARD_ICON = {
   dashboard: "table-cells-large",
   widget: "puzzle-piece",
   bot: "robot",
+  theme: "palette",
 };
 
 /**
@@ -127,7 +128,8 @@ const BuildStepLine = ({ step }) => {
  * @param {string} leadName
  * @param {boolean} current  the conversation's plan's build: choices show
  * @param {object} actions   { fix, retry, leaveOff, approve, carryOn,
- *   openDashboard, open, placeInCell } — open("buildlog" | "check" |
+ *   openDashboard, openThemeEditor, open, placeInCell } —
+ *   openThemeEditor(themeKey): a theme it made (theme round); open("buildlog" | "check" |
  *   "preview"); placeInCell: a cell build put in its cell again (6c);
  *   swapInPlace: a new widget put in the changed one's place (6c)
  * @param {string|null} actionError
@@ -158,6 +160,12 @@ export const BuildInChat = ({
   });
   const card = chat.card;
   const openCard = () => {
+    // A theme it made opens in the theme editor (theme round).
+    if (card && card.kind === "theme") {
+      if (actions.openThemeEditor && state && state.madeTheme)
+        actions.openThemeEditor(state.madeTheme.key);
+      return;
+    }
     if (!actions.open || !card) return;
     actions.open(
       card.kind === "dashboard"
@@ -254,6 +262,25 @@ const BuildChoices = ({ chat, state, build, actions }) => {
           title={`Open ${state.dashboard.name}`}
           onClick={() => actions.openDashboard(state.dashboard.id)}
         />
+      </div>
+    );
+  }
+  // A theme it made (theme round, frame 47): small changes by hand.
+  if (chat.choices === "theme" && state.madeTheme && actions.openThemeEditor) {
+    return (
+      <div
+        className="flex flex-col gap-1"
+        data-testid="workspace-build-choices"
+      >
+        <div>
+          <Button2
+            title="Open in the theme editor"
+            onClick={() => actions.openThemeEditor(state.madeTheme.key)}
+          />
+        </div>
+        <span className={`text-xs ${muted}`}>
+          For small changes by hand — a color, a font, a corner.
+        </span>
       </div>
     );
   }

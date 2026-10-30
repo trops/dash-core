@@ -28,7 +28,14 @@ describe("makingStart", () => {
 
   test("anything else: nothing", () => {
     expect(makingStart(null)).toBeNull();
-    expect(makingStart({ kind: "theme" })).toBeNull();
+    expect(makingStart({ kind: "font" })).toBeNull();
+  });
+
+  test("the Themes page's Describe it: a theme (theme round, frame 44)", () => {
+    const m = makingStart({ kind: "theme", from: "themes" });
+    expect(m.text).toBe("a theme — from the Themes page");
+    expect(m.note).toBe("(The user wants to make a theme — plan a theme.)");
+    expect(m.starters).toContain("Warm autumn colors, dark");
   });
 
   test("saved as the conversation's about: its line and note", () => {

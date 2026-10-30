@@ -79,7 +79,22 @@ function others(plan) {
       })),
     ...pieces
       .filter((p) => p.kind === "theme" && p.name)
-      .map((p) => ({ mark: "+", main: `${p.name} theme — applied`, sub: "" })),
+      .flatMap((p) =>
+        p.source === "new"
+          ? [
+              {
+                mark: "+",
+                main: `${p.name} — a new theme`,
+                sub: "Dark and light, from its four colors",
+              },
+              {
+                mark: "+",
+                main: `This dashboard's theme → ${p.name}`,
+                sub: "The theme it has now stays in your themes",
+              },
+            ]
+          : [{ mark: "+", main: `${p.name} theme — applied`, sub: "" }],
+      ),
   ];
 }
 

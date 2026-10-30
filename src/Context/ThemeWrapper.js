@@ -372,6 +372,19 @@ export const ThemeWrapper = ({
     }
   }, [contextValue]);
 
+  // A theme saved in the main process (a Dash team plan, lead-workspace
+  // theme round): reload the list so it shows on the Themes page and can
+  // be applied. The ref keeps the listener on the latest loadThemes.
+  const loadThemesRef = React.useRef(null);
+  loadThemesRef.current = loadThemes;
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.mainApi?.on) return undefined;
+    const id = window.mainApi.on("themes:changed", () =>
+      loadThemesRef.current?.(),
+    );
+    return () => window.mainApi?.removeListener?.("themes:changed", id);
+  }, []);
+
   // Write the active theme's CSS custom properties to :root so any
   // hex-channel tokens (`bg-[var(--primary-700)]` etc. emitted by
   // ThemeModel) resolve app-wide. Without this, saving a hex theme

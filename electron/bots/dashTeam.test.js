@@ -312,7 +312,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 15);
+    assert.equal(planner.history.length, 16);
   });
 });
 
@@ -609,8 +609,9 @@ describe("Dash team instructions (design guide)", () => {
     const planner = role("planner");
     assert.match(planner.instructions, /one main area/);
     assert.match(planner.instructions, /each widget is its own panel/);
-    // (the latest entry is release 6c's, which already had the rules)
-    const before = planner.history[planner.history.length - 2];
+    // (the latest two are release 6c's and the theme round's, which
+    // already had the rules)
+    const before = planner.history[planner.history.length - 3];
     assert.doesNotMatch(before, /one main area/);
     assert.match(before, /<plan><\/plan>/);
   });
@@ -638,11 +639,29 @@ describe("Dash team instructions (design guide)", () => {
 });
 
 describe("Dash team instructions (lead-workspace 6c: no Create window)", () => {
-  it("a new theme is the Themes page's New Theme; the text before upgrades", () => {
+  it("no Create in the text; the text before upgrades", () => {
     const planner = ROLES.find((x) => x.role === "planner");
-    assert.match(planner.instructions, /use New Theme on the Themes page/);
     assert.doesNotMatch(planner.instructions, /in Create/);
-    const before = planner.history[planner.history.length - 1];
+    const before = planner.history[planner.history.length - 2];
     assert.match(before, /choose Theme in Create/);
+  });
+});
+
+describe("Dash team instructions (lead-workspace theme round)", () => {
+  it("the Planner plans a new theme from four colors; the text before upgrades", () => {
+    const planner = ROLES.find((x) => x.role === "planner");
+    assert.match(
+      planner.instructions,
+      /"source": "new", "colors": \{"primary"/,
+    );
+    assert.match(planner.instructions, /neutral is a low-saturation/);
+    assert.match(planner.instructions, /theme editor on the Themes page/);
+    assert.doesNotMatch(
+      planner.instructions,
+      /use New Theme on the Themes page/,
+    );
+    const before = planner.history[planner.history.length - 1];
+    assert.match(before, /use New Theme on the Themes page/);
+    assert.notEqual(before, planner.instructions);
   });
 });

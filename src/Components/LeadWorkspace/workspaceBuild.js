@@ -9,7 +9,7 @@
 import { formatTokens } from "../../utils/runCostLabel";
 import { providerLabel } from "../Create/planChecklist";
 import { planTarget } from "../../utils/teamPlan";
-import { isSettingsChange } from "./workspacePlan";
+import { isSettingsChange, isThemeOnly } from "./workspacePlan";
 
 const pieces = (plan) =>
   ((plan && Array.isArray(plan.pieces) && plan.pieces) || []).filter(Boolean);
@@ -23,6 +23,8 @@ const pieces = (plan) =>
  */
 export function buildKind(plan) {
   if (plan && plan.cell) return "cell";
+  // A new theme and nothing else (theme round): saved, no dashboard.
+  if (isThemeOnly(plan)) return "theme";
   // A change to one widget (release 6c): only its settings, or what it does.
   if (plan && plan.widgetChange)
     return isSettingsChange(plan) ? "settings" : "edit";
@@ -138,7 +140,7 @@ function leftOffNames(state, leftOff) {
   for (const s of stepsOf(state)) {
     if (!isLeftOff(s, leftOff)) continue;
     const name = String(s.label || "").replace(
-      /^(Build|Check|Install|Place|Save the|Save)\s+/,
+      /^(Build|Check|Install|Place|Save the|Save|Make the)\s+/,
       "",
     );
     if (name && !names.includes(name)) names.push(name.replace(/ bot$/, ""));
@@ -443,7 +445,8 @@ export function workingLine(state) {
  *   step: { label, status: "asking" | "done" | "failed" | "stopped" }
  *   card: { kind: "dashboard" | "widget" | "bot", title, sub } | null
  *   reply: the lead's words
- *   choices: "open" | "failed" | "preview" | "continue" | "again" | null
+ *   choices: "open" | "failed" | "preview" | "continue" | "again" |
+ *     "theme" (Open in the theme editor, theme round) | null
  *   continueLabel: Carry on building, or Start it again (nothing built yet)
  *   failed: the step asked about (choices "failed")
  * A cell build (release 6c): `cell` { dashboardName, placed, canPlace } —
@@ -605,6 +608,26 @@ function chatFor(
   const waitNote = waiting.length
     ? ` What needs ${andList(waiting)} runs once it's connected — on the right.`
     : "";
+  if (kind === "theme") {
+    const made = state && state.madeTheme;
+    // Left off before it was saved: nothing was made.
+    if (!made) {
+      return {
+        step: { label: "The theme wasn't saved", status: "stopped" },
+        card: null,
+        reply:
+          "The theme wasn't saved, so nothing changed. Say if you want to try again.",
+        choices: "again",
+      };
+    }
+    const name = made.name;
+    return {
+      step: { label: `Saved the ${name} theme`, status: "done" },
+      card: { kind: "theme", title: name, sub: "Theme · saved" },
+      reply: `${name} is in your themes. Use it on any dashboard from its Settings › Theme — or tell me which one and I'll put it on.`,
+      choices: "theme",
+    };
+  }
   if (kind === "settings") {
     const name = (change && change.displayName) || "The widget";
     const labels = (change && change.settingLabels) || {};
@@ -754,6 +777,13 @@ function chatFor(
   const placed = steps.filter(
     (s) => s.kind === "place" && s.status === "done",
   ).length;
+  // The theme it applied (theme round: maybe one it made).
+  const themed =
+    state &&
+    state.theme &&
+    steps.some((s) => s.kind === "theme" && s.status === "done")
+      ? state.theme.name
+      : null;
   return {
     step: { label: builtLine(), status: "done" },
     card: dashboard
@@ -762,14 +792,22 @@ function chatFor(
           title: dashboard.name,
           // A dashboard the user had: what was added, not its size.
           sub: dashboard.targeted
-            ? `Dashboard · changed · ${placed} added`
+            ? [
+                "Dashboard · changed",
+                placed ? `${placed} added` : null,
+                themed ? `${themed} theme` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")
             : `Dashboard · built · ${plural(placed, "widget")}`,
         }
       : null,
     reply: [
       dashboard
         ? dashboard.targeted
-          ? `${dashboard.name} is changed.`
+          ? themed && !placed
+            ? `${dashboard.name} is changed — it has the ${themed} theme now.`
+            : `${dashboard.name} is changed.`
           : `Your ${dashboard.name} dashboard is ready.`
         : "It's built.",
       checked.length

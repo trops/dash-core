@@ -329,10 +329,12 @@ export function countsLine(plan) {
     const out = [];
     if (adds) out.push(`Adds ${adds} to ${target.name}`);
     if (theme) {
+      const which =
+        theme.source === "new"
+          ? `a new ${theme.name} theme`
+          : `the ${theme.name} theme`;
       out.push(
-        adds
-          ? `applies the ${theme.name} theme`
-          : `Applies the ${theme.name} theme to ${target.name}`,
+        adds ? `applies ${which}` : `Applies ${which} to ${target.name}`,
       );
     }
     return out.join(" and ");
@@ -364,7 +366,13 @@ export function countsLine(plan) {
       );
     }
   }
-  if (theme) parts.push(`the ${theme.name} theme`);
+  if (theme) {
+    parts.push(
+      theme.source === "new"
+        ? `a new ${theme.name} theme`
+        : `the ${theme.name} theme`,
+    );
+  }
   return parts.join(" · ");
 }
 

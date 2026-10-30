@@ -31,6 +31,18 @@ const MAKING = {
       "Remind me of tomorrow's meetings",
     ],
   },
+  // Lead-workspace theme round (frame 44): the Themes page's Describe it.
+  theme: {
+    what: "a theme",
+    title: "What should the theme look like?",
+    text: "Describe it in your own words — colors, a mood, a brand. The Dash team plans it with you and shows how it looks, dark and light; nothing is saved until you say yes.",
+    starters: [
+      "Warm autumn colors, dark",
+      "Calm ocean blues",
+      "High contrast black and yellow",
+      "Soft pastels",
+    ],
+  },
   dashboard: {
     what: "a dashboard",
     title: "What should the dashboard show?",
@@ -48,6 +60,7 @@ const PAGES = {
   widgets: "the Widgets page",
   bots: "the Bots page",
   dashboards: "the Dashboards page",
+  themes: "the Themes page",
 };
 
 /**
