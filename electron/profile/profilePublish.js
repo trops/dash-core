@@ -96,6 +96,15 @@ async function planPublish(widgets, username, lookup) {
   return rows;
 }
 
+// The visibility a widget is published with: the user's choice, or a
+// first publish private and later ones as they are.
+function chosenVisibility(row, options = {}) {
+  if (options.visibility === "public" || options.visibility === "private") {
+    return options.visibility;
+  }
+  return row.visibility === "public" ? "public" : "private";
+}
+
 function defaultDeps() {
   return {
     publish: (appId, pkg, options) =>
@@ -123,7 +132,9 @@ function defaultDeps() {
  * switch this computer over to it.
  *
  * @param {object} row   a publishable row from planPublish
- * @param {{confirmPersonalPaths?: boolean}} options
+ * @param {{confirmPersonalPaths?: boolean, visibility?: "public"|"private"}} options
+ *   visibility: the user's choice (bulk publish); without one, a first
+ *   publish is private and later ones keep the package's visibility
  * @returns {Promise<{status: "published"|"needs-confirmation"|"failed",
  *   publishedAs?, version?, dashboardsSwitched?, error?, findings?}>}
  */
@@ -135,7 +146,7 @@ async function publishWidget(win, appId, row, options = {}, deps = {}) {
   const to = splitPackage(row.publishAs);
   const res = await d.publish(appId, row.package, {
     version: row.version,
-    visibility: row.visibility === "public" ? "public" : "private",
+    visibility: chosenVisibility(row, options),
     scope: to ? to.scope : undefined,
     confirmPersonalPaths: !!options.confirmPersonalPaths,
   });
@@ -170,6 +181,7 @@ async function publishWidget(win, appId, row, options = {}, deps = {}) {
       status: "published",
       publishedAs: row.publishAs,
       version: row.version,
+      visibility: chosenVisibility(row, options),
       dashboardsSwitched: 0,
     };
   }
@@ -209,8 +221,104 @@ async function publishWidget(win, appId, row, options = {}, deps = {}) {
     status: "published",
     publishedAs: row.publishAs,
     version: row.version,
+    visibility: chosenVisibility(row, options),
     dashboardsSwitched: switched,
   };
 }
 
-module.exports = { planPublish, publishWidget, freeVersion, bumpPatch };
+// Bulk publishes asked to stop, by "appId:profileId".
+const bulkStops = new Set();
+
+/** Stop a bulk publish after the widget being published now. */
+function stopPublishing(appId, profileId) {
+  bulkStops.add(`${appId}:${profileId}`);
+}
+
+/**
+ * A bulk publish was asked for: forget an old stop. Called as the request
+ * arrives, before planning, so a Stop clicked while the run is still being
+ * planned counts.
+ */
+function beginPublishing(appId, profileId) {
+  bulkStops.delete(`${appId}:${profileId}`);
+}
+
+/**
+ * Publish several of a profile's widgets in one go (bulk publish in the
+ * Save dialog), from one plan. Each widget gets its own visibility and
+ * personal-path confirmation, and the window hears about each one as it
+ * goes. A stop takes effect after the widget being published now.
+ *
+ * @param {Array} plan       planPublish rows
+ * @param {string[]} packages the widgets to publish, in order
+ * @param {{options?: {visibility?: object, confirmPersonalPaths?: string[]},
+ *   publishOne?: Function}} deps
+ * @returns {Promise<{success: true, results: Array, stopped: boolean}>}
+ */
+async function publishMany(win, appId, profileId, plan, packages, deps = {}) {
+  const options = deps.options || {};
+  const publishOne = deps.publishOne || publishWidget;
+  const key = `${appId}:${profileId}`;
+  const visibility = options.visibility || {};
+  const confirmed = new Set(
+    Array.isArray(options.confirmPersonalPaths)
+      ? options.confirmPersonalPaths
+      : [],
+  );
+  const send = (data) => {
+    try {
+      if (win && win.webContents && !(win.isDestroyed && win.isDestroyed())) {
+        const { PROFILE_PUBLISH_PROGRESS } = require("../events/profileEvents");
+        win.webContents.send(PROFILE_PUBLISH_PROGRESS, data);
+      }
+    } catch (_e) {
+      // The window went away; publishing goes on.
+    }
+  };
+  const list = [...new Set((packages || []).filter(Boolean))];
+  const results = [];
+  let stopped = false;
+  for (let i = 0; i < list.length; i += 1) {
+    if (bulkStops.has(key)) {
+      stopped = true;
+      break;
+    }
+    const pkg = list[i];
+    send({ package: pkg, index: i, total: list.length, status: "publishing" });
+    const row = (plan || []).find((r) => r.package === pkg);
+    let result;
+    if (!row || !row.publishable) {
+      result = { status: "failed", error: `${pkg} can't be published.` };
+    } else {
+      try {
+        result = await publishOne(win, appId, row, {
+          confirmPersonalPaths: confirmed.has(pkg),
+          visibility: visibility[pkg],
+        });
+      } catch (e) {
+        result = { status: "failed", error: e.message };
+      }
+    }
+    const entry = { package: pkg, ...result };
+    results.push(entry);
+    send({
+      package: pkg,
+      index: i,
+      total: list.length,
+      status: entry.status,
+      result: entry,
+    });
+  }
+  bulkStops.delete(key);
+  return { success: true, results, stopped };
+}
+
+module.exports = {
+  planPublish,
+  publishWidget,
+  publishMany,
+  beginPublishing,
+  stopPublishing,
+  freeVersion,
+  bumpPatch,
+};

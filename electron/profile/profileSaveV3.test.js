@@ -168,6 +168,21 @@ describe("each widget", () => {
 });
 
 describe("planning a save", () => {
+  it("a widget published already: its visibility now, for the switch", async () => {
+    const { d } = deps();
+    d.planWidgets = async (widgets) =>
+      widgets.map((w) => ({
+        package: w.package,
+        publishable: w.package === "@ai-built/pipe",
+        exists: true,
+        visibility: "public",
+      }));
+    const plan = await planSave(appId, "mm", {}, d);
+    const pipe = plan.widgets.find((w) => w.package === "@ai-built/pipe");
+    assert.equal(pipe.published, true);
+    assert.equal(pipe.visibility, "public");
+  });
+
   it("lists, notes and offers to publish — never publishes", async () => {
     const { d } = deps();
     const plan = await planSave(appId, "mm", {}, d);
@@ -178,6 +193,9 @@ describe("planning a save", () => {
     assert.equal(by("@trops/calendar").publishable, undefined);
     assert.equal(by("@ai-built/pipe").action, NOT_IN_REGISTRY);
     assert.equal(by("@ai-built/pipe").publishable, true);
+    // Never published: its switch starts private (bulk publish).
+    assert.equal(by("@ai-built/pipe").published, false);
+    assert.equal(by("@ai-built/pipe").visibility, "private");
     assert.match(by("@ai-built/pipe").note, /Home will show it as missing/);
     assert.deepEqual(plan.counts, {
       dashboards: 1,

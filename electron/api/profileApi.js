@@ -20,6 +20,7 @@ const {
   PROFILE_PREVIEW_SAVE,
   PROFILE_SAVE_FILE,
   PROFILE_PUBLISH_WIDGET,
+  PROFILE_PUBLISH_PROGRESS,
   PROFILE_PREVIEW_LOAD,
   PROFILE_APPLY_LOAD,
   PROFILE_SAVE_ACCOUNT,
@@ -77,7 +78,12 @@ const profileApi = {
    * (from the Save dialog). Resolves { success, status: "published" |
    * "needs-confirmation" | "failed", publishedAs, version,
    * dashboardsSwitched, error, findings }.
-   * options: { confirmPersonalPaths }
+   * options: { confirmPersonalPaths, visibility: "public" | "private" }
+   *
+   * Several at once (bulk publish): pass an array of packages; options
+   * { visibility: { [pkg]: "public" | "private" }, confirmPersonalPaths:
+   * [pkg] }. Resolves { success, results: [{ package, ...one result }],
+   * stopped }, with onPublishProgress events as each one goes.
    */
   publishWidget: (appId, profileId, packageName, options) =>
     ipcRenderer.invoke(PROFILE_PUBLISH_WIDGET, {
@@ -86,6 +92,24 @@ const profileApi = {
       packageName,
       options,
     }),
+  /** Stop a bulk publish after the widget being published now. */
+  stopPublishing: (appId, profileId) =>
+    ipcRenderer.invoke(PROFILE_PUBLISH_WIDGET, {
+      appId,
+      profileId,
+      packageName: null,
+      options: { stop: true },
+    }),
+  /**
+   * Bulk publish progress: ({ package, index, total, status, result? }) —
+   * status "publishing", then the widget's own status when it's done.
+   * Returns the unsubscribe function.
+   */
+  onPublishProgress: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on(PROFILE_PUBLISH_PROGRESS, handler);
+    return () => ipcRenderer.removeListener(PROFILE_PUBLISH_PROGRESS, handler);
+  },
   /**
    * Pick a .dashprofile (the main process shows the open dialog) and get
    * what loading it would do: { token, target, items, widgets, providers,

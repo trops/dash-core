@@ -7,7 +7,14 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { planPublish, publishWidget, freeVersion } = require("./profilePublish");
+const {
+  planPublish,
+  publishWidget,
+  publishMany,
+  beginPublishing,
+  stopPublishing,
+  freeVersion,
+} = require("./profilePublish");
 const { repointLayoutPackage } = require("../schema/dashboardConfigUtils");
 
 describe("freeVersion", () => {
@@ -331,5 +338,227 @@ describe("publishWidget", () => {
       "registry",
       "1.4.1",
     ]);
+  });
+});
+
+describe("publishWidget — the user's visibility (bulk publish)", () => {
+  const calls = [];
+  const deps = {
+    publish: async (appId, pkg, options) => {
+      calls.push(options);
+      return { success: true };
+    },
+    registry: () => ({ markInstallSource: () => {} }),
+  };
+  const row = {
+    package: "@trops/kitchen",
+    publishAs: "@trops/kitchen",
+    publishable: true,
+    version: "1.0.1",
+    visibility: "private",
+  };
+
+  it("a chosen visibility wins over the package's, either way", async () => {
+    const pub = await publishWidget(
+      null,
+      "@a",
+      row,
+      { visibility: "public" },
+      deps,
+    );
+    assert.equal(calls[0].visibility, "public");
+    assert.equal(pub.visibility, "public");
+    const priv = await publishWidget(
+      null,
+      "@a",
+      { ...row, visibility: "public" },
+      { visibility: "private" },
+      deps,
+    );
+    assert.equal(calls[1].visibility, "private");
+    assert.equal(priv.visibility, "private");
+  });
+
+  it("no choice: as the package is (a first publish private)", async () => {
+    const res = await publishWidget(
+      null,
+      "@a",
+      row,
+      { visibility: "bogus" },
+      deps,
+    );
+    assert.equal(calls[2].visibility, "private");
+    assert.equal(res.visibility, "private");
+  });
+});
+
+describe("publishMany (bulk publish)", () => {
+  const plan = [
+    { package: "@ai-built/a", publishable: true, publishAs: "@me/a" },
+    { package: "@ai-built/b", publishable: true, publishAs: "@me/b" },
+    { package: "@ai-built/c", publishable: true, publishAs: "@me/c" },
+    { package: "@other/x", publishable: false },
+  ];
+  const fakeWin = () => {
+    const sent = [];
+    return {
+      sent,
+      win: {
+        isDestroyed: () => false,
+        webContents: { send: (channel, data) => sent.push({ channel, data }) },
+      },
+    };
+  };
+
+  it("publishes each one with its own visibility and confirmation, in order, telling the window", async () => {
+    const seen = [];
+    const { win, sent } = fakeWin();
+    const res = await publishMany(
+      win,
+      "@a",
+      "p1",
+      plan,
+      ["@ai-built/a", "@ai-built/b", "@ai-built/a"],
+      {
+        options: {
+          visibility: { "@ai-built/b": "public" },
+          confirmPersonalPaths: ["@ai-built/a"],
+        },
+        publishOne: async (w, appId, row, options) => {
+          seen.push({ pkg: row.package, options });
+          return {
+            status: "published",
+            version: "1.0.0",
+            visibility: options.visibility || "private",
+          };
+        },
+      },
+    );
+    assert.equal(res.success, true);
+    assert.equal(res.stopped, false);
+    assert.deepEqual(seen, [
+      {
+        pkg: "@ai-built/a",
+        options: { confirmPersonalPaths: true, visibility: undefined },
+      },
+      {
+        pkg: "@ai-built/b",
+        options: { confirmPersonalPaths: false, visibility: "public" },
+      },
+    ]);
+    assert.deepEqual(
+      res.results.map((r) => [r.package, r.status, r.visibility]),
+      [
+        ["@ai-built/a", "published", "private"],
+        ["@ai-built/b", "published", "public"],
+      ],
+    );
+    assert.deepEqual(
+      sent.map((s) => [
+        s.channel,
+        s.data.package,
+        s.data.index,
+        s.data.total,
+        s.data.status,
+      ]),
+      [
+        ["profile:publish-progress", "@ai-built/a", 0, 2, "publishing"],
+        ["profile:publish-progress", "@ai-built/a", 0, 2, "published"],
+        ["profile:publish-progress", "@ai-built/b", 1, 2, "publishing"],
+        ["profile:publish-progress", "@ai-built/b", 1, 2, "published"],
+      ],
+    );
+  });
+
+  it("one failing, or not publishable, doesn't stop the rest", async () => {
+    const res = await publishMany(
+      null,
+      "@a",
+      "p1",
+      plan,
+      ["@other/x", "@ai-built/a", "@ai-built/b"],
+      {
+        publishOne: async (w, appId, row) => {
+          if (row.package === "@ai-built/a") throw new Error("boom");
+          return { status: "published" };
+        },
+      },
+    );
+    assert.deepEqual(
+      res.results.map((r) => [r.package, r.status, r.error || null]),
+      [
+        ["@other/x", "failed", "@other/x can't be published."],
+        ["@ai-built/a", "failed", "boom"],
+        ["@ai-built/b", "published", null],
+      ],
+    );
+  });
+
+  it("Stop finishes the widget being published, then stops; the next run starts fresh", async () => {
+    const seen = [];
+    const res = await publishMany(
+      null,
+      "@a",
+      "p1",
+      plan,
+      ["@ai-built/a", "@ai-built/b", "@ai-built/c"],
+      {
+        publishOne: async (w, appId, row) => {
+          seen.push(row.package);
+          if (row.package === "@ai-built/a") stopPublishing("@a", "p1");
+          return { status: "published" };
+        },
+      },
+    );
+    assert.deepEqual(seen, ["@ai-built/a"]);
+    assert.equal(res.stopped, true);
+    assert.equal(res.results.length, 1);
+    const again = await publishMany(null, "@a", "p1", plan, ["@ai-built/b"], {
+      publishOne: async () => ({ status: "published" }),
+    });
+    assert.equal(again.stopped, false);
+    assert.equal(again.results.length, 1);
+  });
+
+  it("a Stop sent while the run is still planned counts; an old one doesn't", async () => {
+    stopPublishing("@a", "p3");
+    beginPublishing("@a", "p3");
+    // Planning…, then Stop.
+    stopPublishing("@a", "p3");
+    const seen = [];
+    const res = await publishMany(null, "@a", "p3", plan, ["@ai-built/a"], {
+      publishOne: async (w, appId, row) => {
+        seen.push(row.package);
+        return { status: "published" };
+      },
+    });
+    assert.deepEqual(seen, []);
+    assert.equal(res.stopped, true);
+    // A stop left over from before is forgotten when the next run is asked.
+    stopPublishing("@a", "p3");
+    beginPublishing("@a", "p3");
+    const next = await publishMany(null, "@a", "p3", plan, ["@ai-built/a"], {
+      publishOne: async () => ({ status: "published" }),
+    });
+    assert.equal(next.stopped, false);
+    assert.equal(next.results.length, 1);
+  });
+
+  it("a stop for another profile doesn't touch this run", async () => {
+    const res = await publishMany(
+      null,
+      "@a",
+      "p1",
+      plan,
+      ["@ai-built/a", "@ai-built/b"],
+      {
+        publishOne: async (w, appId, row) => {
+          if (row.package === "@ai-built/a") stopPublishing("@a", "p2");
+          return { status: "published" };
+        },
+      },
+    );
+    assert.equal(res.stopped, false);
+    assert.equal(res.results.length, 2);
   });
 });

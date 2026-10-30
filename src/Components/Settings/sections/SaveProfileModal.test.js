@@ -1,16 +1,27 @@
 /**
  * Save a profile (dash-profiles v3): the review (what the profile holds,
- * widgets in the registry, widgets to check — unpublished changes or not
- * in the registry — with Publish), never publishing on save, and the save.
+ * widgets in the registry, widgets to publish — unpublished changes or not
+ * in the registry), and the save. Bulk publish: the user's own widgets are
+ * checked, each with Private/Public, and the one button publishes the
+ * checked ones, then saves.
  */
 import React from "react";
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import {
   SaveProfileModal,
   countsText,
   savedNoticeText,
   leftOutText,
+  widgetStatusText,
+  publishedText,
+  savedSummaryText,
 } from "./SaveProfileModal";
 
 const appId = "@test/app";
@@ -44,10 +55,43 @@ const plan = {
       package: "@ai-built/pipeline",
       action: "not-in-registry",
       publishable: true,
+      published: false,
+      visibility: "private",
+      dashboards: ["Home"],
       note: "Not in the registry — Home will show it as missing on the other computer. Publish it to include it.",
+    },
+    {
+      package: "@trops/ticker",
+      version: "1.0.2",
+      here: "1.0.3",
+      action: "unpublished",
+      publishable: true,
+      published: true,
+      visibility: "public",
+      dashboards: ["Markets"],
+      note: "You have 1.0.3 here, not published — the profile has 1.0.2. Publish to include your changes.",
     },
   ],
 };
+
+const PIPE = "@ai-built/pipeline";
+const TICKER = "@trops/ticker";
+
+// A bulk publish answer: each package's result.
+const answer = (byPkg) =>
+  jest.fn(async (appId, profileId, pkgs) => ({
+    success: true,
+    stopped: false,
+    results: pkgs.map((p) => ({
+      package: p,
+      ...(byPkg[p] || {
+        status: "published",
+        publishedAs: p,
+        version: "1.0.0",
+        visibility: "private",
+      }),
+    })),
+  }));
 
 function mount(overrides = {}, props = {}) {
   window.mainApi = {
@@ -60,12 +104,9 @@ function mount(overrides = {}, props = {}) {
       saveToAccount: jest
         .fn()
         .mockResolvedValue({ success: true, account: {} }),
-      publishWidget: jest.fn().mockResolvedValue({
-        success: true,
-        status: "published",
-        publishedAs: "@trops/pipeline",
-        version: "0.1.0",
-      }),
+      publishWidget: answer({}),
+      stopPublishing: jest.fn().mockResolvedValue({ success: true }),
+      onPublishProgress: jest.fn(() => () => {}),
       ...overrides,
     },
     registryAuth: {
@@ -91,28 +132,61 @@ afterEach(() => {
 });
 
 describe("SaveProfileModal (v3)", () => {
-  test("reviews what goes in, and the widgets to check", async () => {
+  test("reviews what goes in: your widgets checked, each with Private/Public", async () => {
     mount();
     expect(await screen.findByTestId("save-profile-counts")).toHaveTextContent(
       "2 dashboards · 1 bot · 2 widgets",
     );
-    const check = screen.getByTestId("save-widgets");
-    expect(check).toHaveTextContent("@trops/calendar");
-    expect(check).toHaveTextContent("You have 2.1.0 here, not published");
-    expect(check).toHaveTextContent("@ai-built/pipeline");
-    expect(screen.getByTestId("save-listed")).toHaveTextContent(
-      "In the registry: @trops/chat 0.0.9.",
+    const list = screen.getByTestId("save-widgets");
+    expect(list).toHaveTextContent(
+      "3 widgets aren't in the registry as they are here",
     );
-    // Only a widget the user can publish gets the button.
-    expect(screen.getAllByRole("button", { name: "Publish" })).toHaveLength(1);
+    // Not the user's: the reason, no checkbox or switch.
+    expect(screen.getByTestId("save-widget-@trops/calendar")).toHaveTextContent(
+      "You have 2.1.0 here, not published",
+    );
+    expect(screen.queryByLabelText("@trops/calendar")).toBeNull();
+    expect(screen.queryByLabelText("Public: @trops/calendar")).toBeNull();
+    // The user's: checked; a first publish private, a published one as it is.
+    expect(await screen.findByLabelText(PIPE)).toBeChecked();
+    expect(screen.getByLabelText(TICKER)).toBeChecked();
+    expect(screen.getByLabelText(`Public: ${PIPE}`)).not.toBeChecked();
+    expect(screen.getByLabelText(`Public: ${TICKER}`)).toBeChecked();
+    expect(screen.getByTestId(`save-widget-${PIPE}`)).toHaveTextContent(
+      "Not in the registry · used by Home",
+    );
+    expect(screen.getByTestId(`save-widget-${TICKER}`)).toHaveTextContent(
+      "Changes here not published · the profile has 1.0.2 · published as public",
+    );
+    expect(screen.getByTestId("save-bulk-tools")).toHaveTextContent(
+      "2 of 2 selected",
+    );
+    expect(screen.getByTestId("save-listed")).toHaveTextContent(
+      "In the registry already: 1 widget.",
+    );
+    expect(screen.getByTestId("save-what")).toHaveTextContent(
+      "Publishes the 2 checked widgets (1 private · 1 public), then saves.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Publish 2 widgets and save…" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/1 key typed into a widget isn't included/),
     ).toBeInTheDocument();
   });
 
-  test("saving never publishes", async () => {
+  test("nothing checked: the plain save, which says what the other computer misses", async () => {
     const { onSaved } = mount();
-    await screen.findByTestId("save-profile-counts");
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByTestId("save-bulk-tools")).toHaveTextContent(
+      "0 of 2 selected",
+    );
+    expect(
+      screen.getByText(
+        "Saves without publishing — 3 widgets will show as missing on the other computer.",
+      ),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save…" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(window.mainApi.profiles.saveFile).toHaveBeenCalledWith(
@@ -123,47 +197,261 @@ describe("SaveProfileModal (v3)", () => {
     expect(window.mainApi.profiles.publishWidget).not.toHaveBeenCalled();
   });
 
-  test("Publish publishes that widget, then the review is checked again", async () => {
-    mount();
-    fireEvent.click(await screen.findByRole("button", { name: "Publish" }));
-    expect(await screen.findByTestId("save-published")).toHaveTextContent(
-      "Published to your account: @trops/pipeline 0.1.0.",
+  test("the one button publishes the checked ones with their visibility, then saves", async () => {
+    const { onSaved } = mount({}, { to: "account" });
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(screen.getByLabelText(`Public: ${PIPE}`));
+    fireEvent.click(screen.getByLabelText(TICKER));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 1 widget and save" }),
     );
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(window.mainApi.profiles.publishWidget).toHaveBeenCalledWith(
       appId,
       "p-mini",
-      "@ai-built/pipeline",
-      { confirmPersonalPaths: false },
+      [PIPE],
+      { visibility: { [PIPE]: "public" }, confirmPersonalPaths: [] },
     );
+    expect(window.mainApi.profiles.saveToAccount).toHaveBeenCalled();
+    // Published first, then saved.
+    expect(
+      window.mainApi.profiles.publishWidget.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      window.mainApi.profiles.saveToAccount.mock.invocationCallOrder[0],
+    );
+    expect(onSaved.mock.calls[0][0].publishedWidgets).toHaveLength(1);
+  });
+
+  test("Set all, then Select all", async () => {
+    mount();
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(screen.getByRole("button", { name: "Set all public" }));
+    expect(screen.getByLabelText(`Public: ${PIPE}`)).toBeChecked();
+    expect(screen.getByTestId("save-what")).toHaveTextContent(
+      "Publishes the 2 checked widgets (2 public), then saves.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Set all private" }));
+    expect(screen.getByLabelText(`Public: ${TICKER}`)).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+    expect(screen.getByLabelText(PIPE)).toBeChecked();
+    expect(screen.getByLabelText(TICKER)).toBeChecked();
+  });
+
+  test("what didn't publish stays checked; saved, the dialog stays open to try again", async () => {
+    const publishWidget = answer({
+      [TICKER]: { status: "failed", error: "the registry refused it: taken" },
+    });
+    const { onSaved } = mount({ publishWidget }, { to: "account" });
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 2 widgets and save" }),
+    );
+    expect(
+      await screen.findByText(
+        "Saved to your account, with the 1 widget just published.",
+      ),
+    ).toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(screen.getByTestId("save-widgets")).toHaveTextContent(
+      "1 published · 1 didn't — it still shows as missing on the other computer.",
+    );
+    expect(screen.getByTestId(`save-widget-${TICKER}`)).toHaveTextContent(
+      "Didn't publish — the registry refused it: taken",
+    );
+    expect(screen.getByLabelText(TICKER)).toBeChecked();
+    expect(screen.getByTestId("save-published")).toHaveTextContent(
+      `Published: ${PIPE} 1.0.0 private.`,
+    );
+    // Try again: only what's left.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 1 widget and save" }),
+    );
+    await waitFor(() => expect(publishWidget).toHaveBeenCalledTimes(2));
+    expect(publishWidget.mock.calls[1][2]).toEqual([TICKER]);
+    // Close hands over the save.
     await waitFor(() =>
-      expect(window.mainApi.profiles.previewSave).toHaveBeenCalledTimes(2),
+      expect(window.mainApi.profiles.saveToAccount).toHaveBeenCalledTimes(2),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  test("files that mention this computer's folders: gathered, then Publish anyway", async () => {
+    const publishWidget = answer({
+      [PIPE]: {
+        status: "needs-confirmation",
+        findings: [{ file: "a.js", match: "/Users/me" }],
+      },
+    });
+    mount({ publishWidget }, { to: "account" });
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(screen.getByLabelText(TICKER));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 1 widget and save" }),
+    );
+    const look = await screen.findByTestId("save-confirm-paths");
+    expect(look).toHaveTextContent(
+      "1 widget mentions folders on this computer",
+    );
+    expect(look).toHaveTextContent("a.js: /Users/me");
+    // Nothing more to publish until it's ticked.
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Publish anyway"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 1 widget and save" }),
+    );
+    await waitFor(() => expect(publishWidget).toHaveBeenCalledTimes(2));
+    expect(publishWidget.mock.calls[1][3]).toEqual({
+      visibility: { [PIPE]: "private" },
+      confirmPersonalPaths: [PIPE],
+    });
+  });
+
+  test("publishing: which one, how far, and Stop", async () => {
+    let progress;
+    let finish;
+    mount({
+      onPublishProgress: jest.fn((cb) => {
+        progress = cb;
+        return () => {};
+      }),
+      publishWidget: jest.fn(() => new Promise((r) => (finish = r))),
+    });
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 2 widgets and save…" }),
+    );
+    await waitFor(() => expect(progress).toBeDefined());
+    act(() =>
+      progress({ package: TICKER, index: 1, total: 2, status: "publishing" }),
+    );
+    expect(screen.getByTestId("save-run")).toHaveTextContent(
+      `Publishing 2 of 2 — ${TICKER} · then saving`,
+    );
+    expect(
+      screen.getByRole("button", { name: "Publishing…" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(window.mainApi.profiles.stopPublishing).toHaveBeenCalledWith(
+      appId,
+      "p-mini",
+    );
+    await act(async () =>
+      finish({
+        success: true,
+        stopped: true,
+        results: [{ package: PIPE, status: "published", version: "1.0.0" }],
+      }),
+    );
+    // Saved with what's published; the rest stays checked.
+    await waitFor(() =>
+      expect(window.mainApi.profiles.saveFile).toHaveBeenCalled(),
+    );
+    expect(await screen.findByLabelText(TICKER)).toBeChecked();
+  });
+
+  test("a widget offered later (after signing in, or new options) starts checked too", async () => {
+    const previewSave = jest
+      .fn()
+      .mockResolvedValueOnce({ ...plan, widgets: [plan.widgets[0]] })
+      .mockResolvedValue(plan);
+    mount({ previewSave });
+    await screen.findByTestId("save-all-listed");
+    fireEvent.click(screen.getByLabelText("Bots"));
+    expect(await screen.findByLabelText(PIPE)).toBeChecked();
+    expect(screen.getByLabelText(TICKER)).toBeChecked();
+  });
+
+  test("the whole publish fails: every row says why, and nothing is saved", async () => {
+    const publishWidget = jest.fn().mockResolvedValue({
+      success: false,
+      error: "Sign in to publish to your account.",
+    });
+    mount({ publishWidget });
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 2 widgets and save…" }),
+    );
+    expect(await screen.findByTestId(`save-widget-${PIPE}`)).toHaveTextContent(
+      "Didn't publish — Sign in to publish to your account.",
+    );
+    await waitFor(() => expect(screen.getByLabelText(PIPE)).toBeChecked());
+    expect(window.mainApi.profiles.saveFile).not.toHaveBeenCalled();
+  });
+
+  test("only widgets to look at are left: no all-in-the-registry line, and the summary", async () => {
+    const onlyPipe = { ...plan, widgets: [plan.widgets[0], plan.widgets[2]] };
+    const publishWidget = answer({
+      [PIPE]: {
+        status: "needs-confirmation",
+        findings: [{ file: "a.js", match: "/Users/me" }],
+      },
+    });
+    mount(
+      { previewSave: jest.fn().mockResolvedValue(onlyPipe), publishWidget },
+      { to: "account" },
+    );
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 1 widget and save" }),
+    );
+    await screen.findByTestId("save-confirm-paths");
+    expect(screen.queryByTestId("save-all-listed")).toBeNull();
+    expect(await screen.findByTestId("save-summary")).toHaveTextContent(
+      "1 needs a look — it still shows as missing on the other computer.",
     );
   });
 
-  test("a widget whose files mention this computer's folders is confirmed, then published", async () => {
-    const publishWidget = jest
-      .fn()
-      .mockResolvedValueOnce({
-        success: false,
-        status: "needs-confirmation",
-        findings: [{ file: "a.js", match: "/Users/me" }],
-      })
-      .mockResolvedValueOnce({
-        success: true,
+  test("published but not installed here: counted as published, not tried again", async () => {
+    const publishWidget = answer({
+      [PIPE]: {
+        status: "failed",
+        published: true,
         publishedAs: "@trops/pipeline",
-        version: "0.1.0",
-      });
-    mount({ publishWidget });
-    fireEvent.click(await screen.findByRole("button", { name: "Publish" }));
-    expect(await screen.findByTestId("save-confirm-paths")).toHaveTextContent(
-      "a.js: /Users/me",
-    );
-    fireEvent.click(screen.getByLabelText("Publish anyway"));
-    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
-    await screen.findByTestId("save-published");
-    expect(publishWidget.mock.calls[1][3]).toEqual({
-      confirmPersonalPaths: true,
+        version: "1.0.0",
+        error: "Published, but installing it here failed: network.",
+      },
+      [TICKER]: { status: "failed", error: "boom" },
     });
+    mount({ publishWidget }, { to: "account" });
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 2 widgets and save" }),
+    );
+    expect(await screen.findByTestId("save-summary")).toHaveTextContent(
+      "1 published · 1 didn't",
+    );
+    expect(screen.getByLabelText(PIPE)).not.toBeChecked();
+    expect(screen.getByTestId(`save-widget-${PIPE}`)).toHaveTextContent(
+      "Published as @trops/pipeline 1.0.0 — Published, but installing it here failed",
+    );
+    expect(
+      screen.getByRole("button", { name: "Publish 1 widget and save" }),
+    ).toBeInTheDocument();
+  });
+
+  test("replacing the account's newer copy: the button says so", async () => {
+    mount({}, { to: "account", replaceRevision: 7 });
+    await screen.findByLabelText(PIPE);
+    expect(
+      screen.getByRole("button", {
+        name: "Publish 2 widgets and replace the account's copy",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  test("every widget in the registry: says so, and the plain save", async () => {
+    mount({
+      previewSave: jest.fn().mockResolvedValue({
+        ...plan,
+        widgets: [plan.widgets[0]],
+      }),
+    });
+    expect(await screen.findByTestId("save-all-listed")).toHaveTextContent(
+      "Every widget is in the registry as it is here",
+    );
+    expect(screen.getByRole("button", { name: "Save…" })).toBeInTheDocument();
   });
 
   test("something blocking: listed, and nothing is saved", async () => {
@@ -213,7 +501,8 @@ describe("SaveProfileModal (v3)", () => {
       },
       { to: "account" },
     );
-    await screen.findByTestId("save-profile-counts");
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     fireEvent.click(screen.getByRole("button", { name: "Save to my account" }));
     expect(
       await screen.findByRole("button", { name: "Replace the account's copy" }),
@@ -261,5 +550,36 @@ describe("texts", () => {
       }),
     ).toBe("Not in the profile: @ai-built/x — Not in the registry.");
     expect(leftOutText({})).toBeNull();
+    expect(savedNoticeText({ account: {}, publishedWidgets: [{}, {}] })).toBe(
+      "Saved to your account. Published 2 widgets first.",
+    );
+  });
+
+  test("savedSummaryText", () => {
+    expect(savedSummaryText({ published: 9, failed: 1, needsLook: 2 })).toBe(
+      "9 published · 1 didn't · 2 need a look — these still show as missing on the other computer.",
+    );
+    expect(savedSummaryText({ notYet: 3 })).toBe(
+      "3 not published yet — these still show as missing on the other computer.",
+    );
+    expect(savedSummaryText({ published: 2 })).toBe("2 published.");
+  });
+
+  test("widgetStatusText and publishedText", () => {
+    expect(widgetStatusText(plan.widgets[2])).toBe(
+      "Not in the registry · used by Home",
+    );
+    expect(widgetStatusText({ ...plan.widgets[2], dashboards: [] })).toBe(
+      "Not in the registry · not on a dashboard",
+    );
+    expect(widgetStatusText(plan.widgets[1])).toBe(plan.widgets[1].note);
+    const many = Array.from({ length: 7 }, (_, n) => ({
+      package: `@me/w${n}`,
+      version: "1.0.0",
+      visibility: n === 0 ? "public" : "private",
+    }));
+    expect(publishedText(many)).toBe(
+      "Published: @me/w0 1.0.0 public, @me/w1 1.0.0 private, @me/w2 1.0.0 private, @me/w3 1.0.0 private, @me/w4 1.0.0 private and 2 more.",
+    );
   });
 });

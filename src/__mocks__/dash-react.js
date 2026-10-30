@@ -489,6 +489,11 @@ function Tag3({ text, onClick, className }) {
   );
 }
 
+// ProgressBar: the value, for tests.
+function ProgressBar({ value }) {
+  return React.createElement("progress", { value: value, max: 100 });
+}
+
 // Like dash-react: `label` (or `ariaLabel`) names the switch.
 function Switch({ checked, onChange, disabled, label, ariaLabel }) {
   return React.createElement("input", {
@@ -1197,6 +1202,7 @@ module.exports = {
   Card3,
   Tag,
   Switch,
+  ProgressBar,
   DataList,
   Tag2,
   Tag3,

@@ -17,6 +17,8 @@ const PROFILE_SET_MEMBERSHIP = "profile:set-membership";
 const PROFILE_PREVIEW_SAVE = "profile:preview-save";
 const PROFILE_SAVE_FILE = "profile:save-file";
 const PROFILE_PUBLISH_WIDGET = "profile:publish-widget";
+// Sent to the window while several widgets publish (bulk publish).
+const PROFILE_PUBLISH_PROGRESS = "profile:publish-progress";
 const PROFILE_PREVIEW_LOAD = "profile:preview-load";
 const PROFILE_APPLY_LOAD = "profile:apply-load";
 // Profiles kept in the account (step 2).
@@ -45,6 +47,7 @@ module.exports = {
   PROFILE_PREVIEW_SAVE,
   PROFILE_SAVE_FILE,
   PROFILE_PUBLISH_WIDGET,
+  PROFILE_PUBLISH_PROGRESS,
   PROFILE_PREVIEW_LOAD,
   PROFILE_APPLY_LOAD,
   PROFILE_SAVE_ACCOUNT,
