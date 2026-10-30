@@ -576,6 +576,103 @@ export const LeadWorkspace = ({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request, contact]);
+  // A plan started in the Create window (retired in release 6c): carried
+  // on as a new Dash Lead conversation — what was said, the plan on the
+  // right, and its build (if any) with Carry on building. The old entry goes
+  // once this one is saved (the main process moves its build over).
+  const carrying = useRef(null);
+  const carryOverCreatePlan = async (id) => {
+    // Once at a time: a second click doesn't carry it twice.
+    if (carrying.current) return;
+    carrying.current = id;
+    const b = botsApi();
+    const at = moves.current;
+    const lost = (why) =>
+      alive.current &&
+      moves.current === at &&
+      setSeedError(why || "That plan from Create couldn't be opened.");
+    try {
+      if (!b || !b.getCreateRecent || !b.saveCreateRecent || !contact) {
+        lost();
+        return;
+      }
+      const entry = await b.getCreateRecent(id);
+      if (!entry) {
+        lost("That plan from Create isn't saved any more.");
+        return;
+      }
+      const conv = entry.conversation || {};
+      const plan = conv.plan || null;
+      const said = Array.isArray(conv.messages) ? conv.messages : [];
+      const build =
+        plan && entry.build && entry.build.buildId ? entry.build : null;
+      const messages = seedConversation({
+        plan,
+        // Closed before anything was said back: what was asked.
+        messages: said.length
+          ? said
+          : [{ who: "you", text: entry.prompt || entry.title || "" }],
+        reply: !plan
+          ? "Here's what you asked in Create — it wasn't planned yet. Want me to plan it? Say yes, or tell me more."
+          : build
+            ? "Here's the plan you started in Create, and how its build went — the plan is on the right, the build just below."
+            : "Here's the plan you started in Create — it's on the right. Want me to build it?",
+      });
+      const planStep = [...messages].reverse().find((m) => m && m.plan);
+      // When it was planned: an old plan isn't news (the notifications panel).
+      const madeAt = Date.parse(entry.updatedAt || "") || Date.now();
+      const res = await b.saveCreateRecent({
+        carryFrom: id,
+        // Its name in Recents stays what it was (the plan's).
+        prompt: entry.title || entry.prompt || "From Create",
+        conversation: {
+          recipient: contact.recipient,
+          messages,
+          ...(plan
+            ? {
+                workspacePlan: {
+                  stepId: planStep ? planStep.id : null,
+                  plan,
+                  checks: conv.checks || {},
+                  edits: [],
+                  sent: false,
+                  madeAt,
+                  builds: build
+                    ? [
+                        {
+                          stepId: planStep ? planStep.id : null,
+                          buildId: build.buildId,
+                          kind: buildKind(plan),
+                          at: messages.length - 1,
+                          leftOff: [],
+                          last: build.state || null,
+                        },
+                      ]
+                    : [],
+                },
+              }
+            : {}),
+        },
+      });
+      if (!alive.current || moves.current !== at) return;
+      if (!res || !res.id) {
+        lost(
+          res && res.error
+            ? `That plan from Create couldn't be opened: ${res.error}`
+            : null,
+        );
+        return;
+      }
+      moveOn();
+      setSelectedId(res.id);
+      setSideOpen(null);
+      setOpen({ key: res.id, recentId: res.id });
+    } catch (_e) {
+      lost();
+    } finally {
+      carrying.current = null;
+    }
+  };
   // Start from › A dashboard from the registry (frame 42): the picked one,
   // as a plan the Dash Lead sets up with you. Its row says when it
   // couldn't be opened.
@@ -724,7 +821,8 @@ export const LeadWorkspace = ({
     ? `${wp.build.buildId}:${[...wp.have].sort().join(",")}`
     : null;
   useEffect(() => {
-    if (!resumeKey || resumed.current === resumeKey) return;
+    // A restored build has nothing running to resume: Carry on building.
+    if (!resumeKey || resumed.current === resumeKey || pb.restored) return;
     resumed.current = resumeKey;
     pb.resume();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -941,6 +1039,7 @@ export const LeadWorkspace = ({
                 current
                 yes={yesLabel(wp.plan)}
                 actions={buildActions}
+                restored={pb.restored}
                 change={
                   b.kind === "edit" || b.kind === "settings"
                     ? {
@@ -1225,11 +1324,17 @@ export const LeadWorkspace = ({
                       // Its age; "asked <this lead>" would repeat on every row.
                       meta={[
                         String(t.sub || "").split(" · ")[0],
-                        t.built
-                          ? BUILT_TAG[t.built] || null
-                          : t.planned
-                            ? "Plan"
-                            : null,
+                        t.fromCreate
+                          ? `From Create${
+                              BUILT_TAG[t.fromCreate]
+                                ? ` · ${BUILT_TAG[t.fromCreate]}`
+                                : ""
+                            }`
+                          : t.built
+                            ? BUILT_TAG[t.built] || null
+                            : t.planned
+                              ? "Plan"
+                              : null,
                       ]
                         .filter(Boolean)
                         .join(" · ")}
@@ -1237,11 +1342,22 @@ export const LeadWorkspace = ({
                       onClick={() => {
                         setNavOpen(false);
                         if (open && t.id === selectedId) return;
+                        // A Create plan being carried on: one at a time.
+                        if (carrying.current) return;
                         setSelectedId(t.id);
                         setMessages(EMPTY);
                         setSideOpen(null);
                         setMakingOn(false);
                         moveOn();
+                        // A plan from the Create window: carried on as a
+                        // conversation (release 6c).
+                        if (t.fromCreate) {
+                          // The start shows while it's carried (and says
+                          // so if it can't be).
+                          setOpen(null);
+                          carryOverCreatePlan(t.id);
+                          return;
+                        }
                         setOpen({ key: t.id, recentId: t.id });
                       }}
                     />

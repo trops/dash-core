@@ -456,7 +456,30 @@ export function workingLine(state) {
  * dashboardName, onDashboard, settingLabels, placed, canPlace }: placed as
  * a cell build's, for a new widget taking that copy's place.
  */
-export function buildChat(
+export function buildChat(state, opts = {}) {
+  const chat = chatFor(state, opts);
+  // Nothing runs a build saved before Dash last closed (or carried on from
+  // the Create window, release 6c): what it waits on starts it again.
+  if (
+    opts.restored &&
+    (chat.choices === "failed" ||
+      chat.choices === "preview" ||
+      buildStatus(state, opts.leftOff || []) === "waiting-for-providers")
+  ) {
+    return {
+      ...chat,
+      reply: `${String(chat.reply).replace(
+        /\n\nTry it again, or leave it off for now\?$/,
+        "",
+      )}\n\nThis build was saved before Dash last closed — carry on building to pick it up from there.`,
+      choices: "continue",
+      continueLabel: "Carry on building",
+    };
+  }
+  return chat;
+}
+
+function chatFor(
   state,
   { kind = "dashboard", leftOff = [], cell = null, change = null } = {},
 ) {

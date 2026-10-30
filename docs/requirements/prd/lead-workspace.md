@@ -153,7 +153,17 @@ Smaller windows (35–36), light theme, carrying existing Dash team questions in
       - The Build-log parts are tested.
       - The no-AI starts nothing sends any more are gone (`handleStartWithoutAi` keeps blank and file; `createRouting` keeps `draftAge`).
       - New Dashboard's Start from leaves out Edit a widget.
-    - **Not carried over:** plans started in the Create window and never finished (Recent entries that aren't questions) aren't listed anywhere now, and an interrupted build from one can't be continued. They stay saved; listing them in the Dash Lead's Recents is a follow-up if wanted. Also: theme from a description (kept for the theme round), the starters gallery (the registry list covers it), and the bot form for a bot on no dashboard (a dashboard's Bots view › Add bot has it).
+    - **Unfinished Create plans (follow-up, 2026-10-30):**
+      - The Dash Lead's Recents list the plans started in the Create window and never finished, tagged "From Create" with what became of them: a draft, or a build that stopped, was interrupted, had problems, or waits for a connection or a look. Built and removed ones are done (`isUnfinishedCreatePlan`, `questionThreads` `fromCreate`).
+      - Opening one carries it on as a Dash Lead conversation (`saveCreateRecent` `carryFrom` → `CreateRecent.carryOver`): what was said, the plan on the right, and its build with its own choices (Try again, Leave it off, Carry on building). The build record moves to the new conversation, and the old entry goes once that's saved. Not while it's still building.
+      - **Review fixes:**
+        - The carry is one write (`carryOver`), and the plan's memory (what the team noted) moves with it.
+        - One closed before it was planned carries what was asked, and offers to plan it.
+        - A failed carry says why, even with another conversation open.
+        - A second click doesn't carry it twice.
+        - The carried plan keeps its date, so it isn't news in the notifications panel.
+        - **A build nothing runs any more** (saved before a restart, or carried from Create): `getPlanBuild` says `restored`, and where its own controls can't run — Try again, Looks good, a provider connected — the chat offers **Carry on building**. This also fixes it for workspace builds after a restart.
+    - **Not carried over:** theme from a description (kept for the theme round), the starters gallery (the registry list covers it), and the bot form for a bot on no dashboard (a dashboard's Bots view › Add bot has it).
 
 ## Risks
 
