@@ -251,6 +251,9 @@ function getAuthStatus() {
     authenticated: true,
     userId: stored.userId,
     authenticatedAt: stored.authenticatedAt,
+    // The stored username (no network): the app and the main process
+    // agree whose a theme is (theme change leftovers).
+    username: getStoredUsername() || null,
   };
 }
 

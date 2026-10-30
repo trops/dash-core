@@ -340,4 +340,7 @@ Frames 22, 27–29.
 - **Planner:** `list_themes` gives each theme's colors as hex, whose it is and where it's used; `NEW_THEMES` explains changes; dashboard leads bring in the team "for a new theme for it or a change to the one it has". Earlier texts are in history.
 - **Workspace:** `themeChange` / `isThemeChangeOnly` / `changeStanding` / `themeChangeRows` (`workspacePlan`), `ThemeLooks was` (Now / After), `useThemeUse`, build kind `"themechange"` with choices `"themechange"`, `onPublishTheme` → DashboardStage's `PublishThemeModal initialVisibility`.
 - **Door:** `makingStart({ kind: "themechange", theme, by })`; ThemesPage's Change with AI.
-- **Not done:** a theme you changed and then published as an update isn't re-checked for an earlier remix of yours; publishing still goes through the Publish window's own steps.
+- **Leftovers (approved 2026-10-30, frames 53–54):**
+  - A theme installed from the user's own registry scope is theirs (`isOwnPackage`; the main process reads the stored username, the app `useRegistryUsername`): changed in place, Publish the update, and the Themes page's Publish… for it. Signed out, it's treated as downloaded (a remix).
+  - The Publish window (Themes page or the conversation) asks `getThemePublishPreview` for a published theme's version and visibility, starts there and says so ("Published as v1.2.0 · private — This update is v1.2.1…"); private when the registry can't be asked.
+  - A remix made while the app uses the original offers **Use the remix for the app**; the app's theme changes only when it's clicked (`changeCurrentTheme`). Remove leaves the app's theme as it is.

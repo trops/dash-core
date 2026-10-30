@@ -25,6 +25,7 @@ import {
   waitingFor,
 } from "./workspaceBuild";
 import { planTarget } from "../../utils/teamPlan";
+import { useRegistryUsername } from "../../hooks/useRegistryUsername";
 import {
   planName,
   planStatus,
@@ -187,7 +188,12 @@ function shortTime(at) {
  * done (what it answered), or not asked yet — ready, or waiting while a plan
  * waits for the go-ahead.
  */
-function memberState(m, last, status, { plan, lines, rawThemes = null }) {
+function memberState(
+  m,
+  last,
+  status,
+  { plan, lines, rawThemes = null, username = null },
+) {
   const working = !!(last && last.status === "asking");
   if (working)
     return {
@@ -203,7 +209,7 @@ function memberState(m, last, status, { plan, lines, rawThemes = null }) {
     // A plan says what it is ("drafted a plan — 2 widgets"), not the
     // Planner's first words.
     if (last.plan) {
-      const what = planSubLine(last.plan, [], { rawThemes });
+      const what = planSubLine(last.plan, [], { rawThemes, username });
       return {
         tone: "ok",
         state: "done",
@@ -289,6 +295,7 @@ export const WorkspaceSide = ({
   const { muted, strong, hairline } = useConfigTokens();
   // rawThemes: whose a changed theme is (theme change round).
   const { currentTheme, rawThemes } = useContext(ThemeContext) || {};
+  const username = useRegistryUsername();
   // The link colour: the accent role (Aurora gives it its own text shade).
   const link = `${(currentTheme && currentTheme["text-primary-medium"]) || ""} dr-role-accent`;
   const statusTokens = useStatusTokens();
@@ -503,7 +510,12 @@ export const WorkspaceSide = ({
         : null;
     const { tone, state, line } =
       inBuild ||
-      memberState(m, last, statusOf(m.id), { plan, lines, rawThemes });
+      memberState(m, last, statusOf(m.id), {
+        plan,
+        lines,
+        rawThemes,
+        username,
+      });
     const out =
       inBuild && inBuild.out === "preview"
         ? { label: "Preview", open: "preview" }

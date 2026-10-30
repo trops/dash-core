@@ -1177,6 +1177,7 @@ function builtSummary(state, plan) {
               ? { of: { ...state.changedTheme.of } }
               : {}),
             replaced: (state.changedTheme.replaced || []).slice(),
+            appUsesOriginal: !!state.changedTheme.appUsesOriginal,
           },
         }
       : {}),

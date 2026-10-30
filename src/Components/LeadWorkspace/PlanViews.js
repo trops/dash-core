@@ -47,6 +47,7 @@ import {
   themeOrigin,
 } from "../../utils/themeStanding";
 import { themeUseLine, useThemeUse } from "./useThemeUse";
+import { useRegistryUsername } from "../../hooks/useRegistryUsername";
 
 /**
  * The plan in a workspace conversation (lead-workspace release 3a, frames 1,
@@ -101,9 +102,10 @@ export const OutputCard = ({
 export const PlanCard = ({ plan, earlier = false, onOpen }) => {
   // Whose a changed theme is (theme change round): the card says remix.
   const { rawThemes } = useContext(ThemeContext) || {};
-  const line = planLine(plan, { rawThemes });
+  const username = useRegistryUsername();
+  const line = planLine(plan, { rawThemes, username });
   const change = isThemeChangeOnly(plan)
-    ? changeStanding(plan, rawThemes)
+    ? changeStanding(plan, rawThemes, username)
     : null;
   return (
     <div
@@ -155,6 +157,7 @@ export const PlanChoices = ({
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const { rawThemes } = useContext(ThemeContext) || {};
+  const username = useRegistryUsername();
   // Several questions: picks per question, sent together.
   const [picks, setPicks] = useState({});
   const questions = (plan && plan.questions) || [];
@@ -273,7 +276,10 @@ export const PlanChoices = ({
     >
       {onBuild ? (
         <>
-          <Button title={yesLabel(plan, { rawThemes })} onClick={onBuild} />
+          <Button
+            title={yesLabel(plan, { rawThemes, username })}
+            onClick={onBuild}
+          />
           <Button2 title="Change something" onClick={onChange} />
         </>
       ) : (
@@ -399,9 +405,10 @@ export const PlanOutput = ({
   const dashboard = useDashboard(target ? target.id : null);
   // Saved themes' names: which theme a new one replaces (frame 46).
   const { rawThemes } = useContext(ThemeContext) || {};
+  const username = useRegistryUsername();
   // A change to a saved theme (theme change round): whose it is, where
   // it's used.
-  const standing = plan ? changeStanding(plan, rawThemes) : null;
+  const standing = plan ? changeStanding(plan, rawThemes, username) : null;
   // Once it's changed in place, the saved theme is the new one: Now is
   // its colors before the build.
   const changing =
@@ -427,7 +434,7 @@ export const PlanOutput = ({
             (rawThemes && rawThemes[key] && rawThemes[key].name) || null,
           standing: (name) => {
             const hit = themeByName(rawThemes, name);
-            return hit ? { origin: themeOrigin(hit[1]) } : null;
+            return hit ? { origin: themeOrigin(hit[1], { username }) } : null;
           },
         })
       : null;
@@ -439,6 +446,7 @@ export const PlanOutput = ({
   const planned = [
     ...planRows(plan, checklist, connected, {
       rawThemes,
+      username,
       themeNow: changing ? changing.raw : null,
     }),
     // A change to a saved theme: where it shows, what stays, the credit.
@@ -550,7 +558,7 @@ export const PlanOutput = ({
                     ? changing && changing.origin
                       ? "The remix is in your themes"
                       : "Changed — everything that uses it shows it"
-                    : planSubLine(plan, checklist, { rawThemes }) ||
+                    : planSubLine(plan, checklist, { rawThemes, username }) ||
                       "Nothing to make yet"}
         </span>
       </div>
@@ -679,7 +687,10 @@ export const PlanOutput = ({
             Want something different? Say so in the chat.
           </span>
           <div>
-            <Button title={yesLabel(plan, { rawThemes })} onClick={onBuild} />
+            <Button
+              title={yesLabel(plan, { rawThemes, username })}
+              onClick={onBuild}
+            />
           </div>
         </div>
       ) : null}

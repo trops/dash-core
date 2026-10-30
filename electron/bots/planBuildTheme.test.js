@@ -170,6 +170,7 @@ describe("a change to a saved theme (theme change round)", () => {
       remix: false,
       previous: { primary: "blue" },
       replaced: [],
+      appUsesOriginal: false,
     });
   });
   it("on a dashboard too: one step — the change reaches everywhere", async () => {

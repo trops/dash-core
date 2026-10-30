@@ -17,6 +17,7 @@ import { PublishThemeModal } from "../Settings/details/PublishThemeModal";
 import { ColorSwatchGrid } from "../Theme/ColorSwatchGrid";
 import { ThemePreview } from "./ThemePreview";
 import { themeOrigin } from "../../utils/themeStanding";
+import { useRegistryUsername } from "../../hooks/useRegistryUsername";
 import {
   canPublishTheme,
   duplicateTheme,
@@ -30,8 +31,8 @@ import { ManageLayout, OverflowMenu } from "./ManageLayout";
  * "Changing: <theme>" — a theme downloaded from the registry says whose,
  * since the change becomes a remix that credits them.
  */
-function changeWithAi(row, rawTheme) {
-  const origin = themeOrigin(rawTheme || row.theme);
+function changeWithAi(row, rawTheme, username) {
+  const origin = themeOrigin(rawTheme || row.theme, { username });
   window.dispatchEvent(
     new CustomEvent("dash:open-workspace", {
       detail: {
@@ -82,7 +83,8 @@ const ThemeDetailPanel = ({
   const [variant, setVariant] = useState(appVariant || "dark");
   const [publishOpen, setPublishOpen] = useState(false);
   const theme = row.theme || {};
-  const canPublish = canPublishTheme(theme, rawTheme);
+  const username = useRegistryUsername();
+  const canPublish = canPublishTheme(theme, rawTheme, username);
 
   return (
     <div className="flex flex-col gap-5">
@@ -109,7 +111,7 @@ const ThemeDetailPanel = ({
           <Button3
             title="Change with AI"
             size="sm"
-            onClick={() => changeWithAi(row, rawTheme)}
+            onClick={() => changeWithAi(row, rawTheme, username)}
           />
           <Button3
             title="Edit theme"

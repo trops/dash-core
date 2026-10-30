@@ -2,6 +2,7 @@
  * Whose a saved theme is (lead-workspace theme change round).
  */
 import {
+  isOwnPackage,
   hasEditorChanges,
   remixName,
   themeByName,
@@ -56,6 +57,35 @@ describe("themeOrigin", () => {
     expect(
       themeOrigin({ name: "Copy", remixedFrom: { package: "@alexr/dusk" } }),
     ).toBeNull();
+  });
+});
+
+describe("your own registry scope (theme change leftovers)", () => {
+  const own = {
+    name: "Dusk",
+    registryRef: {
+      package: "@me/dusk",
+      kind: "theme",
+      version: "1.2.0",
+      origin: "installed",
+    },
+  };
+  test("isOwnPackage: the signed-in user's scope, any case", () => {
+    expect(isOwnPackage("@Me/dusk", "me")).toBe(true);
+    expect(isOwnPackage("@me/dusk", "@ME")).toBe(true);
+    expect(isOwnPackage("@alexr/dusk", "me")).toBe(false);
+    expect(isOwnPackage("@me/dusk", null)).toBe(false);
+  });
+  test("installed from your own scope: yours, and published", () => {
+    expect(themeOrigin(own, { username: "me" })).toBeNull();
+    expect(themePublished(own, { username: "me" })).toEqual({
+      package: "@me/dusk",
+      version: "1.2.0",
+    });
+  });
+  test("signed out: still treated as downloaded", () => {
+    expect(themeOrigin(own).package).toBe("@me/dusk");
+    expect(themePublished(own)).toBeNull();
   });
 });
 

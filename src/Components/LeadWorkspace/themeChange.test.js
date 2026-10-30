@@ -310,6 +310,110 @@ describe("built (frames 51-52)", () => {
   });
 });
 
+describe("Use the remix for the app (frame 54)", () => {
+  test("offered when the app uses the original; switches only on a click", () => {
+    const useThemeForApp = jest.fn();
+    const state = {
+      status: "done",
+      steps: [
+        {
+          id: "changetheme",
+          kind: "changetheme",
+          label: "Change the Nordic theme",
+          status: "done",
+        },
+      ],
+      changedTheme: {
+        key: "theme-r",
+        name: "Nordic (remix)",
+        remix: true,
+        of: { name: "Nordic", author: "@alexr" },
+        allowRemix: true,
+        appUsesOriginal: true,
+      },
+    };
+    expect(buildChat(state, { kind: "themechange" }).reply).toMatch(
+      /The app's theme is still Nordic — use the remix for the app too\?$/,
+    );
+    render(
+      <BuildInChat
+        build={{ buildId: "b1", kind: "themechange" }}
+        state={state}
+        current
+        actions={{
+          useThemeForApp,
+          publishTheme: jest.fn(),
+          openThemeEditor: jest.fn(),
+        }}
+      />,
+    );
+    expect(useThemeForApp).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use the remix for the app" }),
+    );
+    expect(useThemeForApp).toHaveBeenCalledWith("theme-r");
+    expect(screen.getByTestId("workspace-theme-for-app")).toHaveTextContent(
+      "The app uses Nordic (remix) now.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Use the remix for the app" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Publish your remix…" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("Use the remix for the app — worked out from the app's theme now", () => {
+  const state = {
+    status: "done",
+    steps: [
+      { id: "changetheme", kind: "changetheme", label: "x", status: "done" },
+    ],
+    changedTheme: {
+      key: "theme-r",
+      name: "Nordic (remix)",
+      remix: true,
+      of: { key: "theme-nordic", name: "Nordic", author: "@alexr" },
+      allowRemix: true,
+      appUsesOriginal: true,
+    },
+  };
+  test("the app moved on since: no offer, the publish wording", () => {
+    const chat = buildChat(state, {
+      kind: "themechange",
+      appThemeKey: "theme-r",
+    });
+    expect(chat.reply).toBe(
+      "Nordic (remix) is in your themes. It credits @alexr's Nordic — publish it if you'd like to share it.",
+    );
+    render(
+      <BuildInChat
+        build={{ buildId: "b1", kind: "themechange" }}
+        state={state}
+        current
+        actions={{
+          appThemeKey: "theme-r",
+          useThemeForApp: jest.fn(),
+          publishTheme: jest.fn(),
+          openThemeEditor: jest.fn(),
+        }}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Use the remix for the app" }),
+    ).toBeNull();
+  });
+  test("still the original: the reply as frame 54", () => {
+    expect(
+      buildChat(state, { kind: "themechange", appThemeKey: "theme-nordic" })
+        .reply,
+    ).toBe(
+      "Nordic (remix) is in your themes. It credits @alexr's Nordic. The app's theme is still Nordic — use the remix for the app too?",
+    );
+  });
+});
+
 describe("the Themes page's Change with AI (frame 48)", () => {
   test("your theme", () => {
     const m = makingStart({ kind: "themechange", theme: "Dusk" });

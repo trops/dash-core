@@ -73,7 +73,7 @@ export function isThemeChangeOnly(plan) {
  * — origin set when it was downloaded (a remix is made); null when the user
  * has no theme by that name. `rawThemes`: ThemeContext's saved themes.
  */
-export function changeStanding(plan, rawThemes) {
+export function changeStanding(plan, rawThemes, username = null) {
   const piece = themeChange(plan);
   const hit = piece ? themeByName(rawThemes, piece.name) : null;
   if (!hit) return null;
@@ -81,8 +81,9 @@ export function changeStanding(plan, rawThemes) {
   return {
     key,
     raw,
-    origin: themeOrigin(raw),
-    published: themePublished(raw),
+    // Your own registry scope is yours (theme change leftovers).
+    origin: themeOrigin(raw, { username }),
+    published: themePublished(raw, { username }),
   };
 }
 
@@ -163,7 +164,7 @@ export function planName(plan) {
  * "Plan · 2 new widgets and 1 new bot" — the card's line; a change to a
  * dashboard the user has (release 3c): "Plan · 1 added · on Kitchen Sink".
  */
-export function planLine(plan, { rawThemes = null } = {}) {
+export function planLine(plan, { rawThemes = null, username = null } = {}) {
   const target = plan ? planTarget(plan) : null;
   const added = target ? addedCount(plan) : 0;
   // A change to one widget (release 6c, frame 40): its settings, or what
@@ -185,7 +186,7 @@ export function planLine(plan, { rawThemes = null } = {}) {
   // A change to a saved theme (theme change round, frames 49-50).
   if (isThemeChangeOnly(plan)) {
     const piece = themeChange(plan);
-    const st = changeStanding(plan, rawThemes);
+    const st = changeStanding(plan, rawThemes, username);
     const on = "";
     if (st && st.origin) {
       return `Plan · a remix of ${st.raw.name}${
@@ -229,13 +230,13 @@ function addedCount(plan) {
  * Yes, build it — or, for a dashboard the user has, Yes, make the changes;
  * for an empty cell, Yes, add it.
  */
-export function yesLabel(plan, { rawThemes = null } = {}) {
+export function yesLabel(plan, { rawThemes = null, username = null } = {}) {
   if (plan && plan.cell) return "Yes, add it";
   if (plan && plan.widgetChange) return "Yes, change it";
   if (isThemeOnly(plan)) return "Yes, make it";
   // A change to a saved theme: a downloaded one becomes a remix.
   if (isThemeChangeOnly(plan)) {
-    const st = changeStanding(plan, rawThemes);
+    const st = changeStanding(plan, rawThemes, username);
     return st && st.origin ? "Yes, make the remix" : "Yes, change it";
   }
   return plan && planTarget(plan) ? "Yes, make the changes" : "Yes, build it";
@@ -458,12 +459,16 @@ const providerName = (it) => String(it.label || "").replace(/^Connect /, "");
  * The opened plan's line (frame 6): "4 widgets · 1 bot · uses Home
  * Assistant".
  */
-export function planSubLine(plan, checklist = [], { rawThemes = null } = {}) {
+export function planSubLine(
+  plan,
+  checklist = [],
+  { rawThemes = null, username = null } = {},
+) {
   if (isThemeOnly(plan)) {
     return "A new theme — nothing is saved until you say yes";
   }
   if (isThemeChangeOnly(plan)) {
-    const st = changeStanding(plan, rawThemes);
+    const st = changeStanding(plan, rawThemes, username);
     return st && st.origin
       ? `${st.raw.name} is by ${
           st.origin.author || "someone else"
@@ -494,7 +499,7 @@ export function planRows(
   checklist = [],
   isDone = () => false,
   // themeNow: a changed theme as it was before its build (theme change round).
-  { rawThemes = null, themeNow = null } = {},
+  { rawThemes = null, username = null, themeNow = null } = {},
 ) {
   const pieces = (plan && Array.isArray(plan.pieces) && plan.pieces) || [];
   const rows = pieces
@@ -508,7 +513,7 @@ export function planRows(
   if (isThemeOnly(plan)) rows.push(...themeColorRows(newTheme(plan)));
   // A change to a saved theme: each color, before and after (frame 49).
   if (isThemeChangeOnly(plan)) {
-    const st = changeStanding(plan, rawThemes);
+    const st = changeStanding(plan, rawThemes, username);
     rows.push(
       ...themeChangeRows(themeChange(plan), themeNow || (st ? st.raw : null)),
     );

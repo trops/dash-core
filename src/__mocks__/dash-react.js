@@ -306,10 +306,11 @@ function useStatusTokens() {
   };
 }
 
-function AlertBanner({ message, children, variant }) {
+function AlertBanner({ title, message, children, variant }) {
   return React.createElement(
     "div",
     { role: "alert", "data-variant": variant },
+    title ? React.createElement("h3", null, title) : null,
     message,
     children,
   );

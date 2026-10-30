@@ -204,6 +204,7 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
     // automatically — this theme's own package or a free one — and the
     // version is the next the registry doesn't have.
     let headlessPlan = null;
+    let ownPackageName = null;
     if (options.headless) {
       headlessPlan = await planPackagePublish({
         kind: "theme",
@@ -222,14 +223,13 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       // doesn't bump by default). Only its own package — a different theme
       // that happens to share the name gets the registry's refusal, not a
       // quiet new version of the other theme.
-      const name = sanitizeName(themeData.name || themeKey);
       const ref = readRegistryRef("theme", themeData);
       const own = ref && normalizePackageRef(ref.package);
-      if (
-        own &&
-        own.scope.toLowerCase() === String(scope).toLowerCase() &&
-        own.name.toLowerCase() === name
-      ) {
+      // This theme's own package under the user's scope — even renamed
+      // since (theme change leftovers: Publish the update updates it).
+      if (own && own.scope.toLowerCase() === String(scope).toLowerCase()) {
+        ownPackageName = options.packageName ? null : own.name.toLowerCase();
+        const name = options.packageName || own.name.toLowerCase();
         const info = await getPackageInfo({ scope, name });
         if (info && typeof info === "object") {
           nextVersion = nextFreeVersion(nextVersion, info);
@@ -262,6 +262,7 @@ async function prepareThemeForPublish(win, appId, themeKey, options = {}) {
       version: nextVersion,
       authorName: resolvedAuthor,
       remixedFrom: remix.remixedFrom,
+      ...(ownPackageName ? { packageName: ownPackageName } : {}),
       ...(headlessPlan
         ? {
             packageName: headlessPlan.name,
@@ -789,7 +790,7 @@ async function installThemeFromRegistry(win, appId, packageName, options = {}) {
  * @param {string} themeKey - Theme key
  * @returns {Object} Preview data with theme name, colors, etc.
  */
-function getThemePublishPreview(appId, themeKey) {
+async function getThemePublishPreview(appId, themeKey) {
   try {
     const themesResult = themeController.listThemesForApplication(null, appId);
     if (themesResult.error) {
@@ -806,11 +807,46 @@ function getThemePublishPreview(appId, themeKey) {
 
     const colors = extractColors(themeData);
 
+    // Published already (theme change leftovers): its version and whether
+    // it's public or private, so an update keeps it — checked: false when
+    // the registry couldn't be asked.
+    let published = null;
+    try {
+      const { themePublished } = require("../../src/utils/themeStanding");
+      let username = null;
+      try {
+        username =
+          require("./registryAuthController").getStoredUsername() || null;
+      } catch (_e) {
+        username = null;
+      }
+      const pub = themePublished(themeData, { username });
+      if (pub) {
+        const info = await getPackageInfo(pub.package, {
+          authFailuresUnreachable: true,
+        });
+        const known = !!info && typeof info === "object";
+        const version = (known && info.latestVersion) || pub.version || null;
+        published = {
+          package: pub.package,
+          version,
+          visibility: known ? info.visibility || null : null,
+          nextVersion: known ? nextFreeVersion(version || "1.0.0", info) : null,
+          checked: known,
+          // Not there any more (or not yours to see): publishing makes it.
+          gone: info === null,
+        };
+      }
+    } catch (_e) {
+      published = null;
+    }
+
     return {
       success: true,
       themeName: themeKey,
       colors,
       hasRegistryMeta: !!themeData._registryMeta,
+      published,
     };
   } catch (err) {
     console.error("[ThemeRegistryController] Error getting preview:", err);

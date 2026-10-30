@@ -3381,6 +3381,8 @@ const botController = {
       throw new Error(`there's no saved theme called "${String(name || "")}"`);
     }
     const [key, raw] = hit;
+    // Your own registry scope is yours, wherever it was installed.
+    const username = this._registryUsername();
     const c = colors || {};
     const next = {
       primary: c.primary,
@@ -3400,7 +3402,7 @@ const botController = {
       }
     };
     const editorKept = hasEditorChanges(raw);
-    const origin = themeOrigin(raw);
+    const origin = themeOrigin(raw, { username });
     if (!origin) {
       // The user's own: in place, keeping its id, editor changes and
       // registry record (Publish the update follows).
@@ -3420,7 +3422,7 @@ const botController = {
         ...(madeIn ? { _planPrevious: { madeIn, colors: previous } } : {}),
       });
       this._broadcast("themes:changed", { key });
-      const published = themePublished(raw);
+      const published = themePublished(raw, { username });
       return {
         key,
         name: raw.name,
@@ -3516,6 +3518,15 @@ const botController = {
       return (res.workspaces || []).filter((w) => w && w.themeKey === key);
     } catch (_e) {
       return [];
+    }
+  },
+
+  /** The signed-in registry username, or null. */
+  _registryUsername() {
+    try {
+      return require("./registryAuthController").getStoredUsername() || null;
+    } catch (_e) {
+      return null;
     }
   },
 
@@ -3616,13 +3627,14 @@ const botController = {
   _themeDetails() {
     const saved = this._savedThemes();
     const all = this._themeUsageAll();
+    const username = this._registryUsername();
     const seen = new Set();
     const out = [];
     for (const [key, raw] of Object.entries(saved)) {
       const name = raw && String(raw.name || "").trim();
       if (!name || seen.has(name.toLowerCase())) continue;
       seen.add(name.toLowerCase());
-      const origin = themeOrigin(raw);
+      const origin = themeOrigin(raw, { username });
       out.push({
         name,
         colors: themeColors(raw),
