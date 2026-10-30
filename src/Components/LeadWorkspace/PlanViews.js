@@ -23,8 +23,11 @@ import { PlanChecklistRows, isTypeItOption } from "../Create/PlanParts";
 import {
   canBuild,
   isSettingsChange,
+  changeStanding,
+  isThemeChangeOnly,
   isThemeOnly,
   newTheme,
+  themeChange,
   planLine,
   planName,
   planRows,
@@ -38,6 +41,12 @@ import { useDashboard } from "./useDashboard";
 import { ThemePreview } from "../AppPages/ThemePreview";
 import { ThemeModel } from "../../Models/ThemeModel";
 import { generateCustomTheme } from "../../utils/themeGenerator";
+import {
+  hasEditorChanges,
+  themeByName,
+  themeOrigin,
+} from "../../utils/themeStanding";
+import { themeUseLine, useThemeUse } from "./useThemeUse";
 
 /**
  * The plan in a workspace conversation (lead-workspace release 3a, frames 1,
@@ -89,25 +98,43 @@ export const OutputCard = ({
  * The plan as a card in the conversation: opens it on the right. An earlier
  * plan (one the Planner has since changed) says so, and still opens.
  */
-export const PlanCard = ({ plan, earlier = false, onOpen }) => (
-  <div className="self-start w-full max-w-md" data-testid="workspace-plan-card">
-    <OutputCard
-      icon={isThemeOnly(plan) ? "palette" : undefined}
-      // A change to a dashboard the user has says so (frame 30); a new
-      // theme, that it's a theme (theme round, frame 45).
-      title={
-        planTarget(plan) || plan.widgetChange
-          ? `${planName(plan)} — changes`
-          : isThemeOnly(plan)
-            ? `${planName(plan)} — theme`
-            : planName(plan)
-      }
-      sub={earlier ? `${planLine(plan)} · changed since` : planLine(plan)}
-      bordered={false}
-      onClick={onOpen}
-    />
-  </div>
-);
+export const PlanCard = ({ plan, earlier = false, onOpen }) => {
+  // Whose a changed theme is (theme change round): the card says remix.
+  const { rawThemes } = useContext(ThemeContext) || {};
+  const line = planLine(plan, { rawThemes });
+  const change = isThemeChangeOnly(plan)
+    ? changeStanding(plan, rawThemes)
+    : null;
+  return (
+    <div
+      className="self-start w-full max-w-md"
+      data-testid="workspace-plan-card"
+    >
+      <OutputCard
+        icon={
+          isThemeOnly(plan) || isThemeChangeOnly(plan) ? "palette" : undefined
+        }
+        // A change to a dashboard the user has says so (frame 30); a new
+        // theme, that it's a theme (theme round, frame 45); a theme change,
+        // its changes or its remix (frames 49-50).
+        title={
+          planTarget(plan) || plan.widgetChange
+            ? `${planName(plan)} — changes`
+            : isThemeOnly(plan)
+              ? `${planName(plan)} — theme`
+              : isThemeChangeOnly(plan)
+                ? change && change.origin
+                  ? `${themeChange(plan).name} (remix) — theme`
+                  : `${themeChange(plan).name} — changes`
+                : planName(plan)
+        }
+        sub={earlier ? `${line} · changed since` : line}
+        bordered={false}
+        onClick={onOpen}
+      />
+    </div>
+  );
+};
 
 /**
  * Under the lead's answer: the Planner's questions as taps, or — a plan
@@ -127,6 +154,7 @@ export const PlanChoices = ({
   onChange,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
+  const { rawThemes } = useContext(ThemeContext) || {};
   // Several questions: picks per question, sent together.
   const [picks, setPicks] = useState({});
   const questions = (plan && plan.questions) || [];
@@ -245,7 +273,7 @@ export const PlanChoices = ({
     >
       {onBuild ? (
         <>
-          <Button title={yesLabel(plan)} onClick={onBuild} />
+          <Button title={yesLabel(plan, { rawThemes })} onClick={onBuild} />
           <Button2 title="Change something" onClick={onChange} />
         </>
       ) : (
@@ -361,6 +389,8 @@ export const PlanOutput = ({
   // widget, when it can go either way; signing in to change it in place.
   onWidgetMode = null,
   onSignIn = null,
+  // A theme its build changed (theme change round): state.changedTheme.
+  changedTheme = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
@@ -369,15 +399,36 @@ export const PlanOutput = ({
   const dashboard = useDashboard(target ? target.id : null);
   // Saved themes' names: which theme a new one replaces (frame 46).
   const { rawThemes } = useContext(ThemeContext) || {};
+  // A change to a saved theme (theme change round): whose it is, where
+  // it's used.
+  const standing = plan ? changeStanding(plan, rawThemes) : null;
+  // Once it's changed in place, the saved theme is the new one: Now is
+  // its colors before the build.
+  const changing =
+    standing &&
+    !standing.origin &&
+    changedTheme &&
+    !changedTheme.remix &&
+    changedTheme.previous
+      ? { ...standing, raw: { ...standing.raw, ...changedTheme.previous } }
+      : standing;
+  const themeUse = useThemeUse(
+    changing && !changing.origin ? changing.key : null,
+  );
   if (!plan) return null;
+  const changeOnly = isThemeChangeOnly(plan);
   // Now and after only before it's built: once it is, the dashboard read
   // now already has what was added.
   // A change to one widget has its own rows, no grids (release 6c).
   const changes =
-    target && !buildLine && !plan.widgetChange
+    target && !buildLine && !plan.widgetChange && !changeOnly
       ? planChanges(dashboard, plan, {
           themeName: (key) =>
             (rawThemes && rawThemes[key] && rawThemes[key].name) || null,
+          standing: (name) => {
+            const hit = themeByName(rawThemes, name);
+            return hit ? { origin: themeOrigin(hit[1]) } : null;
+          },
         })
       : null;
   const draws = !!(changes && changes.added && changes.now.length);
@@ -385,7 +436,40 @@ export const PlanOutput = ({
   // Connected for real — a connect skipped before building still needs it.
   const connected = (it) =>
     !!(wp.have && wp.have.has(normalizeType(it.providerType)));
-  const planned = planRows(plan, checklist, connected);
+  const planned = [
+    ...planRows(plan, checklist, connected, {
+      rawThemes,
+      themeNow: changing ? changing.raw : null,
+    }),
+    // A change to a saved theme: where it shows, what stays, the credit.
+    ...(changeOnly && changing
+      ? [
+          ...(changing.origin
+            ? [
+                {
+                  main: `Credits ${changing.origin.author || "its author"}'s ${changing.raw.name} when you publish it`,
+                  sub: `${changing.raw.name} stays as it is, and its updates still arrive`,
+                },
+              ]
+            : [
+                {
+                  main: themeUseLine(themeUse)
+                    ? `Used by ${themeUseLine(themeUse)}`
+                    : "Not used yet",
+                  sub: "Everything that uses it changes",
+                },
+              ]),
+          ...(hasEditorChanges(changing.raw)
+            ? [
+                {
+                  main: "Your changes from the theme editor stay",
+                  sub: "Only its colors change",
+                },
+              ]
+            : []),
+        ]
+      : []),
+  ];
   // A change to one widget (release 6c, frame 40): what changes on it.
   const wc = widgetChanges(plan);
   // A change: what's added, what stays, then what to connect.
@@ -429,7 +513,7 @@ export const PlanOutput = ({
         <span className={`text-xs ${muted}`}>
           {earlier
             ? "Planner · an earlier plan"
-            : wc
+            : wc || changeOnly
               ? "Planner · the change"
               : target
                 ? "Planner · the changes"
@@ -438,9 +522,14 @@ export const PlanOutput = ({
         <span className={`text-lg font-semibold ${strong}`}>
           {wc
             ? `${wc.name} — changes`
-            : target
-              ? `${target.name} — changes`
-              : planName(plan)}
+            : changeOnly
+              ? changing && changing.origin
+                ? (changedTheme && changedTheme.name) ||
+                  `${themeChange(plan).name} (remix)`
+                : `${themeChange(plan).name} — changes`
+              : target
+                ? `${target.name} — changes`
+                : planName(plan)}
         </span>
         <span className={`text-sm ${muted}`}>
           {wc
@@ -451,13 +540,18 @@ export const PlanOutput = ({
               ? changes && changes.fits === false
                 ? "A cell takes one widget — this plan has more"
                 : "Only the cell you picked changes"
-              : target
+              : target && !changeOnly
                 ? buildLine
                   ? `What changed on ${target.name}`
                   : "Nothing changes until you say yes"
                 : buildLine && isThemeOnly(plan)
                   ? "Saved in your themes"
-                  : planSubLine(plan, checklist) || "Nothing to make yet"}
+                  : buildLine && changeOnly
+                    ? changing && changing.origin
+                      ? "The remix is in your themes"
+                      : "Changed — everything that uses it shows it"
+                    : planSubLine(plan, checklist, { rawThemes }) ||
+                      "Nothing to make yet"}
         </span>
       </div>
       {draws ? (
@@ -470,6 +564,12 @@ export const PlanOutput = ({
         </div>
       ) : null}
       {newTheme(plan) ? <ThemeLooks piece={newTheme(plan)} /> : null}
+      {themeChange(plan) ? (
+        <ThemeLooks
+          piece={themeChange(plan)}
+          was={changing ? changing.raw : null}
+        />
+      ) : null}
       {rows.length ? (
         <div
           className={`flex flex-col rounded-xl border overflow-hidden ${hairline}`}
@@ -579,7 +679,7 @@ export const PlanOutput = ({
             Want something different? Say so in the chat.
           </span>
           <div>
-            <Button title={yesLabel(plan)} onClick={onBuild} />
+            <Button title={yesLabel(plan, { rawThemes })} onClick={onBuild} />
           </div>
         </div>
       ) : null}
@@ -592,11 +692,21 @@ export const PlanOutput = ({
  * makes it from the plan's four colors — the same theme Yes, make it saves —
  * shown dark and light, side by side.
  */
-export const ThemeLooks = ({ piece }) => {
+export const ThemeLooks = ({ piece, was = null }) => {
   const { muted } = useConfigTokens();
   const c = (piece && piece.colors) || {};
   const theme = useMemo(() => {
     try {
+      // A change keeps the theme's editor changes (theme change round).
+      if (was) {
+        return ThemeModel({
+          ...was,
+          primary: c.primary,
+          secondary: c.secondary,
+          tertiary: c.tertiary,
+          neutral: c.neutral,
+        });
+      }
       const raw = generateCustomTheme(
         c.primary,
         c.secondary,
@@ -607,16 +717,33 @@ export const ThemeLooks = ({ piece }) => {
     } catch (_e) {
       return null;
     }
-  }, [c.primary, c.secondary, c.tertiary, c.neutral, piece.name]);
+  }, [c.primary, c.secondary, c.tertiary, c.neutral, piece.name, was]);
+  const before = useMemo(() => {
+    try {
+      return was ? ThemeModel(was) : null;
+    } catch (_e) {
+      return null;
+    }
+  }, [was]);
   if (!theme) return null;
+  // A change: now and after, each in dark and light (frame 49).
+  const looks = before
+    ? [
+        ["Now · dark", before, "dark"],
+        ["After · dark", theme, "dark"],
+        ["Now · light", before, "light"],
+        ["After · light", theme, "light"],
+      ]
+    : [
+        ["Dark", theme, "dark"],
+        ["Light", theme, "light"],
+      ];
   return (
     <div className="grid grid-cols-2 gap-3" data-testid="workspace-theme-looks">
-      {["dark", "light"].map((variant) => (
-        <div key={variant} className="flex flex-col gap-1.5 min-w-0">
-          <span className={`text-xs ${muted}`}>
-            {variant === "dark" ? "Dark" : "Light"}
-          </span>
-          <ThemePreview theme={theme} variant={variant} compact />
+      {looks.map(([label, t, variant]) => (
+        <div key={label} className="flex flex-col gap-1.5 min-w-0">
+          <span className={`text-xs ${muted}`}>{label}</span>
+          <ThemePreview theme={t} variant={variant} compact />
         </div>
       ))}
     </div>

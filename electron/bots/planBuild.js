@@ -265,23 +265,31 @@ function planSteps(
     botSteps(plan, add);
     return steps;
   }
-  // A new theme (lead-workspace theme round): made from its four colors,
-  // then — on a dashboard plan — applied by the theme step below.
+  // A new theme (lead-workspace theme round) is made from its four colors;
+  // a change to a saved one (theme change round) gives it new ones — in
+  // place when it's the user's, as a remix when it was downloaded. Then, on
+  // a dashboard plan, the theme step below applies the one it made.
   const newTheme = pieces.find(
-    (p) => p.kind === "theme" && p.source === "new" && p.name,
+    (p) =>
+      p.kind === "theme" &&
+      (p.source === "new" || p.source === "update") &&
+      p.name,
   );
-  const makeTheme = () =>
+  const makeTheme = () => {
+    const name = String(newTheme.name).trim();
+    const change = newTheme.source === "update";
     add({
-      id: "maketheme",
-      kind: "maketheme",
+      id: change ? "changetheme" : "maketheme",
+      kind: change ? "changetheme" : "maketheme",
       role: "dash",
-      label: `Make the ${String(newTheme.name).trim()} theme`,
-      name: String(newTheme.name).trim(),
+      label: change ? `Change the ${name} theme` : `Make the ${name} theme`,
+      name,
       colors: { ...(newTheme.colors || {}) },
     });
+  };
   if (
     newTheme &&
-    !planTarget(plan) &&
+    (!planTarget(plan) || newTheme.source === "update") &&
     pieces.every((p) => p.kind === "theme")
   ) {
     makeTheme();
@@ -328,7 +336,13 @@ function planSteps(
       role: "dash",
       label: `Apply the ${theme.name} theme`,
       theme: String(theme.name).trim(),
-      needs: theme === newTheme ? ["dashboard", "maketheme"] : ["dashboard"],
+      needs:
+        theme === newTheme
+          ? [
+              "dashboard",
+              theme.source === "update" ? "changetheme" : "maketheme",
+            ]
+          : ["dashboard"],
     });
   }
   widgets.forEach((p, i) => {
@@ -1148,6 +1162,24 @@ function builtSummary(state, plan) {
     installs: [],
     placed: [],
     theme: state.theme ? { ...state.theme } : null,
+    // A changed theme (theme change round): Remove puts its old colors
+    // back, or — a remix — the original back where the remix replaced it.
+    ...(state.changedTheme
+      ? {
+          changedTheme: {
+            key: state.changedTheme.key,
+            name: state.changedTheme.name,
+            remix: !!state.changedTheme.remix,
+            ...(state.changedTheme.previous
+              ? { previous: { ...state.changedTheme.previous } }
+              : {}),
+            ...(state.changedTheme.of
+              ? { of: { ...state.changedTheme.of } }
+              : {}),
+            replaced: (state.changedTheme.replaced || []).slice(),
+          },
+        }
+      : {}),
   };
   const add = (list, v) => v && !list.includes(v) && list.push(v);
   const addPlaced = (p) =>
@@ -1264,6 +1296,10 @@ function undoOnDashboard(workspace, built) {
  *     previousName } | throws — theme by name; key = the saved theme's id
  *   makeTheme({ name, colors }) → { key, name } | throws — a new theme from
  *     { primary, secondary, tertiary, neutral }, saved in the user's themes
+ *   changeTheme({ name, colors }) → { key, name, remix, previous?, of?,
+ *     allowRemix?, published?, usedBy? } | throws — a saved theme with new
+ *     colors: in place when it's the user's (previous: its old colors, for
+ *     Remove), a remix crediting its author when it was downloaded
  *   askRole(role, request) → run record ({ status, output, error, model, usage, cost, skipped, reason })
  *   abortRole(role)
  *   placeWidget({ dashboardId, component|widget, name, page, provider,
@@ -1427,6 +1463,28 @@ function createPlanBuild(plan, deps, opts = {}) {
           colors: step.colors,
         };
         step.detail = state.madeTheme.name;
+        return;
+      }
+      case "changetheme": {
+        const res = await deps.changeTheme({
+          name: step.name,
+          colors: step.colors,
+        });
+        state.changedTheme = {
+          ...(res || {}),
+          key: (res && res.key) || step.name,
+          name: (res && res.name) || step.name,
+          colors: step.colors,
+        };
+        // The theme step applies it like one this plan made.
+        state.madeTheme = {
+          key: state.changedTheme.key,
+          name: state.changedTheme.name,
+          colors: step.colors,
+        };
+        step.detail = state.changedTheme.remix
+          ? `${state.changedTheme.name}, a remix`
+          : state.changedTheme.name;
         return;
       }
       case "theme": {
@@ -1725,8 +1783,9 @@ function createPlanBuild(plan, deps, opts = {}) {
   const RETRIES = new Set([
     // A cell build's preview couldn't find its widget (Phase 2b).
     "preview",
-    // Saving a new theme (theme round).
+    // Saving a new theme (theme round), or a change to one.
     "maketheme",
+    "changetheme",
     "install",
     "dashboard",
     "theme",

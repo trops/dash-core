@@ -70,6 +70,26 @@ const PAGES = {
  * anything else.
  */
 export function makingStart(making) {
+  // Changing a saved theme (theme change round, frame 48).
+  if (making && making.kind === "themechange" && making.theme) {
+    const name = String(making.theme).slice(0, 60);
+    const by = making.by ? String(making.by).slice(0, 60) : null;
+    return {
+      label: "Changing",
+      text: by ? `${name} — a theme by ${by}` : `${name} — your theme`,
+      title: `What should change in ${name}?`,
+      greeting: by
+        ? `Describe it in your own words. ${name} is by ${by}, so it isn't changed: the Dash team saves your version as a remix that credits them. Nothing is saved until you say yes.`
+        : `Describe it in your own words. The Dash team plans the new colors with you — everything that uses ${name} changes, and your font and corners from the theme editor stay. Nothing changes until you say yes.`,
+      starters: [
+        "Make it warmer",
+        "Make it calmer",
+        "More contrast",
+        "Brighter accents",
+      ],
+      note: `(The user wants to change their saved theme "${name}" — plan a change to it, source "update".)`,
+    };
+  }
   const m = making && MAKING[making.kind];
   if (!m) return null;
   const page = making.from ? PAGES[making.from] : null;

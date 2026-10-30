@@ -17,6 +17,7 @@
  *                     | "settings",  // settings: only that widget's settings (6c)
  *                   colors?,         // a new theme: { primary, secondary, tertiary, neutral } as #rrggbb
  *                   colorNames?,     // a new theme: a plain name for each color ("rust"), shown on its rows
+ *                   colorNamesNow?,  // a change to a theme (source "update"): names for its colors now
  *                   package?,        // yours / ai-built / registry / update
  *                   component?,      // which widget, when the package has several
  *                   providers?: [type],
@@ -64,6 +65,14 @@ const NEEDS_PACKAGE = new Set(["yours", "ai-built", "registry", "update"]);
 
 const isStr = (v) => typeof v === "string" && v.trim().length > 0;
 const isObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** A new or changed theme's colors that aren't #rrggbb (theme rounds). */
+function badThemeColors(p) {
+  const colors = isObject(p.colors) ? p.colors : null;
+  return ["primary", "secondary", "tertiary", "neutral"].filter(
+    (c) => !colors || !/^#[0-9a-f]{6}$/i.test(String(colors[c] || "")),
+  );
+}
 
 // What a planned grid may ask for — what the dashboard grid draws
 // (LayoutGridContainer colModes / rowModes).
@@ -519,10 +528,7 @@ function validatePlan(plan, context = {}) {
       // A theme: one of the user's saved ones (source "yours"), or a new
       // one made from four colors (source "new", lead-workspace theme round).
       if (p.kind === "theme" && p.source === "new") {
-        const colors = isObject(p.colors) ? p.colors : null;
-        const bad = ["primary", "secondary", "tertiary", "neutral"].filter(
-          (c) => !colors || !/^#[0-9a-f]{6}$/i.test(String(colors[c] || "")),
-        );
+        const bad = badThemeColors(p);
         if (bad.length) {
           errors.push(
             `${at} (a new theme) needs its colors as #rrggbb: ${bad.join(", ")}.`,
@@ -539,10 +545,32 @@ function validatePlan(plan, context = {}) {
             `${at}: there's already a theme called "${p.name}" — name the new one differently.`,
           );
         }
+      } else if (p.kind === "theme" && p.source === "update") {
+        // A change to a saved theme (theme change round): all four colors,
+        // and one of the user's themes by name — any of them, even one this
+        // conversation made (savedThemes; themes leaves those out).
+        const bad = badThemeColors(p);
+        if (bad.length) {
+          errors.push(
+            `${at} (a change to a theme) needs all four colors as #rrggbb: ${bad.join(", ")}.`,
+          );
+        }
+        const saved = Array.isArray(context.savedThemes)
+          ? context.savedThemes
+          : context.themes;
+        if (
+          isStr(p.name) &&
+          Array.isArray(saved) &&
+          !saved.some(
+            (n) => String(n).toLowerCase() === p.name.trim().toLowerCase(),
+          )
+        ) {
+          errors.push(`${at}: there's no saved theme called "${p.name}".`);
+        }
       } else if (p.kind === "theme") {
         if (p.source !== "yours") {
           errors.push(
-            `${at} (a theme) is one of your saved themes, or a new one with its colors.`,
+            `${at} (a theme) is one of your saved themes, a new one with its colors, or a change to a saved one.`,
           );
         } else if (
           isStr(p.name) &&

@@ -171,6 +171,15 @@ const {
 } = require("../bots/planBuild");
 // Pure JS, main-process safe (see its header): a plan's new theme.
 const { generateCustomTheme } = require("../../src/utils/themeGenerator");
+// Whose a saved theme is (theme change round) — pure, shared with the app.
+const {
+  hasEditorChanges,
+  remixName,
+  themeByName,
+  themeColors,
+  themeOrigin,
+  themePublished,
+} = require("../../src/utils/themeStanding");
 const { planTarget, validatePlan } = require("../bots/teamPlan");
 const { resolveEditTarget, ownsWidget } = require("../bots/editTarget");
 const { checkBot } = require("../bots/checkBot");
@@ -2757,6 +2766,8 @@ const botController = {
       // A theme this conversation made is the plan's own, not taken
       // (carrying on, a changed plan, building again: theme round).
       themes: this._themeNames(recentId),
+      // A change can be to any saved theme, this conversation's too.
+      savedThemes: this._themeNames(),
       cell: !!cell,
       standalone: !!(cell && standalone),
       bot: !!bot,
@@ -2822,6 +2833,7 @@ const botController = {
         useDashboard: (id) => this._planUseDashboard(id),
         applyTheme: (req) => this._planApplyTheme(req),
         makeTheme: (req) => this._planMakeTheme({ ...req, madeIn: planId }),
+        changeTheme: (req) => this._planChangeTheme({ ...req, madeIn: planId }),
         setWidgetSettings: (req) => this._planSetWidgetSettings(req),
         // A cell build's own Builder / Checker: while they run, the Dash
         // team's place_widget / installDraft refuse (Phase 2b).
@@ -3188,6 +3200,19 @@ const botController = {
       }
     }
 
+    // A theme the build changed gets its old colors back; a remix's
+    // dashboards get the original back.
+    if (built.changedTheme) {
+      if (this._planRestoreTheme(built.changedTheme)) {
+        removed.theme = built.changedTheme.name;
+      } else {
+        problems.push(
+          built.changedTheme.remix
+            ? `${built.changedTheme.name}: couldn't put the original back`
+            : `${built.changedTheme.name}: couldn't put its old colors back`,
+        );
+      }
+    }
     if (dashboardId && targeted) {
       this._undoOnDashboard(built, removed, problems);
     } else if (dashboardId) {
@@ -3337,6 +3362,275 @@ const botController = {
     }
     this._broadcast("themes:changed", { key });
     return { key, name: want };
+  },
+
+  /**
+   * A change to a saved theme from a plan (theme change round). The user's
+   * own theme gets the new colors in place — its editor changes (font,
+   * corners, single colors) stay, and so does everything that uses it. One
+   * downloaded from the registry is never changed: the change is saved as a
+   * remix that credits its author. `madeIn`: the conversation — carrying
+   * on or building again there changes the same remix.
+   * @returns {Promise<{ key, name, remix, previous?, of?, allowRemix?,
+   *   published?, usedBy, editorKept }>}
+   */
+  async _planChangeTheme({ name, colors, madeIn = null }) {
+    const saved = this._savedThemes();
+    const hit = themeByName(saved, name);
+    if (!hit) {
+      throw new Error(`there's no saved theme called "${String(name || "")}"`);
+    }
+    const [key, raw] = hit;
+    const c = colors || {};
+    const next = {
+      primary: c.primary,
+      secondary: c.secondary,
+      tertiary: c.tertiary,
+      neutral: c.neutral,
+    };
+    const save = (k, obj) => {
+      const res = require("./themeController").saveThemeForApplication(
+        this._getMainWindow(),
+        this._appId,
+        k,
+        obj,
+      );
+      if (!res || res.error || res.success === false) {
+        throw new Error((res && res.message) || "the theme couldn't be saved");
+      }
+    };
+    const editorKept = hasEditorChanges(raw);
+    const origin = themeOrigin(raw);
+    if (!origin) {
+      // The user's own: in place, keeping its id, editor changes and
+      // registry record (Publish the update follows).
+      // Its colors before this conversation first changed it: building
+      // again (carry on, a changed plan) keeps Remove's way back.
+      const kept =
+        madeIn && raw._planPrevious && raw._planPrevious.madeIn === madeIn
+          ? raw._planPrevious.colors
+          : null;
+      const previous = {};
+      for (const ch of Object.keys(next)) {
+        previous[ch] = kept ? (kept[ch] ?? null) : (raw[ch] ?? null);
+      }
+      save(key, {
+        ...raw,
+        ...next,
+        ...(madeIn ? { _planPrevious: { madeIn, colors: previous } } : {}),
+      });
+      this._broadcast("themes:changed", { key });
+      const published = themePublished(raw);
+      return {
+        key,
+        name: raw.name,
+        remix: false,
+        previous,
+        published: published
+          ? {
+              ...published,
+              visibility: await this._packageVisibility(published.package),
+            }
+          : null,
+        usedBy: this._themeUsage(key),
+        editorKept,
+      };
+    }
+    // Downloaded: a remix, credited (remixedFrom), never its registry record.
+    const mine = Object.entries(saved).find(
+      ([, t]) =>
+        t &&
+        madeIn &&
+        t.madeIn === madeIn &&
+        t.remixedFrom &&
+        t.remixedFrom.package === origin.package,
+    );
+    const remixKey = mine ? mine[0] : `theme-${Date.now()}`;
+    const remixTitle = mine
+      ? mine[1].name
+      : remixName(
+          raw.name,
+          Object.values(saved).map((t) => t && t.name),
+        );
+    const copy = { ...raw, ...next, id: remixKey, name: remixTitle };
+    delete copy._registryMeta;
+    delete copy.registryRef;
+    delete copy.version;
+    copy.remixedFrom = { package: origin.package, version: origin.version };
+    if (madeIn) copy.madeIn = madeIn;
+    save(remixKey, copy);
+    this._broadcast("themes:changed", { key: remixKey });
+    // The remix goes where the original was, on every dashboard using it
+    // (frame 50); the app's theme is the user's to switch.
+    const replaced = [];
+    for (const ws of this._workspacesUsing(key)) {
+      const res = this._saveWorkspace({
+        ...ws,
+        themeKey: remixKey,
+        theme: remixKey,
+      });
+      if (!res || !res.error) {
+        replaced.push({ id: String(ws.id), name: ws.name || String(ws.id) });
+      }
+    }
+    // Remixes allowed? A package that's gone (or private now) isn't one
+    // that can be remixed; unknown when the registry can't be asked.
+    let allowRemix = null;
+    try {
+      const info = await require("../registry/registryPackages").getPackageInfo(
+        origin.package,
+        { authFailuresUnreachable: true },
+      );
+      if (info === null) allowRemix = false;
+      else if (info && typeof info === "object")
+        allowRemix = info.allowRemix !== false;
+    } catch (_e) {
+      // unknown: Publish your remix checks again
+    }
+    return {
+      key: remixKey,
+      name: remixTitle,
+      remix: true,
+      of: {
+        key,
+        name: raw.name,
+        package: origin.package,
+        author: origin.author,
+      },
+      allowRemix,
+      replaced,
+      appUsesOriginal: this._themeUsage(key).app,
+      usedBy: this._themeUsage(remixKey),
+      editorKept,
+    };
+  },
+
+  /** The dashboards whose theme is `key`. */
+  _workspacesUsing(key) {
+    try {
+      const res =
+        require("./workspaceController").listWorkspacesForApplication(
+          this._getMainWindow(),
+          this._appId,
+        ) || {};
+      return (res.workspaces || []).filter((w) => w && w.themeKey === key);
+    } catch (_e) {
+      return [];
+    }
+  },
+
+  /** Whether a package the user published is public or private (null:
+   * the registry couldn't say). */
+  async _packageVisibility(pkg) {
+    try {
+      const info = await require("../registry/registryPackages").getPackageInfo(
+        pkg,
+      );
+      return info && typeof info === "object" ? info.visibility || null : null;
+    } catch (_e) {
+      return null;
+    }
+  },
+
+  /** Where a theme shows: the app's theme, and the dashboards using it.
+   * `all`: a _themeUsageAll() read once for many themes. */
+  _themeUsage(key, all = null) {
+    const u = all || this._themeUsageAll();
+    return {
+      app: !!u.appKey && u.appKey === key,
+      dashboards: u.dashboards
+        .filter((w) => w && w.themeKey === key)
+        .map((w) => w.name || String(w.id)),
+    };
+  },
+
+  /** The app's theme and every dashboard, read once. */
+  _themeUsageAll() {
+    let appKey = null;
+    try {
+      appKey =
+        require("./settingsController").getSettingsForApplication(null)
+          ?.settings?.theme || null;
+    } catch (_e) {
+      appKey = null;
+    }
+    let dashboards = [];
+    try {
+      const res =
+        require("./workspaceController").listWorkspacesForApplication(
+          this._getMainWindow(),
+          this._appId,
+        ) || {};
+      dashboards = res.workspaces || [];
+    } catch (_e) {
+      dashboards = [];
+    }
+    return { appKey, dashboards };
+  },
+
+  /** Remove (theme change round): a theme changed in place gets its old
+   * colors back — unless it was deleted since; a remix's dashboards get the
+   * original back, where they still have the remix (the remix stays). */
+  _planRestoreTheme(changed) {
+    if (!changed || !changed.key) return false;
+    if (changed.remix) {
+      const original = changed.of && changed.of.key;
+      if (!original) return false;
+      let ok = true;
+      for (const r of changed.replaced || []) {
+        const ws = this._loadWorkspace(r.id);
+        if (!ws || ws.themeKey !== changed.key) continue;
+        const res = this._saveWorkspace({
+          ...ws,
+          themeKey: original,
+          theme: original,
+        });
+        if (res && res.error) ok = false;
+      }
+      return ok;
+    }
+    if (!changed.previous) return false;
+    const raw = this._savedThemes()[changed.key];
+    if (!raw) return false;
+    const back = { ...raw };
+    delete back._planPrevious;
+    for (const [ch, v] of Object.entries(changed.previous)) {
+      if (v == null) delete back[ch];
+      else back[ch] = v;
+    }
+    const res = require("./themeController").saveThemeForApplication(
+      this._getMainWindow(),
+      this._appId,
+      changed.key,
+      back,
+    );
+    if (!res || res.error || res.success === false) return false;
+    this._broadcast("themes:changed", { key: changed.key });
+    return true;
+  },
+
+  /**
+   * list_themes (theme change round): each saved theme with its colors,
+   * whose it is and where it shows — so the Planner can change one.
+   */
+  _themeDetails() {
+    const saved = this._savedThemes();
+    const all = this._themeUsageAll();
+    const seen = new Set();
+    const out = [];
+    for (const [key, raw] of Object.entries(saved)) {
+      const name = raw && String(raw.name || "").trim();
+      if (!name || seen.has(name.toLowerCase())) continue;
+      seen.add(name.toLowerCase());
+      const origin = themeOrigin(raw);
+      out.push({
+        name,
+        colors: themeColors(raw),
+        by: origin ? origin.author || origin.package : null,
+        usedBy: this._themeUsage(key, all),
+      });
+    }
+    return out;
   },
 
   /** themes.json: the user's saved themes by id. */
@@ -3807,7 +4101,7 @@ const botController = {
         : {}),
       compareConfigs,
       listDashboards: () => this._dashboardsWithBots(),
-      listThemes: () => this._themeNames(),
+      listThemes: () => this._themeDetails(),
       botResults: () => this._botResultsForTeam(),
       botRuns: () => this._botRunsForTeam(),
       // Not during a cell build (Phase 2b): the editor places that widget,

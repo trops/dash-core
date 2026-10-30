@@ -312,7 +312,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 17);
+    assert.equal(planner.history.length, 18);
   });
 });
 
@@ -611,7 +611,7 @@ describe("Dash team instructions (design guide)", () => {
     assert.match(planner.instructions, /each widget is its own panel/);
     // (the latest three are release 6c's and the theme round's, which
     // already had the rules)
-    const before = planner.history[planner.history.length - 4];
+    const before = planner.history[planner.history.length - 5];
     assert.doesNotMatch(before, /one main area/);
     assert.match(before, /<plan><\/plan>/);
   });
@@ -642,7 +642,7 @@ describe("Dash team instructions (lead-workspace 6c: no Create window)", () => {
   it("no Create in the text; the text before upgrades", () => {
     const planner = ROLES.find((x) => x.role === "planner");
     assert.doesNotMatch(planner.instructions, /in Create/);
-    const before = planner.history[planner.history.length - 3];
+    const before = planner.history[planner.history.length - 4];
     assert.match(before, /choose Theme in Create/);
   });
 });
@@ -660,7 +660,7 @@ describe("Dash team instructions (lead-workspace theme round)", () => {
       planner.instructions,
       /use New Theme on the Themes page/,
     );
-    const before = planner.history[planner.history.length - 2];
+    const before = planner.history[planner.history.length - 3];
     assert.match(before, /use New Theme on the Themes page/);
     assert.notEqual(before, planner.instructions);
   });
@@ -673,8 +673,26 @@ describe("Dash team instructions (theme round: color names)", () => {
       planner.instructions,
       /"colorNames": \{"primary": a one- or two-word name/,
     );
-    const before = planner.history[planner.history.length - 1];
+    const before = planner.history[planner.history.length - 2];
     assert.match(before, /"source": "new", "colors"/);
     assert.doesNotMatch(before, /colorNames/);
+  });
+});
+
+describe("Dash team instructions (theme change round)", () => {
+  it("the Planner plans a change to a saved theme; the text before upgrades", () => {
+    const planner = ROLES.find((x) => x.role === "planner");
+    assert.match(planner.instructions, /"source": "update"/);
+    assert.match(
+      planner.instructions,
+      /saves the change as a remix that credits its author/,
+    );
+    assert.doesNotMatch(
+      planner.instructions,
+      /Changing a saved theme isn't something a plan does/,
+    );
+    const before = planner.history[planner.history.length - 1];
+    assert.match(before, /Changing a saved theme isn't something a plan does/);
+    assert.match(before, /colorNames/);
   });
 });

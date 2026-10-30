@@ -187,7 +187,7 @@ function shortTime(at) {
  * done (what it answered), or not asked yet — ready, or waiting while a plan
  * waits for the go-ahead.
  */
-function memberState(m, last, status, { plan, lines }) {
+function memberState(m, last, status, { plan, lines, rawThemes = null }) {
   const working = !!(last && last.status === "asking");
   if (working)
     return {
@@ -203,7 +203,7 @@ function memberState(m, last, status, { plan, lines }) {
     // A plan says what it is ("drafted a plan — 2 widgets"), not the
     // Planner's first words.
     if (last.plan) {
-      const what = planSubLine(last.plan);
+      const what = planSubLine(last.plan, [], { rawThemes });
       return {
         tone: "ok",
         state: "done",
@@ -287,7 +287,8 @@ export const WorkspaceSide = ({
   onSignIn = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
-  const { currentTheme } = useContext(ThemeContext) || {};
+  // rawThemes: whose a changed theme is (theme change round).
+  const { currentTheme, rawThemes } = useContext(ThemeContext) || {};
   // The link colour: the accent role (Aurora gives it its own text shade).
   const link = `${(currentTheme && currentTheme["text-primary-medium"]) || ""} dr-role-accent`;
   const statusTokens = useStatusTokens();
@@ -406,6 +407,7 @@ export const WorkspaceSide = ({
         readOnly={planReadOnly}
         onBuild={onBuild}
         buildLine={buildLine}
+        changedTheme={buildState ? buildState.changedTheme || null : null}
         leadName={contact ? contact.name : undefined}
         onWidgetMode={onWidgetMode}
         onSignIn={onSignIn}
@@ -500,7 +502,8 @@ export const WorkspaceSide = ({
           }) || { tone: "idle", state: "not needed", line: "" }
         : null;
     const { tone, state, line } =
-      inBuild || memberState(m, last, statusOf(m.id), { plan, lines });
+      inBuild ||
+      memberState(m, last, statusOf(m.id), { plan, lines, rawThemes });
     const out =
       inBuild && inBuild.out === "preview"
         ? { label: "Preview", open: "preview" }

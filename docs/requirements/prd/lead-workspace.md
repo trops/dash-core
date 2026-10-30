@@ -4,7 +4,7 @@
 **Last Updated:** 2026-10-30
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; dash-electron hosts the notifications panel and picks up each release)
-**Approved mockup:** https://claude.ai/artifact/LQogUdGVwvhr1w435jXkrS (page "CURRENT — Lead workspace", frames 1–37; release 6c frames 38–43; theme round frames 44–47)
+**Approved mockup:** https://claude.ai/artifact/LQogUdGVwvhr1w435jXkrS (page "CURRENT — Lead workspace", frames 1–37; release 6c frames 38–43; theme round frames 44–47; theme change round frames 48–52b)
 **Related PRDs:** [bot-teams.md](./bot-teams.md) (teams, leads), [app-navigation.md](./app-navigation.md) (Bots page, bot page), [bot-factory.md](./bot-factory.md) (bots, approvals)
 
 ---
@@ -179,7 +179,18 @@ Decided with the user: a new theme is a plan, like everything else the Dash team
   - [x] The saved theme appears on the Themes page without a restart.
   - [x] Open in the theme editor opens the saved theme there.
 
-## Risks
+### Theme change round — changing a theme you have (approved 2026-10-30, frames 48–52b)
+
+Decided with the user: **your own theme** changes in place and can be published — an update keeps it public or private as it is, and one never published lets you choose. **A theme downloaded from the registry is never changed** (you aren't its owner): the change is saved as a remix that credits its author, like other remixes, and can be published only when the author allows remixes.
+
+- **Doors:** the Themes page's **Change with AI** on a theme opens a Dash Lead conversation "Changing: Dusk — your theme" (or "— a theme by @alexr"); any Dash Lead conversation; a dashboard's lead, for the theme that dashboard has.
+- **The plan** (frames 49–50): Now / After in dark and light; each color "Primary — slate blue → rust" or "· unchanged"; where it's used; "Your changes from the theme editor stay". A downloaded theme: "Dusk is by @alexr — your change is saved as a remix that credits them", Yes, make the remix. The remix goes on every dashboard that used the original, in its place (the app's theme is the user's to switch — the reply says so); Remove puts the original back there.
+- **Built** (frames 51–52b): "Dusk is changed — the app and 2 dashboards show it", and when it's published, that the registry has the old version until **Publish the update**; never published: **Publish it…**; a remix: **Publish your remix…**, or — the author doesn't allow it — "it stays yours to use". **Open in the theme editor** in each.
+- **Acceptance criteria:**
+  - [x] Your theme's colors change in place; its editor changes, id and registry record stay; everything using it shows the change.
+  - [x] A downloaded theme is untouched; the remix has `remixedFrom` and no registry record.
+  - [x] Publish the update opens with the theme's current visibility.
+  - [x] Remove puts a changed theme's old colors back.
 
 - Release 3 re-hosts about 4,000 lines of Create; keep its pieces (provider connect, approvals, build recovery) intact.
 - Each hand-off adds a fast-model call; shown in the conversation's usage.
@@ -320,3 +331,13 @@ Frames 22, 27–29.
 - **Wizard:** `ThemeNewChooser onDescribe`; `makingStart({ kind: "theme", from: "themes" })`.
 - **Mockup follow-up:** the Planner names each color (`colorNames`, rows read "Primary — rust", the hex when there is none); Describe it is bordered in the theme's primary color; a dashboard change names the theme it replaces ("Kitchen Sink's theme — Dusk → Autumn", from the app's saved themes).
 - **Later:** changing a saved theme through the team; `themeFromPrompt` and DashboardStage's `themeInitial` are no longer reached.
+
+### Theme change round (2026-10-30)
+
+- **Plan piece:** `{"kind": "theme", "source": "update", "name", "colors", "colorNames", "colorNamesNow"}` — validated in both `teamPlan` copies against every saved theme (`savedThemes`, so a theme this conversation made can be changed).
+- **Build:** a `changetheme` step (`deps.changeTheme`, retryable). A plan that only changes a theme is that one step even when it names a dashboard — the change, or the remix, reaches everywhere the theme is used; with other pieces on a dashboard it runs dashboard → changetheme → theme. `builtSummary.changedTheme` lets Remove put the old colors back, or the original back on the dashboards a remix replaced (`_planRestoreTheme`); a rebuild in the same conversation keeps the first colors (`_planPrevious`).
+- **Controller** (`_planChangeTheme`): whose it is from `src/utils/themeStanding.js` (shared with the app; `themeOrigin`, `themePublished`). Yours: the four colors replaced, everything else kept; `published` with the registry's visibility (`getPackageInfo`). Downloaded: a copy named "Dusk (remix)" with `remixedFrom`, no `registryRef`/`_registryMeta`, `allowRemix` from the registry; the same conversation changes the same remix (`madeIn`). Both report `usedBy` (the app's theme, dashboards).
+- **Planner:** `list_themes` gives each theme's colors as hex, whose it is and where it's used; `NEW_THEMES` explains changes; dashboard leads bring in the team "for a new theme for it or a change to the one it has". Earlier texts are in history.
+- **Workspace:** `themeChange` / `isThemeChangeOnly` / `changeStanding` / `themeChangeRows` (`workspacePlan`), `ThemeLooks was` (Now / After), `useThemeUse`, build kind `"themechange"` with choices `"themechange"`, `onPublishTheme` → DashboardStage's `PublishThemeModal initialVisibility`.
+- **Door:** `makingStart({ kind: "themechange", theme, by })`; ThemesPage's Change with AI.
+- **Not done:** a theme you changed and then published as an update isn't re-checked for an earlier remix of yours; publishing still goes through the Publish window's own steps.

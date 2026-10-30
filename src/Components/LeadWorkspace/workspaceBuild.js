@@ -9,7 +9,11 @@
 import { formatTokens } from "../../utils/runCostLabel";
 import { providerLabel } from "../Create/planChecklist";
 import { planTarget } from "../../utils/teamPlan";
-import { isSettingsChange, isThemeOnly } from "./workspacePlan";
+import {
+  isSettingsChange,
+  isThemeChangeOnly,
+  isThemeOnly,
+} from "./workspacePlan";
 
 const pieces = (plan) =>
   ((plan && Array.isArray(plan.pieces) && plan.pieces) || []).filter(Boolean);
@@ -25,6 +29,8 @@ export function buildKind(plan) {
   if (plan && plan.cell) return "cell";
   // A new theme and nothing else (theme round): saved, no dashboard.
   if (isThemeOnly(plan)) return "theme";
+  // A change to a saved theme and nothing else (theme change round).
+  if (isThemeChangeOnly(plan)) return "themechange";
   // A change to one widget (release 6c): only its settings, or what it does.
   if (plan && plan.widgetChange)
     return isSettingsChange(plan) ? "settings" : "edit";
@@ -140,7 +146,7 @@ function leftOffNames(state, leftOff) {
   for (const s of stepsOf(state)) {
     if (!isLeftOff(s, leftOff)) continue;
     const name = String(s.label || "").replace(
-      /^(Build|Check|Install|Place|Save the|Save|Make the)\s+/,
+      /^(Build|Check|Install|Place|Save the|Save|Make the|Change the)\s+/,
       "",
     );
     if (name && !names.includes(name)) names.push(name.replace(/ bot$/, ""));
@@ -446,7 +452,9 @@ export function workingLine(state) {
  *   card: { kind: "dashboard" | "widget" | "bot", title, sub } | null
  *   reply: the lead's words
  *   choices: "open" | "failed" | "preview" | "continue" | "again" |
- *     "theme" (Open in the theme editor, theme round) | null
+ *     "theme" (Open in the theme editor, theme round) |
+ *     "themechange" (Publish the update / your remix, theme change round) |
+ *     null
  *   continueLabel: Carry on building, or Start it again (nothing built yet)
  *   failed: the step asked about (choices "failed")
  * A cell build (release 6c): `cell` { dashboardName, placed, canPlace } —
@@ -480,6 +488,78 @@ export function buildChat(state, opts = {}) {
     };
   }
   return chat;
+}
+
+/** "the app and 2 dashboards show it" — where a changed theme shows. */
+function shownLine(usedBy) {
+  const u = usedBy || {};
+  const n = (u.dashboards || []).length;
+  const dashboards = n === 1 ? u.dashboards[0] : n ? `${n} dashboards` : null;
+  if (u.app && dashboards) return `the app and ${dashboards} show it`;
+  if (u.app) return "the app shows it";
+  if (dashboards) return `${dashboards} ${n === 1 ? "shows" : "show"} it`;
+  return "nothing uses it yet";
+}
+
+/**
+ * A change to a saved theme, built (theme change round, frames 51-52): the
+ * user's own is changed — Publish the update when it's published; a
+ * downloaded one became a remix — Publish your remix, unless its author
+ * doesn't allow that. choices "themechange".
+ */
+function themeChangeChat(state) {
+  const ch = state && state.changedTheme;
+  if (!ch) {
+    return {
+      step: { label: "The theme wasn't changed", status: "stopped" },
+      card: null,
+      reply:
+        "The theme wasn't changed, so nothing is different. Say if you want to try again.",
+      choices: "again",
+    };
+  }
+  if (ch.remix) {
+    const of = ch.of || {};
+    const by = of.author || "its author";
+    const on = (ch.replaced || []).map((r) => r.name);
+    const onLine = on.length ? ` and on ${andList(on)}` : "";
+    const appNote = ch.appUsesOriginal
+      ? ` The app's theme is still ${of.name || "the original"} — use the remix for the app from the Themes page.`
+      : "";
+    return {
+      step: {
+        label: `Saved ${ch.name}${on.length ? ` · put it on ${andList(on)}` : ""}`,
+        status: "done",
+      },
+      card: {
+        kind: "theme",
+        title: ch.name,
+        sub: `Theme · a remix of ${of.name || "a theme"}${of.author ? ` by ${of.author}` : ""}`,
+      },
+      reply:
+        ch.allowRemix === false
+          ? `${ch.name} is in your themes${onLine}. ${by} doesn't allow remixes to be published, so it stays yours to use — it can't go on the registry.${appNote}`
+          : `${ch.name} is in your themes${onLine}. It credits ${by}'s ${of.name || "theme"} — publish it if you'd like to share it.${appNote}`,
+      choices: "themechange",
+    };
+  }
+  const pub = ch.published;
+  return {
+    step: { label: `Changed ${ch.name}`, status: "done" },
+    card: {
+      kind: "theme",
+      title: ch.name,
+      sub: pub ? "Theme · changed · not yet published" : "Theme · changed",
+    },
+    reply: `${ch.name} is changed — ${shownLine(ch.usedBy)}.${
+      pub
+        ? ` It's published${pub.visibility ? ` (${pub.visibility})` : ""}${
+            pub.version ? ` as v${pub.version}` : ""
+          }; the registry still has that version until you publish the update.`
+        : ""
+    }`,
+    choices: "themechange",
+  };
 }
 
 function chatFor(
@@ -628,6 +708,7 @@ function chatFor(
       choices: "theme",
     };
   }
+  if (kind === "themechange") return themeChangeChat(state);
   if (kind === "settings") {
     const name = (change && change.displayName) || "The widget";
     const labels = (change && change.settingLabels) || {};

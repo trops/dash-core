@@ -64,6 +64,50 @@ function additions(plan) {
 }
 
 /**
+ * A change to a saved theme on a dashboard plan (theme change round): the
+ * user's own changes everywhere it's used; a downloaded one becomes a remix
+ * that goes on this dashboard instead. `now.standing(name)`: whose it is.
+ */
+function updateRows(p, now) {
+  const st = now.standing ? now.standing(p.name) : null;
+  if (st && st.origin) {
+    const remix = `${p.name} (remix)`;
+    return [
+      {
+        mark: "+",
+        main: `${remix} — a remix of ${p.name}${
+          st.origin.author ? ` by ${st.origin.author}` : ""
+        }`,
+        sub: `${p.name} stays as it is`,
+      },
+      {
+        mark: "+",
+        main: `${now.name ? `${now.name}'s` : "This dashboard's"} theme — ${
+          now.theme ? `${now.theme} → ` : ""
+        }${remix}`,
+        sub: "",
+      },
+    ];
+  }
+  return [
+    {
+      mark: "+",
+      main: `${p.name} — new colors`,
+      sub: "Everywhere it's used",
+    },
+    ...(now.theme && now.theme !== p.name
+      ? [
+          {
+            mark: "+",
+            main: `${now.name ? `${now.name}'s` : "This dashboard's"} theme — ${now.theme} → ${p.name}`,
+            sub: `${now.theme} stays in your themes`,
+          },
+        ]
+      : []),
+  ];
+}
+
+/**
  * What a change does that isn't a cell: new bots, a theme. `now`: the
  * dashboard's name and theme — { name, theme } (frame 46); theme: its saved
  * theme's name, "" for the app's theme, null when unknown.
@@ -107,7 +151,9 @@ function others(plan, now = {}) {
                 };
               })(),
             ]
-          : [{ mark: "+", main: `${p.name} theme — applied`, sub: "" }],
+          : p.source === "update"
+            ? updateRows(p, now)
+            : [{ mark: "+", main: `${p.name} theme — applied`, sub: "" }],
       ),
   ];
 }
@@ -127,7 +173,11 @@ function others(plan, now = {}) {
  * A plan for an empty cell (`plan.cell`, release 6c, frame 39): its one
  * widget goes in that cell of that grid, on its page; `cellOnly` is set.
  */
-export function planChanges(workspace, plan, { themeName = null } = {}) {
+export function planChanges(
+  workspace,
+  plan,
+  { themeName = null, standing = null } = {},
+) {
   const target = planTarget(plan);
   if (!target || !workspace) return null;
   const at = plan.cell || null;
@@ -255,6 +305,7 @@ export function planChanges(workspace, plan, { themeName = null } = {}) {
         sub: a.sub,
       })),
       ...others(plan, {
+        standing,
         // Its own name — the plan's may only be an id.
         name: workspace.name || target.name,
         theme: !workspace.themeKey

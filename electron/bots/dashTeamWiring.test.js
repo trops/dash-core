@@ -307,7 +307,7 @@ describe("botController — plans that change a dashboard you have (5e-2b)", () 
     assert.match(ctrl, /This plan now changes a different dashboard/);
   });
   it("the Planner can list the user's themes", () => {
-    assert.match(ctrl, /listThemes: \(\) => this\._themeNames\(\)/);
+    assert.match(ctrl, /listThemes: \(\) => this\._themeDetails\(\)/);
   });
 });
 

@@ -234,7 +234,7 @@ const TOOL_DEFS = {
   list_themes: {
     name: "list_themes",
     description:
-      "List the names of the user's saved themes — the only themes a plan can apply to a dashboard.",
+      "List the user's saved themes: each one's name, its four colors, whose it is (theirs, or downloaded from someone) and where it's used. A plan applies one of these, changes one, or makes a new one.",
     inputSchema: { type: "object", properties: {} },
   },
   ask_role: {
@@ -288,7 +288,29 @@ const ROLE_TOOL_NAMES = {
   checker: ["check_widget", "read_widget", "list_providers"],
 };
 
+/** A saved theme for list_themes: its name, whose it is, colors, where used. */
+function themeLine(t) {
+  if (typeof t === "string") return `- ${t}`;
+  const colors = Object.entries(t.colors || {})
+    .map(([k, v]) => `${k} ${v}`)
+    .join(", ");
+  const used = t.usedBy || {};
+  const where = [
+    used.app ? "the app's theme" : null,
+    ...(used.dashboards || []),
+  ].filter(Boolean);
+  return [
+    `- ${t.name}`,
+    t.by ? `downloaded — by ${t.by}` : "theirs",
+    colors ? `colors: ${colors}` : null,
+    where.length ? `used by: ${where.join(", ")}` : "not used",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 /** Which virtual server a role tool is served from. */
+
 function serverForTool(toolName) {
   return BUILD_TOOLS.has(toolName) ? ROLE_BUILD_SERVER : ROLE_SERVER;
 }
@@ -695,7 +717,8 @@ function describeCheck(res, compareConfigs) {
  *     the tools say building isn't available
  *   compareConfigs(old, new): configDiff.compareConfigs
  *   listDashboards(): [{ id, name, bots: [name], pages?: [name], theme? }]
- *   listThemes(): [name] — the user's saved themes
+ *   listThemes(): [name | { name, colors, by, usedBy }] — the user's
+ *     saved themes; by: who made a downloaded one (null: the user's own)
  *   placeWidget({ callerId, dashboard, widget, component, page, row, col,
  *     settings }): { component, dashboardName, page, cell } | { error }
  * @param {{ botId: string, role: string }} ctx  the calling team bot
@@ -933,7 +956,7 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
       case "list_themes": {
         const themes = (deps.listThemes && deps.listThemes()) || [];
         if (!themes.length) return ok("The user has no saved themes.");
-        return ok(themes.map((t) => `- ${t}`).join("\n"));
+        return ok(themes.map(themeLine).join("\n"));
       }
       case "place_widget": {
         if (!deps.placeWidget)

@@ -38,7 +38,21 @@ export const RemoveSummary = ({ built, muted = "", strong = "" }) => {
       }`,
     );
   }
+  // A changed theme (theme change round).
+  const ct = built.changedTheme;
+  if (ct && ct.remix) {
+    for (const r of ct.replaced || []) {
+      goes.push(
+        `${ct.name} on ${r.name} — ${(ct.of && ct.of.name) || "the original"} goes back`,
+      );
+    }
+  } else if (ct) {
+    goes.push(
+      `${ct.name}'s new colors — its old ones come back everywhere it's used`,
+    );
+  }
   const stays = [
+    ...(ct && ct.remix ? [`${ct.name} — stays in your themes`] : []),
     ...(targeted
       ? [
           `The "${built.dashboard.name}" dashboard, its team lead and everything else on it`,
