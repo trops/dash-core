@@ -249,3 +249,44 @@ describe("its build", () => {
     expect(c.reply).toMatch(/before it goes in the cell you picked\.$/);
   });
 });
+
+describe("a build nothing runs any more (saved before a restart, or from Create)", () => {
+  const problems = {
+    status: "finished-with-problems",
+    dashboard: { id: "7", name: "Home" },
+    steps: [
+      {
+        id: "install:0",
+        kind: "install",
+        label: "Install Clock",
+        status: "failed",
+        error: "it didn't install",
+        canRetry: true,
+      },
+    ],
+  };
+  test("failed: Carry on building, not Try again", () => {
+    const live = buildChat(problems, {});
+    expect(live.choices).toBe("failed");
+    const restored = buildChat(problems, { restored: true });
+    expect(restored.choices).toBe("continue");
+    expect(restored.continueLabel).toBe("Carry on building");
+    expect(restored.reply).not.toMatch(/Try it again, or leave it off/);
+    expect(restored.reply).toMatch(/saved before Dash last closed/);
+  });
+  test("waiting for a look at its preview: Carry on building too", () => {
+    const ready = {
+      status: "waiting-for-you",
+      steps: [{ kind: "preview", label: "Preview Clock", status: "needs-you" }],
+    };
+    expect(buildChat(ready, { restored: true }).choices).toBe("continue");
+  });
+  test("done: nothing to carry on", () => {
+    const done = {
+      status: "done",
+      dashboard: { id: "7", name: "Home" },
+      steps: [],
+    };
+    expect(buildChat(done, { restored: true }).choices).toBe("open");
+  });
+});

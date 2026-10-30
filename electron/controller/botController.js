@@ -1030,6 +1030,36 @@ const botController = {
    * one gets its id. Its facts go to the plan's memory (no AI).
    */
   saveCreateRecent(req = {}) {
+    // A plan from the Create window carried on as a conversation (release
+    // 6c): its build moves with it; not while it's still building.
+    if (req && req.carryFrom) {
+      const old = this._recent.get(req.carryFrom);
+      if (!old || old.kind !== "plan") {
+        return { error: "That plan isn't in Recent any more." };
+      }
+      const buildId = old.build && old.build.buildId;
+      const live = buildId && this._builds && this._builds.get(buildId);
+      if (live && isBuildBusy(live.state)) {
+        return { error: "It's still building — stop it first." };
+      }
+      const { carryFrom, ...rest } = req;
+      const carried = this._recent.carryOver(carryFrom, rest);
+      if (!carried) return { error: "That plan isn't in Recent any more." };
+      // A build restored here (none can be running: the Create window is
+      // gone) now belongs to the new conversation.
+      if (live) live.recentId = carried.id;
+      // What the team noted while planning and building it moves too.
+      for (const { key, value } of this._memory.list("plan", carryFrom)) {
+        try {
+          this._memory.set("plan", carried.id, key, value);
+        } catch (_e) {
+          // a value that can't be kept is left behind
+        }
+      }
+      this._memory.forget("plan", carryFrom);
+      this._writePlanMemory(carried.id, conversationFacts(carried));
+      return { id: carried.id, title: carried.title };
+    }
     const entry = this._recent.save(req || {});
     this._writePlanMemory(entry.id, conversationFacts(entry));
     return { id: entry.id, title: entry.title };
@@ -2910,7 +2940,11 @@ const botController = {
     const entry =
       (this._builds && this._builds.get(buildId)) ||
       this._restoredBuild(buildId);
-    return entry ? { buildId, state: entry.state } : null;
+    // `restored`: nothing runs it now (a restart, or a plan carried on from
+    // the Create window) — Carry on building starts it again.
+    return entry
+      ? { buildId, state: entry.state, restored: !entry.build }
+      : null;
   },
 
   /** A finished build and one of its steps, or { error }. */

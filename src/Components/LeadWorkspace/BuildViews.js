@@ -145,6 +145,8 @@ export const BuildInChat = ({
   cell = null,
   // A change to one widget (release 6c): see buildChat.
   change = null,
+  // Nothing runs it now (usePlanBuild's restored): Carry on building.
+  restored = false,
 }) => {
   const { muted } = useConfigTokens();
   const chat = buildChat(state, {
@@ -152,6 +154,7 @@ export const BuildInChat = ({
     leftOff: build.leftOff || [],
     cell,
     change,
+    restored,
   });
   const card = chat.card;
   const openCard = () => {

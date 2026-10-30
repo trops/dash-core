@@ -266,6 +266,42 @@ class CreateRecent {
     return entry;
   }
 
+  /**
+   * A plan started in the Create window, carried on as a lead workspace
+   * conversation (lead-workspace release 6c): a new question entry is saved
+   * from `req`, the plan's build (if any) moves onto it — so it can carry on
+   * where it stopped — and the old entry goes, only once the new one is
+   * saved. null when the old one isn't a plan in Recent.
+   */
+  carryOver(fromId, { prompt, conversation } = {}) {
+    const blob = this._read();
+    const old = fromId ? blob.entries[fromId] : null;
+    if (!old || old.kind !== "plan") return null;
+    const now = this._now();
+    const next =
+      conversation && typeof conversation === "object"
+        ? { ...conversation }
+        : {};
+    if (Array.isArray(next.messages)) {
+      next.messages = next.messages.slice(-MAX_MESSAGES);
+    }
+    const entry = {
+      id: this._newId(),
+      kind: "question",
+      prompt: typeof prompt === "string" ? prompt : old.prompt || "",
+      createdAt: now,
+      conversation: next,
+      build: old.build || null,
+      updatedAt: now,
+    };
+    entry.title = titleFor(entry);
+    // In one write: never both, never neither.
+    blob.entries[entry.id] = entry;
+    delete blob.entries[fromId];
+    this._write(blob);
+    return entry;
+  }
+
   /** A build's latest state on its conversation. */
   saveBuild(id, { buildId, plan, state }) {
     const blob = this._read();

@@ -222,7 +222,8 @@ test("the Dash Lead's conversations include questions once asked of a Dash team 
     { id: "q2", kind: "question", with: "role:planner", updatedAt: "2" },
     { id: "q3", kind: "question", with: "role:scout", updatedAt: "1" },
     { id: "q4", kind: "question", with: "lead:lead_7", updatedAt: "4" },
-    { id: "p1", kind: "plan", with: "role:planner", updatedAt: "5" },
+    // A finished Create plan (an unfinished one is listed, release 6c).
+    { id: "p1", kind: "plan", status: "built", updatedAt: "5" },
   ];
   expect(contactThreads(entries, "role:dashlead").map((e) => e.id)).toEqual([
     "q1",
@@ -233,4 +234,47 @@ test("the Dash Lead's conversations include questions once asked of a Dash team 
   expect(contactThreads(entries, "lead:lead_7").map((e) => e.id)).toEqual([
     "q4",
   ]);
+});
+
+// Lead-workspace release 6c: the Create window is retired — its unfinished
+// plans are the Dash Lead's to carry on.
+test("contactThreads: the Dash Lead's include unfinished Create plans, not finished ones", () => {
+  const entries = [
+    {
+      id: "p_draft",
+      kind: "plan",
+      status: "draft",
+      updatedAt: "2026-10-28T10:00:00Z",
+    },
+    {
+      id: "p_stopped",
+      kind: "plan",
+      status: "stopped",
+      updatedAt: "2026-10-28T09:00:00Z",
+    },
+    {
+      id: "p_built",
+      kind: "plan",
+      status: "built",
+      updatedAt: "2026-10-28T08:00:00Z",
+    },
+    {
+      id: "p_removed",
+      kind: "plan",
+      status: "removed",
+      updatedAt: "2026-10-28T07:00:00Z",
+    },
+    {
+      id: "q1",
+      kind: "question",
+      with: "role:dashlead",
+      updatedAt: "2026-10-28T06:00:00Z",
+    },
+  ];
+  expect(contactThreads(entries, "role:dashlead").map((e) => e.id)).toEqual([
+    "p_draft",
+    "p_stopped",
+    "q1",
+  ]);
+  expect(contactThreads(entries, "lead:lead_7")).toEqual([]);
 });

@@ -104,10 +104,25 @@ export function findContact(groups, key) {
 }
 
 /**
+ * A plan from the Create window that wasn't finished: a draft, or a build
+ * that stopped, was interrupted, had problems, waits for a connection or
+ * for a look at its preview. Built (or removed) ones are done.
+ */
+export function isUnfinishedCreatePlan(e) {
+  return (
+    !!e &&
+    e.kind === "plan" &&
+    !["built", "removed", "building"].includes(e.status)
+  );
+}
+
+/**
  * A contact's conversations from Recent (questions), newest first. The
  * Dash Lead's include the questions once asked of a Dash team role (the
  * Dash team page's chat, Create's Ask — "role:planner", …): the team is
- * talked to through the Dash Lead now (release 6b), so nothing is lost.
+ * talked to through the Dash Lead now (release 6b), so nothing is lost —
+ * and the plans started in the Create window and never finished (release
+ * 6c: it's retired), to carry on with the Dash Lead.
  * @param {object[]} entries  bots.listCreateRecent()
  */
 export function contactThreads(entries, key) {
@@ -115,7 +130,13 @@ export function contactThreads(entries, key) {
     w === key ||
     (key === "role:dashlead" && typeof w === "string" && w.startsWith("role:"));
   return (entries || [])
-    .filter((e) => e && e.kind === "question" && e.id && mine(e.with))
+    .filter(
+      (e) =>
+        e &&
+        e.id &&
+        ((e.kind === "question" && mine(e.with)) ||
+          (key === "role:dashlead" && isUnfinishedCreatePlan(e))),
+    )
     .sort((a, b) =>
       String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")),
     );

@@ -547,3 +547,53 @@ describe("questions in Recent (phase 5e)", () => {
     assert.equal(r.save({ kind: "gadget", prompt: "x" }).kind, "plan");
   });
 });
+
+describe("carryOver — a Create plan carried on as a conversation (lead-workspace 6c)", () => {
+  it("a new question entry with the conversation; the build moves; the plan goes", () => {
+    const r = recent();
+    const old = r.save({ kind: "plan", prompt: "Plan me a Home dashboard" });
+    r.saveBuild(old.id, {
+      buildId: "build_9",
+      plan: { pieces: [] },
+      state: { status: "stopped", steps: [] },
+    });
+    const carried = r.carryOver(old.id, {
+      prompt: "Plan me a Home dashboard",
+      conversation: {
+        recipient: { role: "dashlead" },
+        messages: [{ who: "you", text: "Hi" }],
+      },
+    });
+    assert.equal(carried.kind, "question");
+    assert.notEqual(carried.id, old.id);
+    assert.equal(carried.build.buildId, "build_9");
+    assert.equal(carried.conversation.messages.length, 1);
+    assert.equal(r.get(old.id), null);
+    assert.equal(r.findByBuild("build_9").id, carried.id);
+  });
+  it("only a plan in Recent is carried", () => {
+    const r = recent();
+    const q = r.save({ kind: "question", prompt: "Hi" });
+    assert.equal(r.carryOver(q.id, {}), null);
+    assert.equal(r.carryOver("nope", {}), null);
+    assert.ok(r.get(q.id));
+  });
+});
+
+describe("botController — a carried Create plan (lead-workspace 6c)", () => {
+  const ctrl = fs.readFileSync(
+    path.join(__dirname, "..", "controller", "botController.js"),
+    "utf8",
+  );
+  it("saveCreateRecent carries it over, not while it's building, and moves a live build", () => {
+    assert.match(ctrl, /if \(req && req\.carryFrom\) \{/);
+    assert.match(ctrl, /It's still building — stop it first\./);
+    assert.match(ctrl, /this\._recent\.carryOver\(carryFrom, rest\)/);
+    assert.match(ctrl, /if \(live\) live\.recentId = carried\.id;/);
+    assert.match(
+      ctrl,
+      /for \(const \{ key, value \} of this\._memory\.list\("plan", carryFrom\)\) \{\s*try \{\s*this\._memory\.set\("plan", carried\.id, key, value\);/,
+    );
+    assert.match(ctrl, /restored: !entry\.build/);
+  });
+});

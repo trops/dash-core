@@ -20,6 +20,9 @@ export function usePlanBuild(buildId, initialState = null) {
   const [stopping, setStopping] = useState(false);
   // A fix / retry / resume / remove that couldn't start.
   const [actionError, setActionError] = useState(null);
+  // Nothing runs it now — it was saved before a restart, or carried on from
+  // the Create window (lead-workspace 6c): Carry on building starts it.
+  const [restored, setRestored] = useState(false);
   // Another build: start over (set while rendering, so nothing of the last
   // one shows).
   const [forId, setForId] = useState(buildId);
@@ -28,6 +31,7 @@ export function usePlanBuild(buildId, initialState = null) {
     setState(initialState);
     setStopping(false);
     setActionError(null);
+    setRestored(false);
   }
 
   useEffect(() => {
@@ -36,14 +40,20 @@ export function usePlanBuild(buildId, initialState = null) {
     let alive = true;
     const id = bots.onPlanBuild
       ? bots.onPlanBuild((payload) => {
-          if (alive && payload && payload.buildId === buildId)
+          if (alive && payload && payload.buildId === buildId) {
             setState(payload.state);
+            setRestored(false);
+          }
         })
       : null;
     // Catch up on anything sent before we subscribed.
     if (bots.getPlanBuild) {
       Promise.resolve(bots.getPlanBuild(buildId))
-        .then((res) => alive && res && res.state && setState(res.state))
+        .then((res) => {
+          if (!alive || !res || !res.state) return;
+          setState(res.state);
+          setRestored(!!res.restored);
+        })
         .catch(() => {});
     }
     return () => {
@@ -76,6 +86,7 @@ export function usePlanBuild(buildId, initialState = null) {
 
   return {
     state,
+    restored,
     stopping,
     actionError,
     setActionError,

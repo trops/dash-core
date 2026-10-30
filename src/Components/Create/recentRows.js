@@ -82,16 +82,20 @@ export function recentRows(plans = [], drafts = [], limit = RECENT_ROWS) {
 
 /**
  * The Dash team's conversations (consolidation Phase 4a): the questions in
- * Recent, newest first — { id, title, sub, to, updatedAt }; `to` names the
+ * Recent, and the plans from the retired Create window (`fromCreate`), newest
+ * first — { id, title, sub, to, updatedAt }; `to` names the
  * lead a question went to (null = the Dash team).
  */
 export function questionThreads(plans = [], now = Date.now()) {
   return (plans || [])
-    .filter((p) => p && p.kind === "question" && p.id)
+    .filter((p) => p && p.id && (p.kind === "question" || p.kind === "plan"))
     .map((p) => ({
       id: p.id,
       title: p.title || "Question",
       to: p.to || null,
+      // A plan from the retired Create window (lead-workspace release 6c):
+      // its status ("draft", "stopped", …), to carry on as a conversation.
+      fromCreate: p.kind === "plan" ? p.status || "draft" : null,
       // A plan in it (lead workspace, release 3a), and its build (3b).
       planned: !!p.planned,
       built: p.built || null,

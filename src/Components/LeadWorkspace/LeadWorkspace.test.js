@@ -3055,3 +3055,179 @@ describe("Change with AI (release 6c, frame 40)", () => {
     );
   });
 });
+
+describe("unfinished Create plans in the Dash Lead's Recents (release 6c)", () => {
+  const OLD_PLAN = {
+    summary: "A Home dashboard",
+    pieces: [
+      { kind: "widget", name: "Weather", source: "new" },
+      { kind: "layout", name: "Home", source: "new" },
+    ],
+  };
+  beforeEach(() => {
+    window.mainApi.bots.listCreateRecent = jest.fn().mockResolvedValue([
+      {
+        id: "plan_old",
+        kind: "plan",
+        title: "Home",
+        status: "stopped",
+        updatedAt: "2026-10-28T10:00:00Z",
+      },
+      {
+        id: "q2",
+        kind: "question",
+        title: "Do I have a clock?",
+        with: "role:dashlead",
+        updatedAt: "2026-10-28T08:00:00Z",
+      },
+    ]);
+  });
+
+  test("listed with what became of it; opening one carries it on, with its build", async () => {
+    window.mainApi.bots.getCreateRecent = jest.fn().mockResolvedValue({
+      id: "plan_old",
+      kind: "plan",
+      prompt: "Plan me a Home dashboard",
+      conversation: {
+        plan: OLD_PLAN,
+        checks: { "install:x": "done" },
+        messages: [
+          { who: "you", text: "Plan me a Home dashboard" },
+          { who: "planner", text: "Here's a Home dashboard." },
+        ],
+      },
+      build: {
+        buildId: "build_old",
+        plan: OLD_PLAN,
+        state: { status: "stopped", steps: [] },
+      },
+    });
+    window.mainApi.bots.saveCreateRecent = jest
+      .fn()
+      .mockResolvedValue({ id: "q_carried" });
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    const row = await screen.findByRole("button", { name: /Home/ });
+    expect(row).toHaveTextContent("From Create · Stopped");
+    fireEvent.click(row);
+    await waitFor(() =>
+      expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalled(),
+    );
+    const saved = window.mainApi.bots.saveCreateRecent.mock.calls[0][0];
+    expect(saved.carryFrom).toBe("plan_old");
+    const msgs = saved.conversation.messages;
+    expect(msgs[0]).toEqual({ who: "you", text: "Plan me a Home dashboard" });
+    expect(msgs[1]).toMatchObject({ who: "step", plan: OLD_PLAN });
+    expect(msgs[msgs.length - 1].text).toMatch(/and how its build went/);
+    expect(saved.conversation.workspacePlan).toMatchObject({
+      stepId: msgs[1].id,
+      plan: OLD_PLAN,
+      checks: { "install:x": "done" },
+      builds: [
+        {
+          stepId: msgs[1].id,
+          buildId: "build_old",
+          kind: "dashboard",
+          at: msgs.length - 1,
+          last: { status: "stopped", steps: [] },
+        },
+      ],
+    });
+    await waitFor(() => expect(mockAskProps.recentId).toBe("q_carried"));
+  });
+
+  test("a draft asks to build it", async () => {
+    window.mainApi.bots.getCreateRecent = jest.fn().mockResolvedValue({
+      id: "plan_old",
+      kind: "plan",
+      conversation: { plan: OLD_PLAN, messages: [] },
+      build: null,
+    });
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Home/ }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalled(),
+    );
+    const saved = window.mainApi.bots.saveCreateRecent.mock.calls[0][0];
+    const msgs = saved.conversation.messages;
+    expect(msgs[msgs.length - 1].text).toMatch(/Want me to build it\?$/);
+    expect(saved.conversation.workspacePlan.builds).toEqual([]);
+  });
+
+  test("one closed before it was planned carries what was asked, and offers to plan it", async () => {
+    window.mainApi.bots.getCreateRecent = jest.fn().mockResolvedValue({
+      id: "plan_old",
+      kind: "plan",
+      prompt: "A dashboard for my plants",
+      conversation: { widget: true },
+      build: null,
+    });
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Home/ }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalled(),
+    );
+    const saved = window.mainApi.bots.saveCreateRecent.mock.calls[0][0];
+    expect(saved.conversation.messages[0]).toEqual({
+      who: "you",
+      text: "A dashboard for my plants",
+    });
+    expect(saved.conversation.messages[1].text).toMatch(/Want me to plan it\?/);
+    expect(saved.conversation.workspacePlan).toBeUndefined();
+  });
+
+  test("one that isn't saved any more says so, even from an open conversation", async () => {
+    window.mainApi.bots.getCreateRecent = jest.fn().mockResolvedValue(null);
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    // Another conversation open first.
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Do I have a clock/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Home/ }));
+    expect(await screen.findByTestId("workspace-seed-error")).toHaveTextContent(
+      "That plan from Create isn't saved any more.",
+    );
+    expect(window.mainApi.bots.saveCreateRecent).not.toHaveBeenCalled();
+  });
+
+  test("a second click while it's carried doesn't carry it twice", async () => {
+    let finish;
+    window.mainApi.bots.getCreateRecent = jest.fn(
+      () =>
+        new Promise((r) => {
+          finish = () =>
+            r({
+              id: "plan_old",
+              kind: "plan",
+              conversation: { plan: OLD_PLAN, messages: [] },
+              build: null,
+            });
+        }),
+    );
+    window.mainApi.bots.saveCreateRecent = jest
+      .fn()
+      .mockResolvedValue({ id: "q_carried" });
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    const row = await screen.findByRole("button", { name: /Home/ });
+    fireEvent.click(row);
+    fireEvent.click(row);
+    await act(async () => finish());
+    await waitFor(() => expect(mockAskProps.recentId).toBe("q_carried"));
+    // (the opened conversation reads itself too)
+    expect(
+      window.mainApi.bots.getCreateRecent.mock.calls.filter(
+        ([x]) => x === "plan_old",
+      ),
+    ).toHaveLength(1);
+    expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalledTimes(1);
+  });
+});
