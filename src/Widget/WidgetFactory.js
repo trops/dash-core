@@ -111,8 +111,8 @@ export const ${widgetName} = (props) => {
             >
               Try again
             </button>
-            {/* The one Change door, for a widget that crashed: Create ›
-                Change with the error and its cell (consolidation Phase 3P). */}
+            {/* The one Change door, for a widget that crashed: a
+                conversation about it, with the error and its cell. */}
             {canFix && (
               <button
                 type="button"
@@ -152,7 +152,7 @@ const WidgetRenderer = ({
   children = null,
 }) => {
   const { dashApi } = useContext(DashboardContext);
-  // Main grid or pinned sidebar — Fix tells Create where the widget is.
+  // Main grid or pinned sidebar — Fix says where the widget is.
   const workspaceScope = useContext(WorkspaceScopeContext);
   // While editing, a crashed widget can be removed from its box — on its
   // own page and scope (uuids repeat across pages and the sidebar).

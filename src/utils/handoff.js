@@ -6,8 +6,9 @@
  * layouts; when asked to, its answer ends with
  *   <handoff>{"type": "bot" | "widget" | "layout", "request": string,
  *             "note": string}</handoff>
- * Dash reads it (a "Plan this with the Dash team" button that opens Create
- * with the request, that dashboard and the note) and never shows it.
+ * Dash reads it (a "Plan this with the Dash team" button that opens a Dash
+ * Lead conversation with the request, that dashboard and the note) and never
+ * shows it.
  * Keep src/utils/handoff.js the same (handoff.test.js checks).
  */
 
@@ -50,8 +51,8 @@ function withoutHandoff(answer) {
 }
 
 /**
- * Which Create a hand-off opens: a bot → Create › Bot; a widget or layout →
- * a plan that changes that dashboard.
+ * What a hand-off makes: a bot → "bot"; a widget or layout → a change to
+ * that dashboard ("dashboard").
  */
 function createType(type) {
   if (type === "bot") return "bot";

@@ -52,7 +52,7 @@ const saved = (st) => ({
  * removed or swapped, a provider picked), Before it builds as they work
  * through it, and its builds (release 3b: { buildId, stepId, at, kind,
  * leftOff } — built in the conversation, after message `at`; 3a sent it to
- * Create instead, `sent`). Saved with the
+ * the Create window instead, `sent`, now retired). Saved with the
  * conversation (`workspacePlan`), so it reopens as it was left.
  *
  * @param {object[]} messages  the conversation, with its hand-off steps

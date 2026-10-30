@@ -1,11 +1,11 @@
 /**
  * Create screen wiring (create-entry PRD CRE-001 / CRE-008, phase 2a).
  *
- * The left rail's + and the palette's "Create…" open the Create screen;
- * anything else can open it with `dash:open-create` ({ type, workspaceId }).
- * Its start-without-AI row is handled here: a blank dashboard opens in Edit,
- * Import / Browse open the New Dashboard modal on that step, New theme opens
- * the theme chooser, and widget installs open the Widgets page.
+ * The left rail's + and the palette's "Create…" open a Dash Lead
+ * conversation; the Create window is gone (lead-workspace release 6c). Its
+ * no-AI starts left are handled here (the conversation's Start from sends
+ * them): a blank dashboard opens in Edit, and a dashboard file opens the New
+ * Dashboard modal on its import step.
  *
  * DashboardStage is too large to mount in a unit test; like its other pins
  * these check the source.
@@ -28,42 +28,27 @@ describe("DashboardStage — Create screen", () => {
     expect(source).toMatch(/onCreate=\{openDashLead\}/);
   });
 
-  test("dash:open-create opens it on the requested type and dashboard", () => {
+  test("there's no Create window, nor a door to it (lead-workspace 6c)", () => {
+    expect(source).not.toMatch(/CreateModal/);
+    expect(source).not.toMatch(/dash:open-create/);
+    expect(source).not.toMatch(/createRequest/);
+  });
+
+  test("a door's words reach the conversation's reply box; Start from's no-AI starts come here", () => {
     expect(source).toMatch(
-      /window\.addEventListener\("dash:open-create", handler\)/,
+      /draft: typeof d\.draft === "string" \? d\.draft\.slice\(0, 4000\) : "",/,
     );
     expect(source).toMatch(
-      /setCreateRequest\(\{\s*type: cell \? "widget" : d\.type \|\| "auto",\s*workspaceId: cell \? cell\.workspaceId : \(d\.workspaceId \?\? null\),\s*recentId: d\.recentId \|\| null,\s*seed: d\.seed \|\| null,\s*cell,[\s\S]{0,80}prompt: typeof d\.prompt === "string" \? d\.prompt : "",[\s\S]{0,120}context:\s*d\.context && typeof d\.context === "object" \? d\.context : null,\s*\}\)/,
+      /onStartWithoutAi=\{\(k\) => \{\s*setWorkspaceRequest\(null\);\s*handleStartWithoutAi\(k\);/,
     );
   });
 
-  test("dash:open-create can fill in what to ask (2c)", () => {
-    expect(source).toMatch(
-      /initialPrompt=\{createRequest \? createRequest\.prompt \|\| "" : ""\}/,
-    );
-    expect(source).toMatch(
-      /initialContext=\{\s*createRequest \? createRequest\.context \|\| null : null\s*\}/,
-    );
-  });
-
-  test("Expand from the dock opens Create on a plan; Go to dashboard opens a built one (4e-2)", () => {
-    expect(source).toMatch(
-      /initialRecentId=\{createRequest \? createRequest\.recentId : null\}/,
-    );
+  test("Go to dashboard opens a built one (4e-2)", () => {
     expect(source).toMatch(
       /window\.addEventListener\("dash:open-built-dashboard", onOpenBuilt\)/,
     );
     expect(source).toMatch(
       /handleOpenBuiltRef\.current = handleOpenBuiltDashboard;/,
-    );
-  });
-
-  test("CreateModal is mounted with the no-AI and bot handlers", () => {
-    expect(source).toMatch(/<CreateModal\s+open=\{!!createRequest\}/);
-    expect(source).toMatch(/onStartWithoutAi=\{handleStartWithoutAi\}/);
-    expect(source).toMatch(/onBotCreated=\{handleBotCreated\}/);
-    expect(source).toMatch(
-      /onOpenAiSettings=\{\(\) => openAppSettings\("ai-assistant"\)\}/,
     );
   });
 
@@ -84,42 +69,24 @@ describe("DashboardStage — Create screen", () => {
     );
   });
 
-  test("Import / Browse open the New Dashboard modal on that step", () => {
+  test("Start from's dashboard file opens the New Dashboard modal on its import step (6c)", () => {
     expect(source).toMatch(
-      /setLayoutInitialMethod\(\s*key === "import-dashboard" \? "import" : "registry",?\s*\)/,
+      /key === "import-dashboard"\) \{\s*setLayoutInitialMethod\("import"\);\s*setIsLayoutPickerOpen\(true\);/,
     );
     expect(source).toMatch(/initialMethod=\{layoutInitialMethod\}/);
   });
 
-  test("New theme opens the theme manager in its chooser", () => {
-    expect(source).toMatch(/startInCreate=\{themeStartInCreate\}/);
+  test("only the starts something still sends are handled (6c)", () => {
+    expect(source).not.toMatch(/WIDGET_INSTALL_ACTIONS/);
+    expect(source).not.toMatch(/themeStartInCreate/);
+    expect(source).not.toMatch(/"widget-by-hand"/);
   });
 
-  test("widget installs open the Widgets page with an install link", () => {
-    expect(source).toMatch(
-      /handleOpenPageGuarded\("widgets", \{\s*widgetLink: \{ action: WIDGET_INSTALL_ACTIONS\[key\], nonce: Date\.now\(\) \},/,
-    );
-    expect(source).toMatch(/widgetLink=\{widgetLink\}/);
-  });
-
-  test("All drafts, and a widget Create just built, open the Widgets page (2c-2, 3b)", () => {
-    expect(source).toMatch(
-      /key === "widget-drafts" \|\| key === "open-widgets"\) \{[\s\S]{0,200}handleOpenPageGuarded\("widgets"\);/,
-    );
-  });
-
-  test("Build it by hand opens the Widget Builder (3b)", () => {
-    expect(source).toMatch(
-      /key === "widget-by-hand"\) \{[\s\S]{0,120}new CustomEvent\("dash:open-widget-builder"\)/,
-    );
-  });
-
-  test("Type: Theme hands its theme to the theme editor, unsaved; Auto by default (5c)", () => {
+  // The theme editor can still take a theme made elsewhere (the Create
+  // window that made one is gone — lead-workspace 6c; kept for the theme
+  // round).
+  test("the theme editor can open on a theme it's handed, unsaved", () => {
     expect(source).toMatch(/initialTheme=\{themeInitial\}/);
-    expect(source).toMatch(
-      /onOpenTheme=\{\(theme\) => \{[\s\S]{0,200}setThemeInitial\(theme\);[\s\S]{0,60}setIsThemeManagerOpen\(true\);/,
-    );
-    expect(source).toMatch(/type: cell \? "widget" : d\.type \|\| "auto"/);
     const modal = require("fs").readFileSync(
       require("path").join(__dirname, "..", "Theme", "ThemeManagerModal.js"),
       "utf8",

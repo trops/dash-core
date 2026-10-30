@@ -20,7 +20,7 @@ export const DashCommandPalette = ({
   onCreateNewWorkspace = null,
   onCreateNewFolder = null,
   onLoadDashboard = null,
-  // Opens the Create screen (create-entry PRD CRE-001 AC1).
+  // Starts a Dash Lead conversation (lead-workspace release 3c).
   onCreate = null,
   // Theme actions
   onChangeTheme = null,
@@ -95,7 +95,7 @@ export const DashCommandPalette = ({
         key: "create",
         label: "Create…",
         icon: "plus",
-        // DashboardStage binds ⌘N / Ctrl+N to Create (consolidation 2a).
+        // DashboardStage binds ⌘N / Ctrl+N to it (consolidation 2a).
         shortcut: "⌘N",
         action: () => onCreate(),
       },

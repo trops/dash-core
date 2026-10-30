@@ -27,12 +27,6 @@ export * from "./Widget";
 
 // --- Components ---
 export * from "./Components/Dashboard";
-// Create in the right-hand dock (create-entry CRE-007 AC1, phase 4e-2).
-export {
-  CreateDockPanel,
-  openCreate,
-  foldCreate,
-} from "./Components/Create/CreateDockPanel";
 export * from "./Components/Layout";
 export * from "./Components/Navigation";
 export * from "./Components/Settings";

@@ -14,7 +14,6 @@ import { readableError } from "../Bots/botConversation";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { extractPlan } from "../../utils/teamPlan";
 import { runCostLabel } from "../../utils/runCostLabel";
-import { withoutPlan } from "./CreatePlanStep";
 import { extractHandoff, withoutHandoff } from "../../utils/handoff";
 import {
   stepFromCall,
@@ -30,6 +29,7 @@ import {
   reopenedQuestion,
   hasPlan,
   handoverSeed,
+  withoutPlan,
 } from "./askThread";
 
 // Who a conversation is with: a team lead ({ botId, leadName, … }), a Dash
@@ -43,8 +43,8 @@ const roleOf = (r) => (r && r.role && r.role !== "planner" ? r : null);
  * AC4 / CRE-011 AC6, phase 5e). It reads the user's bot results and runs
  * (bot_results / bot_runs) and answers; follow-ups carry on. Saved
  * as a "question". When an answer plans something (or asks the questions a
- * plan needs), Create takes over at once with the conversation so far
- * (`onOpenPlan(seed)`); a reopened answer's Open as a plan does the same.
+ * plan needs), a host with `onOpenPlan(seed)` takes over with the
+ * conversation so far; the lead workspace shows the plan itself.
  *
  * Asked of a team lead instead (5e-2a, the Ask box's "To:"): `recipient` is
  * the lead ({ botId, leadName, dashboardName, dashboardLabel }); the question
@@ -52,9 +52,9 @@ const roleOf = (r) => (r && r.role && r.role !== "planner" ? r : null);
  * saved with the conversation so a reopened one carries on with the lead.
  *
  * A lead asked to make something hands it to the Dash team (consolidation
- * Phase 2c-2): its answer shows "Plan this with the Dash team" — here in
- * Create, `onHandoff(handoff, lead)` starts it; elsewhere (the dock) it opens
- * Create.
+ * Phase 2c-2): its answer shows "Plan this with the Dash team" —
+ * `onHandoff(handoff, lead)` starts it, else a new Dash Lead conversation
+ * opens with the request (lead-workspace release 6c).
  *
  * Asked of another Dash team role (the Dash team chat's "To:"):
  * `recipient` is { role, roleName } — the Builder, Scout or Checker answers
@@ -145,7 +145,7 @@ export const AskStep = ({
   const replyName = lead ? lead.leadName : `the ${roleName}`;
 
   // The conversation as it stands, for an answer that lands after this step
-  // has closed (Create's Back / Close, Phase 2a).
+  // has closed (Phase 2a).
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
   // Show a reply — or, once closed, save it to Recent so it isn't lost.
@@ -286,8 +286,8 @@ export const AskStep = ({
       ...(hasPlan(plan) ? { plan, asked: text } : {}),
     };
     add(msg);
-    // An answer that plans (or asks what a plan needs) moves on to Create:
-    // its questions are taps there, and Build is there.
+    // An answer that plans (or asks what a plan needs) moves on to the
+    // host's plan (onOpenPlan), where its questions are taps.
     if (hasPlan(plan) && onOpenPlan && alive.current) {
       const all = [...messagesRef.current, msg];
       // Saved now: the host closes this step before it renders the answer,
@@ -520,7 +520,10 @@ export const AskStep = ({
                           onHandoff
                             ? onHandoff(m.handoff, lead)
                             : planWithDashTeam(m.handoff, {
-                                workspaceId: lead.dashboardId ?? null,
+                                dashboardName:
+                                  lead.dashboardLabel ||
+                                  lead.dashboardName ||
+                                  "",
                                 from: lead.leadName,
                               })
                         }

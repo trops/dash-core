@@ -158,7 +158,7 @@ describe("EditPanel — selection tabs (phase 1c)", () => {
     expect(onWidgetAction.mock.calls).toEqual([["edit-with-ai"]]);
     expect(
       screen.getByText(
-        "Settings wait for Save. Changes to the code are made in Create.",
+        "Settings wait for Save. To change what it does, use Change on it.",
       ),
     ).toBeInTheDocument();
   });

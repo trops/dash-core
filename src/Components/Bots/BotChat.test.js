@@ -439,24 +439,20 @@ describe("BotChat — the lead hands off to the Dash team (Phase 2c-2)", () => {
     ).not.toMatch(/handoff/);
   });
 
-  it("opens Create for this dashboard, with the request and the lead's note", async () => {
+  it("opens a Dash Lead conversation with the request and the lead's note (6c)", async () => {
     setupLead(handedOff);
     const opened = jest.fn();
-    window.addEventListener("dash:open-create", opened);
+    window.addEventListener("dash:open-workspace", opened);
     fireEvent.click(
       await screen.findByRole("button", {
         name: "Plan this with the Dash team",
       }),
     );
-    window.removeEventListener("dash:open-create", opened);
+    window.removeEventListener("dash:open-workspace", opened);
     expect(opened.mock.calls[0][0].detail).toEqual({
-      type: "bot",
-      workspaceId: lead.workspaceId ?? null,
-      prompt: "A bot that sums up my email at 7:30",
-      context: {
-        note: "News Digest covers headlines at 7:00.",
-        from: lead.name,
-      },
+      key: "role:dashlead",
+      making: { kind: "bot" },
+      draft: `A bot that sums up my email at 7:30\n\n(From ${lead.name}: News Digest covers headlines at 7:00.)`,
     });
   });
 

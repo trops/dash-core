@@ -15,7 +15,7 @@ import {
   InstallReviewDialog,
 } from "../Create/PlanChecklistDialogs";
 import { CellPreview } from "../Create/CellPreview";
-import { RemoveSummary, TryBots } from "../Create/CreateBuildingStep";
+import { RemoveSummary, TryBots } from "./BuildParts";
 import { OutputCard } from "./PlanViews";
 import { usePlanBuild } from "./usePlanBuild";
 import {

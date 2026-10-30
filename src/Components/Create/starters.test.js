@@ -15,8 +15,6 @@ import {
   remixRequest,
   widgetLabel,
 } from "./starters";
-import { StarterCards } from "./StarterCards";
-import { CreatePlanStep } from "./CreatePlanStep";
 
 jest.mock("../Settings/sections/ProvidersSection", () => ({
   ProvidersSection: () => <div data-testid="providers-section" />,
@@ -191,95 +189,4 @@ describe("Remix: a starter as a plan", () => {
       /^I picked the "Morning Brief" starter[\s\S]*<plan>\{/,
     );
   });
-});
-
-describe("StarterCards", () => {
-  beforeEach(() => {
-    window.mainApi = {
-      dashboardConfig: {
-        getPackageConfig: jest.fn(async (name) =>
-          name === "morning-brief-starter"
-            ? { success: true, config }
-            : { success: false, error: "Not found" },
-        ),
-      },
-    };
-  });
-  afterEach(() => {
-    delete window.mainApi;
-  });
-
-  test("tabs filter by category; a card with its config opens it", async () => {
-    const onPick = jest.fn();
-    render(<StarterCards starters={[brief, review]} onPick={onPick} />);
-    expect(screen.getAllByTestId("starter-card")).toHaveLength(2);
-    // The category filter is a SegmentedControl: the chosen one is checked.
-    fireEvent.click(screen.getByRole("radio", { name: "Engineering" }));
-    expect(screen.getAllByTestId("starter-card")).toHaveLength(1);
-    expect(screen.getByRole("radio", { name: "Engineering" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    fireEvent.click(screen.getByRole("radio", { name: "All" }));
-    expect(await screen.findByTestId("starter-thumbnail")).toBeInTheDocument();
-    expect(await screen.findByText("Not found")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Morning Brief"));
-    expect(onPick).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Morning Brief" }),
-      brief,
-      config,
-    );
-  });
-
-  test("each starter is a card button: named, keyboard-pickable; unreadable ones are disabled", async () => {
-    const onPick = jest.fn();
-    render(<StarterCards starters={[brief, review]} onPick={onPick} />);
-    await screen.findByText("Not found");
-    const ok = screen.getByRole("button", { name: /^Morning Brief:/ });
-    fireEvent.keyDown(ok, { key: "Enter" });
-    expect(onPick).toHaveBeenCalledTimes(1);
-    const broken = screen.getAllByTestId("starter-card").find((c) => c !== ok);
-    expect(broken).toHaveAttribute("aria-disabled", "true");
-    fireEvent.click(broken);
-    expect(onPick).toHaveBeenCalledTimes(1);
-  });
-});
-
-test("the plan screen starts from the starter's plan and asks the Planner to adapt it", async () => {
-  const plan = starterToPlan(config, brief);
-  window.mainApi = {
-    bots: {
-      listDashTeam: jest
-        .fn()
-        .mockResolvedValue([
-          { id: "b_planner", role: "planner", name: "Planner" },
-        ]),
-      onStream: jest.fn(() => 1),
-      removeListener: jest.fn(),
-      run: jest.fn(() => new Promise(() => {})),
-      saveCreateRecent: jest.fn().mockResolvedValue({ id: "plan_1" }),
-    },
-  };
-  render(
-    <CreatePlanStep
-      prompt=""
-      seed={{
-        plan,
-        request: remixRequest(starterCard(brief), plan),
-        label: "Start from the Morning Brief starter",
-      }}
-    />,
-  );
-  expect(screen.getByTestId("plan-card")).toBeInTheDocument();
-  expect(
-    screen.getByText("Start from the Morning Brief starter"),
-  ).toBeInTheDocument();
-  await waitFor(() => expect(window.mainApi.bots.run).toHaveBeenCalled());
-  expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalledWith({
-    prompt: "Start from the Morning Brief starter",
-  });
-  expect(window.mainApi.bots.run.mock.calls[0][1]).toMatch(
-    /^I picked the "Morning Brief" starter/,
-  );
-  delete window.mainApi;
 });
