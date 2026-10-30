@@ -152,7 +152,13 @@ async function planFrom(g, user, d) {
     const plan = await d.planWidgets(missing, user);
     for (const r of rows) {
       const p = plan.find((x) => x.package === r.package);
-      if (p && p.publishable) r.publishable = true;
+      if (p && p.publishable) {
+        r.publishable = true;
+        // Published already: its visibility now (the Save dialog's switch
+        // starts there); a first publish starts private.
+        r.published = !!p.exists;
+        r.visibility = p.visibility === "public" ? "public" : "private";
+      }
     }
   }
   for (const r of rows) {

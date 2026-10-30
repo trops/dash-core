@@ -451,6 +451,19 @@ Mac's / use the account's).
        stop the others; a watched folder removed never crashes the app (folders are created before watching); stopping
        leaves no timer behind; the settings file is written whole, and a damaged one is kept aside as .bak; only a
        profile here, kept in the account, can be set; a refused change shows what the setting still is.
+   - **Bulk publish in Save** (2026-10-30, user-approved mockups: canvas page "Bulk publish in profile save", frames 1–5).
+     The Save dialog lists the user's own widgets the registry doesn't have (or not as they are here), **all checked**,
+     each with its own **Private/Public** switch (a first publish starts private; a published one starts as it is — the
+     registry takes an explicit visibility on an update). Select all / Clear, and Set all: Private · Public. There is
+     **one button**: "Publish 12 widgets and save" publishes the checked ones, then saves; with none checked it is the
+     plain save, and warns how many widgets the other computer will show as missing.
+     - Built: `profile:publish-widget` also takes a list (`profilePublish.publishMany`: one plan for the run, each widget
+       with its own visibility and "Publish anyway", progress on `profile:publish-progress`, Stop after the current
+       widget via `options.stop` on the same channel — no new handler in dash-electron). `planSave` rows carry
+       `published` and `visibility`.
+     - After the save, anything that didn't publish stays checked with why, and widgets whose files mention this
+       computer's folders are gathered with "Publish anyway"; the dialog stays open ("Publish 1 widget and save", or
+       Close/Done). Stop saves with what's published so far.
 
 ---
 
@@ -487,8 +500,11 @@ Mac's / use the account's).
 - `electron/profile/profileContents.test.js`: contents with inProfile/alsoIn; unticking never deletes; duplicate.
 - `electron/profile/profileFile.test.js`: widget classification (6 cases), no secrets in the zip, bundled folder without
   node_modules, revision counts up, Default-only writes no profiles.json.
-- `src/Components/Settings/sections/SaveProfileModal.test.js`: counts, widget status text, options, save and cancel; publish
-  section (off by default, publish then save, personal-paths confirm, failure still saves, signed out).
+- `src/Components/Settings/sections/SaveProfileModal.test.js`: counts, widget status text, options, save and cancel; bulk
+  publish (all checked with Private/Public, Clear → plain save with the warning, publish then save, Set all / Select all,
+  failures stay checked and the dialog stays open, Publish anyway, progress and Stop, widgets offered later start checked).
+- `electron/profile/profilePublish.test.js` also: the chosen visibility wins either way; `publishMany` order, progress,
+  failures not stopping the rest, Stop after the current widget (per profile).
 - `electron/profile/profilePublish.test.js`: free versions, the publish plan, repointing incl. event wiring, publish + install +
   switch with fakes, failures change nothing.
 - `src/Components/Settings/sections/ProfilesSection.test.js`: active marker, Delete guards, ticks, the untick and switch confirms.
@@ -501,6 +517,7 @@ Mac's / use the account's).
 
 ## Revision History
 
+- 2026-10-30: Bulk publish in Save: all checked, Private/Public per widget, one "Publish N widgets and save" button.
 - 2026-10-28: v3 merged (core v0.1.850, registry v1.10.2). Live test fix: a widget just installed is listed by its bare name ("chat") until the next launch renames it — the out-of-sync check now finds it either way (it showed "8 widgets changed" after a relaunch). Loading from the account says "use the account's copy". Backlog: installs should key widgets by package id from the start.
 - 2026-10-28: v3 planned (user): widgets are the only items; dashboards, themes, folders, bots and teams are setup kept in the profile; saving never publishes; publish prompt in the Widget Builder; auto-save revised. Electron v0.0.1041 shipped the sync-status handler; core v0.1.849 the sync-load fix.
 - 2026-10-27: S3 merged (core v0.1.848). Sync-load fix: the account's copy wins when loaded into its linked profile.

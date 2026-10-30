@@ -359,11 +359,22 @@ const profileController = {
    * only a widget the plan allows is published, as the plan says.
    */
   async publishWidget(win, appId, profileId, packageName, options = {}) {
+    // Stop a bulk publish after the widget being published now.
+    if (options && options.stop) {
+      require("../profile/profilePublish").stopPublishing(appId, profileId);
+      return { success: true };
+    }
+    const bulk = Array.isArray(packageName);
+    // Before any await: a Stop sent while this run is planned still counts.
+    if (bulk) {
+      require("../profile/profilePublish").beginPublishing(appId, profileId);
+    }
     try {
       const { gatherProfile, summarize } = require("../profile/profileFile");
       const {
         planPublish,
         publishWidget,
+        publishMany,
       } = require("../profile/profilePublish");
       const { lookupRegistryPackage } = require("../profile/profileFile");
       const username = await signedInUsername();
@@ -376,12 +387,18 @@ const profileController = {
         username,
         lookupRegistryPackage,
       );
+      if (bulk) {
+        return await publishMany(win, appId, profileId, plan, packageName, {
+          options,
+        });
+      }
       const row = plan.find((r) => r.package === packageName);
       if (!row || !row.publishable) {
         return { success: false, error: `${packageName} can't be published.` };
       }
       const result = await publishWidget(win, appId, row, {
         confirmPersonalPaths: !!(options && options.confirmPersonalPaths),
+        visibility: options && options.visibility,
       });
       return { success: result.status === "published", ...result };
     } catch (e) {
