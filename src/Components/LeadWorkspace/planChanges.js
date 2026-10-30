@@ -63,8 +63,12 @@ function additions(plan) {
   ];
 }
 
-/** What a change does that isn't a cell: new bots, a theme. */
-function others(plan) {
+/**
+ * What a change does that isn't a cell: new bots, a theme. `now`: the
+ * dashboard's name and theme — { name, theme } (frame 46); theme: its saved
+ * theme's name, "" for the app's theme, null when unknown.
+ */
+function others(plan, now = {}) {
   const pieces = ((plan && plan.pieces) || []).filter(Boolean);
   return [
     ...pieces
@@ -87,11 +91,21 @@ function others(plan) {
                 main: `${p.name} — a new theme`,
                 sub: "Dark and light, from its four colors",
               },
-              {
-                mark: "+",
-                main: `This dashboard's theme → ${p.name}`,
-                sub: "The theme it has now stays in your themes",
-              },
+              (() => {
+                const was =
+                  now.theme && now.theme !== p.name ? now.theme : null;
+                return {
+                  mark: "+",
+                  main: `${now.name ? `${now.name}'s` : "This dashboard's"} theme — ${
+                    was ? `${was} → ` : ""
+                  }${p.name}`,
+                  sub: was
+                    ? `${was} stays in your themes`
+                    : now.theme === ""
+                      ? "It uses the app's theme now"
+                      : "The theme it has now stays in your themes",
+                };
+              })(),
             ]
           : [{ mark: "+", main: `${p.name} theme — applied`, sub: "" }],
       ),
@@ -108,10 +122,12 @@ function others(plan) {
  *   Cell = { name, kind: "add" | "keep" | "empty" | "hidden" } — hidden: a
  *   cell another one spans, kept so the columns stay in place. added: how
  *   many cells it fills (0: nothing to draw)
+ * `themeName(key)`: a saved theme's name, to say which theme a new one
+ * replaces (theme round, frame 46).
  * A plan for an empty cell (`plan.cell`, release 6c, frame 39): its one
  * widget goes in that cell of that grid, on its page; `cellOnly` is set.
  */
-export function planChanges(workspace, plan) {
+export function planChanges(workspace, plan, { themeName = null } = {}) {
   const target = planTarget(plan);
   if (!target || !workspace) return null;
   const at = plan.cell || null;
@@ -238,7 +254,15 @@ export function planChanges(workspace, plan) {
         main: `${a.name} — added`,
         sub: a.sub,
       })),
-      ...others(plan),
+      ...others(plan, {
+        // Its own name — the plan's may only be an id.
+        name: workspace.name || target.name,
+        theme: !workspace.themeKey
+          ? ""
+          : themeName
+            ? themeName(workspace.themeKey)
+            : null,
+      }),
     ],
     unchanged,
     added: adds.length,

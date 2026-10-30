@@ -1,18 +1,28 @@
-import React from "react";
-import { FontAwesomeIcon } from "@trops/dash-react";
+import React, { useContext } from "react";
+import { FontAwesomeIcon, ThemeContext } from "@trops/dash-react";
 
-const ChooserCard = ({ icon, title, subtitle, onClick }) => (
-  <div
-    className="flex flex-col gap-1.5 p-4 rounded-lg cursor-pointer transition-all bg-white/5 hover:bg-white/10 hover:ring-1 hover:ring-white/20"
-    onClick={onClick}
-  >
-    <div className="flex flex-row items-center gap-2">
-      <FontAwesomeIcon icon={icon} className="h-3.5 w-3.5 opacity-50" />
-      <span className="text-sm font-medium">{title}</span>
+const ChooserCard = ({ icon, title, subtitle, onClick, accent = false }) => {
+  const { currentTheme } = useContext(ThemeContext) || {};
+  // The suggested way (Describe it): bordered in the theme's primary color.
+  // Every card has the border, so they stay one size.
+  const border = `border-2 ${
+    (accent && currentTheme && currentTheme["border-primary-medium"]) ||
+    "border-transparent"
+  }`;
+  return (
+    <div
+      className={`flex flex-col gap-1.5 p-4 rounded-lg cursor-pointer transition-all bg-white/5 hover:bg-white/10 hover:ring-1 hover:ring-white/20 ${border}`}
+      data-accent={accent ? "true" : undefined}
+      onClick={onClick}
+    >
+      <div className="flex flex-row items-center gap-2">
+        <FontAwesomeIcon icon={icon} className="h-3.5 w-3.5 opacity-50" />
+        <span className="text-sm font-medium">{title}</span>
+      </div>
+      <span className="text-xs opacity-40">{subtitle}</span>
     </div>
-    <span className="text-xs opacity-40">{subtitle}</span>
-  </div>
-);
+  );
+};
 
 /**
  * New theme: how to start. Describe it (lead-workspace theme round, frame
@@ -33,6 +43,7 @@ export const ThemeNewChooser = ({
           title="Describe it"
           subtitle="Say what you want — the Dash Lead makes it with you"
           onClick={onDescribe}
+          accent
         />
       ) : null}
       <ChooserCard

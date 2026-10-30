@@ -18,6 +18,7 @@
  *                   source: "yours" | "ai-built" | "registry" | "new" | "update"
  *                     | "settings",  // settings: only that widget's settings (6c)
  *                   colors?,         // a new theme: { primary, secondary, tertiary, neutral } as #rrggbb
+ *                   colorNames?,     // a new theme: a plain name for each color ("rust"), shown on its rows
  *                   package?,        // yours / ai-built / registry / update
  *                   component?,      // which widget, when the package has several
  *                   providers?: [type],

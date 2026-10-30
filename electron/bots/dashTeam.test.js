@@ -312,7 +312,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 16);
+    assert.equal(planner.history.length, 17);
   });
 });
 
@@ -609,9 +609,9 @@ describe("Dash team instructions (design guide)", () => {
     const planner = role("planner");
     assert.match(planner.instructions, /one main area/);
     assert.match(planner.instructions, /each widget is its own panel/);
-    // (the latest two are release 6c's and the theme round's, which
+    // (the latest three are release 6c's and the theme round's, which
     // already had the rules)
-    const before = planner.history[planner.history.length - 3];
+    const before = planner.history[planner.history.length - 4];
     assert.doesNotMatch(before, /one main area/);
     assert.match(before, /<plan><\/plan>/);
   });
@@ -642,7 +642,7 @@ describe("Dash team instructions (lead-workspace 6c: no Create window)", () => {
   it("no Create in the text; the text before upgrades", () => {
     const planner = ROLES.find((x) => x.role === "planner");
     assert.doesNotMatch(planner.instructions, /in Create/);
-    const before = planner.history[planner.history.length - 2];
+    const before = planner.history[planner.history.length - 3];
     assert.match(before, /choose Theme in Create/);
   });
 });
@@ -660,8 +660,21 @@ describe("Dash team instructions (lead-workspace theme round)", () => {
       planner.instructions,
       /use New Theme on the Themes page/,
     );
-    const before = planner.history[planner.history.length - 1];
+    const before = planner.history[planner.history.length - 2];
     assert.match(before, /use New Theme on the Themes page/);
     assert.notEqual(before, planner.instructions);
+  });
+});
+
+describe("Dash team instructions (theme round: color names)", () => {
+  it("the Planner names each color; the text before upgrades", () => {
+    const planner = ROLES.find((x) => x.role === "planner");
+    assert.match(
+      planner.instructions,
+      /"colorNames": \{"primary": a one- or two-word name/,
+    );
+    const before = planner.history[planner.history.length - 1];
+    assert.match(before, /"source": "new", "colors"/);
+    assert.doesNotMatch(before, /colorNames/);
   });
 });
