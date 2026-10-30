@@ -39,10 +39,8 @@ describe("DashboardStage — one door (Phase 2a)", () => {
     expect(stageSrc).toMatch(/if \(popout\) return undefined;/);
   });
 
-  it("import and registry are Create's no-AI starts; there's no method picker", () => {
-    expect(stageSrc).toMatch(
-      /key === "import-dashboard" \? "import" : "registry"/,
-    );
+  it("a dashboard file is Start from's no-AI start (6c); there's no method picker", () => {
+    expect(stageSrc).toMatch(/setLayoutInitialMethod\("import"\);/);
     expect(stageSrc).not.toMatch(/setLayoutInitialMethod\(null\)/);
   });
 });

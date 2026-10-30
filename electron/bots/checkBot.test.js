@@ -269,10 +269,12 @@ describe("Run now on a paused bot is a test run", () => {
 describe("screens say a new bot is paused, and Turn on", () => {
   const read = (...p) =>
     fs.readFileSync(path.join(__dirname, "..", "..", "src", ...p), "utf8");
-  it("Create's bot form says it's paused until you turn it on", () => {
+  // The Create window's bot form said so too until it was retired
+  // (lead-workspace release 6c); the Build log says it now.
+  it("the Build log says new bots start paused — try one, then turn it on", () => {
     assert.match(
-      read("Components", "Dashboard", "DashboardStage.js"),
-      /paused until you turn it on/,
+      read("Components", "LeadWorkspace", "BuildParts.js"),
+      /New bots start paused — try one, then turn it on\./,
     );
   });
   it("Resume reads Turn on — in the chat and the bot page", () => {

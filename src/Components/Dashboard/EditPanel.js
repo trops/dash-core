@@ -28,7 +28,8 @@ import { WidgetSidebar } from "../Navigation/WidgetSidebar";
  *
  *   Widget    — the selected widget (consolidation Phase 3P): its name and
  *               whose it is, a ⋯ menu (Move, Split, Remove), one Change
- *               button (Create, where you pick AI or by hand — blocked
+ *               button (a conversation about it, with Edit the code
+ *               yourself — blocked
  *               while edits wait for Save), then everything you can set on
  *               it (WidgetPanel)
  *   Bot       — the selected bot's form (passed in as `botEditor`)
@@ -257,8 +258,8 @@ export const EditPanel = ({
                   className="flex flex-col gap-1"
                   data-testid="widget-change"
                 >
-                  {/* One Change: Create › Change, where you pick AI (the
-                      Dash team) or by hand. Secondary — the dashboard's
+                  {/* One Change: a conversation about it with the Dash
+                      team, or the code by hand. Secondary — the dashboard's
                       Save stays the one main button. */}
                   <Button2
                     title={`Change ${widgetName}`}
@@ -287,7 +288,7 @@ export const EditPanel = ({
                 currentTheme["border-neutral-dark"] || ""
               }`}
             >
-              Settings wait for Save. Changes to the code are made in Create.
+              Settings wait for Save. To change what it does, use Change on it.
             </span>
           </Tabs3.Content>
         )}

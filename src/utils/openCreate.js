@@ -1,22 +1,37 @@
 import { createType } from "./handoff";
 
 /**
- * Open Create on what a team lead handed off (consolidation Phase 2c-2): a
- * bot → Create › Bot; a widget or layout → a plan that changes that
- * dashboard. The request is filled in, and the lead's note (and who it's
- * from) comes along for the Scout and the Planner.
+ * Carry on with what a team lead handed off (consolidation Phase 2c-2) — a
+ * conversation from before leads brought in the Dash team themselves
+ * (lead-workspace release 3c). Since the Create window was retired (release
+ * 6c), it opens a new Dash Lead conversation with the request in its reply
+ * box, the dashboard it's for, and the lead's note (and who it's from)
+ * under it: a bot is what's being made; a widget or layout is a change to
+ * that dashboard, which the user says yes to there.
  *
  * @param {{ type, request, note }} handoff  from extractHandoff
- * @param {{ workspaceId?: string|number|null, from?: string }} lead
+ * @param {{ dashboardName?: string, from?: string }} lead
  */
-export function planWithDashTeam(handoff, { workspaceId = null, from = "" }) {
+export function planWithDashTeam(
+  handoff,
+  { dashboardName = "", from = "" } = {},
+) {
+  const note = String((handoff && handoff.note) || "").trim();
+  const draft = [
+    String((handoff && handoff.request) || "").trim(),
+    dashboardName ? `(For the ${dashboardName} dashboard.)` : "",
+    note ? `(${from ? `From ${from}: ` : ""}${note})` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   window.dispatchEvent(
-    new CustomEvent("dash:open-create", {
+    new CustomEvent("dash:open-workspace", {
       detail: {
-        type: createType(handoff.type),
-        workspaceId: workspaceId ?? null,
-        prompt: handoff.request,
-        context: { note: handoff.note || "", from: from || "" },
+        key: "role:dashlead",
+        ...(createType(handoff && handoff.type) === "bot"
+          ? { making: { kind: "bot" } }
+          : {}),
+        draft,
       },
     }),
   );

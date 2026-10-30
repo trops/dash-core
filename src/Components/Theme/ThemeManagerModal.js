@@ -23,8 +23,9 @@ export const ThemeManagerModal = ({
   startInCreate = false,
   // Open on this theme (Themes page › Edit theme); else the app theme.
   initialThemeKey = null,
-  // Open the new-theme screen on this unsaved theme (Create › Type: Theme,
-  // create-entry phase 5c) — nothing is saved until Create Theme.
+  // Open the new-theme screen on this unsaved theme (a theme made from a
+  // description, create-entry phase 5c) — nothing is saved until Create
+  // Theme.
   initialTheme = null,
 }) => {
   const {

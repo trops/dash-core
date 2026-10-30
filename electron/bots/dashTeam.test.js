@@ -312,7 +312,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 14);
+    assert.equal(planner.history.length, 15);
   });
 });
 
@@ -609,7 +609,8 @@ describe("Dash team instructions (design guide)", () => {
     const planner = role("planner");
     assert.match(planner.instructions, /one main area/);
     assert.match(planner.instructions, /each widget is its own panel/);
-    const before = planner.history[planner.history.length - 1];
+    // (the latest entry is release 6c's, which already had the rules)
+    const before = planner.history[planner.history.length - 2];
     assert.doesNotMatch(before, /one main area/);
     assert.match(before, /<plan><\/plan>/);
   });
@@ -633,5 +634,15 @@ describe("Dash team instructions (design guide)", () => {
       assert.equal(p && p.action, "upgrade", r);
       assert.equal(p.instructions, role(r).instructions);
     }
+  });
+});
+
+describe("Dash team instructions (lead-workspace 6c: no Create window)", () => {
+  it("a new theme is the Themes page's New Theme; the text before upgrades", () => {
+    const planner = ROLES.find((x) => x.role === "planner");
+    assert.match(planner.instructions, /use New Theme on the Themes page/);
+    assert.doesNotMatch(planner.instructions, /in Create/);
+    const before = planner.history[planner.history.length - 1];
+    assert.match(before, /choose Theme in Create/);
   });
 });

@@ -106,3 +106,10 @@ export function earlierTurns(messages, keep = 6) {
     ? `Earlier in this conversation:\n${turns.join("\n")}`
     : "";
 }
+
+/** The Planner's words without its <plan> block. */
+export function withoutPlan(text) {
+  return String(text || "")
+    .replace(/<plan>[\s\S]*?<\/plan>/gi, "")
+    .trim();
+}

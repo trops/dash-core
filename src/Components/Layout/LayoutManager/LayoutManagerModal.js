@@ -14,11 +14,12 @@ import { FOLDER_ICONS } from "../../Settings/details/FolderDetail";
 import { DiscoverDashboardsDetail } from "../../Settings/details/DiscoverDashboardsDetail";
 
 /**
- * LayoutManagerModal — Create's no-AI dashboard starts (create-entry PRD
- * CRE-008): **Import from file** (File, Name, Folder, Theme) and **Browse
- * the registry**. Making a dashboard from scratch is Create's Blank
- * dashboard; the old method picker and template stepper are gone
- * (consolidation Phase 2a).
+ * LayoutManagerModal — a dashboard from a file (create-entry PRD CRE-008):
+ * **Import from file** (File, Name, Folder, Theme), opened from the lead
+ * workspace's Start from (release 6c); its **Browse the registry** step has
+ * no door now (Start from lists registry dashboards itself). A blank
+ * dashboard is Start from's too; the old method picker and template stepper
+ * are gone (consolidation Phase 2a).
  *
  * @param {"import"|"registry"} [initialMethod]
  */

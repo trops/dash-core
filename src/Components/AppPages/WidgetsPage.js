@@ -388,7 +388,7 @@ const WidgetDetail = ({
         </div>
         {!pkg.isBuiltIn && !pkg.isDraft ? (
           // Anyone's widget can be changed — someone else's is saved as a
-          // new widget; Create offers editing the code by hand for yours.
+          // new widget; its conversation offers editing the code by hand.
           <div className="flex flex-row flex-wrap items-center gap-2 flex-shrink-0">
             <Button3
               title={`Change ${widgetLabel(widget)}`}
@@ -516,7 +516,7 @@ const InstallResult = ({ result, onBack, muted }) => (
  * package (About this package) or the widget picked. A search lists matching
  * packages and widgets flat, each widget with its package.
  */
-// The last Create install request (by nonce) the page has run, kept across
+// The last install request (by nonce) the page has run, kept across
 // remounts.
 const handledInstallRequest = { current: null };
 
@@ -526,8 +526,8 @@ export const WidgetsPage = ({
   onOpenWorkspace = null,
   onOpenPrivacySettings = null,
   // { action: "discover" | "zip" | "folder" | "select", nonce, package?,
-  // query? } from the Create screen — select opens one of the user's
-  // packages; discover can start on a search (the Scout's registry find).
+  // query? } — select opens one of the user's packages; discover can start
+  // on a search.
   installRequest = null,
 }) => {
   const { muted, strong } = useConfigTokens();
@@ -648,7 +648,7 @@ export const WidgetsPage = ({
     }
   };
 
-  // The Create screen's start-without-AI row: browse the registry, install
+  // An install request: browse the registry, install
   // from a zip or load a folder, right here. Each request runs once — the
   // widget list changes when it installs, and that mustn't run it again
   // (Phase 1a-2: the file picker opened twice). Only "select" waits for

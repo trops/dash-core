@@ -41,7 +41,6 @@ import {
   layoutTemplates,
   createLayoutFromTemplate,
 } from "../Layout/LayoutManager/layoutTemplates";
-import { CreateModal } from "../Create/CreateModal";
 import { OnboardingModal } from "./OnboardingModal";
 import { untitledDashboardName } from "../../utils/untitledDashboardName";
 
@@ -283,7 +282,7 @@ const DashboardStageInner = ({
   // provider to select / create (a new nonce re-applies it).
   const [pageSubsection, setPageSubsection] = useState(null);
   const [providerLink, setProviderLink] = useState(null);
-  // Widgets page install deep link { action, nonce } (Create screen).
+  // Widgets page install deep link { action, nonce }.
   const [widgetLink, setWidgetLink] = useState(null);
   // The widget panel's "apply what's typed" — Save calls it first.
   const panelFlushRef = useRef(null);
@@ -561,48 +560,9 @@ const DashboardStageInner = ({
     window.addEventListener("dash:open-bots-view", handler);
     return () => window.removeEventListener("dash:open-bots-view", handler);
   }, [openBotsView]);
-  // Open the Create screen from anywhere — still the dock's and a lead's
-  // hand-off, until lead-workspace release 6c-4 (an empty cell opens its
-  // lead's conversation since 6c-2). detail: { type, workspaceId, recentId, seed,
-  // cell, prompt, context } — prompt fills in what to ask, context is a
-  // lead's hand-off note ({ note, from }); recentId opens a plan
-  // conversation (Expand from the dock, 4e-2);
-  // seed starts one from a plan (Open as a plan from Ask, 5e); cell is an
-  // empty cell being edited ({ workspaceId, gridItemId, cellNumber, scope }):
-  // Create makes one widget for it (consolidation Phase 2b).
+  // The page being edited (the main grid's): an empty cell's and a
+  // widget's doors say which page they're on.
   const activePageRef = useRef(null);
-  useEffect(() => {
-    const handler = (e) => {
-      const d = (e && e.detail) || {};
-      const cell =
-        d.cell && d.cell.gridItemId != null && d.cell.cellNumber
-          ? {
-              ...d.cell,
-              scope: d.cell.scope || "main",
-              // The main grid's page is the one being edited.
-              pageId:
-                d.cell.pageId ??
-                ((d.cell.scope || "main") === "main"
-                  ? activePageRef.current
-                  : null),
-            }
-          : null;
-      setCreateRequest({
-        type: cell ? "widget" : d.type || "auto",
-        workspaceId: cell ? cell.workspaceId : (d.workspaceId ?? null),
-        recentId: d.recentId || null,
-        seed: d.seed || null,
-        cell,
-        // What to ask, filled in (a team lead's hand-off, 2c).
-        prompt: typeof d.prompt === "string" ? d.prompt : "",
-        // …and its note and who it's from ({ note, from }).
-        context: d.context && typeof d.context === "object" ? d.context : null,
-      });
-    };
-    window.addEventListener("dash:open-create", handler);
-    return () => window.removeEventListener("dash:open-create", handler);
-  }, []);
-
   // Change with AI (consolidation Phase 3): every door — a widget's ⋮ menu,
   // the Edit panel, Ask AI, the error box, the Widgets page — opens a
   // conversation about that widget (lead-workspace release 6c, frame 40):
@@ -700,6 +660,9 @@ const DashboardStageInner = ({
         recentId: d.recentId || null,
         // A page's New (release 6c): { kind, from } — what's being made.
         making: d.making && typeof d.making === "object" ? d.making : null,
+        // Words for its reply box (release 6c: a lead's hand-off, the
+        // Widget Builder's Ask the Dash team).
+        draft: typeof d.draft === "string" ? d.draft.slice(0, 4000) : "",
         // An empty cell being edited (release 6c): talked over with its
         // dashboard's lead; the main grid's page is the one being edited.
         cell:
@@ -787,14 +750,12 @@ const DashboardStageInner = ({
   const [themeEditorKey, setThemeEditorKey] = useState(null);
   const [isDashboardLoaderOpen, setIsDashboardLoaderOpen] = useState(false);
   const [isLayoutPickerOpen, setIsLayoutPickerOpen] = useState(false);
-  // The New Dashboard modal opened on a step ("import" | "registry") from
-  // the Create screen's start-without-AI row.
+  // The New Dashboard modal opened on a step ("import") — Start from's
+  // dashboard file (lead-workspace release 6c).
   const [layoutInitialMethod, setLayoutInitialMethod] = useState("import");
-  // Create screen (create-entry PRD CRE-001): null = closed, else
-  // { type, workspaceId }.
-  const [createRequest, setCreateRequest] = useState(null);
-  const [themeStartInCreate, setThemeStartInCreate] = useState(false);
-  // A theme Create made from a description, opened unsaved (phase 5c).
+  // A theme made from a description, opened unsaved (phase 5c) — nothing
+  // sets it since the Create window was retired (6c); kept for the theme
+  // round.
   const [themeInitial, setThemeInitial] = useState(null);
 
   // First-run onboarding (Phase 3A). Tri-state:
@@ -1523,12 +1484,12 @@ const DashboardStageInner = ({
     setIsDirty(true);
   }
 
-  // ─── Create screen (create-entry PRD CRE-001 / CRE-008) ──────────
+  // ─── Making something (create-entry CRE-001 / CRE-008; lead workspace) ──
 
   // Making something starts a new Dash Lead conversation (lead-workspace
   // release 3c, frame 13): the Create button, New dashboard, ⌘N; the pages'
-  // own New buttons too, saying what's made (release 6c). An empty cell and
-  // Change with AI still open Create until 6c-2 / 6c-3.
+  // own New buttons too, saying what's made (release 6c); an empty cell and
+  // Change with AI open their dashboard's lead (6c-2, 6c-3).
   function openDashLead() {
     setBotPageRequest(null);
     setWorkspaceRequest({ key: "role:dashlead", seq: Date.now() });
@@ -1588,35 +1549,16 @@ const DashboardStageInner = ({
     }
   }
 
-  const WIDGET_INSTALL_ACTIONS = {
-    "browse-widgets": "discover",
-    "widget-zip": "zip",
-    "widget-folder": "folder",
-  };
-
+  // Start from's no-AI starts (lead-workspace release 6c — the Create
+  // window's, until it was retired): a blank dashboard opens in Edit; a
+  // dashboard file opens the New Dashboard modal on its import step. Widget
+  // installs and themes are on their own pages.
   function handleStartWithoutAi(key) {
     if (key === "blank-dashboard") {
       handleCreateBlankDashboard();
-    } else if (key === "import-dashboard" || key === "browse-dashboards") {
-      setLayoutInitialMethod(
-        key === "import-dashboard" ? "import" : "registry",
-      );
+    } else if (key === "import-dashboard") {
+      setLayoutInitialMethod("import");
       setIsLayoutPickerOpen(true);
-    } else if (key === "new-theme") {
-      setThemeEditorKey(null);
-      setThemeStartInCreate(true);
-      setIsThemeManagerOpen(true);
-    } else if (key === "widget-drafts" || key === "open-widgets") {
-      // Drafts are listed (with Resume) on the Widgets page; a widget Create
-      // just built is there too (Phase 3b).
-      handleOpenPageGuarded("widgets");
-    } else if (key === "widget-by-hand") {
-      // The Widget Builder, by hand (consolidation Phase 3b).
-      window.dispatchEvent(new CustomEvent("dash:open-widget-builder"));
-    } else if (WIDGET_INSTALL_ACTIONS[key]) {
-      handleOpenPageGuarded("widgets", {
-        widgetLink: { action: WIDGET_INSTALL_ACTIONS[key], nonce: Date.now() },
-      });
     }
   }
 
@@ -1633,45 +1575,6 @@ const DashboardStageInner = ({
     } catch (_e) {
       loadWorkspaces();
     }
-  }
-
-  // A widget the Scout found in Create: one of the user's → its page on the
-  // Widgets page; a registry one → the registry search, to install.
-  function handleOpenScoutMatch(match) {
-    if (!match) return;
-    if (match.source === "Registry") {
-      // The registry matches a phrase: the widget's name finds it.
-      handleOpenPageGuarded("widgets", {
-        widgetLink: {
-          action: "discover",
-          query: match.name,
-          nonce: Date.now(),
-        },
-      });
-      return;
-    }
-    // "ai-built.x.Comp" (a component id) or "@ai-built/x" → "@ai-built/x".
-    const raw = String(match.package || "");
-    const parts = raw.split(".");
-    const pkg =
-      !raw.includes("/") && parts.length >= 3
-        ? `@${parts[0]}/${parts[1]}`
-        : raw;
-    handleOpenPageGuarded("widgets", {
-      widgetLink: { action: "select", package: pkg, nonce: Date.now() },
-    });
-  }
-
-  function handleBotCreated(saved) {
-    handleOpenPageGuarded("bots");
-    window.dispatchEvent(
-      new CustomEvent("dash:notify", {
-        detail: {
-          type: "success",
-          message: `Created ${(saved && saved.name) || "the bot"}. It's paused until you turn it on.`,
-        },
-      }),
-    );
   }
 
   // Saves the new dashboard before opening it, so it survives a reload.
@@ -2134,7 +2037,7 @@ const DashboardStageInner = ({
     activePageId ||
     workspaceSelected?.activePageId ||
     (workspacePages[0]?.id ?? null);
-  // For Create's cell requests (registered once, above).
+  // For an empty cell's and a widget's doors (registered once, above).
   activePageRef.current = currentActivePageId;
 
   // Stable refs for tab/dashboard handlers so the open/close-dashboard
@@ -3365,6 +3268,12 @@ const DashboardStageInner = ({
                   setWorkspaceRequest(null);
                   handleOpenBuiltDashboard(id);
                 }}
+                // Start from › a blank dashboard, or one from a file
+                // (release 6c: the Create window's no-AI starts).
+                onStartWithoutAi={(k) => {
+                  setWorkspaceRequest(null);
+                  handleStartWithoutAi(k);
+                }}
               />
             ) : null}
             <BotPageModal
@@ -3393,17 +3302,14 @@ const DashboardStageInner = ({
             <ThemeManagerModal
               open={isThemeManagerOpen}
               initialThemeKey={themeEditorKey}
-              startInCreate={themeStartInCreate}
               initialTheme={themeInitial}
               setIsOpen={() => {
                 setIsThemeManagerOpen(!isThemeManagerOpen);
-                setThemeStartInCreate(false);
                 setThemeInitial(null);
               }}
               onSave={(themeKey) => {
                 changeCurrentTheme(themeKey);
                 setIsThemeManagerOpen(() => false);
-                setThemeStartInCreate(false);
                 setThemeInitial(null);
               }}
             />
@@ -3425,35 +3331,6 @@ const DashboardStageInner = ({
               onReloadWorkspaces={loadWorkspaces}
               onOpenWorkspace={handleOpenTabGuarded}
               initialMethod={layoutInitialMethod}
-            />
-
-            <CreateModal
-              open={!!createRequest}
-              setIsOpen={(v) => {
-                if (!v) setCreateRequest(null);
-              }}
-              initialType={createRequest ? createRequest.type : "auto"}
-              workspaceId={createRequest ? createRequest.workspaceId : null}
-              workspaces={workspaceConfig}
-              onStartWithoutAi={handleStartWithoutAi}
-              cell={createRequest ? createRequest.cell || null : null}
-              onBotCreated={handleBotCreated}
-              onOpenAiSettings={() => openAppSettings("ai-assistant")}
-              onOpenWidget={handleOpenScoutMatch}
-              onOpenDashboard={handleOpenBuiltDashboard}
-              initialRecentId={createRequest ? createRequest.recentId : null}
-              initialSeed={createRequest ? createRequest.seed : null}
-              initialPrompt={createRequest ? createRequest.prompt || "" : ""}
-              initialContext={
-                createRequest ? createRequest.context || null : null
-              }
-              edit={createRequest ? createRequest.edit || null : null}
-              onOpenTheme={(theme) => {
-                setThemeEditorKey(null);
-                setThemeStartInCreate(false);
-                setThemeInitial(theme);
-                setIsThemeManagerOpen(true);
-              }}
             />
 
             <MissingWidgetsModal

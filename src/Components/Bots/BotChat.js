@@ -57,8 +57,9 @@ import { runCostLabel } from "../../utils/runCostLabel";
  *
  * A lead asked to make something hands it to the Dash team (consolidation
  * Phase 2c-2): its answer carries a hand-off (handoff.js) — shown as
- * "Plan this with the Dash team", which opens Create with the request, this
- * dashboard and the lead's note; the marker itself is never shown.
+ * "Plan this with the Dash team", which opens a Dash Lead conversation with
+ * the request and the lead's note (lead-workspace release 6c); the marker
+ * itself is never shown.
  * @param {boolean} [paused]  the bot is paused: it says so and the box waits
  * @param {() => void} [onResume]  Resume, shown with the paused note
  * @param {string} [overBudget]  the limit it's over ("its $5.00 monthly
@@ -434,7 +435,6 @@ export const BotChat = ({
                     size="sm"
                     onClick={() =>
                       planWithDashTeam(handoff, {
-                        workspaceId: bot.workspaceId,
                         from: bot.name,
                       })
                     }

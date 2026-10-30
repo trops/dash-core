@@ -58,7 +58,7 @@ import {
   workingLine,
 } from "./workspaceBuild";
 import { normalizeType } from "../Create/planChecklist";
-import { dirtyDashboardId } from "../Create/CreatePlanStep";
+import { dirtyDashboardId } from "./dirtyDashboard";
 import { planTarget } from "../../utils/teamPlan";
 
 const EMPTY = [];
@@ -182,12 +182,16 @@ function startText(contact) {
  *   "widgets") in the workspace's place — Start from's copy and edit
  * @param {(dashboardId) => void} [onOpenDashboard]  opens a built dashboard
  *   in the workspace's place (release 3b)
+ * @param {(key) => void} [onStartWithoutAi]  Start from's blank dashboard
+ *   ("blank-dashboard") or file ("import-dashboard"), in the workspace's
+ *   place (release 6c)
  */
 export const LeadWorkspace = ({
   request = null,
   onClose,
   onOpenPage = null,
   onOpenDashboard = null,
+  onStartWithoutAi = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext) || {};
   const panel = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -310,6 +314,12 @@ export const LeadWorkspace = ({
   const [makingOn, setMakingOn] = useState(
     !!(request && request.making) || !!cellReq || !!widgetReq,
   );
+  // A page's New Dashboard keeps Start from (release 6c).
+  const makingDashboard = !!(
+    request &&
+    request.making &&
+    request.making.kind === "dashboard"
+  );
   const makingShown =
     !!making &&
     makingOn &&
@@ -329,7 +339,11 @@ export const LeadWorkspace = ({
   const [selectedId, setSelectedId] = useState(
     (request && request.recentId) || null,
   );
-  const [draft, setDraft] = useState("");
+  // A door's words, ready to send (release 6c: a hand-off, the Widget
+  // Builder's Ask the Dash team).
+  const [draft, setDraft] = useState(
+    (request && typeof request.draft === "string" && request.draft) || "",
+  );
   const [messages, setMessages] = useState(EMPTY);
   // What's open on the right: "plan", a step's id, or the overview (null).
   const [sideOpen, setSideOpen] = useState(null);
@@ -892,6 +906,14 @@ export const LeadWorkspace = ({
     }
     if (kind === "registry") {
       setSideOpen("registry");
+      return;
+    }
+    if (kind === "blank" || kind === "import") {
+      if (onStartWithoutAi)
+        onStartWithoutAi(
+          kind === "blank" ? "blank-dashboard" : "import-dashboard",
+        );
+      else onClose();
       return;
     }
     const page = kind === "copy" ? "dashboards" : "widgets";
@@ -1510,8 +1532,11 @@ export const LeadWorkspace = ({
               // No Expand in a small window: the column already covers it.
               onToggleWide={narrow ? null : () => setWide((v) => !v)}
               onSummary={setSideSummary}
-              // A page's New already says what's made: no Start from.
-              isNew={!open && !isBot && !makingShown}
+              // A page's New already says what's made: no Start from —
+              // but New Dashboard has its starts (release 6c).
+              isNew={!open && !isBot && (!makingShown || makingDashboard)}
+              // New Dashboard's starts are about dashboards.
+              startFromSkip={makingDashboard ? ["widget"] : null}
               onStartFrom={startFrom}
               onUseRegistry={pickRegistryDashboard}
             />

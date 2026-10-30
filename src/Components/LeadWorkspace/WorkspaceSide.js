@@ -80,7 +80,8 @@ const BUILD_ROLES = {
 
 /**
  * Where you can start a new Dash Lead conversation from (frame 13).
- * `onStartFrom(kind)`: "describe" | "registry" | "copy" | "widget".
+ * `onStartFrom(kind)`: "describe" | "registry" | "copy" | "blank" |
+ * "import" | "widget".
  */
 const START_FROM = [
   {
@@ -97,6 +98,17 @@ const START_FROM = [
     kind: "copy",
     title: "Copy one of your dashboards",
     sub: "Start from what you have and change it",
+  },
+  // The Create window's no-AI starts (release 6c).
+  {
+    kind: "blank",
+    title: "A blank dashboard",
+    sub: "Start empty and add widgets yourself",
+  },
+  {
+    kind: "import",
+    title: "A dashboard file",
+    sub: "Import one someone shared with you",
   },
   {
     kind: "widget",
@@ -268,6 +280,8 @@ export const WorkspaceSide = ({
   dashTeam = [],
   onSummary = null,
   onUseRegistry = null,
+  // Start from kinds left out (New Dashboard: "widget").
+  startFromSkip = null,
   // A change to one widget (release 6c): in place or new; sign in.
   onWidgetMode = null,
   onSignIn = null,
@@ -552,7 +566,9 @@ export const WorkspaceSide = ({
       {startFrom ? (
         <div className="flex flex-col gap-2" data-testid="workspace-start-from">
           <span className={`text-xs ${muted}`}>Start from</span>
-          {START_FROM.map((s) => (
+          {START_FROM.filter(
+            (s) => !(startFromSkip || []).includes(s.kind),
+          ).map((s) => (
             <button
               key={s.kind}
               type="button"

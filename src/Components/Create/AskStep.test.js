@@ -474,7 +474,7 @@ describe("asking a team lead (5e-2a)", () => {
     );
   });
 
-  test("outside Create (the dock) it opens Create for that dashboard", async () => {
+  test("a hand-off opens a Dash Lead conversation with the request and note (6c)", async () => {
     leadApi({
       askLead: jest.fn().mockResolvedValue({
         status: "completed",
@@ -483,21 +483,18 @@ describe("asking a team lead (5e-2a)", () => {
     });
     render(<AskStep question="x" recipient={{ ...LEAD, dashboardId: "7" }} />);
     const opened = jest.fn();
-    window.addEventListener("dash:open-create", opened);
+    window.addEventListener("dash:open-workspace", opened);
     fireEvent.click(
       await screen.findByRole("button", {
         name: "Plan this with the Dash team",
       }),
     );
-    window.removeEventListener("dash:open-create", opened);
+    window.removeEventListener("dash:open-workspace", opened);
     expect(opened.mock.calls[0][0].detail).toEqual({
-      type: "bot",
-      workspaceId: "7",
-      prompt: "A bot that sums up my email at 7:30",
-      context: {
-        note: "News Digest covers headlines.",
-        from: "Daily Brief Lead",
-      },
+      key: "role:dashlead",
+      making: { kind: "bot" },
+      draft:
+        "A bot that sums up my email at 7:30\n\n(For the Daily Brief dashboard.)\n\n(From Daily Brief Lead: News Digest covers headlines.)",
     });
   });
 

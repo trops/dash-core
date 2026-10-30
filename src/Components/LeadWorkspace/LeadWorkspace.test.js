@@ -609,7 +609,7 @@ describe("release 3a review fixes", () => {
     const choices = render(node);
     expect(
       within(choices.container).getByTestId("workspace-plan-sent"),
-    ).toHaveTextContent("Sent to Create to build");
+    ).toHaveTextContent("Sent to be built by an older version of Dash");
     expect(
       within(choices.container).queryByRole("button", {
         name: "Yes, build it",
@@ -807,6 +807,8 @@ describe("release 3a: matches the mockup", () => {
       "Describe itSay what you want in the box — the usual way",
       "A dashboard from the registryInstall a ready-made one and its bots, then adjust it",
       "Copy one of your dashboardsStart from what you have and change it",
+      "A blank dashboardStart empty and add widgets yourself",
+      "A dashboard fileImport one someone shared with you",
       "Edit a widget you haveOpen it in the Widget Builder",
     ]);
     // Nothing made yet: no empty Outputs box under Start from.
@@ -835,6 +837,43 @@ describe("release 3a: matches the mockup", () => {
     expect(heard).toEqual([]);
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId("workspace-registry")).toBeInTheDocument();
+  });
+
+  test("Start from › a blank dashboard, or a file: the no-AI starts (6c-4)", () => {
+    const onStartWithoutAi = jest.fn();
+    render(
+      <LeadWorkspace
+        request={{ key: "role:dashlead" }}
+        onClose={jest.fn()}
+        onStartWithoutAi={onStartWithoutAi}
+      />,
+    );
+    fireEvent.click(screen.getByText("A blank dashboard"));
+    expect(onStartWithoutAi).toHaveBeenLastCalledWith("blank-dashboard");
+    fireEvent.click(screen.getByText("A dashboard file"));
+    expect(onStartWithoutAi).toHaveBeenLastCalledWith("import-dashboard");
+  });
+
+  test("New Dashboard has Start from; a door's words wait in the reply box (6c-4)", () => {
+    render(
+      <LeadWorkspace
+        request={{
+          key: "role:dashlead",
+          making: { kind: "dashboard", from: "dashboards" },
+          draft: "A bot that sums up my email",
+        }}
+        onClose={jest.fn()}
+      />,
+    );
+    expect(screen.getByTestId("workspace-start-from")).toHaveTextContent(
+      "A blank dashboard",
+    );
+    expect(screen.getByTestId("workspace-start-from")).not.toHaveTextContent(
+      "Edit a widget you have",
+    );
+    expect(screen.getByRole("textbox", { name: "Ask Dash Lead" })).toHaveValue(
+      "A bot that sums up my email",
+    );
   });
 
   describe("a page's New (release 6c, frame 41)", () => {

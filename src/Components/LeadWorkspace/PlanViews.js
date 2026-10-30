@@ -106,7 +106,7 @@ export const PlanCard = ({ plan, earlier = false, onOpen }) => (
  * @param {(text) => void} onSend   sends a reply to the lead
  * @param {() => void} onBuild      Yes, build it (null while it starts)
  * @param {() => void} onChange     Change something (the reply box)
- * @param {boolean} sent            already sent to Create to build
+ * @param {boolean} sent            sent to the retired Create window (3a)
  */
 export const PlanChoices = ({
   plan,
@@ -223,7 +223,8 @@ export const PlanChoices = ({
   if (sent) {
     return (
       <span className={`text-sm ${muted}`} data-testid="workspace-plan-sent">
-        Sent to Create to build — it&apos;s in Create&apos;s Recent.
+        Sent to be built by an older version of Dash — ask here to build it
+        again.
       </span>
     );
   }
@@ -538,7 +539,8 @@ export const PlanOutput = ({
         </span>
       ) : wp.sent ? (
         <span className={`text-sm ${muted}`} data-testid="workspace-plan-sent">
-          Sent to Create to build — it&apos;s in Create&apos;s Recent.
+          Sent to be built by an older version of Dash — ask here to build it
+          again.
         </span>
       ) : onBuild && canBuild({ plan, check: wp.check }) ? (
         <div className="flex flex-col gap-2">

@@ -44,7 +44,7 @@ import {
  * Right: the selected bot's page (BotPage, app-navigation NAV-016 AC6 — the
  * same page as Manage › Bots) with this team's actions under ⋯; a new bot
  * gets the bot form to save it first. A lead asked to make something hands
- * it to the Dash team (its answer's button opens Create, Phase 2c-2). Leaving unsaved
+ * it to the Dash team (its answer's button opens a Dash Lead conversation). Leaving unsaved
  * Settings edits asks first. Narrow windows swap the team list for a bot
  * picker.
  *
