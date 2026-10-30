@@ -265,6 +265,28 @@ function planSteps(
     botSteps(plan, add);
     return steps;
   }
+  // A new theme (lead-workspace theme round): made from its four colors,
+  // then — on a dashboard plan — applied by the theme step below.
+  const newTheme = pieces.find(
+    (p) => p.kind === "theme" && p.source === "new" && p.name,
+  );
+  const makeTheme = () =>
+    add({
+      id: "maketheme",
+      kind: "maketheme",
+      role: "dash",
+      label: `Make the ${String(newTheme.name).trim()} theme`,
+      name: String(newTheme.name).trim(),
+      colors: { ...(newTheme.colors || {}) },
+    });
+  if (
+    newTheme &&
+    !planTarget(plan) &&
+    pieces.every((p) => p.kind === "theme")
+  ) {
+    makeTheme();
+    return steps;
+  }
 
   widgets.forEach((p, i) => {
     if (p.source === "registry" && p.package) {
@@ -299,13 +321,14 @@ function planSteps(
   }
   const theme = pieces.find((p) => p.kind === "theme" && p.name);
   if (theme) {
+    if (theme === newTheme) makeTheme();
     add({
       id: "theme",
       kind: "theme",
       role: "dash",
       label: `Apply the ${theme.name} theme`,
       theme: String(theme.name).trim(),
-      needs: ["dashboard"],
+      needs: theme === newTheme ? ["dashboard", "maketheme"] : ["dashboard"],
     });
   }
   widgets.forEach((p, i) => {
@@ -1239,6 +1262,8 @@ function undoOnDashboard(workspace, built) {
  *   useDashboard(id) → { id, name } | throws — a dashboard the user has
  *   applyTheme({ dashboardId, theme }) → { key, name, previous,
  *     previousName } | throws — theme by name; key = the saved theme's id
+ *   makeTheme({ name, colors }) → { key, name } | throws — a new theme from
+ *     { primary, secondary, tertiary, neutral }, saved in the user's themes
  *   askRole(role, request) → run record ({ status, output, error, model, usage, cost, skipped, reason })
  *   abortRole(role)
  *   placeWidget({ dashboardId, component|widget, name, page, provider,
@@ -1391,10 +1416,25 @@ function createPlanBuild(plan, deps, opts = {}) {
         step.detail = state.dashboard.name;
         return;
       }
+      case "maketheme": {
+        const res = await deps.makeTheme({
+          name: step.name,
+          colors: step.colors,
+        });
+        state.madeTheme = {
+          key: (res && res.key) || step.name,
+          name: (res && res.name) || step.name,
+          colors: step.colors,
+        };
+        step.detail = state.madeTheme.name;
+        return;
+      }
       case "theme": {
+        // The theme this plan made is applied by its id, so a same-named
+        // one can't be picked instead.
         const res = await deps.applyTheme({
           dashboardId: state.dashboard.id,
-          theme: step.theme,
+          theme: (state.madeTheme && state.madeTheme.key) || step.theme,
         });
         // The first theme it replaced is the one Remove puts back.
         const first = state.theme || {
@@ -1685,6 +1725,8 @@ function createPlanBuild(plan, deps, opts = {}) {
   const RETRIES = new Set([
     // A cell build's preview couldn't find its widget (Phase 2b).
     "preview",
+    // Saving a new theme (theme round).
+    "maketheme",
     "install",
     "dashboard",
     "theme",

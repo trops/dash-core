@@ -14,9 +14,27 @@ const ChooserCard = ({ icon, title, subtitle, onClick }) => (
   </div>
 );
 
-export const ThemeNewChooser = ({ onSearchThemes, onSelectMethod }) => (
-  <div className="flex flex-col gap-6 p-6 overflow-y-auto flex-1 min-h-0">
-    <div className="grid grid-cols-2 gap-3">
+/**
+ * New theme: how to start. Describe it (lead-workspace theme round, frame
+ * 44) opens a Dash Lead conversation that makes it; the others work here,
+ * by hand.
+ */
+export const ThemeNewChooser = ({
+  onSearchThemes,
+  onSelectMethod,
+  onDescribe = null,
+}) => (
+  <div className="flex flex-col gap-4 p-6 overflow-y-auto flex-1 min-h-0">
+    <span className="text-sm opacity-60">How do you want to start?</span>
+    <div className={`grid ${onDescribe ? "grid-cols-3" : "grid-cols-2"} gap-3`}>
+      {onDescribe ? (
+        <ChooserCard
+          icon="palette"
+          title="Describe it"
+          subtitle="Say what you want — the Dash Lead makes it with you"
+          onClick={onDescribe}
+        />
+      ) : null}
       <ChooserCard
         icon="magnifying-glass"
         title="Search Marketplace"
@@ -48,5 +66,12 @@ export const ThemeNewChooser = ({ onSearchThemes, onSelectMethod }) => (
         onClick={() => onSelectMethod("from-url")}
       />
     </div>
+    {onDescribe ? (
+      <span className="text-xs opacity-60">
+        Describe it opens a conversation with the Dash Lead — it plans the theme
+        with you and shows how it looks before anything is saved. The others
+        work here, by hand, as they do today.
+      </span>
+    ) : null}
   </div>
 );

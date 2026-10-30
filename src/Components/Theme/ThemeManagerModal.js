@@ -291,6 +291,20 @@ export const ThemeManagerModal = ({
     setRawThemeSelected(() => rawThemes[themeKey]);
   }
 
+  // Describe it (theme round, frame 44): the Dash Lead makes it with the
+  // user, in a new conversation; this window closes.
+  function handleDescribe() {
+    setIsOpen(false);
+    window.dispatchEvent(
+      new CustomEvent("dash:open-workspace", {
+        detail: {
+          key: "role:dashlead",
+          making: { kind: "theme", from: "themes" },
+        },
+      }),
+    );
+  }
+
   function handleActivateTheme() {
     changeCurrentTheme(themeKeySelected);
     setIsOpen(false);
@@ -326,6 +340,7 @@ export const ThemeManagerModal = ({
                       <ThemeNewChooser
                         onSearchThemes={handleChooseSearch}
                         onSelectMethod={handleSelectMethod}
+                        onDescribe={handleDescribe}
                       />
                     ) : isSearching ? (
                       <DiscoverThemesDetail

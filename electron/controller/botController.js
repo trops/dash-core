@@ -169,6 +169,8 @@ const {
   placeChoices,
   settingKeys,
 } = require("../bots/planBuild");
+// Pure JS, main-process safe (see its header): a plan's new theme.
+const { generateCustomTheme } = require("../../src/utils/themeGenerator");
 const { planTarget, validatePlan } = require("../bots/teamPlan");
 const { resolveEditTarget, ownsWidget } = require("../bots/editTarget");
 const { checkBot } = require("../bots/checkBot");
@@ -2752,7 +2754,9 @@ const botController = {
     // Phase 1b): a plan with errors isn't built.
     const checked = validatePlan(plan, {
       dashboards: this._dashboardsWithBots(),
-      themes: this._themeNames(),
+      // A theme this conversation made is the plan's own, not taken
+      // (carrying on, a changed plan, building again: theme round).
+      themes: this._themeNames(recentId),
       cell: !!cell,
       standalone: !!(cell && standalone),
       bot: !!bot,
@@ -2817,6 +2821,7 @@ const botController = {
           this._planCreateDashboard(name, count, pages),
         useDashboard: (id) => this._planUseDashboard(id),
         applyTheme: (req) => this._planApplyTheme(req),
+        makeTheme: (req) => this._planMakeTheme({ ...req, madeIn: planId }),
         setWidgetSettings: (req) => this._planSetWidgetSettings(req),
         // A cell build's own Builder / Checker: while they run, the Dash
         // team's place_widget / installDraft refuse (Phase 2b).
@@ -3292,6 +3297,48 @@ const botController = {
     };
   },
 
+  /**
+   * A new theme from a plan (lead-workspace theme round): Dash's theme
+   * generator turns its four colors into the full dark and light theme,
+   * saved like the theme wizard saves one. The app reloads its themes.
+   * `madeIn`: the conversation — a theme it made before (carrying on, a
+   * changed plan, building again) is made again under the same key.
+   */
+  _planMakeTheme({ name, colors, madeIn = null }) {
+    const want = String(name || "").trim();
+    if (!want) throw new Error("the theme has no name");
+    const c = colors || {};
+    const saved = this._savedThemes();
+    const same = Object.entries(saved).filter(
+      ([, t]) => t && String(t.name || "").toLowerCase() === want.toLowerCase(),
+    );
+    const own =
+      madeIn && same.length === 1 && same[0][1].madeIn === madeIn
+        ? same[0][0]
+        : null;
+    if (same.length && !own) {
+      throw new Error(`there's already a theme called "${want}"`);
+    }
+    const raw = generateCustomTheme(
+      c.primary,
+      c.secondary,
+      c.tertiary,
+      c.neutral,
+    );
+    const key = own || `theme-${Date.now()}`;
+    const res = require("./themeController").saveThemeForApplication(
+      this._getMainWindow(),
+      this._appId,
+      key,
+      { ...raw, id: key, name: want, ...(madeIn ? { madeIn } : {}) },
+    );
+    if (!res || res.error || res.success === false) {
+      throw new Error((res && res.message) || "the theme couldn't be saved");
+    }
+    this._broadcast("themes:changed", { key });
+    return { key, name: want };
+  },
+
   /** themes.json: the user's saved themes by id. */
   _savedThemes() {
     try {
@@ -3305,9 +3352,18 @@ const botController = {
     }
   },
 
-  /** The user's saved theme names, once each (list_themes). */
-  _themeNames() {
-    return themeChoices(this._savedThemes())
+  /**
+   * The user's saved theme names, once each (list_themes) — without the
+   * ones conversation `madeIn` made (theme round).
+   */
+  _themeNames(madeIn = null) {
+    const saved = this._savedThemes();
+    const mine = madeIn
+      ? Object.fromEntries(
+          Object.entries(saved).filter(([, t]) => !t || t.madeIn !== madeIn),
+        )
+      : saved;
+    return themeChoices(mine)
       .map((c) => c.name)
       .filter((n, i, all) => all.indexOf(n) === i);
   },

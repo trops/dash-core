@@ -17,6 +17,47 @@ export function latestPlanStep(messages) {
   return null;
 }
 
+/** A plan's new theme piece (lead-workspace theme round), or null. */
+export function newTheme(plan) {
+  const pieces = (plan && Array.isArray(plan.pieces) ? plan.pieces : []).filter(
+    Boolean,
+  );
+  return (
+    pieces.find((p) => p.kind === "theme" && p.source === "new" && p.name) ||
+    null
+  );
+}
+
+/** A plan that only makes a theme (theme round, frame 45). */
+export function isThemeOnly(plan) {
+  const pieces = (plan && Array.isArray(plan.pieces) ? plan.pieces : []).filter(
+    Boolean,
+  );
+  return (
+    !!newTheme(plan) &&
+    !planTarget(plan) &&
+    pieces.every((p) => p.kind === "theme")
+  );
+}
+
+/** A new theme's four colors, one row each (frame 45). */
+const THEME_COLORS = [
+  ["primary", "Primary", "Buttons, links, what's selected"],
+  ["secondary", "Secondary", "Highlights and badges"],
+  ["tertiary", "Tertiary", "Charts and accents"],
+  ["neutral", "Neutral", "Backgrounds and borders, dark and light"],
+];
+export function themeColorRows(piece) {
+  const colors = (piece && piece.colors) || {};
+  return THEME_COLORS.filter(([key]) => colors[key]).map(
+    ([key, name, sub]) => ({
+      main: `${name} — ${String(colors[key]).toLowerCase()}`,
+      sub,
+      swatch: colors[key],
+    }),
+  );
+}
+
 /** The plan's name: its layout's, the dashboard it changes, or its summary. */
 export function planName(plan) {
   if (!plan) return "";
@@ -55,6 +96,15 @@ export function planLine(plan) {
     return fitsCell(plan)
       ? "Plan · 1 added, in the cell you picked"
       : "Plan · doesn't fit one cell";
+  if (isThemeOnly(plan)) return "Plan · 1 new theme";
+  // Only a new theme, on a dashboard you have (frame 46).
+  if (
+    target &&
+    newTheme(plan) &&
+    plan.pieces.every((p) => p && p.kind === "theme")
+  ) {
+    return `Plan · a new theme, on ${target.name}`;
+  }
   if (added) return `Plan · ${added} added · on ${target.name}`;
   const counts = plan ? countsLine(plan) : "";
   // A change that fills no cells (a new bot, a theme): what it makes.
@@ -80,6 +130,7 @@ function addedCount(plan) {
 export function yesLabel(plan) {
   if (plan && plan.cell) return "Yes, add it";
   if (plan && plan.widgetChange) return "Yes, change it";
+  if (isThemeOnly(plan)) return "Yes, make it";
   return plan && planTarget(plan) ? "Yes, make the changes" : "Yes, build it";
 }
 
@@ -301,6 +352,9 @@ const providerName = (it) => String(it.label || "").replace(/^Connect /, "");
  * Assistant".
  */
 export function planSubLine(plan, checklist = []) {
+  if (isThemeOnly(plan)) {
+    return "A new theme — nothing is saved until you say yes";
+  }
   const pieces = (plan && Array.isArray(plan.pieces) && plan.pieces) || [];
   const widgets = pieces.filter((p) => p && p.kind === "widget").length;
   const bots = pieces.filter((p) => p && p.kind === "bot").length;
@@ -329,6 +383,8 @@ export function planRows(plan, checklist = [], isDone = () => false) {
       const what = String(p.adds || p.notes || p.package || "").trim();
       return { main: p.name, sub: what ? `${source} — ${what}` : source };
     });
+  // A new theme: its colors (theme round).
+  if (isThemeOnly(plan)) rows.push(...themeColorRows(newTheme(plan)));
   for (const it of connectItems(checklist)) {
     if (isDone(it)) continue;
     rows.push({

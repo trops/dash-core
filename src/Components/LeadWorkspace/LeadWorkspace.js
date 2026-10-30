@@ -181,6 +181,8 @@ function startText(contact) {
  * @param {(page) => void} [onOpenPage]  opens an app page ("dashboards",
  *   "widgets") in the workspace's place — Start from's copy and edit
  * @param {(dashboardId) => void} [onOpenDashboard]  opens a built dashboard
+ * @param {(themeKey) => void} [onOpenThemeEditor]  opens a theme it made in
+ *   the theme editor (theme round)
  *   in the workspace's place (release 3b)
  * @param {(key) => void} [onStartWithoutAi]  Start from's blank dashboard
  *   ("blank-dashboard") or file ("import-dashboard"), in the workspace's
@@ -191,6 +193,7 @@ export const LeadWorkspace = ({
   onClose,
   onOpenPage = null,
   onOpenDashboard = null,
+  onOpenThemeEditor = null,
   onStartWithoutAi = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext) || {};
@@ -989,6 +992,7 @@ export const LeadWorkspace = ({
     carryOn: () => !starting && startBuild({ carryOn: true }),
     buildAgain: buildIt,
     openDashboard: onOpenDashboard,
+    openThemeEditor: onOpenThemeEditor,
     open: setSideOpen,
   };
   // The lead is still answering: the plan isn't changed meanwhile.

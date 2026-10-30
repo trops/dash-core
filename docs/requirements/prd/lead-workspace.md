@@ -1,10 +1,10 @@
 # PRD: Lead Workspace — Talk to Each Team Through Its Lead
 
 **Status:** In Progress (release 3)
-**Last Updated:** 2026-10-29
+**Last Updated:** 2026-10-30
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; dash-electron hosts the notifications panel and picks up each release)
-**Approved mockup:** https://claude.ai/artifact/LQogUdGVwvhr1w435jXkrS (page "CURRENT — Lead workspace", frames 1–37)
+**Approved mockup:** https://claude.ai/artifact/LQogUdGVwvhr1w435jXkrS (page "CURRENT — Lead workspace", frames 1–37; release 6c frames 38–43; theme round frames 44–47)
 **Related PRDs:** [bot-teams.md](./bot-teams.md) (teams, leads), [app-navigation.md](./app-navigation.md) (Bots page, bot page), [bot-factory.md](./bot-factory.md) (bots, approvals)
 
 ---
@@ -163,7 +163,21 @@ Smaller windows (35–36), light theme, carrying existing Dash team questions in
         - A second click doesn't carry it twice.
         - The carried plan keeps its date, so it isn't news in the notifications panel.
         - **A build nothing runs any more** (saved before a restart, or carried from Create): `getPlanBuild` says `restored`, and where its own controls can't run — Try again, Looks good, a provider connected — the chat offers **Carry on building**. This also fixes it for workspace builds after a restart.
-    - **Not carried over:** theme from a description (kept for the theme round), the starters gallery (the registry list covers it), and the bot form for a bot on no dashboard (a dashboard's Bots view › Add bot has it).
+    - **Not carried over:** theme from a description (made by the Dash team since the theme round, below), the starters gallery (the registry list covers it), and the bot form for a bot on no dashboard (a dashboard's Bots view › Add bot has it).
+
+### Theme round — themes made through the Dash team (approved 2026-10-30, frames 44–47)
+
+Decided with the user: a new theme is a plan, like everything else the Dash team makes — not a one-shot. Changing a theme the user has is left for later. The theme editor stays for small changes by hand.
+
+- **The Themes page's New Theme** keeps its five ways (Marketplace, Presets, Colors, Random, Website) and gets a first card, **Describe it**, which closes the window and opens a Dash Lead conversation "Making: a theme — from the Themes page" with its own greeting and starters (frame 44). A theme can also be asked for in any Dash Lead conversation, or of a dashboard's lead for that dashboard.
+- **The plan** (frame 45): the Planner plans a theme piece `{"kind": "theme", "source": "new", "name", "colors": {primary, secondary, tertiary, neutral}}` (#rrggbb each, a name the user doesn't have). On the right: its colors and how it looks, dark and light — the same theme Dash's generator will save. Card "Autumn — theme · Plan · 1 new theme"; **Yes, make it**. Nothing is saved before.
+- **On a dashboard you have** (frame 46): a dashboard's lead brings in the Dash team for a new theme too. The plan makes the theme and applies it — one yes; the theme it had stays in the user's themes.
+- **Made** (frame 47): "Autumn is in your themes", with **Open in the theme editor** for small changes by hand.
+- **Acceptance criteria:**
+  - [x] A theme-only plan has one build step and no dashboard; a dashboard plan makes the theme, then applies the one it made by its id.
+  - [x] A plan's new theme with bad colors, or a name the user already has, is refused with what's wrong.
+  - [x] The saved theme appears on the Themes page without a restart.
+  - [x] Open in the theme editor opens the saved theme there.
 
 ## Risks
 
@@ -295,3 +309,13 @@ Frames 22, 27–29.
   - Failure text drops the engine's wrapper and is kept short; a failed bot's Details opens its page.
   - Under All, only other dashboards are tagged.
   - One Dash team read instead of a second set of every list; NEW is a pill; the footer is a link; `dash:open-page` is subscribed once.
+
+### Theme round (2026-10-30)
+
+- **Plan piece** (`teamPlan`, both copies): `kind "theme"`, `source "new"`, `colors` — four #rrggbb values; its name mustn't be one of the user's themes (`context.themes`, any case). A new theme isn't something built, so it needs no checks.
+- **Build** (`planBuild`): a `maketheme` step (`deps.makeTheme({ name, colors })`). Theme only: that one step, no dashboard. On a dashboard: dashboard → maketheme → theme, and the theme step applies `state.madeTheme.key`, so a same-named theme can't be picked instead. Remove puts the old theme back; the made theme stays in the user's themes.
+- **Controller** (`botController._planMakeTheme`): Dash's `generateCustomTheme` (pure JS, main-process safe) makes dark and light; saved with `themeController.saveThemeForApplication` under `theme-<time>`, like the wizard. It broadcasts `themes:changed`; `ThemeWrapper` reloads its themes.
+- **Instructions:** the Planner's `NEW_THEMES` (the old Create theme maker's color rules); dashboard leads bring in the Dash team for "a new theme for it". Earlier texts are in their history.
+- **Workspace:** `isThemeOnly` / `newTheme` / `themeColorRows` (`workspacePlan`), `ThemeLooks` (`PlanViews`, with `ThemePreview compact`), build kind `"theme"` with choices `"theme"`, and `onOpenThemeEditor` → DashboardStage's `handleOpenThemeManager(key)`.
+- **Wizard:** `ThemeNewChooser onDescribe`; `makingStart({ kind: "theme", from: "themes" })`.
+- **Later:** changing a saved theme through the team; `themeFromPrompt` and DashboardStage's `themeInitial` are no longer reached.

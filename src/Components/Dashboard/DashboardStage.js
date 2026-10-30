@@ -753,9 +753,9 @@ const DashboardStageInner = ({
   // The New Dashboard modal opened on a step ("import") — Start from's
   // dashboard file (lead-workspace release 6c).
   const [layoutInitialMethod, setLayoutInitialMethod] = useState("import");
-  // A theme made from a description, opened unsaved (phase 5c) — nothing
-  // sets it since the Create window was retired (6c); kept for the theme
-  // round.
+  // A theme made from a description, opened unsaved (phase 5c). Nothing
+  // sets it since the Create window was retired (6c): the Dash team makes
+  // themes now (theme round) and saved ones open by key.
   const [themeInitial, setThemeInitial] = useState(null);
 
   // First-run onboarding (Phase 3A). Tri-state:
@@ -3267,6 +3267,11 @@ const DashboardStageInner = ({
                 onOpenDashboard={(id) => {
                   setWorkspaceRequest(null);
                   handleOpenBuiltDashboard(id);
+                }}
+                // A theme the Dash team made (theme round, frame 47).
+                onOpenThemeEditor={(key) => {
+                  setWorkspaceRequest(null);
+                  handleOpenThemeManager(key);
                 }}
                 // Start from › a blank dashboard, or one from a file
                 // (release 6c: the Create window's no-AI starts).

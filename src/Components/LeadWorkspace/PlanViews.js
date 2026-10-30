@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Button,
   Button2,
@@ -22,6 +22,8 @@ import { PlanChecklistRows, isTypeItOption } from "../Create/PlanParts";
 import {
   canBuild,
   isSettingsChange,
+  isThemeOnly,
+  newTheme,
   planLine,
   planName,
   planRows,
@@ -32,6 +34,9 @@ import {
 import { planTarget } from "../../utils/teamPlan";
 import { planChanges, widgetChanges } from "./planChanges";
 import { useDashboard } from "./useDashboard";
+import { ThemePreview } from "../AppPages/ThemePreview";
+import { ThemeModel } from "../../Models/ThemeModel";
+import { generateCustomTheme } from "../../utils/themeGenerator";
 
 /**
  * The plan in a workspace conversation (lead-workspace release 3a, frames 1,
@@ -86,11 +91,15 @@ export const OutputCard = ({
 export const PlanCard = ({ plan, earlier = false, onOpen }) => (
   <div className="self-start w-full max-w-md" data-testid="workspace-plan-card">
     <OutputCard
-      // A change to a dashboard the user has says so (frame 30).
+      icon={isThemeOnly(plan) ? "palette" : undefined}
+      // A change to a dashboard the user has says so (frame 30); a new
+      // theme, that it's a theme (theme round, frame 45).
       title={
         planTarget(plan) || plan.widgetChange
           ? `${planName(plan)} — changes`
-          : planName(plan)
+          : isThemeOnly(plan)
+            ? `${planName(plan)} — theme`
+            : planName(plan)
       }
       sub={earlier ? `${planLine(plan)} · changed since` : planLine(plan)}
       bordered={false}
@@ -393,14 +402,18 @@ export const PlanOutput = ({
           ),
           ...(changes.cellOnly && changes.fits !== false
             ? [{ main: "Everything else — unchanged", sub: "" }]
-            : draws && changes.unchanged.length
-              ? [
-                  {
-                    main: `${changes.unchanged.join(", ")} — unchanged`,
-                    sub: "",
-                  },
-                ]
-              : []),
+            : !changes.added &&
+                (plan.pieces || []).every((p) => p && p.kind === "theme")
+              ? // Only its theme changes (theme round, frame 46).
+                [{ main: "Its widgets, bots and layout — unchanged", sub: "" }]
+              : draws && changes.unchanged.length
+                ? [
+                    {
+                      main: `${changes.unchanged.join(", ")} — unchanged`,
+                      sub: "",
+                    },
+                  ]
+                : []),
           ...planned.filter((r) => r.warn),
         ]
       : planned;
@@ -433,8 +446,12 @@ export const PlanOutput = ({
                 ? "A cell takes one widget — this plan has more"
                 : "Only the cell you picked changes"
               : target
-                ? "Nothing changes until you say yes"
-                : planSubLine(plan, checklist) || "Nothing to make yet"}
+                ? buildLine
+                  ? `What changed on ${target.name}`
+                  : "Nothing changes until you say yes"
+                : buildLine && isThemeOnly(plan)
+                  ? "Saved in your themes"
+                  : planSubLine(plan, checklist) || "Nothing to make yet"}
         </span>
       </div>
       {draws ? (
@@ -446,6 +463,7 @@ export const PlanOutput = ({
           <ChangesGrid label="After" rows={changes.after} cols={changes.cols} />
         </div>
       ) : null}
+      {newTheme(plan) ? <ThemeLooks piece={newTheme(plan)} /> : null}
       {rows.length ? (
         <div
           className={`flex flex-col rounded-xl border overflow-hidden ${hairline}`}
@@ -457,7 +475,14 @@ export const PlanOutput = ({
               className={`flex flex-row items-start gap-3 px-4 py-3 text-sm ${i ? `border-t ${hairline}` : ""}`}
               data-testid="workspace-plan-row"
             >
-              {r.warn ? (
+              {r.swatch ? (
+                // A theme's color: drawn in that color (theme round).
+                <span
+                  className={`inline-block flex-shrink-0 h-3 w-3 mt-1 rounded border ${hairline}`}
+                  style={{ backgroundColor: r.swatch }}
+                  aria-hidden="true"
+                />
+              ) : r.warn ? (
                 <FontAwesomeIcon
                   icon="triangle-exclamation"
                   className={`h-3 w-3 mt-1 ${statusTokens.warning.icon}`}
@@ -552,6 +577,42 @@ export const PlanOutput = ({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+};
+
+/**
+ * How a new theme looks (theme round, frames 45-46): Dash's theme generator
+ * makes it from the plan's four colors — the same theme Yes, make it saves —
+ * shown dark and light, side by side.
+ */
+export const ThemeLooks = ({ piece }) => {
+  const { muted } = useConfigTokens();
+  const c = (piece && piece.colors) || {};
+  const theme = useMemo(() => {
+    try {
+      const raw = generateCustomTheme(
+        c.primary,
+        c.secondary,
+        c.tertiary,
+        c.neutral,
+      );
+      return ThemeModel({ ...raw, name: piece.name });
+    } catch (_e) {
+      return null;
+    }
+  }, [c.primary, c.secondary, c.tertiary, c.neutral, piece.name]);
+  if (!theme) return null;
+  return (
+    <div className="grid grid-cols-2 gap-3" data-testid="workspace-theme-looks">
+      {["dark", "light"].map((variant) => (
+        <div key={variant} className="flex flex-col gap-1.5 min-w-0">
+          <span className={`text-xs ${muted}`}>
+            {variant === "dark" ? "Dark" : "Light"}
+          </span>
+          <ThemePreview theme={theme} variant={variant} compact />
+        </div>
+      ))}
     </div>
   );
 };

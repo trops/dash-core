@@ -9,10 +9,12 @@ import { paint } from "./themeSummary";
  *
  * @param {object} theme    a ThemeModel theme (with .dark / .light)
  * @param {string} variant  "dark" | "light"
+ * @param {boolean} compact half a column wide (a theme in a plan): no
+ *   sidebar, two cards
  */
 const CARDS = ["Inbox", "Pipeline", "Calendar"];
 
-export const ThemePreview = ({ theme, variant = "dark" }) => {
+export const ThemePreview = ({ theme, variant = "dark", compact = false }) => {
   const v = theme && theme[variant];
   if (!v || !v.cssValue) {
     return (
@@ -35,7 +37,8 @@ export const ThemePreview = ({ theme, variant = "dark" }) => {
   return (
     <div
       data-testid="theme-preview"
-      className="flex flex-col h-64 rounded-lg overflow-hidden border"
+      // Compact: as tall as its cards (the plan's two side by side).
+      className={`flex flex-col ${compact ? "" : "h-64"} rounded-lg overflow-hidden border`}
       style={{
         backgroundColor: c("bg-neutral-very-dark"),
         borderColor: hairline,
@@ -58,16 +61,20 @@ export const ThemePreview = ({ theme, variant = "dark" }) => {
         </span>
       </div>
       <div className="flex flex-row flex-1 min-h-0">
+        {compact ? null : (
+          <div
+            className="flex flex-col gap-2 w-24 p-3 flex-shrink-0"
+            style={{ backgroundColor: c("bg-neutral-dark") }}
+          >
+            {line("80%", muted)}
+            {line("60%", muted)}
+            {line("70%", muted)}
+          </div>
+        )}
         <div
-          className="flex flex-col gap-2 w-24 p-3 flex-shrink-0"
-          style={{ backgroundColor: c("bg-neutral-dark") }}
+          className={`flex-1 grid ${compact ? "grid-cols-2 gap-2 p-2" : "grid-cols-3 gap-3 p-3"}`}
         >
-          {line("80%", muted)}
-          {line("60%", muted)}
-          {line("70%", muted)}
-        </div>
-        <div className="flex-1 grid grid-cols-3 gap-3 p-3">
-          {CARDS.map((title, i) => (
+          {(compact ? CARDS.slice(0, 2) : CARDS).map((title, i) => (
             <div
               key={title}
               data-testid="preview-card"
