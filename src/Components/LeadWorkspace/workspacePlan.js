@@ -6,6 +6,12 @@
  */
 import { countsLine, editNote } from "../Create/planChecklist";
 import { planTarget } from "../../utils/teamPlan";
+import {
+  themeByName,
+  themeColors,
+  themeOrigin,
+  themePublished,
+} from "../../utils/themeStanding";
 
 /** The latest hand-off step that brought a plan, or null. */
 export function latestPlanStep(messages) {
@@ -40,6 +46,46 @@ export function isThemeOnly(plan) {
   );
 }
 
+/** A plan's change to a saved theme (theme change round), or null. */
+export function themeChange(plan) {
+  const pieces = (plan && Array.isArray(plan.pieces) ? plan.pieces : []).filter(
+    Boolean,
+  );
+  return (
+    pieces.find((p) => p.kind === "theme" && p.source === "update" && p.name) ||
+    null
+  );
+}
+
+/**
+ * A plan that only changes a saved theme (frames 49-50) — on a dashboard
+ * or not: the change (or the remix) reaches everywhere the theme is used.
+ */
+export function isThemeChangeOnly(plan) {
+  const pieces = (plan && Array.isArray(plan.pieces) ? plan.pieces : []).filter(
+    Boolean,
+  );
+  return !!themeChange(plan) && pieces.every((p) => p.kind === "theme");
+}
+
+/**
+ * The theme a plan changes, and whose it is: { key, raw, origin, published }
+ * — origin set when it was downloaded (a remix is made); null when the user
+ * has no theme by that name. `rawThemes`: ThemeContext's saved themes.
+ */
+export function changeStanding(plan, rawThemes) {
+  const piece = themeChange(plan);
+  const hit = piece ? themeByName(rawThemes, piece.name) : null;
+  if (!hit) return null;
+  const [key, raw] = hit;
+  return {
+    key,
+    raw,
+    origin: themeOrigin(raw),
+    published: themePublished(raw),
+  };
+}
+
 /** A new theme's four colors, one row each (frame 45). */
 const THEME_COLORS = [
   ["primary", "Primary", "Buttons, links, what's selected"],
@@ -63,6 +109,40 @@ export function themeColorRows(piece) {
   });
 }
 
+/**
+ * A change to a theme, a row per color (frame 49): "Primary — slate blue →
+ * rust", or "Tertiary — dusty blue · unchanged". `raw`: the theme as
+ * saved now (null: only the new colors). `changed` marks a new color.
+ */
+export function themeChangeRows(piece, raw) {
+  const colors = (piece && piece.colors) || {};
+  const now = raw ? themeColors(raw) : {};
+  const word = (names, key, fallback) =>
+    names &&
+    typeof names === "object" &&
+    typeof names[key] === "string" &&
+    names[key].trim()
+      ? names[key].trim().slice(0, 40)
+      : fallback;
+  return THEME_COLORS.filter(([key]) => colors[key]).map(([key, name, sub]) => {
+    const next = String(colors[key]).toLowerCase();
+    const was = now[key] || null;
+    const after = word(piece.colorNames, key, next);
+    const before = word(piece.colorNamesNow, key, was);
+    const same = !!was && was === next;
+    return {
+      main: same
+        ? `${name} — ${before} · unchanged`
+        : before
+          ? `${name} — ${before} → ${after}`
+          : `${name} — ${after}`,
+      sub,
+      swatch: colors[key],
+      changed: !same,
+    };
+  });
+}
+
 /** The plan's name: its layout's, the dashboard it changes, or its summary. */
 export function planName(plan) {
   if (!plan) return "";
@@ -83,7 +163,7 @@ export function planName(plan) {
  * "Plan · 2 new widgets and 1 new bot" — the card's line; a change to a
  * dashboard the user has (release 3c): "Plan · 1 added · on Kitchen Sink".
  */
-export function planLine(plan) {
+export function planLine(plan, { rawThemes = null } = {}) {
   const target = plan ? planTarget(plan) : null;
   const added = target ? addedCount(plan) : 0;
   // A change to one widget (release 6c, frame 40): its settings, or what
@@ -102,6 +182,23 @@ export function planLine(plan) {
       ? "Plan · 1 added, in the cell you picked"
       : "Plan · doesn't fit one cell";
   if (isThemeOnly(plan)) return "Plan · 1 new theme";
+  // A change to a saved theme (theme change round, frames 49-50).
+  if (isThemeChangeOnly(plan)) {
+    const piece = themeChange(plan);
+    const st = changeStanding(plan, rawThemes);
+    const on = "";
+    if (st && st.origin) {
+      return `Plan · a remix of ${st.raw.name}${
+        st.origin.author ? `, by ${st.origin.author}` : ""
+      }${on}`;
+    }
+    const n = st
+      ? themeChangeRows(piece, st.raw).filter((r) => r.changed).length
+      : 0;
+    return n
+      ? `Plan · ${n} color${n === 1 ? "" : "s"} change${on}`
+      : `Plan · a change to ${piece.name}${on}`;
+  }
   // Only a new theme, on a dashboard you have (frame 46).
   if (
     target &&
@@ -132,10 +229,15 @@ function addedCount(plan) {
  * Yes, build it — or, for a dashboard the user has, Yes, make the changes;
  * for an empty cell, Yes, add it.
  */
-export function yesLabel(plan) {
+export function yesLabel(plan, { rawThemes = null } = {}) {
   if (plan && plan.cell) return "Yes, add it";
   if (plan && plan.widgetChange) return "Yes, change it";
   if (isThemeOnly(plan)) return "Yes, make it";
+  // A change to a saved theme: a downloaded one becomes a remix.
+  if (isThemeChangeOnly(plan)) {
+    const st = changeStanding(plan, rawThemes);
+    return st && st.origin ? "Yes, make the remix" : "Yes, change it";
+  }
   return plan && planTarget(plan) ? "Yes, make the changes" : "Yes, build it";
 }
 
@@ -356,9 +458,17 @@ const providerName = (it) => String(it.label || "").replace(/^Connect /, "");
  * The opened plan's line (frame 6): "4 widgets · 1 bot · uses Home
  * Assistant".
  */
-export function planSubLine(plan, checklist = []) {
+export function planSubLine(plan, checklist = [], { rawThemes = null } = {}) {
   if (isThemeOnly(plan)) {
     return "A new theme — nothing is saved until you say yes";
+  }
+  if (isThemeChangeOnly(plan)) {
+    const st = changeStanding(plan, rawThemes);
+    return st && st.origin
+      ? `${st.raw.name} is by ${
+          st.origin.author || "someone else"
+        } — your change is saved as a remix that credits them`
+      : "Your theme — nothing changes until you say yes";
   }
   const pieces = (plan && Array.isArray(plan.pieces) && plan.pieces) || [];
   const widgets = pieces.filter((p) => p && p.kind === "widget").length;
@@ -379,7 +489,13 @@ export function planSubLine(plan, checklist = []) {
  * connect. `isDone(item)` says whether a connect is done.
  * @returns {{ main: string, sub: string, warn?: boolean }[]}
  */
-export function planRows(plan, checklist = [], isDone = () => false) {
+export function planRows(
+  plan,
+  checklist = [],
+  isDone = () => false,
+  // themeNow: a changed theme as it was before its build (theme change round).
+  { rawThemes = null, themeNow = null } = {},
+) {
   const pieces = (plan && Array.isArray(plan.pieces) && plan.pieces) || [];
   const rows = pieces
     .filter((p) => p && (p.kind === "widget" || p.kind === "bot") && p.name)
@@ -390,6 +506,13 @@ export function planRows(plan, checklist = [], isDone = () => false) {
     });
   // A new theme: its colors (theme round).
   if (isThemeOnly(plan)) rows.push(...themeColorRows(newTheme(plan)));
+  // A change to a saved theme: each color, before and after (frame 49).
+  if (isThemeChangeOnly(plan)) {
+    const st = changeStanding(plan, rawThemes);
+    rows.push(
+      ...themeChangeRows(themeChange(plan), themeNow || (st ? st.raw : null)),
+    );
+  }
   for (const it of connectItems(checklist)) {
     if (isDone(it)) continue;
     rows.push({

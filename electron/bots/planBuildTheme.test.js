@@ -139,3 +139,77 @@ describe("a new theme with bots and no dashboard (review fix)", () => {
     assert.ok(ids.includes("maketheme"));
   });
 });
+
+describe("a change to a saved theme (theme change round)", () => {
+  const dusk = { kind: "theme", name: "Dusk", source: "update", colors };
+  it("on its own: one step, no dashboard; Remove gets its old colors", async () => {
+    const plan = { summary: "warmer", pieces: [dusk] };
+    assert.deepEqual(
+      planSteps(plan).map((s) => s.id),
+      ["changetheme"],
+    );
+    assert.equal(planSteps(plan)[0].label, "Change the Dusk theme");
+    const d = themeDeps({
+      changeTheme: async (req) => {
+        d.calls.push(["change", req]);
+        return {
+          key: "theme-dusk",
+          name: "Dusk",
+          remix: false,
+          previous: { primary: "blue" },
+        };
+      },
+    });
+    const state = await createPlanBuild(plan, d).run();
+    assert.equal(state.status, "done");
+    assert.deepEqual(d.calls, [["change", { name: "Dusk", colors }]]);
+    assert.equal(state.changedTheme.key, "theme-dusk");
+    assert.deepEqual(state.built.changedTheme, {
+      key: "theme-dusk",
+      name: "Dusk",
+      remix: false,
+      previous: { primary: "blue" },
+      replaced: [],
+    });
+  });
+  it("on a dashboard too: one step — the change reaches everywhere", async () => {
+    const plan = {
+      summary: "warmer",
+      dashboard: { id: "7", name: "Kitchen Sink" },
+      pieces: [dusk],
+    };
+    assert.deepEqual(
+      planSteps(plan).map((s) => s.id),
+      ["changetheme"],
+    );
+    const d = themeDeps({
+      changeTheme: async () => ({
+        key: "theme-remix",
+        name: "Dusk (remix)",
+        remix: true,
+        of: { key: "theme-dusk", name: "Dusk" },
+        replaced: [{ id: "7", name: "Kitchen Sink" }],
+      }),
+    });
+    const state = await createPlanBuild(plan, d).run();
+    assert.equal(state.status, "done");
+    assert.equal(
+      d.calls.some((c) => c[0] === "apply"),
+      false,
+    );
+    // Remove puts the original back where the remix replaced it.
+    assert.deepEqual(state.built.changedTheme.replaced, [
+      { id: "7", name: "Kitchen Sink" },
+    ]);
+    assert.equal(state.built.changedTheme.of.key, "theme-dusk");
+  });
+  it("with a widget on a dashboard: dashboard, change, apply", () => {
+    const plan = {
+      summary: "x",
+      dashboard: { id: "7", name: "Kitchen Sink" },
+      pieces: [dusk, { kind: "widget", name: "Clock", source: "yours" }],
+    };
+    const ids = planSteps(plan).map((s) => s.id);
+    assert.deepEqual(ids.slice(0, 3), ["dashboard", "changetheme", "theme"]);
+  });
+});

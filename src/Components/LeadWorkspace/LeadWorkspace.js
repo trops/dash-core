@@ -183,6 +183,8 @@ function startText(contact) {
  * @param {(dashboardId) => void} [onOpenDashboard]  opens a built dashboard
  * @param {(themeKey) => void} [onOpenThemeEditor]  opens a theme it made in
  *   the theme editor (theme round)
+ * @param {({ key, name, visibility }) => void} [onPublishTheme]  publishes a
+ *   theme it changed (theme change round)
  *   in the workspace's place (release 3b)
  * @param {(key) => void} [onStartWithoutAi]  Start from's blank dashboard
  *   ("blank-dashboard") or file ("import-dashboard"), in the workspace's
@@ -194,9 +196,11 @@ export const LeadWorkspace = ({
   onOpenPage = null,
   onOpenDashboard = null,
   onOpenThemeEditor = null,
+  onPublishTheme = null,
   onStartWithoutAi = null,
 }) => {
-  const { currentTheme } = useContext(ThemeContext) || {};
+  // rawThemes: whose a changed theme is (theme change round).
+  const { currentTheme, rawThemes } = useContext(ThemeContext) || {};
   const panel = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
@@ -993,6 +997,7 @@ export const LeadWorkspace = ({
     buildAgain: buildIt,
     openDashboard: onOpenDashboard,
     openThemeEditor: onOpenThemeEditor,
+    publishTheme: onPublishTheme,
     open: setSideOpen,
   };
   // The lead is still answering: the plan isn't changed meanwhile.
@@ -1041,7 +1046,7 @@ export const LeadWorkspace = ({
                 state={pb.state}
                 leadName={leadName}
                 current
-                yes={yesLabel(wp.plan)}
+                yes={yesLabel(wp.plan, { rawThemes })}
                 actions={buildActions}
                 restored={pb.restored}
                 change={

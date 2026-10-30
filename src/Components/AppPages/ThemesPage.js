@@ -16,6 +16,7 @@ import { DiscoverThemesDetail } from "../Settings/details/DiscoverThemesDetail";
 import { PublishThemeModal } from "../Settings/details/PublishThemeModal";
 import { ColorSwatchGrid } from "../Theme/ColorSwatchGrid";
 import { ThemePreview } from "./ThemePreview";
+import { themeOrigin } from "../../utils/themeStanding";
 import {
   canPublishTheme,
   duplicateTheme,
@@ -23,6 +24,27 @@ import {
   themeRows,
 } from "./themeSummary";
 import { ManageLayout, OverflowMenu } from "./ManageLayout";
+
+/**
+ * Change with AI (theme change round, frame 48): a Dash Lead conversation
+ * "Changing: <theme>" — a theme downloaded from the registry says whose,
+ * since the change becomes a remix that credits them.
+ */
+function changeWithAi(row, rawTheme) {
+  const origin = themeOrigin(rawTheme || row.theme);
+  window.dispatchEvent(
+    new CustomEvent("dash:open-workspace", {
+      detail: {
+        key: "role:dashlead",
+        making: {
+          kind: "themechange",
+          theme: row.name,
+          by: origin ? origin.author || origin.package : null,
+        },
+      },
+    }),
+  );
+}
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const CHIPS = [
@@ -84,6 +106,11 @@ const ThemeDetailPanel = ({
               onClick={() => onUseAsApp(row.key)}
             />
           )}
+          <Button3
+            title="Change with AI"
+            size="sm"
+            onClick={() => changeWithAi(row, rawTheme)}
+          />
           <Button3
             title="Edit theme"
             size="sm"

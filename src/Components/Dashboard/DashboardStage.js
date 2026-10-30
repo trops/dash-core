@@ -28,6 +28,7 @@ import {
 } from "@trops/dash-react";
 import { LayoutModel, DashboardModel } from "../../Models";
 import { ThemeManagerModal } from "../../Components/Theme";
+import { PublishThemeModal } from "../Settings/details/PublishThemeModal";
 import { AppSettingsModal } from "../../Components/Settings";
 
 import { DndProvider } from "react-dnd";
@@ -757,6 +758,9 @@ const DashboardStageInner = ({
   // sets it since the Create window was retired (6c): the Dash team makes
   // themes now (theme round) and saved ones open by key.
   const [themeInitial, setThemeInitial] = useState(null);
+  // Publish a theme the Dash team changed (theme change round): { key,
+  // name, visibility } — an update keeps its visibility.
+  const [publishThemeRequest, setPublishThemeRequest] = useState(null);
 
   // First-run onboarding (Phase 3A). Tri-state:
   //   null   — status not yet loaded from main; do not render anything
@@ -3273,6 +3277,11 @@ const DashboardStageInner = ({
                   setWorkspaceRequest(null);
                   handleOpenThemeManager(key);
                 }}
+                // A theme it changed (theme change round, frames 51-52).
+                onPublishTheme={(t) => {
+                  setWorkspaceRequest(null);
+                  setPublishThemeRequest(t);
+                }}
                 // Start from › a blank dashboard, or one from a file
                 // (release 6c: the Create window's no-AI starts).
                 onStartWithoutAi={(k) => {
@@ -3304,6 +3313,18 @@ const DashboardStageInner = ({
               }}
             />
 
+            {publishThemeRequest ? (
+              <PublishThemeModal
+                isOpen={true}
+                setIsOpen={(open) => {
+                  if (!open) setPublishThemeRequest(null);
+                }}
+                appId={credentials?.appId}
+                themeKey={publishThemeRequest.key}
+                themeName={publishThemeRequest.name}
+                initialVisibility={publishThemeRequest.visibility}
+              />
+            ) : null}
             <ThemeManagerModal
               open={isThemeManagerOpen}
               initialThemeKey={themeEditorKey}

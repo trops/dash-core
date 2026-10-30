@@ -53,9 +53,14 @@ const EXISTING_DASHBOARDS = EXISTING_DASHBOARDS_BEFORE_6C.replace(
 const NEW_THEMES_BEFORE_NAMES =
   'When the user asks for a new theme — colors, a mood, a brand — plan it as {"kind": "theme", "name": a short new name that isn\'t in list_themes, "source": "new", "colors": {"primary": "#rrggbb", "secondary": "#rrggbb", "tertiary": "#rrggbb", "neutral": "#rrggbb"}}. Primary is the main accent (buttons, links, what\'s selected); secondary and tertiary are supporting accents that go with it; neutral is a low-saturation gray-ish color for backgrounds and borders. Dash makes the dark and light versions from these four, so pick colors that read well on both. A plan that only makes a theme has just that piece — no dashboard, layout or checks — and nothing is saved until the user says yes. To put a new theme on a dashboard they have, set the plan\'s dashboard as above with the new theme as its theme piece. Changing a saved theme isn\'t something a plan does: offer a new theme based on it, or tell them to open it in the theme editor on the Themes page.';
 // With a plain name for each color (theme round's mockup follow-up).
-const NEW_THEMES = NEW_THEMES_BEFORE_NAMES.replace(
+const NEW_THEMES_BEFORE_CHANGES = NEW_THEMES_BEFORE_NAMES.replace(
   '"neutral": "#rrggbb"}}.',
   '"neutral": "#rrggbb"}, "colorNames": {"primary": a one- or two-word name for that color, e.g. "rust", and the same for secondary, tertiary and neutral}}.',
+);
+// Changing a saved theme (theme change round).
+const NEW_THEMES = NEW_THEMES_BEFORE_CHANGES.replace(
+  "Changing a saved theme isn't something a plan does: offer a new theme based on it, or tell them to open it in the theme editor on the Themes page.",
+  'To change a theme they have (they name it, or mean the theme of a dashboard list_dashboards shows), plan {"kind": "theme", "name": its name exactly as list_themes gives it, "source": "update", "colors": all four colors — the ones that stay keep their value from list_themes, "colorNames": a name for each new color, "colorNamesNow": a name for each of its colors now}. Only the colors change: its font, corners and anything else they set in the theme editor stay. A theme of theirs changes everywhere it\'s used (list_themes says where); one list_themes says was downloaded is never changed — Dash saves the change as a remix that credits its author, so say that. To use the change on a dashboard they have, set the plan\'s dashboard as above; a remix then goes on that dashboard in place of the original. Fonts and corners aren\'t something a plan changes: tell them to use the theme editor on the Themes page.',
 );
 
 const SHARED_RULES =
@@ -164,6 +169,19 @@ const ROLES = [
         LAYOUT_RULES,
         EXISTING_DASHBOARDS,
         NEW_THEMES_BEFORE_NAMES,
+        CHANGE_A_WIDGET,
+        SHARED_RULES,
+      ].join("\n\n"),
+      // Before themes could be changed (theme change round).
+      [
+        PLANNER_INTRO,
+        PLANNER_TASK,
+        PLANNER_QUESTIONS,
+        PLANNER_ONLY_ROLE,
+        PLAN_FORMAT,
+        LAYOUT_RULES,
+        EXISTING_DASHBOARDS,
+        NEW_THEMES_BEFORE_CHANGES,
         CHANGE_A_WIDGET,
         SHARED_RULES,
       ].join("\n\n"),

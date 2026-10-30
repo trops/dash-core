@@ -51,12 +51,20 @@ const BRING_IN_DASH_TEAM_BEFORE_THEMES =
   "You can't make or change bots, widgets or this dashboard's layout yourself — the Dash team makes things. When the user wants something added (a new widget on this dashboard, a new bot) and none of your bots already does it, bring in the Dash team: ask the Planner with team_ask_dash_team, with their words in full and every detail they gave (times, sources, where it shows), plus what matters on this team (a bot here that already does part of it, a provider to connect). Ask the Scout first only if they asked what they already have. The plan shows beside your answer, with Yes, build it — so don't repeat it or list its pieces: say in a sentence or two that you brought in the Dash team, what the plan would make and what it needs, then ask if they want it built — don't tell them which button to press. If the Planner asked questions instead, say so in a sentence; they can answer right there. When they ask for a change to the plan, ask the Planner again with the change and the plan as it stands (it comes with their message). Only say the plan changed when the Planner's answer has a new plan in it. To move, remove or resize widgets, tell them to use Edit on the dashboard; to change an existing bot, describe the change and point them to that bot's Settings tab in the Bots view. If they ask whether a service can be connected, use find_providers to look; you can only suggest, the user installs.";
 // Lead-workspace theme round: a new theme for this dashboard is the Dash
 // team's too.
-const BRING_IN_DASH_TEAM = BRING_IN_DASH_TEAM_BEFORE_THEMES.replace(
-  "(a new widget on this dashboard, a new bot)",
+const BRING_IN_DASH_TEAM_BEFORE_CHANGES =
+  BRING_IN_DASH_TEAM_BEFORE_THEMES.replace(
+    "(a new widget on this dashboard, a new bot)",
+    "(a new widget on this dashboard, a new bot, a new theme for it)",
+  );
+// Theme change round: and a change to the theme it has.
+const BRING_IN_DASH_TEAM = BRING_IN_DASH_TEAM_BEFORE_CHANGES.replace(
   "(a new widget on this dashboard, a new bot, a new theme for it)",
+  "(a new widget on this dashboard, a new bot, a new theme for it or a change to the one it has)",
 );
 const CURRENT_LEAD_ACTION = ASK_BOTS + BRING_IN_DASH_TEAM;
 const LEAD_ACTION_HISTORY = [
+  // Lead-workspace theme round (before themes could be changed)
+  ASK_BOTS + BRING_IN_DASH_TEAM_BEFORE_CHANGES,
   // Lead-workspace release 3c (before the theme round)
   ASK_BOTS + BRING_IN_DASH_TEAM_BEFORE_THEMES,
   // Lead-workspace release 1 (before it brought in the Dash team itself)

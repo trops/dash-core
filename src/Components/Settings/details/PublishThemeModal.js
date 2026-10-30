@@ -42,6 +42,9 @@ export const PublishThemeModal = ({
   appId,
   themeKey,
   themeName,
+  // An update of a theme published before keeps its visibility (theme
+  // change round); otherwise public, as before.
+  initialVisibility = null,
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -75,7 +78,7 @@ export const PublishThemeModal = ({
   const [result, setResult] = useState(null);
 
   // Visibility — chosen on the Details step. Defaults to public.
-  const [visibility, setVisibility] = useState("public");
+  const [visibility, setVisibility] = useState(initialVisibility || "public");
   // "Allow remixes": null follows the visibility until the user chooses.
   const [allowRemix, setAllowRemix] = useState(null);
 
@@ -139,7 +142,7 @@ export const PublishThemeModal = ({
     setPreview(null);
     setIsPublishing(false);
     setResult(null);
-    setVisibility("public");
+    setVisibility(initialVisibility || "public");
     setAllowRemix(null);
   }
 

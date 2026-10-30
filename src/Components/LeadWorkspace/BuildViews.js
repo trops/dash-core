@@ -129,7 +129,9 @@ const BuildStepLine = ({ step }) => {
  * @param {boolean} current  the conversation's plan's build: choices show
  * @param {object} actions   { fix, retry, leaveOff, approve, carryOn,
  *   openDashboard, openThemeEditor, open, placeInCell } —
- *   openThemeEditor(themeKey): a theme it made (theme round); open("buildlog" | "check" |
+ *   openThemeEditor(themeKey): a theme it made (theme round);
+ *   publishTheme({ key, name, visibility }): a theme it changed (theme
+ *   change round); open("buildlog" | "check" |
  *   "preview"); placeInCell: a cell build put in its cell again (6c);
  *   swapInPlace: a new widget put in the changed one's place (6c)
  * @param {string|null} actionError
@@ -262,6 +264,60 @@ const BuildChoices = ({ chat, state, build, actions }) => {
           title={`Open ${state.dashboard.name}`}
           onClick={() => actions.openDashboard(state.dashboard.id)}
         />
+      </div>
+    );
+  }
+  // A theme it changed (theme change round, frames 51-52): publish it,
+  // or small changes by hand.
+  if (chat.choices === "themechange" && state.changedTheme) {
+    const ch = state.changedTheme;
+    const publish = ch.remix
+      ? ch.allowRemix === false
+        ? null
+        : "Publish your remix…"
+      : ch.published
+        ? "Publish the update"
+        : "Publish it…";
+    return (
+      <div
+        className="flex flex-col gap-1"
+        data-testid="workspace-build-choices"
+      >
+        <div className="flex flex-row flex-wrap items-center gap-2">
+          {publish && actions.publishTheme ? (
+            <Button
+              title={publish}
+              onClick={() =>
+                actions.publishTheme({
+                  key: ch.key,
+                  name: ch.name,
+                  // An update stays as public or private as it is —
+                  // private when the registry couldn't say.
+                  visibility: ch.published
+                    ? ch.published.visibility || "private"
+                    : null,
+                })
+              }
+            />
+          ) : null}
+          {actions.openThemeEditor ? (
+            publish && actions.publishTheme ? (
+              <Button2
+                title="Open in the theme editor"
+                onClick={() => actions.openThemeEditor(ch.key)}
+              />
+            ) : (
+              <Button
+                title="Open in the theme editor"
+                onClick={() => actions.openThemeEditor(ch.key)}
+              />
+            )
+          ) : null}
+        </div>
+        <span className={`text-xs ${muted}`}>
+          The theme editor is for small changes by hand — a color, a font, a
+          corner.
+        </span>
       </div>
     );
   }
@@ -410,6 +466,7 @@ export const BuildLogOutput = ({ build, state, onRemoved = null }) => {
     (built.dashboard && !targeted) ||
     (built.placed || []).length ||
     built.theme ||
+    built.changedTheme ||
     (built.bots || []).length ||
     (built.widgets || []).length
   );

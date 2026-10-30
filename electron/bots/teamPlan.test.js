@@ -402,7 +402,7 @@ describe("validatePlan — changing a dashboard you have (5e-2b)", () => {
       validatePlan(targeted([{ ...theme, source: "registry" }])).errors.join(
         " ",
       ),
-      /is one of your saved themes, or a new one with its colors/,
+      /is one of your saved themes, a new one with its colors, or a change to a saved one/,
     );
     assert.match(
       validatePlan(targeted([theme, { ...theme, name: "Dusk" }])).errors.join(
@@ -939,5 +939,54 @@ describe("validatePlan — a new theme (lead-workspace theme round)", () => {
       { themes: ["autumn"] },
     );
     assert.match(r.errors.join(" "), /already a theme called "Autumn"/);
+  });
+});
+
+describe("validatePlan — a change to a saved theme (theme change round)", () => {
+  const dusk = {
+    kind: "theme",
+    name: "Dusk",
+    source: "update",
+    colors: {
+      primary: "#c2562b",
+      secondary: "#d9a441",
+      tertiary: "#7c8aa5",
+      neutral: "#7a6a5c",
+    },
+  };
+  it("one of the user's themes, all four colors", () => {
+    assert.deepEqual(
+      validatePlan({ summary: "x", pieces: [dusk] }, { themes: ["dusk"] })
+        .errors,
+      [],
+    );
+  });
+  it("a theme the user doesn't have is refused", () => {
+    assert.match(
+      validatePlan(
+        { summary: "x", pieces: [dusk] },
+        { themes: ["Dawn"] },
+      ).errors.join(" "),
+      /no saved theme called "Dusk"/,
+    );
+  });
+  it("savedThemes counts a theme this conversation made", () => {
+    assert.deepEqual(
+      validatePlan(
+        { summary: "x", pieces: [dusk] },
+        { themes: [], savedThemes: ["Dusk"] },
+      ).errors,
+      [],
+    );
+  });
+  it("a missing color is named", () => {
+    const r = validatePlan({
+      summary: "x",
+      pieces: [{ ...dusk, colors: { primary: "#c2562b" } }],
+    });
+    assert.match(
+      r.errors.join(" "),
+      /all four colors as #rrggbb: secondary, tertiary, neutral/,
+    );
   });
 });
