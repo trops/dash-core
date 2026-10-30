@@ -4,6 +4,7 @@
  * dashboards use each theme, search / chips, Duplicate's copy, and theme
  * colours as inline values for previews. Pure.
  */
+import { isOwnPackage } from "../../utils/themeStanding";
 import { remixSourceOf } from "../../utils/remixSource";
 
 const nameOf = (key, theme) => (theme && theme.name) || key;
@@ -50,13 +51,17 @@ export function filterThemes(rows, { query = "", chip } = {}) {
  * published before (a new version) — not one installed from someone else
  * (Duplicate makes it theirs).
  */
-export function canPublishTheme(theme, raw) {
+export function canPublishTheme(theme, raw, username = null) {
   for (const t of [theme, raw]) {
     if (!t) continue;
     const meta = t._registryMeta;
     const publishedHere =
       (t.registryRef && t.registryRef.origin === "published") ||
-      (meta && meta.lastPublishedVersion);
+      (meta && meta.lastPublishedVersion) ||
+      // Installed from the user's own scope (theme change leftovers).
+      (t.registryRef &&
+        t.registryRef.origin === "installed" &&
+        isOwnPackage(t.registryRef.package, username));
     if (meta && !publishedHere) return false;
   }
   return true;

@@ -159,6 +159,10 @@ export const BuildInChat = ({
     cell,
     change,
     restored,
+    // The app's theme now (theme change leftovers).
+    ...(actions.appThemeKey !== undefined
+      ? { appThemeKey: actions.appThemeKey }
+      : {}),
   });
   const card = chat.card;
   const openCard = () => {
@@ -233,6 +237,8 @@ export const BuildInChat = ({
 /** The reply choices under the lead's words about the build. */
 const BuildChoices = ({ chat, state, build, actions }) => {
   const { muted } = useConfigTokens();
+  // Use the remix for the app, once clicked (theme change leftovers).
+  const [usedForApp, setUsedForApp] = useState(false);
   // A cell build (release 6c): not in its cell — put it in; in it — put
   // it back if the edits were cancelled (only an empty cell is filled).
   if (chat.choices === "place" && actions.placeInCell) {
@@ -271,6 +277,13 @@ const BuildChoices = ({ chat, state, build, actions }) => {
   // or small changes by hand.
   if (chat.choices === "themechange" && state.changedTheme) {
     const ch = state.changedTheme;
+    // The app's theme switches to a remix only when the user clicks.
+    const appUses =
+      actions.appThemeKey !== undefined && ch.of && ch.of.key
+        ? actions.appThemeKey === ch.of.key
+        : !!ch.appUsesOriginal;
+    const forApp =
+      ch.remix && appUses && !!actions.useThemeForApp && !usedForApp;
     const publish = ch.remix
       ? ch.allowRemix === false
         ? null
@@ -284,7 +297,27 @@ const BuildChoices = ({ chat, state, build, actions }) => {
         data-testid="workspace-build-choices"
       >
         <div className="flex flex-row flex-wrap items-center gap-2">
-          {publish && actions.publishTheme ? (
+          {forApp ? (
+            <Button
+              title="Use the remix for the app"
+              onClick={() => {
+                actions.useThemeForApp(ch.key);
+                setUsedForApp(true);
+              }}
+            />
+          ) : null}
+          {publish && actions.publishTheme && forApp ? (
+            <Button2
+              title={publish}
+              onClick={() =>
+                actions.publishTheme({
+                  key: ch.key,
+                  name: ch.name,
+                  visibility: null,
+                })
+              }
+            />
+          ) : publish && actions.publishTheme ? (
             <Button
               title={publish}
               onClick={() =>
@@ -301,7 +334,7 @@ const BuildChoices = ({ chat, state, build, actions }) => {
             />
           ) : null}
           {actions.openThemeEditor ? (
-            publish && actions.publishTheme ? (
+            forApp || (publish && actions.publishTheme) ? (
               <Button2
                 title="Open in the theme editor"
                 onClick={() => actions.openThemeEditor(ch.key)}
@@ -314,6 +347,14 @@ const BuildChoices = ({ chat, state, build, actions }) => {
             )
           ) : null}
         </div>
+        {usedForApp ? (
+          <span
+            className={`text-sm ${muted}`}
+            data-testid="workspace-theme-for-app"
+          >
+            The app uses {ch.name} now.
+          </span>
+        ) : null}
         <span className={`text-xs ${muted}`}>
           The theme editor is for small changes by hand — a color, a font, a
           corner.

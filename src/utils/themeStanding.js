@@ -15,14 +15,27 @@ const scopeOf = (pkg) => {
   return m ? `@${m[1]}` : null;
 };
 
+/** A package under the signed-in user's own registry scope (theme change
+ * leftovers): theirs, wherever it was installed. */
+export function isOwnPackage(pkg, username) {
+  const scope = scopeOf(pkg);
+  const user = String(username || "")
+    .replace(/^@/, "")
+    .trim()
+    .toLowerCase();
+  return !!scope && !!user && scope.slice(1).toLowerCase() === user;
+}
+
 /**
  * Downloaded from the registry (installed, never published from here):
  * its package, version and author — null for the user's own theme (made
- * here, a copy, or published from here).
+ * here, a copy, published from here, or — `username` given — installed
+ * from their own registry scope).
  * @param {object} raw  a saved (raw) theme
+ * @param {{ username?: string|null }} [opts]
  * @returns {{ package: string, version: string|null, author: string|null }|null}
  */
-export function themeOrigin(raw) {
+export function themeOrigin(raw, { username = null } = {}) {
   if (!raw || typeof raw !== "object") return null;
   const ref = raw.registryRef;
   const meta = raw._registryMeta;
@@ -42,20 +55,27 @@ export function themeOrigin(raw) {
   } else {
     return null;
   }
+  if (isOwnPackage(pkg, username)) return null;
   const author =
     (typeof raw.author === "string" && raw.author.trim()) || scopeOf(pkg);
   return { package: pkg, version, author: author || null };
 }
 
 /**
- * Published from here: its package and the version the registry has —
- * null when it was never published.
+ * Published from here — or, `username` given, installed from the user's
+ * own scope: its package and the version the registry has; null when it
+ * was never published.
  * @returns {{ package: string, version: string|null }|null}
  */
-export function themePublished(raw) {
+export function themePublished(raw, { username = null } = {}) {
   if (!raw || typeof raw !== "object") return null;
   const ref = raw.registryRef;
-  if (ref && ref.package && ref.origin === "published") {
+  if (
+    ref &&
+    ref.package &&
+    (ref.origin === "published" ||
+      (ref.origin === "installed" && isOwnPackage(ref.package, username)))
+  ) {
     return { package: ref.package, version: ref.version || null };
   }
   const meta = raw._registryMeta;

@@ -457,6 +457,8 @@ export function workingLine(state) {
  *     null
  *   continueLabel: Carry on building, or Start it again (nothing built yet)
  *   failed: the step asked about (choices "failed")
+ * A theme change (theme change round): `appThemeKey` — the app's theme
+ * now, so "use the remix for the app" is offered only while it applies.
  * A cell build (release 6c): `cell` { dashboardName, placed, canPlace } —
  * placed: true (in the cell, unsaved; choices "place-again"), "placing", a
  * reason it didn't go in ("preview", "no-answer", "taken", "gone",
@@ -468,6 +470,7 @@ export function workingLine(state) {
  * a cell build's, for a new widget taking that copy's place.
  */
 export function buildChat(state, opts = {}) {
+  // (opts.appThemeKey: a theme change's app theme now — chatFor)
   const chat = chatFor(state, opts);
   // Nothing runs a build saved before Dash last closed (or carried on from
   // the Create window, release 6c): what it waits on starts it again.
@@ -507,7 +510,7 @@ function shownLine(usedBy) {
  * downloaded one became a remix — Publish your remix, unless its author
  * doesn't allow that. choices "themechange".
  */
-function themeChangeChat(state) {
+function themeChangeChat(state, appThemeKey) {
   const ch = state && state.changedTheme;
   if (!ch) {
     return {
@@ -523,8 +526,14 @@ function themeChangeChat(state) {
     const by = of.author || "its author";
     const on = (ch.replaced || []).map((r) => r.name);
     const onLine = on.length ? ` and on ${andList(on)}` : "";
-    const appNote = ch.appUsesOriginal
-      ? ` The app's theme is still ${of.name || "the original"} — use the remix for the app from the Themes page.`
+    // Whether the app uses the original — now, when the app's theme is
+    // known; as it was at the build otherwise.
+    const appUses =
+      appThemeKey !== undefined && of.key
+        ? appThemeKey === of.key
+        : !!ch.appUsesOriginal;
+    const appNote = appUses
+      ? ` The app's theme is still ${of.name || "the original"} — use the remix for the app too?`
       : "";
     return {
       step: {
@@ -539,7 +548,9 @@ function themeChangeChat(state) {
       reply:
         ch.allowRemix === false
           ? `${ch.name} is in your themes${onLine}. ${by} doesn't allow remixes to be published, so it stays yours to use — it can't go on the registry.${appNote}`
-          : `${ch.name} is in your themes${onLine}. It credits ${by}'s ${of.name || "theme"} — publish it if you'd like to share it.${appNote}`,
+          : appNote
+            ? `${ch.name} is in your themes${onLine}. It credits ${by}'s ${of.name || "theme"}.${appNote}`
+            : `${ch.name} is in your themes${onLine}. It credits ${by}'s ${of.name || "theme"} — publish it if you'd like to share it.`,
       choices: "themechange",
     };
   }
@@ -564,7 +575,13 @@ function themeChangeChat(state) {
 
 function chatFor(
   state,
-  { kind = "dashboard", leftOff = [], cell = null, change = null } = {},
+  {
+    kind = "dashboard",
+    leftOff = [],
+    cell = null,
+    change = null,
+    appThemeKey,
+  } = {},
 ) {
   const steps = stepsOf(state);
   const status = buildStatus(state, leftOff);
@@ -708,7 +725,7 @@ function chatFor(
       choices: "theme",
     };
   }
-  if (kind === "themechange") return themeChangeChat(state);
+  if (kind === "themechange") return themeChangeChat(state, appThemeKey);
   if (kind === "settings") {
     const name = (change && change.displayName) || "The widget";
     const labels = (change && change.settingLabels) || {};

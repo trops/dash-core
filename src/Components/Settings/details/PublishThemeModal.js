@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import { AllowRemixOption, allowRemixOption } from "./AllowRemixOption";
 import {
   ThemeContext,
+  AlertBanner,
   FontAwesomeIcon,
   Modal,
   Stepper,
@@ -79,18 +80,34 @@ export const PublishThemeModal = ({
 
   // Visibility — chosen on the Details step. Defaults to public.
   const [visibility, setVisibility] = useState(initialVisibility || "public");
+  // The user chose one: the preview's answer doesn't override it.
+  const visibilityPicked = useRef(false);
   // "Allow remixes": null follows the visibility until the user chooses.
   const [allowRemix, setAllowRemix] = useState(null);
 
   // Fetch publish preview on open
   useEffect(() => {
-    if (!isOpen || !appId || !themeKey) return;
+    if (!isOpen || !appId || !themeKey) return undefined;
+    let cancelled = false;
     window.mainApi.themes
       .getThemePublishPreview(appId, themeKey)
       .then((res) => {
-        if (res.success) setPreview(res);
+        if (cancelled || !res || !res.success) return;
+        setPreview(res);
+        // Published already: it keeps its visibility — private when the
+        // registry couldn't say (theme change leftovers, frame 53) — unless
+        // the user picked one meanwhile.
+        if (res.published && !initialVisibility && !visibilityPicked.current) {
+          setVisibility(
+            res.published.visibility === "public" ? "public" : "private",
+          );
+        }
       })
       .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, appId, themeKey]);
 
   // Check auth status on mount
@@ -143,6 +160,7 @@ export const PublishThemeModal = ({
     setIsPublishing(false);
     setResult(null);
     setVisibility(initialVisibility || "public");
+    visibilityPicked.current = false;
     setAllowRemix(null);
   }
 
@@ -441,6 +459,38 @@ export const PublishThemeModal = ({
                   placeholder="A brief description of this theme..."
                   rows={3}
                 />
+                {preview && preview.published ? (
+                  <div data-testid="publish-theme-published">
+                    <AlertBanner
+                      variant="info"
+                      size="compact"
+                      title={
+                        preview.published.checked
+                          ? `Published as v${preview.published.version} · ${
+                              preview.published.visibility === "public"
+                                ? "public"
+                                : "private"
+                            }`
+                          : ""
+                      }
+                      message={
+                        preview.published.checked
+                          ? `This update is ${
+                              preview.published.nextVersion
+                                ? `v${preview.published.nextVersion}`
+                                : "a new version"
+                            }. It stays ${
+                              preview.published.visibility === "public"
+                                ? "public"
+                                : "private"
+                            } unless you change it below.`
+                          : preview.published.gone
+                            ? `${themeName || "This theme"} isn't on the registry any more — publishing puts it back. It starts private.`
+                            : `Couldn't check how ${themeName || "this theme"} is published — it starts private.`
+                      }
+                    />
+                  </div>
+                ) : null}
                 <div>
                   <label className="block text-sm font-medium opacity-70 mb-2">
                     Visibility
@@ -463,7 +513,10 @@ export const PublishThemeModal = ({
                         <button
                           key={opt.value}
                           type="button"
-                          onClick={() => setVisibility(opt.value)}
+                          onClick={() => {
+                            visibilityPicked.current = true;
+                            setVisibility(opt.value);
+                          }}
                           className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
                             active
                               ? "bg-indigo-900/20 border-indigo-500/60"

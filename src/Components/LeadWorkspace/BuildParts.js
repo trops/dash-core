@@ -53,6 +53,10 @@ export const RemoveSummary = ({ built, muted = "", strong = "" }) => {
   }
   const stays = [
     ...(ct && ct.remix ? [`${ct.name} — stays in your themes`] : []),
+    // The app's theme is the user's own choice (theme change leftovers).
+    ...(ct && ct.remix && ct.appUsesOriginal
+      ? ["The app's theme — as it is now; switch it on the Themes page"]
+      : []),
     ...(targeted
       ? [
           `The "${built.dashboard.name}" dashboard, its team lead and everything else on it`,

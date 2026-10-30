@@ -46,11 +46,14 @@ const registry = {
   "@me/mine": { visibility: "private" },
 };
 const pkgsPath = require.resolve("../registry/registryPackages");
+// The real helpers (nextFreeVersion…), with the registry lookup stubbed.
+const realPkgs = require("../registry/registryPackages");
 require.cache[pkgsPath] = {
   id: pkgsPath,
   filename: pkgsPath,
   loaded: true,
   exports: {
+    ...realPkgs,
     getPackageInfo: async (pkg) => registry[pkg] || null,
   },
 };
@@ -66,8 +69,9 @@ const colors = {
 };
 
 let n = 0;
-function controller(themes) {
+function controller(themes, { username = null } = {}) {
   const self = { _appId: `changetheme-${++n}`, broadcasts: [] };
+  self._registryUsername = () => username;
   self._getMainWindow = () => null;
   self._broadcast = (channel, payload) =>
     self.broadcasts.push([channel, payload]);
@@ -319,6 +323,126 @@ describe("review fixes", () => {
     });
     const res = await c._planChangeTheme({ name: "Gone", colors });
     assert.equal(res.allowRemix, false);
+  });
+});
+
+describe("theme change leftovers", () => {
+  it("your own package installed on another computer: changed in place, published", async () => {
+    const c = controller(
+      {
+        "theme-own": {
+          id: "theme-own",
+          name: "Dusk",
+          primary: "blue",
+          registryRef: {
+            package: "@me/dusk",
+            kind: "theme",
+            version: "1.2.0",
+            origin: "installed",
+          },
+          _registryMeta: { source: "registry", packageName: "dusk" },
+        },
+      },
+      { username: "me" },
+    );
+    registry["@me/dusk"] = { visibility: "private", versions: ["1.2.0"] };
+    const res = await c._planChangeTheme({ name: "Dusk", colors });
+    assert.equal(res.remix, false);
+    assert.equal(res.key, "theme-own");
+    assert.deepEqual(res.published, {
+      package: "@me/dusk",
+      version: "1.2.0",
+      visibility: "private",
+    });
+    assert.equal(saved(c)["theme-own"].primary, "#c2562b");
+  });
+
+  it("signed out: the same theme is treated as downloaded (a remix)", async () => {
+    const c = controller({
+      "theme-own": {
+        id: "theme-own",
+        name: "Dusk",
+        primary: "blue",
+        registryRef: {
+          package: "@me/dusk",
+          kind: "theme",
+          version: "1.2.0",
+          origin: "installed",
+        },
+      },
+    });
+    const res = await c._planChangeTheme({ name: "Dusk", colors });
+    assert.equal(res.remix, true);
+  });
+
+  it("a remix while the app uses the original says so", async () => {
+    const c = controller({
+      "theme-dl": {
+        id: "theme-dl",
+        name: "Dusk",
+        primary: "blue",
+        registryRef: {
+          package: "@alexr/dusk",
+          kind: "theme",
+          version: "1.2.0",
+          origin: "installed",
+        },
+      },
+    });
+    c._themeUsageAll = () => ({ appKey: "theme-dl", dashboards: [] });
+    const res = await c._planChangeTheme({ name: "Dusk", colors });
+    assert.equal(res.appUsesOriginal, true);
+  });
+});
+
+describe("the Publish window's preview (theme change leftovers)", () => {
+  const authPath = require.resolve("../controller/registryAuthController");
+  it("a published theme: its version, visibility and the next version", async () => {
+    const real = require.cache[authPath];
+    require.cache[authPath] = {
+      id: authPath,
+      filename: authPath,
+      loaded: true,
+      exports: { ...(real ? real.exports : {}), getStoredUsername: () => "me" },
+    };
+    try {
+      const trc = require("../controller/themeRegistryController");
+      const c = controller({
+        "theme-pub": {
+          id: "theme-pub",
+          name: "Mine",
+          primary: "blue",
+          registryRef: {
+            package: "@me/mine",
+            kind: "theme",
+            version: "1.2.0",
+            origin: "published",
+          },
+        },
+      });
+      registry["@me/mine"] = {
+        visibility: "private",
+        latestVersion: "1.2.0",
+        versions: ["1.2.0"],
+      };
+      const res = await trc.getThemePublishPreview(c._appId, "theme-pub");
+      assert.equal(res.success, true);
+      assert.deepEqual(res.published, {
+        package: "@me/mine",
+        version: "1.2.0",
+        visibility: "private",
+        nextVersion: "1.2.1",
+        checked: true,
+        gone: false,
+      });
+      // Never published: nothing to keep.
+      const c2 = controller({ "theme-new": { id: "theme-new", name: "New" } });
+      const none = await trc.getThemePublishPreview(c2._appId, "theme-new");
+      assert.equal(none.published, null);
+    } finally {
+      if (real) require.cache[authPath] = real;
+      else delete require.cache[authPath];
+    }
   });
 });
 

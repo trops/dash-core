@@ -60,6 +60,7 @@ import {
 import { normalizeType } from "../Create/planChecklist";
 import { dirtyDashboardId } from "./dirtyDashboard";
 import { planTarget } from "../../utils/teamPlan";
+import { useRegistryUsername } from "../../hooks/useRegistryUsername";
 
 const EMPTY = [];
 const TICK_MS = 60000;
@@ -200,7 +201,10 @@ export const LeadWorkspace = ({
   onStartWithoutAi = null,
 }) => {
   // rawThemes: whose a changed theme is (theme change round).
-  const { currentTheme, rawThemes } = useContext(ThemeContext) || {};
+  // changeCurrentTheme: Use the remix for the app (theme change leftovers).
+  const { currentTheme, rawThemes, changeCurrentTheme, themeKey } =
+    useContext(ThemeContext) || {};
+  const username = useRegistryUsername();
   const panel = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
@@ -998,6 +1002,11 @@ export const LeadWorkspace = ({
     openDashboard: onOpenDashboard,
     openThemeEditor: onOpenThemeEditor,
     publishTheme: onPublishTheme,
+    // The app's theme switches only when the user clicks (leftovers).
+    useThemeForApp: changeCurrentTheme
+      ? (key) => changeCurrentTheme(key)
+      : null,
+    appThemeKey: themeKey || null,
     open: setSideOpen,
   };
   // The lead is still answering: the plan isn't changed meanwhile.
@@ -1046,7 +1055,7 @@ export const LeadWorkspace = ({
                 state={pb.state}
                 leadName={leadName}
                 current
-                yes={yesLabel(wp.plan, { rawThemes })}
+                yes={yesLabel(wp.plan, { rawThemes, username })}
                 actions={buildActions}
                 restored={pb.restored}
                 change={
