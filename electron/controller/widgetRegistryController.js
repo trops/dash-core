@@ -501,12 +501,41 @@ function writeWidgetMetadataVersion(pkgJsonPath, dashJsonPath, version) {
 function packageJsonFromDashJson(dashJson, scope, packageId, fallbackAuthor) {
   const m = String(dashJson.name || "").match(/^@[^/]+\/(.+)$/);
   const bareName = m ? m[1] : dashJson.name || "";
-  return {
+  const pkg = {
     name: bareName ? `@${scope}/${bareName}` : packageId,
     version: dashJson.version || "1.0.0",
     description: dashJson.description || "",
     author: dashJson.author || fallbackAuthor || "",
   };
+  if (dashJson.displayName) pkg.displayName = dashJson.displayName;
+  return pkg;
+}
+
+/**
+ * A package.json that lacks what publishing needs — e.g. one holding only
+ * the `dash.permissions` block an earlier publish's permission scan wrote
+ * where there was no package.json — gets the missing fields from dash.json.
+ * Fields package.json has are kept.
+ */
+function fillFromDashJson(pkgJson, dashJson, scope, packageId, fallbackAuthor) {
+  if (!dashJson) return pkgJson;
+  const from = packageJsonFromDashJson(
+    dashJson,
+    scope,
+    packageId,
+    fallbackAuthor,
+  );
+  const out = { ...pkgJson };
+  for (const key of [
+    "name",
+    "version",
+    "description",
+    "author",
+    "displayName",
+  ]) {
+    if (!out[key] && from[key]) out[key] = from[key];
+  }
+  return out;
 }
 
 // ─── Orchestration ───────────────────────────────────────────────────────────
@@ -592,9 +621,28 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
 
     // 3. Read package.json (or fall back to dash.json for registry-installed widgets)
     const pkgJsonPath = path.join(widget.path, "package.json");
+    // package.json, with what it lacks taken from dash.json.
+    const readPkgJson = () => {
+      const own = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+      let dashJson = null;
+      try {
+        if (fs.existsSync(dashJsonPath)) {
+          dashJson = JSON.parse(fs.readFileSync(dashJsonPath, "utf8"));
+        }
+      } catch (_e) {
+        dashJson = null;
+      }
+      return fillFromDashJson(
+        own,
+        dashJson,
+        callerScope,
+        packageId,
+        profile?.displayName,
+      );
+    };
     let pkgJson;
     if (fs.existsSync(pkgJsonPath)) {
-      pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+      pkgJson = readPkgJson();
     } else if (fs.existsSync(dashJsonPath)) {
       // Registry-installed widgets only have dash.json — synthesize
       // the fields the publish flow needs from it.
@@ -633,7 +681,7 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
         // Re-read pkgJson so subsequent steps in this function see the
         // updated manifest (the version bump below uses pkgJson too).
         if (fs.existsSync(pkgJsonPath)) {
-          pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+          pkgJson = readPkgJson();
         }
       }
     } catch (e) {
