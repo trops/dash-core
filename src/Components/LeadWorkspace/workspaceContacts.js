@@ -65,7 +65,7 @@ export function contactGroups({ dashTeam = [], leads = [], bots = [] } = {}) {
       botId: l.botId,
       recipient: l,
       members,
-      line: members.map((m) => m.name).join(" · ") || "No bots yet",
+      line: members.map((m) => m.name).join(" · ") || "Just the lead",
     });
   }
   const lone = (bots || [])

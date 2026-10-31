@@ -171,8 +171,12 @@ test("the switcher lists the Dash Lead, dashboard leads and lone bots; switching
   const menu = screen.getByTestId("workspace-switcher-menu");
   expect(within(menu).getByText("Team leads")).toBeInTheDocument();
   expect(within(menu).getByText("Bots on no dashboard")).toBeInTheDocument();
-  // A bot on a dashboard is never in it.
-  expect(within(menu).queryByText("Inbox Watch")).toBeNull();
+  // A bot on a dashboard is never a row of its own: it's listed under its
+  // lead.
+  expect(
+    within(menu).queryByRole("button", { name: "Inbox Watch" }),
+  ).toBeNull();
+  expect(within(menu).getByText("Inbox Watch")).toBeInTheDocument();
   fireEvent.click(within(menu).getByText("Dash Lead"));
   expect(screen.getByTestId("workspace-switcher")).toHaveTextContent(
     "Dash Lead",
@@ -781,8 +785,9 @@ describe("release 3a: matches the mockup", () => {
     for (const it of items) {
       expect(within(it).getByTestId("bot-avatar")).toBeInTheDocument();
     }
+    // Screen readers hear which one is current.
     const current = within(menu).getByRole("button", {
-      name: "Kitchen Sink Lead",
+      name: "Kitchen Sink Lead (current)",
     });
     expect(within(current).getByLabelText("Current")).toBeInTheDocument();
     expect(
