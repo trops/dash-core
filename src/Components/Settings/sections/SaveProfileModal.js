@@ -89,13 +89,28 @@ export function savedNoticeText(res) {
   return text;
 }
 
-/** Items left out, said once the dialog has closed. */
-export function leftOutText(res) {
-  const list = res.leftOut || [];
+/**
+ * What a save left out, in one sentence for the notice once the dialog has
+ * closed, e.g. "5 widgets aren't in the profile — the other computer shows them as
+ * missing." The names are listed under "Show which" (leftOutLines).
+ */
+export function leftOutSummary(res) {
+  const list = (res && res.leftOut) || [];
   if (!list.length) return null;
-  return `Not in the profile: ${list
-    .map((l) => `${l.name} — ${String(l.reason || "").replace(/\.$/, "")}`)
-    .join("; ")}.`;
+  const one = list.length === 1;
+  if (list.every((l) => l.kind === "widget")) {
+    return `${plural(list.length, "widget")} ${one ? "isn't" : "aren't"} in the profile — the other computer shows ${one ? "it" : "them"} as missing.`;
+  }
+  return `${plural(list.length, "item")} ${one ? "isn't" : "aren't"} in the profile.`;
+}
+
+/** One line per item left out: "@ai-built/x — Not in the registry — …". */
+export function leftOutLines(res) {
+  return ((res && res.leftOut) || []).map((l) =>
+    [l.name, String(l.reason || "").replace(/\.$/, "")]
+      .filter(Boolean)
+      .join(" — "),
+  );
 }
 
 /** A widget's short status in the list, e.g. "Not in the registry · used by Home". */

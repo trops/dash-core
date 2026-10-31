@@ -9,6 +9,39 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ProfilesSection } from "./ProfilesSection";
 import { AppContext } from "../../../Context/App/AppContext";
 
+// The Save dialog, stood in for: Save at once says what it left out.
+jest.mock("./SaveProfileModal", () => {
+  const actual = jest.requireActual("./SaveProfileModal");
+  return {
+    ...actual,
+    SaveProfileModal: ({ onSaved }) => (
+      <button
+        onClick={() =>
+          onSaved({
+            account: {},
+            publishedWidgets: [{}, {}],
+            leftOut: [
+              {
+                kind: "widget",
+                name: "@ai-built/pipeline",
+                reason:
+                  "Not in the registry — Pipeline File will show it as missing on the other computer.",
+              },
+              {
+                kind: "widget",
+                name: "Clock_default",
+                reason: "Not in the registry.",
+              },
+            ],
+          })
+        }
+      >
+        Stand-in save
+      </button>
+    ),
+  };
+});
+
 const appId = "@test/app";
 
 const twoProfiles = {
@@ -193,4 +226,27 @@ test("New profile creates one and selects it", async () => {
   await waitFor(() =>
     expect(window.mainApi.profiles.create).toHaveBeenCalledWith(appId, "Work"),
   );
+});
+
+test("after a save, what was left out is one line in the notice, names under Show which", async () => {
+  mount();
+  fireEvent.click(await screen.findByText("Mac Mini"));
+  fireEvent.click(await screen.findByText("Save to my account"));
+  fireEvent.click(await screen.findByText("Stand-in save"));
+  expect(
+    await screen.findByText(
+      "Saved to your account. Published 2 widgets first. 2 widgets aren't in the profile — the other computer shows them as missing.",
+    ),
+  ).toBeInTheDocument();
+  // No error box.
+  expect(screen.queryByText(/Not in the profile/)).toBeNull();
+  const left = screen.getByTestId("profile-left-out");
+  expect(left).not.toHaveTextContent("@ai-built/pipeline");
+  fireEvent.click(screen.getByRole("button", { name: "Show which" }));
+  expect(left).toHaveTextContent(
+    "• @ai-built/pipeline — Not in the registry — Pipeline File will show it as missing on the other computer",
+  );
+  expect(left).toHaveTextContent("• Clock_default — Not in the registry");
+  fireEvent.click(screen.getByRole("button", { name: "Hide" }));
+  expect(left).not.toHaveTextContent("@ai-built/pipeline");
 });
