@@ -18,7 +18,8 @@ import {
   SaveProfileModal,
   savedNoticeText,
   savedWhenText,
-  leftOutText,
+  leftOutSummary,
+  leftOutLines,
 } from "./SaveProfileModal";
 import { AccountProfilesModal } from "./AccountProfilesModal";
 import { AutoSaveSetting } from "./AutoSaveSetting";
@@ -160,6 +161,10 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
   // profiles are listed.
   const [intent, setIntent] = useState(() => takeProfileIntent());
   const [notice, setNotice] = useState(null);
+  // What the last save left out, listed under "Show which" in that save's
+  // notice (only while that notice shows).
+  const [leftOut, setLeftOut] = useState(null);
+  const [showLeftOut, setShowLeftOut] = useState(false);
   // What loading the picked file would do (the Load dialog is open).
   const [loadPreview, setLoadPreview] = useState(null);
   // A v2 profile (packages from the registry) has its own preview.
@@ -643,7 +648,24 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
           size="compact"
           message={notice}
           onClose={() => setNotice(null)}
-        />
+        >
+          {leftOut && leftOut.notice === notice ? (
+            <div className="flex flex-col gap-1" data-testid="profile-left-out">
+              <div className="flex flex-row">
+                <Button3
+                  title={showLeftOut ? "Hide" : "Show which"}
+                  size="sm"
+                  onClick={() => setShowLeftOut((v) => !v)}
+                />
+              </div>
+              {showLeftOut
+                ? leftOut.lines.map((line, i) => (
+                    <span key={i}>{`• ${line}`}</span>
+                  ))
+                : null}
+            </div>
+          ) : null}
+        </AlertBanner>
       ) : null}
       <SectionLayout
         listContent={listContent}
@@ -723,10 +745,19 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
           onClose={() => setSaving(null)}
           onSaved={(res) => {
             setSaving(null);
-            setNotice(savedNoticeText(res));
-            // What didn't go in, and why (left out of the profile).
-            const left = leftOutText(res);
-            if (left) setError(left);
+            // An older error is over once a save goes through.
+            setError(null);
+            // What didn't go in: one sentence in the notice (the dialog
+            // showed it already), the names under "Show which".
+            const left = leftOutSummary(res);
+            const text = left
+              ? `${savedNoticeText(res)} ${left}`
+              : savedNoticeText(res);
+            setNotice(text);
+            setLeftOut(
+              left ? { notice: text, lines: leftOutLines(res) } : null,
+            );
+            setShowLeftOut(false);
             loadProfiles();
           }}
         />

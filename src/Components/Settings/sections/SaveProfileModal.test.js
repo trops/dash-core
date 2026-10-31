@@ -18,7 +18,8 @@ import {
   SaveProfileModal,
   countsText,
   savedNoticeText,
-  leftOutText,
+  leftOutSummary,
+  leftOutLines,
   widgetStatusText,
   publishedText,
   savedSummaryText,
@@ -647,7 +648,7 @@ describe("texts", () => {
     );
   });
 
-  test("savedNoticeText and leftOutText", () => {
+  test("savedNoticeText, leftOutSummary and leftOutLines", () => {
     expect(
       savedNoticeText({
         filePath: "/Users/me/Desktop/Mac Mini.dashprofile",
@@ -658,12 +659,24 @@ describe("texts", () => {
       'Saved "Mac Mini.dashprofile" in Desktop. 1 widget went in at the version you last published. 2 keys typed into widgets aren\'t included.',
     );
     expect(savedNoticeText({ account: {} })).toBe("Saved to your account.");
+    const one = {
+      leftOut: [
+        { kind: "widget", name: "@ai-built/x", reason: "Not in the registry." },
+      ],
+    };
+    expect(leftOutSummary(one)).toBe(
+      "1 widget isn't in the profile — the other computer shows it as missing.",
+    );
+    expect(leftOutLines(one)).toEqual(["@ai-built/x — Not in the registry"]);
     expect(
-      leftOutText({
-        leftOut: [{ name: "@ai-built/x", reason: "Not in the registry." }],
+      leftOutSummary({
+        leftOut: [
+          { kind: "widget", name: "a" },
+          { kind: "theme", name: "b" },
+        ],
       }),
-    ).toBe("Not in the profile: @ai-built/x — Not in the registry.");
-    expect(leftOutText({})).toBeNull();
+    ).toBe("2 items aren't in the profile.");
+    expect(leftOutSummary({})).toBeNull();
     expect(savedNoticeText({ account: {}, publishedWidgets: [{}, {}] })).toBe(
       "Saved to your account. Published 2 widgets first.",
     );
