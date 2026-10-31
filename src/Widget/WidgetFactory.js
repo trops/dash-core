@@ -24,6 +24,17 @@ import {
 } from "../Components/Layout/Builder/WorkspaceScopeContext";
 import { EditSelectionContext } from "../Components/Dashboard/editSelection";
 import { pickWidgetDisplayName } from "../utils/widgetIdentity";
+import {
+  installWidgetGuard,
+  noteFailure,
+  restart as restartGuarded,
+  widgetKey as guardKey,
+} from "./widgetGuard";
+import { WidgetGuardGate } from "./WidgetGuardViews";
+
+// One widget can never freeze Dash: count every widget's failures, from the
+// start (widgetGuard.js).
+installWidgetGuard();
 
 /**
  * WidgetErrorBoundary - Catches errors from widget rendering
@@ -40,6 +51,8 @@ class WidgetErrorBoundary extends Component {
   }
 
   componentDidCatch(error, errorInfo) {
+    // A widget that keeps crashing (Try again, again) is stopped.
+    noteFailure(guardKey(this.props.widgetName), "render");
     console.error("[WidgetErrorBoundary] Widget rendering error:", {
       widget: this.props.widgetName,
       error: error.message,
@@ -187,6 +200,11 @@ const WidgetRenderer = ({
     return () =>
       window.removeEventListener("dash:widget-installed", onWidgetInstalled);
   }, [component]);
+  // New code (Fix with AI, an update) runs again even if the old code was
+  // stopped for failing.
+  useEffect(() => {
+    if (componentVersion > 0) restartGuarded(guardKey(component));
+  }, [componentVersion, component]);
 
   try {
     const m = ComponentManager.componentMap();
@@ -312,45 +330,73 @@ const WidgetRenderer = ({
       // gate looked up a bare key, missed the approved grant, and
       // re-prompted per call (the ~20 popups after a package update).
       const widgetIdForGate = resolveGateWidgetId(component, params?.name);
+      const label = pickWidgetDisplayName(params, config);
+      // While editing, a widget can be taken off its box (waits for Save).
+      const removeIt =
+        editSelection && editSelection.editing && params && params.uuid
+          ? () =>
+              window.dispatchEvent(
+                new CustomEvent("dash:edit-widget-action", {
+                  detail: {
+                    workspaceId: params.dashboardId ?? null,
+                    pageId: layoutPageId,
+                    scope: workspaceScope || "main",
+                    uuid: params.uuid,
+                    action: "remove",
+                  },
+                }),
+              )
+          : null;
       return (
-        <MountTokenWrapper widgetId={widgetIdForGate} widgetData={widgetData}>
-          {/* Keyed to the widget's version: new code (Fix with AI, an
+        // Stopped when it keeps failing, paused after Dash froze on its
+        // dashboard — or itself (the widget guard).
+        <WidgetGuardGate
+          off={isLayout}
+          component={component}
+          label={label}
+          dashboardId={params.dashboardId ?? null}
+          uuid={params.uuid ?? null}
+          onFix={
+            canFixWithAi(component)
+              ? () =>
+                  window.dispatchEvent(
+                    new CustomEvent("dash:edit-widget-with-ai", {
+                      detail: fixRequestDetail(
+                        component,
+                        "It kept failing, so Dash stopped it (errors over and over, or a file it couldn't load). Make it fail once and show what's wrong — never retry in a loop.",
+                        params,
+                        workspaceScope,
+                      ),
+                    }),
+                  )
+              : null
+          }
+          onRemove={removeIt}
+        >
+          <MountTokenWrapper widgetId={widgetIdForGate} widgetData={widgetData}>
+            {/* Keyed to the widget's version: new code (Fix with AI, an
               update) clears the error box instead of waiting for Retry. */}
-          <WidgetErrorBoundary
-            key={`boundary-${componentVersion}`}
-            widgetName={component}
-            item={params}
-            scope={workspaceScope}
-            label={pickWidgetDisplayName(params, config)}
-            onRemove={
-              editSelection && editSelection.editing && params && params.uuid
-                ? () =>
-                    window.dispatchEvent(
-                      new CustomEvent("dash:edit-widget-action", {
-                        detail: {
-                          workspaceId: params.dashboardId ?? null,
-                          pageId: layoutPageId,
-                          scope: workspaceScope || "main",
-                          uuid: params.uuid,
-                          action: "remove",
-                        },
-                      }),
-                    )
-                : null
-            }
-          >
-            {hasScheduledTasks ? (
-              <div className="flex flex-col w-full h-full min-h-0">
-                <div className="flex-1 min-h-0 overflow-auto">
-                  {widgetElement}
+            <WidgetErrorBoundary
+              key={`boundary-${componentVersion}`}
+              widgetName={component}
+              item={params}
+              scope={workspaceScope}
+              label={label}
+              onRemove={removeIt}
+            >
+              {hasScheduledTasks ? (
+                <div className="flex flex-col w-full h-full min-h-0">
+                  <div className="flex-1 min-h-0 overflow-auto">
+                    {widgetElement}
+                  </div>
+                  <WidgetCardStatusBar item={params} />
                 </div>
-                <WidgetCardStatusBar item={params} />
-              </div>
-            ) : (
-              widgetElement
-            )}
-          </WidgetErrorBoundary>
-        </MountTokenWrapper>
+              ) : (
+                widgetElement
+              )}
+            </WidgetErrorBoundary>
+          </MountTokenWrapper>
+        </WidgetGuardGate>
       );
     }
   } catch (e) {

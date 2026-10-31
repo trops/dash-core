@@ -6,6 +6,7 @@
  * to the host app's real module instances.
  */
 
+import { bundleSourceUrl } from "../Widget/widgetGuard";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as dashReact from "@trops/dash-react";
@@ -41,9 +42,12 @@ const BASE_MODULE_MAP = {
  *
  * @param {string} source - The CJS bundle source code
  * @param {string} widgetName - Widget name (for error messages)
+ * @param {object} [options]
+ * @param {boolean} [options.preview] - the Widget Builder's preview: its
+ *   errors aren't counted against the installed widget
  * @returns {object} The module.exports from the evaluated bundle
  */
-export function evaluateBundle(source, widgetName) {
+export function evaluateBundle(source, widgetName, { preview = false } = {}) {
   // Merge base modules with host-provided modules (e.g., "@trops/dash-core")
   // at call time so _hostModules is populated by the time widgets load.
   const moduleMap = { ...BASE_MODULE_MAP, ..._hostModules };
@@ -73,8 +77,17 @@ export function evaluateBundle(source, widgetName) {
   const process = { env: { NODE_ENV: "production" } };
 
   try {
+    // Tagged with whose it is: a throw from its code — even later, in a
+    // timer or a fetch — names it in the stack, so the widget guard can
+    // stop just that widget (widgetGuard.js).
     // eslint-disable-next-line no-new-func
-    const fn = new Function("module", "exports", "require", "process", source);
+    const fn = new Function(
+      "module",
+      "exports",
+      "require",
+      "process",
+      `${source}\n//# sourceURL=${bundleSourceUrl(widgetName, { preview })}`,
+    );
     fn(module, exports, require, process);
   } catch (error) {
     console.error(

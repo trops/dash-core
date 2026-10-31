@@ -42,8 +42,9 @@ const ROLE_SERVER = "dash-team";
 // Tools that change things (installing a widget) — not auto-allowed.
 const ROLE_BUILD_SERVER = "dash-team-build";
 const BUILD_TOOLS = new Set(["build_widget", "place_widget"]);
-// The widget rules can be long; enough for the Builder, not the whole doc.
-const GUIDE_LIMIT = 24000;
+// The widget rules, whole (about 57,000 characters) — cut at 24,000 the
+// Builder never saw the provider-data, config and events sections.
+const GUIDE_LIMIT = 80000;
 const MAX_RESULTS = 8;
 const SOURCE_LIMIT = 12000;
 // Registry searches per search_library call (one per word).
