@@ -38,10 +38,53 @@ const fnStart = controllerSource.indexOf(
 );
 const fnEnd = controllerSource.indexOf("// ─── Orchestration", fnStart);
 const fnSource = controllerSource.substring(fnStart, fnEnd);
-const { writeWidgetMetadataVersion, packageJsonFromDashJson } = new Function(
+const {
+  writeWidgetMetadataVersion,
+  packageJsonFromDashJson,
+  fillFromDashJson,
+} = new Function(
   "require",
-  `const fs = require("fs"); ${fnSource} return { writeWidgetMetadataVersion, packageJsonFromDashJson };`,
+  `const fs = require("fs"); ${fnSource} return { writeWidgetMetadataVersion, packageJsonFromDashJson, fillFromDashJson };`,
 )(require);
+
+test("a package.json with only the permissions block gets name and version from dash.json", () => {
+  // The publish permission scan writes package.json where there was none;
+  // the registry then refused it: "name" is required; "displayName" is required.
+  const dash = {
+    name: "@ai-built/filelistwidget",
+    displayName: "File List Widget",
+    version: "1.0.0",
+    description: "AI-generated widget: FileListWidget",
+    author: "John Giatropoulos",
+  };
+  const permissions = { dash: { permissions: { mcp: {} } } };
+  const pkg = fillFromDashJson(
+    permissions,
+    dash,
+    "trops",
+    "@ai-built/filelistwidget",
+  );
+  assert.strictEqual(pkg.name, "@trops/filelistwidget");
+  assert.strictEqual(pkg.displayName, "File List Widget");
+  assert.strictEqual(pkg.version, "1.0.0");
+  assert.strictEqual(pkg.author, "John Giatropoulos");
+  assert.deepStrictEqual(pkg.dash, permissions.dash);
+  // What package.json has is kept.
+  const own = fillFromDashJson(
+    { name: "@trops/mine", version: "2.0.0" },
+    dash,
+    "trops",
+    "@trops/mine",
+  );
+  assert.strictEqual(own.name, "@trops/mine");
+  assert.strictEqual(own.version, "2.0.0");
+  assert.strictEqual(own.displayName, "File List Widget");
+  // No dash.json: unchanged.
+  assert.deepStrictEqual(
+    fillFromDashJson(permissions, null, "trops", "x"),
+    permissions,
+  );
+});
 
 test("dash.json-only widget: a scoped name publishes under the user's scope once", () => {
   // Widget Builder widgets keep `@ai-built/x` in dash.json; the registry
