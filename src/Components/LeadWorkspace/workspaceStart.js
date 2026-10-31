@@ -64,6 +64,89 @@ const PAGES = {
 };
 
 /**
+ * What the Dash team can make, for a new Dash Lead conversation (Create —
+ * one place to start, frame 1): a card each, with a hint and an example
+ * that goes in the box.
+ */
+export const MAKE_KINDS = [
+  {
+    kind: "dashboard",
+    title: "A dashboard",
+    hint: "Widgets and bots together on one screen",
+    example: "A dashboard for my smart home",
+    icon: "table-cells-large",
+  },
+  {
+    kind: "widget",
+    title: "A widget",
+    hint: "One tile that shows or does one thing",
+    example: "A widget that shows my calendar",
+    icon: "puzzle-piece",
+  },
+  {
+    kind: "bot",
+    title: "A bot",
+    hint: "Works on its own — on a schedule, an event or a click",
+    example: "A bot that sums up my email each morning",
+    icon: "robot",
+  },
+  {
+    kind: "theme",
+    title: "A theme",
+    hint: "Colors for the app or one dashboard",
+    example: "A Halloween theme",
+    icon: "palette",
+  },
+  {
+    kind: "change",
+    title: "A change",
+    hint: "To a dashboard, widget, bot or theme you have",
+    example: "Change one of my dashboards",
+    icon: "pen",
+  },
+];
+
+/**
+ * Other ways to start a Dash Lead conversation (frame 13; in the middle
+ * since "one place to start"). `kind` is what LeadWorkspace's startFrom
+ * does: "registry" | "copy" | "blank" | "import" | "widget". Describing it
+ * is the box itself.
+ */
+export const START_FROM = [
+  {
+    kind: "registry",
+    title: "A dashboard from the registry",
+    sub: "Install a ready-made one and its bots, then adjust it",
+    icon: "cloud-arrow-down",
+  },
+  {
+    kind: "copy",
+    title: "Copy one of your dashboards",
+    sub: "Start from what you have and change it",
+    icon: "copy",
+  },
+  // The Create window's no-AI starts (release 6c).
+  {
+    kind: "blank",
+    title: "A blank dashboard",
+    sub: "Start empty and add widgets yourself",
+    icon: "square-plus",
+  },
+  {
+    kind: "import",
+    title: "A dashboard file",
+    sub: "Import one someone shared with you",
+    icon: "file-import",
+  },
+  {
+    kind: "widget",
+    title: "Edit a widget you have",
+    sub: "Open it in the Widget Builder",
+    icon: "code",
+  },
+];
+
+/**
  * A page's New: { kind: "widget" | "bot" | "dashboard", from?: page } →
  * the conversation's start — its "Making:" line, greeting and starters,
  * and what the Dash Lead is told with the first question. null for
