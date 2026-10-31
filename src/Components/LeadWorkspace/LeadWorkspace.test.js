@@ -93,6 +93,13 @@ jest.mock("./useWidgetTarget", () => ({
 }));
 
 import { LeadWorkspace } from "./LeadWorkspace";
+
+// A new conversation as the start asks it (one place to start): a card's
+// example goes in the box, then Ask.
+function askStarter(example = "A dashboard for my smart home") {
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(example) }));
+  fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+}
 import { WorkspaceSide } from "./WorkspaceSide";
 
 beforeEach(() => {
@@ -370,11 +377,7 @@ describe("a plan in the conversation (release 3a)", () => {
     render(
       <LeadWorkspace request={{ key: "role:dashlead" }} onClose={onClose} />,
     );
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "A dashboard for my smart home",
-      }),
-    );
+    askStarter();
     expect(mockAskProps).not.toBeNull();
     act(() => {
       mockAskProps.onStarted("q_new");
@@ -633,11 +636,7 @@ describe("release 3a review fixes", () => {
     render(
       <LeadWorkspace request={{ key: "role:dashlead" }} onClose={onClose} />,
     );
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "A dashboard for my smart home",
-      }),
-    );
+    askStarter();
     act(() => {
       mockAskProps.onStarted("q_new");
       mockAskProps.onMessagesChange([
@@ -701,11 +700,7 @@ describe("release 3a review fixes", () => {
     render(
       <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
     );
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "A dashboard for my smart home",
-      }),
-    );
+    askStarter();
     const broken = { summary: "x", pieces: "nope" };
     act(() => {
       mockAskProps.onMessagesChange([
@@ -813,21 +808,43 @@ describe("release 3a: matches the mockup", () => {
     expect(screen.getByTestId("workspace-thread-new")).toHaveTextContent(
       "New conversation",
     );
-    const from = screen.getByTestId("workspace-start-from");
+    // One place to start (frame 1): what the team can make, a card each —
+    // its example goes in the box — then Or start from, all in the middle.
+    const start = screen.getByTestId("workspace-start");
+    const kinds = within(start).getByTestId("workspace-make-kinds");
+    expect(
+      within(kinds)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual([
+      "A dashboardWidgets and bots together on one screen“A dashboard for my smart home”",
+      "A widgetOne tile that shows or does one thing“A widget that shows my calendar”",
+      "A botWorks on its own — on a schedule, an event or a click“A bot that sums up my email each morning”",
+      "A themeColors for the app or one dashboard“A Halloween theme”",
+      "A changeTo a dashboard, widget, bot or theme you have“Change one of my dashboards”",
+    ]);
+    fireEvent.click(within(kinds).getByRole("button", { name: /A theme/ }));
+    const box = screen.getByRole("textbox", { name: "Ask Dash Lead" });
+    expect(box).toHaveValue("A Halloween theme");
+    expect(document.activeElement).toBe(box);
+    // Nothing is asked until Ask.
+    expect(mockAskProps).toBeNull();
+    const from = within(start).getByTestId("workspace-start-from");
     expect(
       within(from)
         .getAllByRole("button")
         .map((b) => b.textContent),
     ).toEqual([
-      "Describe itSay what you want in the box — the usual way",
       "A dashboard from the registryInstall a ready-made one and its bots, then adjust it",
       "Copy one of your dashboardsStart from what you have and change it",
       "A blank dashboardStart empty and add widgets yourself",
       "A dashboard fileImport one someone shared with you",
       "Edit a widget you haveOpen it in the Widget Builder",
     ]);
-    // Nothing made yet: no empty Outputs box under Start from.
-    expect(screen.queryByText("What the team makes shows here.")).toBeNull();
+    // Outputs holds only what's made: nothing yet.
+    const side = screen.getByTestId("workspace-side");
+    expect(within(side).queryByTestId("workspace-start-from")).toBeNull();
+    expect(side).toHaveTextContent("What the team makes shows here.");
     // The team in the order it works, each saying what it's for.
     const rows = screen.getAllByTestId("workspace-member");
     expect(rows[0]).toHaveTextContent("Scout · ready");
@@ -835,10 +852,10 @@ describe("release 3a: matches the mockup", () => {
     expect(rows[1]).toHaveTextContent("Planner · ready");
     expect(rows[1]).toHaveTextContent("turns your request into a plan");
 
-    fireEvent.click(within(from).getByText("Describe it"));
-    expect(document.activeElement).toBe(
-      screen.getByRole("textbox", { name: "Ask Dash Lead" }),
-    );
+    // A role's line, until it's asked, is in the normal font.
+    expect(
+      within(rows[0]).getByText("finds what you already have"),
+    ).not.toHaveClass("font-mono");
     fireEvent.click(within(from).getByText("Copy one of your dashboards"));
     expect(onOpenPage).toHaveBeenLastCalledWith("dashboards");
     fireEvent.click(within(from).getByText("Edit a widget you have"));
@@ -852,6 +869,14 @@ describe("release 3a: matches the mockup", () => {
     expect(heard).toEqual([]);
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId("workspace-registry")).toBeInTheDocument();
+  });
+
+  test("a dashboard's lead starts with its own questions: no cards, no Or start from", () => {
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    expect(screen.queryByTestId("workspace-make-kinds")).toBeNull();
+    expect(screen.queryByTestId("workspace-start-from")).toBeNull();
   });
 
   test("Start from › a blank dashboard, or a file: the no-AI starts (6c-4)", () => {
@@ -1227,9 +1252,7 @@ describe("release 3a: matches the mockup", () => {
     render(
       <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "A dashboard for my smart home" }),
-    );
+    askStarter();
     act(() => {
       mockAskProps.onStarted("q_new");
       mockAskProps.onMessagesChange([you("Plan it"), planStep("1:t1"), reply]);
@@ -1275,9 +1298,7 @@ describe("release 3a: matches the mockup", () => {
     render(
       <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "A dashboard for my smart home" }),
-    );
+    askStarter();
     const OLD = { ...PLAN, pieces: PLAN.pieces.slice(1) };
     const msgs = [
       you("Plan it"),
@@ -1447,9 +1468,7 @@ describe("release 3b: building in the conversation", () => {
         {...props}
       />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "A dashboard for my smart home" }),
-    );
+    askStarter();
     const msgs = [you("Plan it"), planStep("1:t1", plan), reply];
     act(() => {
       mockAskProps.onStarted("q_new");
@@ -1708,9 +1727,7 @@ describe("release 3b: building in the conversation", () => {
     render(
       <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "A dashboard for my smart home" }),
-    );
+    askStarter();
     act(() => {
       mockAskProps.onStarted("q_new");
       mockAskProps.onMessagesChange([you("Plan it"), planStep("1:t1"), reply]);
@@ -1754,9 +1771,7 @@ describe("release 3b: building in the conversation", () => {
     render(
       <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "A dashboard for my smart home" }),
-    );
+    askStarter();
     act(() => {
       mockAskProps.onStarted("q_new");
       mockAskProps.onMessagesChange([you("Plan it"), planStep("1:t1"), reply]);
@@ -1946,9 +1961,7 @@ describe("release 3b: building in the conversation", () => {
             onClose={jest.fn()}
           />,
         );
-        fireEvent.click(
-          screen.getByRole("button", { name: "A dashboard for my smart home" }),
-        );
+        askStarter();
         const TARGETED = {
           summary: "Lights on the kitchen dashboard",
           dashboard: { id: "7", name: "Kitchen Sink" },
@@ -2001,9 +2014,7 @@ describe("release 3b: building in the conversation", () => {
     render(
       <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "A dashboard for my smart home" }),
-    );
+    askStarter();
     act(() => {
       mockAskProps.onStarted("q_new");
       mockAskProps.onMessagesChange([
@@ -2285,6 +2296,21 @@ describe("a smaller window", () => {
   const wideAs = window.innerWidth;
   afterEach(() => {
     window.innerWidth = wideAs;
+  });
+
+  it("Or start from › the registry, in the middle, opens the Outputs panel with it", () => {
+    window.innerWidth = 1024;
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /^A dashboard from the registry/ }),
+    );
+    expect(screen.getByTestId("workspace-registry")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Outputs/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 
   it("the left column folds to ☰, Outputs is a button that slides over; a waiting approval puts a dot on it", async () => {

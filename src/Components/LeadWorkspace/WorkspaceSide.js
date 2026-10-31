@@ -83,45 +83,6 @@ const BUILD_ROLES = {
 };
 
 /**
- * Where you can start a new Dash Lead conversation from (frame 13).
- * `onStartFrom(kind)`: "describe" | "registry" | "copy" | "blank" |
- * "import" | "widget".
- */
-const START_FROM = [
-  {
-    kind: "describe",
-    title: "Describe it",
-    sub: "Say what you want in the box — the usual way",
-  },
-  {
-    kind: "registry",
-    title: "A dashboard from the registry",
-    sub: "Install a ready-made one and its bots, then adjust it",
-  },
-  {
-    kind: "copy",
-    title: "Copy one of your dashboards",
-    sub: "Start from what you have and change it",
-  },
-  // The Create window's no-AI starts (release 6c).
-  {
-    kind: "blank",
-    title: "A blank dashboard",
-    sub: "Start empty and add widgets yourself",
-  },
-  {
-    kind: "import",
-    title: "A dashboard file",
-    sub: "Import one someone shared with you",
-  },
-  {
-    kind: "widget",
-    title: "Edit a widget you have",
-    sub: "Open it in the Widget Builder",
-  },
-];
-
-/**
  * What each bot is doing right now — one line, from its stream: the tool
  * it's calling, or that it's writing. Cleared when its run ends.
  */
@@ -258,8 +219,6 @@ function memberState(
  *   earlier plan), a step's id, or null
  * @param {(what) => void} onOpen
  * @param {boolean} wide, onToggleWide  the column's size
- * @param {boolean} isNew  a new conversation, nothing asked yet
- * @param {(kind) => void} onStartFrom  a Start from choice
  * @param {object|null} build  the plan's build (release 3b: { buildId, kind,
  *   leftOff }); its outputs open as "buildlog", "check" and "preview"
  * @param {object|null} pb     the build, live (usePlanBuild)
@@ -285,15 +244,11 @@ export const WorkspaceSide = ({
   onOpen = () => {},
   wide = false,
   onToggleWide = null,
-  isNew = false,
-  onStartFrom = null,
   build = null,
   pb = null,
   dashTeam = [],
   onSummary = null,
   onUseRegistry = null,
-  // Start from kinds left out (New Dashboard: "widget").
-  startFromSkip = null,
   // A change to one widget (release 6c): in place or new; sign in.
   onWidgetMode = null,
   onSignIn = null,
@@ -361,8 +316,6 @@ export const WorkspaceSide = ({
   const approvalBots = contact
     ? [{ id: contact.botId, name: contact.name }, ...members]
     : [];
-  const startFrom =
-    isNew && contact && contact.kind === "dashlead" && onStartFrom;
   // Connected for real — a connect skipped before building isn't.
   const connected = (it) =>
     !!(wp && wp.have && wp.have.has(normalizeType(it.providerType)));
@@ -564,7 +517,9 @@ export const WorkspaceSide = ({
             <span className={`text-xs ${muted}`}> · {state}</span>
           </span>
           {line ? (
-            <span className={`text-xs font-mono truncate ${muted}`}>
+            <span
+              className={`text-xs truncate ${tone === "working" ? "font-mono" : ""} ${muted}`}
+            >
               {line}
             </span>
           ) : null}
@@ -588,27 +543,6 @@ export const WorkspaceSide = ({
       data-testid="workspace-side"
     >
       <span className={`text-sm font-semibold ${strong}`}>Outputs</span>
-
-      {startFrom ? (
-        <div className="flex flex-col gap-2" data-testid="workspace-start-from">
-          <span className={`text-xs ${muted}`}>Start from</span>
-          {START_FROM.filter(
-            (s) => !(startFromSkip || []).includes(s.kind),
-          ).map((s) => (
-            <button
-              key={s.kind}
-              type="button"
-              onClick={() => onStartFrom(s.kind)}
-              className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 text-left ${hairline}`}
-            >
-              <span className={`text-sm font-semibold ${strong}`}>
-                {s.title}
-              </span>
-              <span className={`text-xs ${muted}`}>{s.sub}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
 
       {/* Once it builds, what's left is asked for as Needs you (frame 3). */}
       {wp && !build ? <BeforeItBuilds wp={wp} readOnly={planReadOnly} /> : null}
@@ -701,7 +635,7 @@ export const WorkspaceSide = ({
           onClick={() => onOpen(s.id)}
         />
       ))}
-      {!answered.length && !plan && !startFrom && !(planActions && next) ? (
+      {!answered.length && !plan && !(planActions && next) ? (
         <span
           className={`rounded-xl border border-dashed p-6 text-center text-sm ${hairline} ${muted}`}
         >

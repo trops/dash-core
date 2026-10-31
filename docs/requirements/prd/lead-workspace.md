@@ -377,3 +377,15 @@ Frames 22, 27–29.
   - `didNothing` keeps answers that made something after all ("…but I added…").
   - A bare "ok" or "sure" doesn't build.
   - **The card waits while the Lead is still writing** (`onBusyChange`). The live run showed the Planner's plan arriving before the Lead finished, so the card offered taps that couldn't go through.
+
+### Create — one place to start (2026-10-31, approved mockups "Create — one place to start", frames 1–3)
+
+The examples in the middle and "Start from" under **Outputs** on the right felt like two separate things. "Outputs" was also wrong before anything was made, and "Describe it" just pointed back at the box.
+
+- **In the middle:**
+  - **What the team can make**, one card each: A dashboard, A widget, A bot, A theme, A change. Each card has a hint and an example. Clicking a card puts its example in the box to change before asking; it isn't sent (`MAKE_KINDS`).
+  - Below that, **Or start from**: registry, copy, blank, file, edit a widget (`START_FROM` in `workspaceStart.js`). New Dashboard keeps it without "Edit a widget".
+  - A provider isn't something the team makes: a plan asks to connect one.
+- **Outputs** holds only what's made. Until then it shows "What the team makes shows here."
+- After the first message the middle is the conversation, so the start options go away.
+- A role's line ("finds what you already have") is in the normal font. Only its live line ("› search_library") is code-ish.

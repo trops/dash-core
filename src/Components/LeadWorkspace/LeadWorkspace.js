@@ -32,6 +32,8 @@ import {
   widgetStart,
   makingStart,
   registrySeed,
+  MAKE_KINDS,
+  START_FROM,
 } from "./workspaceStart";
 import { useDashboard } from "./useDashboard";
 import { useWidgetTarget } from "./useWidgetTarget";
@@ -143,16 +145,13 @@ function useRecentEntries() {
 /** The start of a conversation: who this is, and a few things to ask. */
 function startText(contact) {
   if (!contact) return { title: "", text: "", starters: [] };
+  // What the team can make, a card each (Create — one place to start).
   if (contact.kind === "dashlead") {
     return {
       title: "What should we make?",
-      text: "Describe it in your own words — a dashboard, a widget, a bot, or a change to one you have. The team plans it with you, and nothing is made until you say yes.",
-      starters: [
-        "A dashboard for my smart home",
-        "A widget that shows my calendar",
-        "A bot that sums up my email each morning",
-        "Change one of my dashboards",
-      ],
+      text: "Describe it in your own words. The team plans it with you, and nothing is made until you say yes.",
+      starters: [],
+      kinds: MAKE_KINDS,
     };
   }
   const first = contact.members[0];
@@ -211,11 +210,13 @@ export const LeadWorkspace = ({
   // changeCurrentTheme: Use the remix for the app (theme change leftovers).
   const { currentTheme, rawThemes, changeCurrentTheme, themeKey } =
     useContext(ThemeContext) || {};
+  // An example's colour: the accent role (as the side's links).
+  const link = `${(currentTheme && currentTheme["text-primary-medium"]) || ""} dr-role-accent`;
   const username = useRegistryUsername();
   const panel = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
-  const { muted, strong, hairline, selectedBg } = useConfigTokens();
+  const { muted, strong, hairline, selectedBg, fieldBg } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const composer = useRef(null);
   // The conversation's handle (AskStep's askPlanner): the plan's card sends
@@ -1027,16 +1028,21 @@ export const LeadWorkspace = ({
   // The lead is still answering: the plan isn't changed meanwhile.
   const answering = stillAnswering(messages) || askBusy;
 
+  // Or start from shows in a new Dash Lead conversation (and a page's New
+  // Dashboard), in the middle.
+  const startsHere =
+    !open &&
+    !!contact &&
+    contact.kind === "dashlead" &&
+    (!makingShown || makingDashboard);
   // Start from (frame 13). Describing it is the box; the registry's
   // dashboards open on the right (frame 42); copying a dashboard and editing
   // a widget are on their pages.
   const startFrom = (kind) => {
-    if (kind === "describe") {
-      if (composer.current) composer.current.focus();
-      return;
-    }
     if (kind === "registry") {
       setSideOpen("registry");
+      // A small window: the right column is a panel — opened with it.
+      if (narrow) setOutsOpen(true);
       return;
     }
     if (kind === "blank" || kind === "import") {
@@ -1649,9 +1655,9 @@ export const LeadWorkspace = ({
             />
           ) : (
             <>
-              <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center px-6">
+              <div className="flex-1 min-h-0 overflow-y-auto flex flex-col px-6 py-6">
                 <div
-                  className="flex flex-col gap-4 max-w-xl"
+                  className="flex flex-col gap-4 max-w-5xl my-auto"
                   data-testid="workspace-start"
                 >
                   <span className={`text-2xl font-semibold ${strong}`}>
@@ -1667,16 +1673,105 @@ export const LeadWorkspace = ({
                       {seedError}
                     </span>
                   ) : null}
-                  <div className="flex flex-row flex-wrap gap-2">
-                    {start.starters.map((s) => (
-                      <Button2
-                        key={s}
-                        size="sm"
-                        title={s}
-                        onClick={() => ask(s)}
-                      />
-                    ))}
-                  </div>
+                  {start.starters.length ? (
+                    <div className="flex flex-row flex-wrap gap-2">
+                      {start.starters.map((s) => (
+                        <Button2
+                          key={s}
+                          size="sm"
+                          title={s}
+                          onClick={() => ask(s)}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  {/* What the team can make: its example goes in the box,
+                      to change before asking (one place to start, frame 1). */}
+                  {start.kinds ? (
+                    <div className="flex flex-col gap-2">
+                      <div
+                        className="flex flex-row flex-wrap gap-3"
+                        data-testid="workspace-make-kinds"
+                      >
+                        {start.kinds.map((k) => (
+                          <button
+                            key={k.kind}
+                            type="button"
+                            aria-label={`${k.title}. ${k.hint}. Example: ${k.example}`}
+                            onClick={() => {
+                              setDraft(k.example);
+                              if (composer.current) composer.current.focus();
+                            }}
+                            className={`w-44 flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left ${hairline}`}
+                          >
+                            <span
+                              className={`flex items-center justify-center h-8 w-8 rounded-lg ${fieldBg} dr-role-well ${strong}`}
+                              aria-hidden="true"
+                            >
+                              <FontAwesomeIcon
+                                icon={k.icon}
+                                className="h-4 w-4"
+                              />
+                            </span>
+                            <span className={`text-sm font-semibold ${strong}`}>
+                              {k.title}
+                            </span>
+                            <span className={`text-xs ${muted}`}>{k.hint}</span>
+                            <span className={`text-xs ${link}`}>
+                              “{k.example}”
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      <span className={`text-xs ${muted}`}>
+                        Click one to put its example in the box — then change it
+                        to what you want.
+                      </span>
+                    </div>
+                  ) : null}
+                  {/* Or start from (frame 13, in the middle since one place
+                      to start): New Dashboard keeps its own, no widget. */}
+                  {startsHere ? (
+                    <div
+                      className="flex flex-col gap-2 pt-2"
+                      data-testid="workspace-start-from"
+                    >
+                      <span className={`text-xs ${muted}`}>Or start from</span>
+                      <div className="flex flex-row flex-wrap gap-3">
+                        {START_FROM.filter(
+                          (s) => !(makingDashboard && s.kind === "widget"),
+                        ).map((s) => (
+                          <button
+                            key={s.kind}
+                            type="button"
+                            aria-label={`${s.title}. ${s.sub}`}
+                            onClick={() => startFrom(s.kind)}
+                            className={`w-60 flex flex-row items-start gap-3 rounded-xl border p-3 text-left ${hairline} ${selectedBg}`}
+                          >
+                            <span
+                              className={`flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg ${fieldBg} dr-role-well ${strong}`}
+                              aria-hidden="true"
+                            >
+                              <FontAwesomeIcon
+                                icon={s.icon}
+                                className="h-4 w-4"
+                              />
+                            </span>
+                            <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                              <span
+                                className={`text-sm font-semibold ${strong}`}
+                              >
+                                {s.title}
+                              </span>
+                              <span className={`text-xs ${muted}`}>
+                                {s.sub}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {/* Change with AI (release 6c): the Widget Builder, by
                       hand, as Create › Change offered. */}
                   {makingShown && making.widget ? (
@@ -1801,12 +1896,6 @@ export const LeadWorkspace = ({
               // No Expand in a small window: the column already covers it.
               onToggleWide={narrow ? null : () => setWide((v) => !v)}
               onSummary={setSideSummary}
-              // A page's New already says what's made: no Start from —
-              // but New Dashboard has its starts (release 6c).
-              isNew={!open && !isBot && (!makingShown || makingDashboard)}
-              // New Dashboard's starts are about dashboards.
-              startFromSkip={makingDashboard ? ["widget"] : null}
-              onStartFrom={startFrom}
               onUseRegistry={pickRegistryDashboard}
             />
           ) : null}
