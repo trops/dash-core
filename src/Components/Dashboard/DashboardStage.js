@@ -1,3 +1,4 @@
+import { WidgetPauseBanner } from "../../Widget/WidgetGuardViews";
 import React, {
   useState,
   useEffect,
@@ -2268,6 +2269,9 @@ const DashboardStageInner = ({
       if (workspaceItem === undefined) return null;
       return (
         <>
+          {/* Marked open while it loads; its widgets paused if Dash froze
+              on it last time (the widget guard). */}
+          <WidgetPauseBanner dashboard={workspaceItem} />
           {sortedPagesForRender.map((page) => {
             const isActive = page.id === currentActivePageId;
             return (
