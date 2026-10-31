@@ -95,12 +95,12 @@ describe("planEnsureDashTeam", () => {
 
   it("a Dash Lead still on release 1's or 3a's words upgrades; edited ones stay", () => {
     const spec = ROLES.find((r) => r.role === "dashlead");
-    assert.equal(spec.history.length, 2);
-    assert.match(spec.history[1], /open Create in the left menu/);
+    assert.equal(spec.history.length, 3);
+    assert.match(spec.history[2], /open Create in the left menu/);
     // 3a's could say it updated the plan when the Planner sent none.
-    assert.doesNotMatch(spec.history[0], /still as it was/);
+    assert.doesNotMatch(spec.history[1], /still as it was/);
     assert.match(spec.instructions, /the plan is still as it was/);
-    const was3a = { ...teamBot("dashlead"), instructions: spec.history[0] };
+    const was3a = { ...teamBot("dashlead"), instructions: spec.history[1] };
     assert.equal(
       planEnsureDashTeam([
         ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
@@ -108,7 +108,7 @@ describe("planEnsureDashTeam", () => {
       ]).length,
       1,
     );
-    const old = { ...teamBot("dashlead"), instructions: spec.history[1] };
+    const old = { ...teamBot("dashlead"), instructions: spec.history[2] };
     const plan = planEnsureDashTeam([
       ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
       old,
@@ -312,7 +312,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 18);
+    assert.equal(planner.history.length, 19);
   });
 });
 
@@ -611,7 +611,7 @@ describe("Dash team instructions (design guide)", () => {
     assert.match(planner.instructions, /each widget is its own panel/);
     // (the latest three are release 6c's and the theme round's, which
     // already had the rules)
-    const before = planner.history[planner.history.length - 5];
+    const before = planner.history[planner.history.length - 6];
     assert.doesNotMatch(before, /one main area/);
     assert.match(before, /<plan><\/plan>/);
   });
@@ -642,7 +642,7 @@ describe("Dash team instructions (lead-workspace 6c: no Create window)", () => {
   it("no Create in the text; the text before upgrades", () => {
     const planner = ROLES.find((x) => x.role === "planner");
     assert.doesNotMatch(planner.instructions, /in Create/);
-    const before = planner.history[planner.history.length - 4];
+    const before = planner.history[planner.history.length - 5];
     assert.match(before, /choose Theme in Create/);
   });
 });
@@ -660,7 +660,7 @@ describe("Dash team instructions (lead-workspace theme round)", () => {
       planner.instructions,
       /use New Theme on the Themes page/,
     );
-    const before = planner.history[planner.history.length - 3];
+    const before = planner.history[planner.history.length - 4];
     assert.match(before, /use New Theme on the Themes page/);
     assert.notEqual(before, planner.instructions);
   });
@@ -673,7 +673,7 @@ describe("Dash team instructions (theme round: color names)", () => {
       planner.instructions,
       /"colorNames": \{"primary": a one- or two-word name/,
     );
-    const before = planner.history[planner.history.length - 2];
+    const before = planner.history[planner.history.length - 3];
     assert.match(before, /"source": "new", "colors"/);
     assert.doesNotMatch(before, /colorNames/);
   });
@@ -691,8 +691,43 @@ describe("Dash team instructions (theme change round)", () => {
       planner.instructions,
       /Changing a saved theme isn't something a plan does/,
     );
-    const before = planner.history[planner.history.length - 1];
+    const before = planner.history[planner.history.length - 2];
     assert.match(before, /Changing a saved theme isn't something a plan does/);
     assert.match(before, /colorNames/);
+  });
+});
+
+describe("Dash team instructions (plan → build: never stuck)", () => {
+  it("the Lead sends answers to the Planner and never asks the Builder to build a plan", () => {
+    const lead = ROLES.find((r) => r.role === "dashlead");
+    assert.match(
+      lead.instructions,
+      /When the user answers the Planner's questions, send their answers and the plan as it stands to the Planner/,
+    );
+    assert.match(
+      lead.instructions,
+      /neither can you ask the Builder to build a plan/,
+    );
+    // The Lead on the words before upgrades.
+    assert.doesNotMatch(lead.history[0], /neither can you ask the Builder/);
+    const was = { ...teamBot("dashlead"), instructions: lead.history[0] };
+    const plan = planEnsureDashTeam([
+      ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
+      was,
+    ]);
+    assert.equal(plan.length, 1);
+    assert.equal(plan[0].action, "upgrade");
+  });
+
+  it("a new theme doesn't ask where it goes; the Planner before it upgrades", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    assert.match(planner.instructions, /don't ask where it goes/);
+    const before = planner.history[planner.history.length - 1];
+    assert.doesNotMatch(before, /don't ask where it goes/);
+    const bots = ROLE_IDS.map((r) => teamBot(r));
+    bots[0].instructions = before;
+    const plan = planEnsureDashTeam(bots);
+    assert.equal(plan[0].action, "upgrade");
+    assert.equal(plan[0].role, "planner");
   });
 });

@@ -7,6 +7,11 @@ import {
   teamSkipText,
 } from "../../utils/teamRoles";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
+
+// The app's own hand-offs to the Planner still running, by conversation id:
+// { id, result } — a copy of the conversation opened again while one runs
+// (switched away and back) picks its answer up instead of spinning.
+const directRuns = new Map();
 import { askTeamLead } from "../../utils/leadAsk";
 import { useTeamLeads } from "../AiAssistant/components/RecipientPicker";
 import { leadLabel } from "../AiAssistant/leadMessages";
@@ -75,6 +80,9 @@ export const AskStep = ({
   // Lead workspace (release 2): the conversation as it changes (its steps
   // feed the right column), and whose approvals show here.
   onMessagesChange = null,
+  // Told whether someone is still answering (the lead's run, or the app's
+  // hand-off to the Planner) — the plan's card waits for it.
+  onBusyChange = null,
   approvalBots = null,
   // In the workspace the left column already says who it is.
   hideTo = false,
@@ -84,6 +92,12 @@ export const AskStep = ({
   // stands goes along), as (text) => text.
   renderAfter = null,
   prepareSend = null,
+  // A typed reply the host takes instead (a plain "yes" builds the plan):
+  // (text) => true when it did, and nothing is sent.
+  takeReply = null,
+  // The host's handle on the conversation: { askPlanner, stopPlanner } —
+  // set as it renders (the plan's card on the right uses it).
+  controlRef = null,
   // What the conversation is about (release 6c): { label, text, note } —
   // saved with it; its note goes with the first question and with the
   // first reply after a reopen (the chat shows what was typed). A reopened
@@ -107,6 +121,8 @@ export const AskStep = ({
     recentId ? [] : [{ who: "you", text: question }],
   );
   const [busy, setBusy] = useState(!recentId);
+  // The app asked the Planner itself (askPlanner): its step shows working.
+  const [plannerBusy, setPlannerBusy] = useState(false);
   // The role didn't answer because it's still busy: offer to stop it.
   const [roleBusy, setRoleBusy] = useState(false);
   const [soFar, setSoFar] = useState("");
@@ -332,11 +348,29 @@ export const AskStep = ({
               teamRoleRef.current = conv.recipient;
               setTeamRole(conv.recipient);
             }
-            setMessages(
+            let loadedMessages =
               Array.isArray(conv.messages) && conv.messages.length
                 ? conv.messages
-                : [{ who: "you", text: firstAsked.current }],
-            );
+                : [{ who: "you", text: firstAsked.current }];
+            // The app's hand-off to the Planner, saved while it ran: still
+            // running here — its answer comes to this copy — or not (a
+            // restart): stopped, so nothing spins forever.
+            const run = directRuns.get(recentId);
+            for (const m of loadedMessages) {
+              if (!m || m.who !== "step" || !m.direct) continue;
+              if (m.status !== "asking") continue;
+              if (run && run.id === m.id) {
+                setPlannerBusy(true);
+                run.result.then((apply) => {
+                  if (!alive.current) return;
+                  setPlannerBusy(false);
+                  setMessages(apply);
+                });
+              } else {
+                loadedMessages = withStopped(loadedMessages, m.id);
+              }
+            }
+            setMessages(loadedMessages);
             if (!entry) note("This conversation isn't saved any more.");
             reopened.current = true;
             setLoaded(true);
@@ -403,6 +437,11 @@ export const AskStep = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
+  useEffect(() => {
+    if (onBusyChange) onBusyChange(busy || plannerBusy);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, plannerBusy]);
+
   // Reopened while an earlier copy of this conversation is still being
   // answered (switched away mid-run): take the saved conversation when it
   // grows, so the answer isn't lost — or overwritten by this older copy.
@@ -449,11 +488,133 @@ export const AskStep = ({
     if (bot && bots && bots.stop) await bots.stop(bot.id);
   };
 
+  /**
+   * The app's own hand-off to the Planner — the user's answer to the plan's
+   * questions, Decide for me, Ask again — with no lead in between, so it
+   * never depends on a lead passing it on. Shown and saved as a step, like
+   * the lead's; its plan becomes the conversation's plan.
+   * @param {string} shown    what the user said (shown as theirs), or ""
+   * @param {string|() => string} request  what the Planner is sent — a
+   *   function is called only once it's asked (it may take the plan's edits)
+   * @param {string} [label]  the step's label
+   * @returns {boolean} false when something is already answering
+   */
+  const askPlanner = (
+    shown,
+    request,
+    label = "Sent your answer to the Planner",
+  ) => {
+    if (!request || busy || plannerBusy || working) return false;
+    const text = typeof request === "function" ? request() : request;
+    if (!text) return false;
+    askSeq.current += 1;
+    const id = `${askSeq.current}:planner`;
+    setReply("");
+    setPlannerBusy(true);
+    setMessages((m) => [
+      ...m,
+      ...(String(shown || "").trim()
+        ? [{ who: "you", text: String(shown).trim() }]
+        : []),
+      {
+        who: "step",
+        id,
+        bot: "the Planner",
+        label,
+        request: text,
+        status: "asking",
+        direct: true,
+      },
+    ]);
+    const conversationId = askId.current;
+    let settle = null;
+    if (conversationId) {
+      directRuns.set(conversationId, {
+        id,
+        result: new Promise((resolve) => {
+          settle = resolve;
+        }),
+      });
+    }
+    (async () => {
+      let res;
+      try {
+        res = await runTeamRole("planner", text, {
+          planId: conversationId,
+        });
+      } catch (err) {
+        res = { status: "failed", error: (err && err.message) || "" };
+      }
+      const stopped =
+        res && (res.status === "stopped" || res.status === "interrupted");
+      const failed = !res || !!res.skipped || res.status === "failed";
+      const output =
+        res && res.skipped
+          ? teamSkipText(res.reason, "Planner").text
+          : failed
+            ? `The Planner couldn't answer: ${(res && res.error) || "unknown error"}`
+            : res.output || "";
+      const apply = (m) =>
+        stopped
+          ? withStopped(m, id)
+          : withResult(m, {
+              type: "tool_result",
+              id,
+              output,
+              isError: failed,
+            });
+      if (conversationId) {
+        const run = directRuns.get(conversationId);
+        if (run && run.id === id) directRuns.delete(conversationId);
+      }
+      if (settle) settle(apply);
+      if (alive.current) {
+        setPlannerBusy(false);
+        setMessages(apply);
+        return;
+      }
+      // Closed meanwhile: saved, so the answer isn't lost.
+      messagesRef.current = apply(messagesRef.current);
+      const bots = window.mainApi && window.mainApi.bots;
+      if (askId.current && bots && bots.saveCreateRecent) {
+        Promise.resolve(
+          bots.saveCreateRecent({
+            id: askId.current,
+            conversation: { messages: messagesRef.current },
+          }),
+        ).catch(() => {});
+      }
+    })();
+    return true;
+  };
+  // Stop: only the Planner — the rest of the team may be busy elsewhere
+  // (a build in another conversation).
+  const stopPlanner = async () => {
+    const last = messagesRef.current[messagesRef.current.length - 1];
+    const asking =
+      plannerBusy ||
+      !!(
+        last &&
+        last.who === "step" &&
+        last.direct &&
+        last.status === "asking"
+      );
+    if (!asking) return;
+    const bots = window.mainApi && window.mainApi.bots;
+    const bot = await findTeamRole("planner");
+    if (bot && bots && bots.stop) await bots.stop(bot.id);
+  };
+  if (controlRef) controlRef.current = { askPlanner, stopPlanner };
+
   // `details` go to the lead with it but aren't shown (e.g. the plan's
   // problems behind "Ask the Planner to fix it").
   const send = (text, details = "") => {
     const t = String(text || "").trim();
-    if (!t || busy || working) return;
+    if (!t || busy || plannerBusy || working) return;
+    if (!details && takeReply && takeReply(t)) {
+      setReply("");
+      return;
+    }
     const history = messages;
     setReply("");
     setMessages((m) => [...m, { who: "you", text: t }]);
@@ -477,7 +638,14 @@ export const AskStep = ({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length, busy, follow]);
   const after = (m, i) =>
-    renderAfter ? renderAfter(m, i, { send, focusReply, busy }) : null;
+    renderAfter
+      ? renderAfter(m, i, {
+          send,
+          focusReply,
+          busy: busy || plannerBusy,
+          askPlanner,
+        })
+      : null;
 
   return (
     <div
@@ -581,8 +749,14 @@ export const AskStep = ({
         value={reply}
         onChange={(v) => setReply(v)}
         onSend={() => send(reply)}
-        busy={busy || !!working}
-        onStop={busy || !working ? stopNow : working.onStop}
+        busy={busy || plannerBusy || !!working}
+        onStop={
+          plannerBusy && !busy
+            ? stopPlanner
+            : busy || !working
+              ? stopNow
+              : working.onStop
+        }
         placeholder={
           working && !busy
             ? working.text

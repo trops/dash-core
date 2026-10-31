@@ -370,6 +370,9 @@ export function choicesIndex(messages) {
   if (!step) return -1;
   const at = list.indexOf(step);
   const last = list.length - 1;
+  // The app's own hand-off to the Planner brought it (an answer, Decide for
+  // me): no lead answers after it, so the choices go under it.
+  if (at === last && step.direct && step.status === "done") return last;
   const m = list[last];
   if (last <= at || !m || (m.who !== "lead" && m.who !== "role")) return -1;
   if (list.slice(at + 1, last).some((x) => x && x.who === "you")) return -1;
@@ -425,13 +428,160 @@ export function withPlanContext(text, plan, edits = []) {
   const t = String(text || "").trim();
   if (!plan) return t;
   const note = editNote(edits);
+  // The plan still asks something: this answers it, and only the Planner's
+  // new plan can be built (a theme plan stayed on its question otherwise).
+  const asks = Array.isArray(plan.questions) && plan.questions.length > 0;
+  const how = asks
+    ? "This answers the Planner's questions — send it to the Planner with this plan, so it can finish the plan"
+    : "If this changes it, ask the Planner to change it and send it this plan with the change";
   return [
     note,
     t,
-    `(The plan as it stands. If this changes it, ask the Planner to change it and send it this plan with the change:\n\`\`\`json\n${JSON.stringify(plan)}\n\`\`\`)`,
+    `(The plan as it stands. ${how}:\n\`\`\`json\n${JSON.stringify(plan)}\n\`\`\`)`,
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+/**
+ * A typed reply that only says yes to the plan ("yes", "yes build it", "go
+ * ahead") — it builds, as Yes does. Anything more ("yes but purple") goes to
+ * the lead.
+ */
+export function isPlainYes(text) {
+  const t = String(text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[.!\s]+$/, "")
+    .replace(/\s+/g, " ");
+  return /^(?:(?:yes|yep|yeah)(?:,? please)?(?:[,\s—-]+(?:go ahead|do it|build it|make it|save it))?(?:,? please)?|(?:ok|okay|sure)[,\s—-]+(?:go ahead|do it|build it|make it|save it)(?:,? please)?|(?:please )?(?:go ahead|do it|build it|make it|save it)(?:,? please)?)$/.test(
+    t,
+  );
+}
+
+// What the Planner is told with every request the app sends it: it sees
+// only what it's sent, not the conversation.
+function planBlock(plan, asked) {
+  return [
+    asked ? `The user's request: "${String(asked).trim()}"` : "",
+    `The plan as it stands:\n\`\`\`json\n${JSON.stringify(plan || {})}\n\`\`\``,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+const SEND_IT_BACK =
+  "Send the whole plan back inside <plan></plan>, as always, and say in a sentence or two what you changed.";
+
+/**
+ * The user's answer to the plan's questions, sent by the app straight to
+ * the Planner (not through the lead): only the Planner's new plan can be
+ * built.
+ * @param {string} answer  what they picked or typed
+ * @param {object} plan    the plan as it stands
+ * @param {{ asked?: string, edits?: string[] }} [opts]  their first words;
+ *   changes they made to the plan on the right
+ */
+export function answerRequest(answer, plan, { asked = "", edits = [] } = {}) {
+  return [
+    editNote(edits),
+    `The user answered your questions about this plan: "${String(answer || "").trim()}"`,
+    `Finish the plan with their answer: leave out every question it answers. If it changes what they want, plan that instead. Ask again only what still only they can decide. ${SEND_IT_BACK}`,
+    planBlock(plan, asked),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** Decide for me and finish the plan: the Planner picks, no questions left. */
+export function decideRequest(plan, { asked = "", edits = [] } = {}) {
+  return [
+    editNote(edits),
+    "The user asked you to decide for them and finish the plan.",
+    `For each of the plan's questions, pick the answer that fits their request best (when in doubt, the one that changes the least). Leave no questions in the plan, so it can be built. ${SEND_IT_BACK} Say what you picked.`,
+    planBlock(plan, asked),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** Ask the Planner to fill the gaps the plan check found. */
+export function fixRequest(errors, plan, { asked = "", edits = [] } = {}) {
+  const list = (Array.isArray(errors) ? errors : []).filter(Boolean);
+  return [
+    editNote(edits),
+    `The plan can't be built yet. What's missing:\n${list.map((e) => `- ${e}`).join("\n")}`,
+    `Fill these gaps. Ask the user only what only they can decide. ${SEND_IT_BACK}`,
+    planBlock(plan, asked),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** Start the plan over: from the user's request, as if it were new. */
+export function startOverRequest(asked) {
+  return `Plan this from the start, as a new request — forget any earlier plan. The user's request: "${String(asked || "").trim()}"`;
+}
+
+/** The last message is the app's own hand-off to the Planner, answered without a plan. */
+function directWithoutPlan(list) {
+  const last = list[list.length - 1];
+  return !!(
+    last &&
+    last.who === "step" &&
+    last.direct &&
+    last.status !== "asking" &&
+    !last.plan
+  );
+}
+
+/**
+ * The plan's next step, for its card (always one — the plan never leaves
+ * the user stuck):
+ *   "build"     it's building or built: the build's own choices
+ *   "waiting"   the app asked the Planner; it's answering
+ *   "answering" the lead is answering; the plan may change
+ *   "sent"      sent to the retired Create window
+ *   "nothing"   the Planner answered the app without a new plan
+ *   "question"  the Planner has questions
+ *   "gaps"      the plan check found gaps
+ *   "ready"     Yes, make it
+ *   "empty"     the plan makes nothing
+ * @param {{ messages, busy, plan, check, sent, build }} p  busy: the
+ *   conversation is still being answered (the lead may still be writing)
+ */
+export function planNext({
+  messages = [],
+  busy = false,
+  plan = null,
+  check = null,
+  sent = false,
+  build = null,
+}) {
+  const list = Array.isArray(messages) ? messages : [];
+  if (!plan) return directWithoutPlan(list) ? "nothing" : null;
+  if (build) return "build";
+  const last = list[list.length - 1];
+  if (last && last.who === "step" && last.direct && last.status === "asking")
+    return "waiting";
+  if (busy || stillAnswering(list)) return "answering";
+  if (sent) return "sent";
+  if (directWithoutPlan(list)) return "nothing";
+  const questions = Array.isArray(plan.questions) ? plan.questions : [];
+  if (questions.length) return "question";
+  if (check && check.errors && check.errors.length) return "gaps";
+  if (canBuild({ plan, check })) return "ready";
+  return "empty";
+}
+
+/** The next step waits on the user: the card is marked. */
+export function nextNeedsYou(next) {
+  return (
+    next === "question" ||
+    next === "ready" ||
+    next === "nothing" ||
+    next === "gaps" ||
+    next === "empty"
+  );
 }
 
 /** Who asks for each Before it builds item: the Planner made the list. */

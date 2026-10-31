@@ -104,10 +104,31 @@ export function withResult(messages, event) {
       answer,
       result: firstLine(answer),
       ...(planned ? { plan } : {}),
+      ...(!planned && didNothing(answer) ? { nothing: true } : {}),
     };
   });
   return hit ? next : messages;
 }
+
+/**
+ * An answer that says it made nothing ("I haven't created anything…", "I
+ * can't build that…"): it stays in the conversation, but isn't an output.
+ */
+export function didNothing(answer) {
+  const text = String(answer || "")
+    .toLowerCase()
+    .replace(/’/g, "'");
+  const first = firstLine(text);
+  const said = NOTHING.exec(first);
+  if (!said) return false;
+  // "…, but I added a Weather widget": something was made after all.
+  const rest = text.slice(said.index + said[0].length);
+  return !MADE.test(rest);
+}
+const NOTHING =
+  /^(?:sorry,? )?(?:i |i'm )?(?:haven't|have not|didn't|did not|can't|cannot|can not|couldn't|could not|wasn't able to|was not able to|was unable to|am unable to|unable to|am not able to) (?:create|created|build|built|make|made|save|saved|change|changed|do|done)\b[^,.;]*/;
+const MADE =
+  /\b(?:but|so|instead|then|and)\b[^.]*\bi(?:'ve| have)? (?:\w+ )?(?:saved|created|added|built|made|changed|updated|installed)\b|\bi(?:'ve| have) (?:saved|created|added|built|made|changed|updated|installed)\b/;
 
 /**
  * Steps of one question still asking when its run ended (Stop, quit):

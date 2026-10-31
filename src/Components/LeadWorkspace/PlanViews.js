@@ -5,6 +5,7 @@ import {
   Button3,
   ButtonIcon2,
   FontAwesomeIcon,
+  InputText,
   Switch,
   ThemeContext,
   useStatusTokens,
@@ -146,6 +147,9 @@ export const PlanCard = ({ plan, earlier = false, onOpen }) => {
  * @param {() => void} onBuild      Yes, build it (null while it starts)
  * @param {() => void} onChange     Change something (the reply box)
  * @param {boolean} sent            sent to the retired Create window (3a)
+ * @param {(text) => void} [onAnswer]  an answer, straight to the Planner
+ * @param {() => void} [onDecide]   Decide for me and finish the plan
+ * @param {() => void} [onFix]      the gaps, straight to the Planner
  */
 export const PlanChoices = ({
   plan,
@@ -154,7 +158,13 @@ export const PlanChoices = ({
   onSend,
   onBuild,
   onChange,
+  onAnswer = null,
+  onDecide = null,
+  onFix = null,
 }) => {
+  // Answers go to the Planner itself when the host can send them there.
+  const answer = (text, shown) =>
+    onAnswer ? onAnswer(text, shown) : onSend(text);
   const { muted, strong, hairline } = useConfigTokens();
   const { rawThemes } = useContext(ThemeContext) || {};
   const username = useRegistryUsername();
@@ -198,7 +208,7 @@ export const PlanChoices = ({
                           return;
                         }
                         if (questions.length === 1) {
-                          onSend(`${q.question} — ${o}`);
+                          answer(`${q.question} — ${o}`, o);
                           return;
                         }
                         setPicks((p) => ({ ...p, [i]: o }));
@@ -216,7 +226,7 @@ export const PlanChoices = ({
               title="Send answers"
               disabled={!answered}
               onClick={() =>
-                onSend(
+                answer(
                   questions
                     .map((q, i) =>
                       picks[i] ? `${q.question} — ${picks[i]}` : null,
@@ -231,9 +241,18 @@ export const PlanChoices = ({
             </span>
           </div>
         ) : null}
-        <span className={`text-xs ${muted}`}>
-          Or type your own answer below.
-        </span>
+        <div className="flex flex-row flex-wrap items-center gap-2">
+          <span className={`text-xs ${muted}`}>
+            Or type your own answer below.
+          </span>
+          {onDecide ? (
+            <Button3
+              size="sm"
+              title="Decide for me and finish the plan"
+              onClick={onDecide}
+            />
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -248,13 +267,15 @@ export const PlanChoices = ({
           <Button2
             title="Ask the Planner to fix it"
             onClick={() =>
-              // The problems go to the lead, not into your message.
-              onSend(
-                "Please have the Planner fill the gaps in the plan.",
-                `(What's missing, for the Planner:\n${errors
-                  .map((e) => `- ${e}`)
-                  .join("\n")})`,
-              )
+              onFix
+                ? onFix()
+                : // The problems go to the lead, not into your message.
+                  onSend(
+                    "Please have the Planner fill the gaps in the plan.",
+                    `(What's missing, for the Planner:\n${errors
+                      .map((e) => `- ${e}`)
+                      .join("\n")})`,
+                  )
             }
           />
         </div>
@@ -285,6 +306,265 @@ export const PlanChoices = ({
       ) : (
         <span className={`text-sm ${muted}`}>Starting the build…</span>
       )}
+    </div>
+  );
+};
+
+/**
+ * The plan card's next step (plan → build, frames 1-8): whatever the plan's
+ * state, a way on — never a dead end. Questions are answered right here
+ * (taps or your own words) and go straight to the Planner; Decide for me
+ * has the Planner pick; an answer with no new plan offers Decide for me,
+ * Ask again and Start the plan over. Once it builds, `buildSlot` — the
+ * build's own choices.
+ *
+ * @param {string} next  planNext's result
+ * @param {object|null} plan
+ * @param {object|null} check  validatePlan's result
+ * @param {(text) => void} onAnswer   an answer, to the Planner
+ * @param {() => void} onDecide       Decide for me and finish the plan
+ * @param {() => void} onAskAgain     the last request, again
+ * @param {() => void} onStartOver    plan it from the start
+ * @param {() => void} onFix          the gaps, to the Planner
+ * @param {() => void} onBuild        Yes, make it (null while it starts)
+ * @param {() => void} onChange       Change something (the reply box)
+ * @param {() => void} onStopPlanner  Stop, while the Planner answers
+ */
+export const PlanNext = ({
+  next,
+  plan = null,
+  check = null,
+  onAnswer = () => {},
+  onDecide = () => {},
+  onAskAgain = null,
+  onStartOver = null,
+  onFix = () => {},
+  onBuild = null,
+  onChange = () => {},
+  onStopPlanner = null,
+  leadName = "The Dash Lead",
+  buildSlot = null,
+}) => {
+  const { muted, strong, hairline } = useConfigTokens();
+  const { rawThemes } = useContext(ThemeContext) || {};
+  const username = useRegistryUsername();
+  const [picks, setPicks] = useState({});
+  const [own, setOwn] = useState("");
+  if (!next) return null;
+  const questions = (
+    plan && Array.isArray(plan.questions) ? plan.questions : []
+  ).filter((q) => q && q.question);
+  const say = (text, shown) => {
+    const t = String(text || "").trim();
+    if (!t) return;
+    setOwn("");
+    setPicks({});
+    onAnswer(t, shown);
+  };
+  const decide = (primary) =>
+    primary ? (
+      <Button title="Decide for me and finish the plan" onClick={onDecide} />
+    ) : (
+      <Button2 title="Decide for me and finish the plan" onClick={onDecide} />
+    );
+  let body = null;
+  if (next === "build") body = buildSlot;
+  else if (next === "waiting") {
+    body = (
+      <div className="flex flex-col gap-2">
+        <span className={`text-sm ${strong}`}>
+          The Planner is finishing the plan…
+        </span>
+        {onStopPlanner ? (
+          <div>
+            <Button3 size="sm" title="Stop" onClick={onStopPlanner} />
+          </div>
+        ) : null}
+      </div>
+    );
+  } else if (next === "answering") {
+    body = (
+      <span className={`text-sm ${muted}`}>
+        {leadName} is answering — the plan may change.
+      </span>
+    );
+  } else if (next === "sent") {
+    body = (
+      <span className={`text-sm ${muted}`}>
+        Sent to be built by an older version of Dash — ask here to build it
+        again.
+      </span>
+    );
+  } else if (next === "question") {
+    const answered = questions.filter((_q, i) => picks[i]).length;
+    body = (
+      <div className="flex flex-col gap-3">
+        {questions.map((q, i) => {
+          const options = (Array.isArray(q.options) ? q.options : []).filter(
+            (o) => o && !isTypeItOption(o),
+          );
+          return (
+            <div key={i} className="flex flex-col gap-2">
+              <span className={`text-sm font-semibold ${strong}`}>
+                {q.question}
+              </span>
+              {options.length ? (
+                <div className="flex flex-row flex-wrap gap-2">
+                  {options.map((o) => (
+                    <ButtonIcon2
+                      key={o}
+                      text={o}
+                      ariaPressed={picks[i] === o}
+                      selected={picks[i] === o}
+                      onClick={() =>
+                        questions.length === 1
+                          ? say(`${q.question} — ${o}`, o)
+                          : setPicks((p) => ({ ...p, [i]: o }))
+                      }
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+        {questions.length > 1 ? (
+          <div className="flex flex-row items-center gap-3">
+            <Button2
+              title="Send answers"
+              disabled={!answered}
+              onClick={() =>
+                say(
+                  questions
+                    .map((q, i) =>
+                      picks[i] ? `${q.question} — ${picks[i]}` : null,
+                    )
+                    .filter(Boolean)
+                    .join("\n"),
+                )
+              }
+            />
+            <span className={`text-xs ${muted}`}>
+              {answered} of {questions.length} answered
+            </span>
+          </div>
+        ) : null}
+        <div className="flex flex-row items-end gap-2">
+          <div className="flex-1 min-w-0">
+            <InputText
+              label="Or say it your way"
+              value={own}
+              onChange={(v) => setOwn(typeof v === "string" ? v : "")}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  say(own);
+                }
+              }}
+            />
+          </div>
+          <Button2
+            title="Send"
+            disabled={!own.trim()}
+            onClick={() => say(own)}
+          />
+        </div>
+        <div className={`flex flex-col gap-1 border-t pt-3 ${hairline}`}>
+          <div>{decide(false)}</div>
+          <span className={`text-xs ${muted}`}>
+            The Planner picks for you and sends a plan you can say yes to.
+          </span>
+        </div>
+      </div>
+    );
+  } else if (next === "nothing") {
+    body = (
+      <div className="flex flex-col gap-3">
+        <span className={`text-sm ${strong}`}>
+          {questions.length
+            ? `The Planner didn't send a new plan. It still asks: “${questions[0].question}”`
+            : plan
+              ? "The Planner didn't send a new plan."
+              : "The Planner didn't send a plan."}
+        </span>
+        <div className="flex flex-row flex-wrap gap-2">
+          {plan && canBuild({ plan, check }) && onBuild ? (
+            <Button
+              title={yesLabel(plan, { rawThemes, username })}
+              onClick={onBuild}
+            />
+          ) : plan ? (
+            decide(true)
+          ) : null}
+          {onAskAgain ? (
+            <Button2 title="Ask again" onClick={onAskAgain} />
+          ) : null}
+          {onStartOver ? (
+            <Button2 title="Start the plan over" onClick={onStartOver} />
+          ) : null}
+        </div>
+      </div>
+    );
+  } else if (next === "gaps") {
+    const errors = (check && check.errors) || [];
+    body = (
+      <div className="flex flex-col gap-3">
+        <span className={`text-sm ${strong}`}>
+          The plan has {errors.length === 1 ? "a gap" : "a few gaps"}, so it
+          can&apos;t be built yet.
+        </span>
+        <div className="flex flex-row flex-wrap gap-2">
+          <Button title="Ask the Planner to fix it" onClick={onFix} />
+          {onStartOver ? (
+            <Button2 title="Start the plan over" onClick={onStartOver} />
+          ) : null}
+        </div>
+      </div>
+    );
+  } else if (next === "ready") {
+    body = (
+      <div className="flex flex-col gap-3">
+        <span className={`text-sm ${strong}`}>
+          {planSubLine(plan, [], { rawThemes, username }) ||
+            "Nothing is made until you say yes."}
+        </span>
+        <div className="flex flex-row flex-wrap gap-2">
+          {onBuild ? (
+            <Button
+              title={yesLabel(plan, { rawThemes, username })}
+              onClick={onBuild}
+            />
+          ) : (
+            <span className={`text-sm ${muted}`}>Starting…</span>
+          )}
+          <Button2 title="Change something" onClick={onChange} />
+        </div>
+      </div>
+    );
+  } else if (next === "empty") {
+    body = (
+      <div className="flex flex-col gap-3">
+        <span className={`text-sm ${strong}`}>
+          The plan doesn&apos;t make anything yet.
+        </span>
+        <div className="flex flex-row flex-wrap gap-2">
+          {onStartOver ? (
+            <Button title="Start the plan over" onClick={onStartOver} />
+          ) : null}
+          <Button2 title="Change something" onClick={onChange} />
+        </div>
+      </div>
+    );
+  }
+  if (!body) return null;
+  return (
+    <div
+      className="flex flex-col gap-2"
+      data-testid="workspace-plan-next"
+      data-next={next}
+    >
+      <span className={`text-xs ${muted}`}>Next</span>
+      {body}
     </div>
   );
 };
