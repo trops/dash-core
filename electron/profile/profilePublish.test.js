@@ -265,6 +265,25 @@ describe("publishWidget", () => {
     assert.equal(f.calls.saved[0].layout[0].component, "trops.pipeline.X");
   });
 
+  it("published with checks that didn't block: the warnings come back", async () => {
+    const warnings = ["X: line 3: text-gray-600 is a hard-coded color"];
+    const f = fakes({ ...ok, warnings });
+    const res = await publishWidget(null, "@a", row, {}, f.deps);
+    assert.equal(res.status, "published");
+    assert.deepEqual(res.warnings, warnings);
+    const same = fakes({ ...ok, warnings });
+    const kept = await publishWidget(
+      null,
+      "@a",
+      { ...row, publishAs: row.package },
+      {},
+      same.deps,
+    );
+    assert.deepEqual(kept.warnings, warnings);
+    const clean = await publishWidget(null, "@a", row, {}, fakes(ok).deps);
+    assert.equal("warnings" in clean, false);
+  });
+
   it("a failed publish changes nothing", async () => {
     const f = fakes({ success: false, error: "Build failed" });
     const res = await publishWidget(null, "@a", row, {}, f.deps);

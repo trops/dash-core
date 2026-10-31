@@ -22,6 +22,8 @@ import {
   widgetStatusText,
   publishedText,
   savedSummaryText,
+  warningsText,
+  failureText,
 } from "./SaveProfileModal";
 
 const appId = "@test/app";
@@ -222,6 +224,94 @@ describe("SaveProfileModal (v3)", () => {
     expect(onSaved.mock.calls[0][0].publishedWidgets).toHaveLength(1);
   });
 
+  test("colors published with a note; a failure is one line, then all its problems", async () => {
+    const problems = [
+      "Pipeline: line 41: <Modal> isn't allowed in a widget",
+      'Pipeline: line 77: emit("done") sends the bare event name',
+      "Pipeline: line 90: calls Google Drive directly with fetch",
+    ];
+    mount(
+      {
+        publishWidget: answer({
+          [PIPE]: {
+            status: "failed",
+            error: `${PIPE} wasn't published — it didn't pass its checks:\n- ${problems.join("\n- ")}`,
+            problems,
+          },
+          [TICKER]: {
+            status: "published",
+            publishedAs: TICKER,
+            version: "1.0.3",
+            warnings: [
+              "Ticker: line 3: text-gray-600 is a hard-coded color",
+              "Ticker: line 9: bg-gray-100 is a hard-coded color",
+            ],
+          },
+        }),
+      },
+      { to: "account" },
+    );
+    await screen.findByLabelText(PIPE);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 2 widgets and save" }),
+    );
+    await screen.findByText(/Saved to your account/);
+    expect(screen.getByTestId(`save-notes-${TICKER}`)).toHaveTextContent(
+      "2 hard-coded colors — it may look off in light mode. Fix them in the Widget Builder.",
+    );
+    const row = screen.getByTestId(`save-widget-${PIPE}`);
+    expect(row).toHaveTextContent(`Didn't publish — ${problems[0]}`);
+    expect(row).not.toHaveTextContent("line 77");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show all 3 problems" }),
+    );
+    expect(row).toHaveTextContent("Didn't publish — 3 problems:");
+    expect(row).toHaveTextContent("line 77");
+    expect(row).toHaveTextContent("line 90");
+    fireEvent.click(screen.getByRole("button", { name: "Hide" }));
+    expect(row).not.toHaveTextContent("line 77");
+  });
+
+  test("all published, some with color notes: the dialog stays open to show them", async () => {
+    const { onSaved } = mount(
+      {
+        publishWidget: answer({
+          [TICKER]: {
+            status: "published",
+            publishedAs: TICKER,
+            version: "1.0.3",
+            visibility: "public",
+            warnings: ["Ticker: line 3: text-gray-600 is a hard-coded color"],
+          },
+        }),
+      },
+      { to: "account" },
+    );
+    await screen.findByLabelText(PIPE);
+    // The plan after the save: both are in the registry now.
+    window.mainApi.profiles.previewSave.mockResolvedValue({
+      ...plan,
+      widgets: plan.widgets.map((w) =>
+        w.publishable ? { package: w.package, action: "listed" } : w,
+      ),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Publish 2 widgets and save" }),
+    );
+    await screen.findByText(/Saved to your account/);
+    expect(onSaved).not.toHaveBeenCalled();
+    const notes = await screen.findByTestId(`save-notes-${TICKER}`);
+    expect(notes).toHaveTextContent(
+      "1 hard-coded color — it may look off in light mode. Fix it in the Widget Builder.",
+    );
+    expect(screen.getByTestId(`save-widget-${TICKER}`)).toHaveTextContent(
+      `✓ ${TICKER}Published as ${TICKER} 1.0.3 · public`,
+    );
+    expect(screen.queryByTestId(`save-notes-${PIPE}`)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(onSaved).toHaveBeenCalled();
+  });
+
   test("Set all, then Select all", async () => {
     mount();
     await screen.findByLabelText(PIPE);
@@ -299,7 +389,7 @@ describe("SaveProfileModal (v3)", () => {
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Publish anyway"));
     fireEvent.click(
-      screen.getByRole("button", { name: "Publish 1 widget and save" }),
+      await screen.findByRole("button", { name: "Publish 1 widget and save" }),
     );
     await waitFor(() => expect(publishWidget).toHaveBeenCalledTimes(2));
     expect(publishWidget.mock.calls[1][3]).toEqual({
@@ -523,6 +613,30 @@ describe("SaveProfileModal (v3)", () => {
         { bots: false, settings: true },
       ),
     );
+  });
+});
+
+describe("check texts", () => {
+  test("warningsText counts hard-coded colors and other notes", () => {
+    expect(warningsText([])).toBeNull();
+    expect(warningsText(["X: line 1: red is a hard-coded color"])).toBe(
+      "1 hard-coded color — it may look off in light mode. Fix it in the Widget Builder.",
+    );
+    expect(warningsText(["X: something else", "Y: another"])).toBe(
+      "2 notes from the checks.",
+    );
+  });
+  test("failureText: the first problem, the count when open, else the error", () => {
+    const out = { problems: ["a", "b"], error: "long" };
+    expect(failureText(out)).toBe("Didn't publish — a");
+    expect(failureText(out, true)).toBe("Didn't publish — 2 problems:");
+    expect(failureText({ problems: ["only"] }, true)).toBe(
+      "Didn't publish — only",
+    );
+    expect(failureText({ error: "signed out" })).toBe(
+      "Didn't publish — signed out",
+    );
+    expect(failureText({})).toBe("Didn't publish — the registry refused it");
   });
 });
 

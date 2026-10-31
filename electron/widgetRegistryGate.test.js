@@ -239,6 +239,32 @@ describe("publish", () => {
     });
     setInstallGate(null);
   });
+  it("what doesn't block (hard-coded colors) comes back as warnings", async () => {
+    const { checkPackage } = require("./widgetRegistry");
+    const colors = ["Hello: line 3: text-gray-600 is a hard-coded color"];
+    setInstallGate(async () => ({ ok: true, problems: [], warnings: colors }));
+    const dir = makePackage("p2");
+    const res = await checkPackage("@zz/gated", dir, "published");
+    assert.deepEqual(res.warnings, colors);
+    // None found: no warnings key.
+    setInstallGate(async () => ({ ok: true, problems: [], warnings: [] }));
+    assert.equal(
+      "warnings" in (await checkPackage("@zz/gated", dir, "published")),
+      false,
+    );
+    setInstallGate(null);
+  });
+  it("prepareWidgetForPublish passes the warnings on with its result", () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, "controller", "widgetRegistryController.js"),
+      "utf8",
+    );
+    assert.match(
+      src,
+      /\{ warnings = null \} =\s*\(await widgetRegistryModule\.checkPackage\(/,
+    );
+    assert.match(src, /\.\.\.\(warnings \? \{ warnings \} : \{\}\)/);
+  });
   it("prepareWidgetForPublish checks before it bumps the version or zips", () => {
     const src = fs.readFileSync(
       path.join(__dirname, "controller", "widgetRegistryController.js"),

@@ -136,7 +136,9 @@ function defaultDeps() {
  *   visibility: the user's choice (bulk publish); without one, a first
  *   publish is private and later ones keep the package's visibility
  * @returns {Promise<{status: "published"|"needs-confirmation"|"failed",
- *   publishedAs?, version?, dashboardsSwitched?, error?, findings?}>}
+ *   publishedAs?, version?, dashboardsSwitched?, error?, problems?,
+ *   findings?, warnings?}>}  warnings: what the checks found that didn't
+ *   block the publish (hard-coded colors)
  */
 async function publishWidget(win, appId, row, options = {}, deps = {}) {
   const d = { ...defaultDeps(), ...deps };
@@ -170,6 +172,12 @@ async function publishWidget(win, appId, row, options = {}, deps = {}) {
     };
   }
 
+  // Published with checks that don't block (hard-coded colors).
+  const warned =
+    Array.isArray(res.warnings) && res.warnings.length
+      ? { warnings: res.warnings }
+      : {};
+
   const registry = d.registry();
   // Same package name (already under the user's scope): this computer
   // already runs exactly the published code.
@@ -183,6 +191,7 @@ async function publishWidget(win, appId, row, options = {}, deps = {}) {
       version: row.version,
       visibility: chosenVisibility(row, options),
       dashboardsSwitched: 0,
+      ...warned,
     };
   }
 
@@ -200,6 +209,7 @@ async function publishWidget(win, appId, row, options = {}, deps = {}) {
       publishedAs: row.publishAs,
       version: row.version,
       error: `Published, but installing it here failed: ${e.message}. Dashboards still use the local copy.`,
+      ...warned,
     };
   }
 
@@ -223,6 +233,7 @@ async function publishWidget(win, appId, row, options = {}, deps = {}) {
     version: row.version,
     visibility: chosenVisibility(row, options),
     dashboardsSwitched: switched,
+    ...warned,
   };
 }
 

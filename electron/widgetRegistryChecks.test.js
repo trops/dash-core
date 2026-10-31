@@ -280,6 +280,35 @@ describe("installed packages are checked at startup", () => {
     assert.equal(registry.getWidget("@zz/startup").checks.ok, true);
   });
 
+  it("a failure recorded under older rules is checked again once", async () => {
+    passAll();
+    await registry.checkInstalled();
+    const entry = registry.getWidget("@zz/startup");
+    // Failed for colors before they became warnings (no rules version).
+    entry.checks = {
+      ...entry.checks,
+      ok: false,
+      problems: ["Hello: line 1: text-gray-600 is a hard-coded color"],
+    };
+    delete entry.checks.version;
+    let seen = 0;
+    setInstallGate(async () => {
+      seen += 1;
+      return {
+        ok: true,
+        problems: [],
+        warnings: ["Hello: line 1: text-gray-600 is a hard-coded color"],
+      };
+    });
+    await registry.checkInstalled();
+    assert.equal(seen, 1);
+    const now = registry.getWidget("@zz/startup").checks;
+    assert.equal(now.ok, true);
+    assert.equal(now.warnings.length, 1);
+    await registry.checkInstalled();
+    assert.equal(seen, 1, "checked under these rules: not again");
+  });
+
   it("a bot call found at startup is recorded as a problem, not thrown", async () => {
     passAll();
     const hello = path.join(

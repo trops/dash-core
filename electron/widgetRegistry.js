@@ -218,16 +218,24 @@ function botCallProblems(dir) {
 /**
  * The app's gate → { problems (null when it passes, or there's no gate),
  * sourceChecked (false when it found no source to check; undefined
- * without a gate) }.
+ * without a gate), warnings (what it found that doesn't block, e.g.
+ * hard-coded colors; null when none) }.
  */
 async function runGate(widgetName, dir) {
-  if (!installGate) return { problems: null, sourceChecked: undefined };
+  if (!installGate) {
+    return { problems: null, sourceChecked: undefined, warnings: null };
+  }
   const verdict = (await installGate(dir, { widgetName })) || {};
   // No source beside a shipped build: Dash couldn't check its code.
   const sourceChecked =
     verdict.sourceFiles === 0 && findBundlePath(dir) ? false : true;
-  if (verdict.ok) return { problems: null, sourceChecked };
+  const warnings =
+    Array.isArray(verdict.warnings) && verdict.warnings.length
+      ? verdict.warnings.map(String)
+      : null;
+  if (verdict.ok) return { problems: null, sourceChecked, warnings };
   return {
+    warnings,
     problems:
       Array.isArray(verdict.problems) && verdict.problems.length
         ? verdict.problems.map(String)
@@ -311,16 +319,23 @@ function codeFingerprint(dir) {
   return hash.digest("hex").slice(0, 32);
 }
 
+// Which rules a recorded check ran under. 2: hard-coded colors are
+// warnings, not problems — a package recorded as failing under older rules
+// is checked again even though its code hasn't changed.
+const CHECKS_VERSION = 2;
+
 /** What an install records: who built the code that runs, and its checks. */
-function checkRecord(dir, { build, sourceChecked, rebuildError }) {
+function checkRecord(dir, { build, sourceChecked, rebuildError, warnings }) {
   const checks = {
     ok: true,
     problems: [],
     checkedAt: new Date().toISOString(),
     fingerprint: codeFingerprint(dir),
+    version: CHECKS_VERSION,
   };
   if (sourceChecked !== undefined) checks.sourceChecked = sourceChecked;
   if (rebuildError) checks.rebuildError = rebuildError;
+  if (warnings && warnings.length) checks.warnings = warnings;
   return { build, checks };
 }
 
@@ -399,11 +414,13 @@ async function checkPackage(
     }
   }
 
-  const { problems, sourceChecked } = await runGate(widgetName, dir);
+  const { problems, sourceChecked, warnings } = await runGate(widgetName, dir);
   if (problems) throw checksFailed(widgetName, problems, done);
-  return rebuildError
-    ? { build, sourceChecked, rebuildError }
-    : { build, sourceChecked };
+  const result = { build, sourceChecked };
+  if (rebuildError) result.rebuildError = rebuildError;
+  // What the checks found that doesn't block (hard-coded colors).
+  if (warnings) result.warnings = warnings;
+  return result;
 }
 
 /**
@@ -414,11 +431,15 @@ async function reviewPackage(widgetName, dir) {
   const botCalls = botCallProblems(dir);
   if (botCalls) return { ok: false, problems: botCalls };
   try {
-    const { problems, sourceChecked } = await runGate(widgetName, dir);
+    const { problems, sourceChecked, warnings } = await runGate(
+      widgetName,
+      dir,
+    );
     const result = problems
       ? { ok: false, problems }
       : { ok: true, problems: [] };
     if (sourceChecked !== undefined) result.sourceChecked = sourceChecked;
+    if (warnings) result.warnings = warnings;
     return result;
   } catch (e) {
     return {
@@ -893,12 +914,20 @@ class WidgetRegistry {
             : "developer";
         changed = true;
       }
-      if (entry.checks && entry.checks.fingerprint === fingerprint) continue;
+      // Unchanged: checked already — unless it failed under older rules.
+      if (
+        entry.checks &&
+        entry.checks.fingerprint === fingerprint &&
+        (entry.checks.ok !== false || entry.checks.version === CHECKS_VERSION)
+      ) {
+        continue;
+      }
       const result = await reviewPackage(name, entry.path);
       entry.checks = {
         ...result,
         checkedAt: new Date().toISOString(),
         fingerprint,
+        version: CHECKS_VERSION,
       };
       changed = true;
       summary.checked.push(name);
