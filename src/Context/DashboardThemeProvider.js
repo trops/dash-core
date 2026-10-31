@@ -16,38 +16,31 @@ function ThemeBroadcast({ ctx }) {
 }
 
 /**
- * Writes the dashboard theme's cssVars to `:root` while mounted, and
- * restores the previous values on unmount / theme switch.
+ * The dashboard theme's cssVars that the APP theme doesn't set, written to
+ * `:root` while mounted (and removed after).
  *
- * ThemeWrapper writes the APP theme's cssVars at the top of the tree.
- * Without this helper, a dashboard that overrides the app theme with a
- * hex-channel theme (like "Slack Generic") would carry the right class
- * names (`bg-[var(--primary-900)]`) but the `--primary-900` variable
- * on :root would still be the APP theme's value — or undefined if the
- * app theme is named-family. Hex-themed surfaces then render with no
- * background. This effect closes that gap by promoting the dashboard
- * theme's cssVars to :root for the duration of its mount.
+ * The dashboard's own colours sit on its wrapper (see below), so only the
+ * dashboard area uses them. What a dashboard shows over the page — a
+ * widget's dialog or menu, rendered at the end of <body> — can't see that
+ * wrapper: dash-react's dialogs, drawers and menus carry their theme's
+ * colours themselves (themeVarsStyle). This covers any other pop-out (a
+ * widget's own portal): with a named-family app theme, a hex dashboard
+ * theme's `bg-[var(--primary-900)]` would otherwise have no value there.
+ * Only the variables the app theme leaves unset are filled, so the app
+ * (sidebar, tabs, header, Lead) is never repainted in the dashboard's
+ * colours.
  */
-function DashboardCssVarsBridge({ cssVars }) {
+function DashboardCssVarsGapFill({ cssVars, appCssVars }) {
   useEffect(() => {
     if (!cssVars || typeof document === "undefined") return undefined;
     const root = document.documentElement;
-    const previous = {};
-    const keys = Object.keys(cssVars);
-    for (const key of keys) {
-      previous[key] = root.style.getPropertyValue(key);
-      root.style.setProperty(key, cssVars[key]);
-    }
+    const app = appCssVars || {};
+    const filled = Object.keys(cssVars).filter((key) => !(key in app));
+    for (const key of filled) root.style.setProperty(key, cssVars[key]);
     return () => {
-      for (const key of keys) {
-        if (previous[key]) {
-          root.style.setProperty(key, previous[key]);
-        } else {
-          root.style.removeProperty(key);
-        }
-      }
+      for (const key of filled) root.style.removeProperty(key);
     };
-  }, [cssVars]);
+  }, [cssVars, appCssVars]);
   return null;
 }
 
@@ -101,8 +94,22 @@ export const DashboardThemeProvider = ({ themeKey, children }) => {
   return (
     <ThemeContext.Provider value={contextValue}>
       <ThemeBroadcast ctx={contextValue} />
-      <DashboardCssVarsBridge cssVars={contextValue?.currentTheme?.cssVars} />
-      {children}
+      <DashboardCssVarsGapFill
+        cssVars={contextValue.currentTheme.cssVars}
+        appCssVars={parentContext.currentTheme?.cssVars}
+      />
+      {/* The dashboard's colours, for the dashboard only: a box that takes
+          no space of its own (display: contents) still passes its CSS
+          variables down to everything inside. */}
+      <div
+        style={{
+          display: "contents",
+          ...(contextValue.currentTheme.cssVars || {}),
+        }}
+        data-dashboard-theme={themeKey}
+      >
+        {children}
+      </div>
     </ThemeContext.Provider>
   );
 };

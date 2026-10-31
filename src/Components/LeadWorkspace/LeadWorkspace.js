@@ -217,6 +217,10 @@ export const LeadWorkspace = ({
     grow: false,
   });
   const { muted, strong, hairline, selectedBg, fieldBg } = useConfigTokens();
+  // The lead card and the lead you are on: one step up from the panel, in
+  // the theme's own colour (the neutral surface showed plain gray on a
+  // coloured panel).
+  const raised = `${(currentTheme && currentTheme["bg-primary-dark"]) || selectedBg} ${(currentTheme && currentTheme["border-primary-medium"]) || hairline}`;
   const statusTokens = useStatusTokens();
   const composer = useRef(null);
   // The conversation's handle (AskStep's askPlanner): the plan's card sends
@@ -1335,7 +1339,7 @@ export const LeadWorkspace = ({
             onClick={() => setSwitchOpen((v) => !v)}
             aria-expanded={switchOpen}
             aria-haspopup="menu"
-            className={`flex flex-row items-center gap-3 rounded-lg border p-2 text-left ${hairline} ${selectedBg}`}
+            className={`flex flex-row items-center gap-3 rounded-lg border p-2 text-left ${raised}`}
             data-testid="workspace-switcher"
           >
             {contact ? (
@@ -1402,10 +1406,16 @@ export const LeadWorkspace = ({
                             ) : null}
                           </span>
                         }
-                        ariaLabel={c.name}
-                        // One line: a long dashboard name never strands "· 0 bots".
-                        meta={<span className="block truncate">{c.sub}</span>}
-                        selected={current}
+                        ariaLabel={current ? `${c.name} (current)` : c.name}
+                        // One line: its bots (or "Just the lead").
+                        meta={
+                          <span className="block truncate">
+                            {c.line || c.sub}
+                          </span>
+                        }
+                        // The one you are on, in the theme's colour (the
+                        // check mark says so too).
+                        className={current ? raised : ""}
                         onClick={() => switchTo(c.key)}
                       />
                     );

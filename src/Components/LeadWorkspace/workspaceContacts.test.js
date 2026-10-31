@@ -79,7 +79,7 @@ describe("contactGroups", () => {
     expect(findContact(groups, "lead:lead_7").line).toBe(
       "Inbox Watch · Morning Briefer",
     );
-    expect(findContact(groups, "lead:lead_9").line).toBe("No bots yet");
+    expect(findContact(groups, "lead:lead_9").line).toBe("Just the lead");
     expect(findContact(groups, "role:dashlead").recipient).toEqual({
       role: "dashlead",
       roleName: "Dash Lead",
