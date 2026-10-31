@@ -506,8 +506,10 @@ describe("a plan in the conversation (release 3a)", () => {
     );
   });
 
-  test("the Planner's questions are taps under the answer", async () => {
+  test("the Planner's questions are taps under the answer; an answer goes straight to the Planner", async () => {
     await openWithPlan();
+    const askPlanner = jest.fn(() => true);
+    mockAskProps.controlRef.current = { askPlanner, stopPlanner: jest.fn() };
     const asking = {
       ...conversation[1],
       id: "2:t1",
@@ -530,7 +532,16 @@ describe("a plan in the conversation (release 3a)", () => {
     fireEvent.click(
       within(q.container).getByRole("button", { name: "Downstairs" }),
     );
-    expect(api.send).toHaveBeenCalledWith("Which rooms? — Downstairs");
+    // Not through the lead (it may not pass it on): the app asks the
+    // Planner itself, with the plan; the chat shows the option picked.
+    expect(api.send).not.toHaveBeenCalled();
+    const [shown, made] = askPlanner.mock.calls[0];
+    // Made only once it's asked (it takes the plan's edits then).
+    const request = made();
+    expect(shown).toBe("Downstairs");
+    expect(request).toContain("Which rooms? — Downstairs");
+    expect(request).toContain(JSON.stringify(asking.plan));
+    expect(request).toContain("<plan></plan>");
   });
 });
 
@@ -707,6 +718,8 @@ describe("release 3a review fixes", () => {
     act(() => {
       node = mockAskProps.renderAfter(reply, 2, api);
     });
+    const askPlanner = jest.fn(() => true);
+    mockAskProps.controlRef.current = { askPlanner, stopPlanner: jest.fn() };
     const r = render(node);
     expect(r.container).toHaveTextContent("The plan has a few gaps");
     expect(r.container).not.toHaveTextContent("pieces");
@@ -715,10 +728,12 @@ describe("release 3a review fixes", () => {
         name: "Ask the Planner to fix it",
       }),
     );
-    const [shown, details] =
-      api.send.mock.calls[api.send.mock.calls.length - 1];
-    expect(shown).toBe("Please have the Planner fill the gaps in the plan.");
-    expect(details).toMatch(/^\(What's missing, for the Planner:\n- /);
+    // Straight to the Planner, with what's missing — not in your words.
+    const [shown, made, label] = askPlanner.mock.calls[0];
+    const request = made();
+    expect(shown).toBe("Fill the gaps in the plan");
+    expect(request).toMatch(/What's missing:\n- /);
+    expect(label).toBe("Asked the Planner to fill the gaps");
   });
 });
 

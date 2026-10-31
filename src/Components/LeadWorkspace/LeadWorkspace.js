@@ -38,13 +38,20 @@ import { useWidgetTarget } from "./useWidgetTarget";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { useWorkspacePlan } from "./useWorkspacePlan";
 import { PlanCard, PlanChoices } from "./PlanViews";
-import { BuildInChat, BuildWalk, PastBuild } from "./BuildViews";
+import { BuildInChat, BuildNext, BuildWalk, PastBuild } from "./BuildViews";
 import { usePlanBuild } from "./usePlanBuild";
 import {
   choicesIndex,
   seedConversation,
   stillAnswering,
   withPlanContext,
+  isPlainYes,
+  canBuild,
+  planNext,
+  answerRequest,
+  decideRequest,
+  fixRequest,
+  startOverRequest,
   yesLabel,
   cellBuildPlan,
   widgetBuildPlan,
@@ -211,6 +218,9 @@ export const LeadWorkspace = ({
   const { muted, strong, hairline, selectedBg } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const composer = useRef(null);
+  // The conversation's handle (AskStep's askPlanner): the plan's card sends
+  // answers straight to the Planner.
+  const askCtl = useRef(null);
   // A smaller window (frames 35, 36): the columns fold away.
   const narrow = useWindowWidth() < NARROW_AT;
   const [navOpen, setNavOpen] = useState(false);
@@ -356,6 +366,9 @@ export const LeadWorkspace = ({
     (request && typeof request.draft === "string" && request.draft) || "",
   );
   const [messages, setMessages] = useState(EMPTY);
+  // The conversation is still being answered (AskStep's busy): the lead's
+  // words can still be coming after the Planner's plan arrived.
+  const [askBusy, setAskBusy] = useState(false);
   // What's open on the right: "plan", a step's id, or the overview (null).
   const [sideOpen, setSideOpen] = useState(null);
   const [wide, setWide] = useState(false);
@@ -531,6 +544,7 @@ export const LeadWorkspace = ({
     setOpen(null);
     setSelectedId(null);
     setMessages(EMPTY);
+    setAskBusy(false);
     setSideOpen(null);
     setMakingOn(false);
   };
@@ -701,6 +715,7 @@ export const LeadWorkspace = ({
     setOpen(null);
     setSelectedId(null);
     setMessages(EMPTY);
+    setAskBusy(false);
     setSideOpen(null);
     setMakingOn(false);
   };
@@ -1010,7 +1025,7 @@ export const LeadWorkspace = ({
     open: setSideOpen,
   };
   // The lead is still answering: the plan isn't changed meanwhile.
-  const answering = stillAnswering(messages);
+  const answering = stillAnswering(messages) || askBusy;
 
   // Start from (frame 13). Describing it is the box; the registry's
   // dashboards open on the right (frame 42); copying a dashboard and editing
@@ -1037,6 +1052,102 @@ export const LeadWorkspace = ({
     else onClose();
   };
 
+  // What a build's chat needs to know about a widget change or a cell.
+  const buildChange = (b) =>
+    b.kind === "edit" || b.kind === "settings"
+      ? {
+          displayName: convWidget ? convWidget.displayName : "",
+          mode: convWidget ? convWidget.mode : null,
+          dashboardName: convWidget ? convWidget.dashboardName : "",
+          onDashboard: !!(convWidget && convWidget.onDashboard),
+          settingLabels: convWidget ? convWidget.settingLabels : null,
+          placed: placements[b.buildId],
+          canPlace: canSwap,
+        }
+      : null;
+  const buildCell = (b) =>
+    b.kind === "cell"
+      ? {
+          dashboardName: convCell ? convCell.dashboardName : "",
+          placed: placements[b.buildId],
+          canPlace,
+        }
+      : null;
+
+  // The plan's next step (plan → build): the app sends answers, Decide for
+  // me, Ask again and Start over to the Planner itself — never through a
+  // lead that might not pass them on.
+  const firstAsk =
+    ((messages || []).find((m) => m && m.who === "you") || {}).text ||
+    (open && open.question) ||
+    "";
+  const lastDirect = (() => {
+    for (let i = (messages || []).length - 1; i >= 0; i -= 1) {
+      const m = messages[i];
+      if (m && m.who === "step" && m.direct) return m;
+    }
+    return null;
+  })();
+  const toPlanner = (shown, request, label) =>
+    !!(askCtl.current && askCtl.current.askPlanner(shown, request, label));
+  const planActions = {
+    // `shown`: what the chat shows as theirs (a tap: just the option).
+    onAnswer: (text, shown) =>
+      toPlanner(shown || text, () =>
+        answerRequest(text, wp.plan, {
+          asked: firstAsk,
+          edits: wp.takeEdits(),
+        }),
+      ),
+    onDecide: () =>
+      toPlanner(
+        "Decide for me and finish the plan",
+        () =>
+          decideRequest(wp.plan, { asked: firstAsk, edits: wp.takeEdits() }),
+        "Asked the Planner to decide and finish the plan",
+      ),
+    onAskAgain: lastDirect
+      ? () => toPlanner("Ask again", lastDirect.request, lastDirect.label)
+      : null,
+    onStartOver: String(firstAsk).trim()
+      ? () =>
+          toPlanner(
+            "Start the plan over",
+            startOverRequest(firstAsk),
+            "Asked the Planner to start the plan over",
+          )
+      : null,
+    onFix: () =>
+      toPlanner(
+        "Fill the gaps in the plan",
+        () =>
+          fixRequest((wp.check && wp.check.errors) || [], wp.plan, {
+            asked: firstAsk,
+            edits: wp.takeEdits(),
+          }),
+        "Asked the Planner to fill the gaps",
+      ),
+    onBuild: starting || walking ? null : buildIt,
+    onChange: () => {
+      const box =
+        typeof document !== "undefined"
+          ? document.querySelector(
+              '[data-testid="lead-workspace"] [data-testid="ask-step"] textarea',
+            )
+          : null;
+      if (box) box.focus();
+    },
+    onStopPlanner: () => askCtl.current && askCtl.current.stopPlanner(),
+  };
+  const next = planNext({
+    messages,
+    busy: askBusy,
+    plan: wp.plan,
+    check: wp.check,
+    sent: wp.sent,
+    build: wp.build && !removed ? wp.build : null,
+  });
+
   // After a message: the plan's card under the step that brought it, and
   // the reply choices under the lead's answer to it.
   const choicesAt = choicesIndex(messages);
@@ -1058,32 +1169,8 @@ export const LeadWorkspace = ({
                 yes={yesLabel(wp.plan, { rawThemes, username })}
                 actions={buildActions}
                 restored={pb.restored}
-                change={
-                  b.kind === "edit" || b.kind === "settings"
-                    ? {
-                        displayName: convWidget ? convWidget.displayName : "",
-                        mode: convWidget ? convWidget.mode : null,
-                        dashboardName: convWidget
-                          ? convWidget.dashboardName
-                          : "",
-                        onDashboard: !!(convWidget && convWidget.onDashboard),
-                        settingLabels: convWidget
-                          ? convWidget.settingLabels
-                          : null,
-                        placed: placements[b.buildId],
-                        canPlace: canSwap,
-                      }
-                    : null
-                }
-                cell={
-                  b.kind === "cell"
-                    ? {
-                        dashboardName: convCell ? convCell.dashboardName : "",
-                        placed: placements[b.buildId],
-                        canPlace,
-                      }
-                    : null
-                }
+                change={buildChange(b)}
+                cell={buildCell(b)}
                 actionError={pb.actionError || buildError}
               />
             ) : (
@@ -1098,8 +1185,38 @@ export const LeadWorkspace = ({
         </>
       );
     }
+    const choices =
+      i === choicesAt && wp.plan && !wp.build && !api.busy ? (
+        <>
+          <PlanChoices
+            plan={wp.plan}
+            check={wp.check}
+            sent={wp.sent}
+            onSend={api.send}
+            onBuild={starting || walking ? null : buildIt}
+            onChange={api.focusReply}
+            onAnswer={planActions.onAnswer}
+            onDecide={planActions.onDecide}
+            onFix={planActions.onFix}
+          />
+          {buildError ? (
+            <span
+              className={`text-xs ${muted}`}
+              data-testid="workspace-build-error"
+            >
+              {buildError}
+            </span>
+          ) : null}
+        </>
+      ) : null;
     if (m.who === "step" && wp.step && m.id === wp.step.id && wp.plan) {
-      return <PlanCard plan={wp.plan} onOpen={() => setSideOpen("plan")} />;
+      return (
+        <>
+          <PlanCard plan={wp.plan} onOpen={() => setSideOpen("plan")} />
+          {/* Brought by the app's own hand-off: its choices are here. */}
+          {choices}
+        </>
+      );
     }
     // An earlier plan keeps its card: the history still opens it.
     if (m.who === "step" && m.plan) {
@@ -1111,29 +1228,7 @@ export const LeadWorkspace = ({
         />
       );
     }
-    if (i === choicesAt && wp.plan && !wp.build && !api.busy) {
-      return (
-        <>
-          <PlanChoices
-            plan={wp.plan}
-            check={wp.check}
-            sent={wp.sent}
-            onSend={api.send}
-            onBuild={starting || walking ? null : buildIt}
-            onChange={api.focusReply}
-          />
-          {buildError ? (
-            <span
-              className={`text-xs ${muted}`}
-              data-testid="workspace-build-error"
-            >
-              {buildError}
-            </span>
-          ) : null}
-        </>
-      );
-    }
-    return null;
+    return choices;
   };
 
   // The Dash team's working roles, in the order they work — under a
@@ -1364,6 +1459,7 @@ export const LeadWorkspace = ({
                         if (carrying.current) return;
                         setSelectedId(t.id);
                         setMessages(EMPTY);
+                        setAskBusy(false);
                         setSideOpen(null);
                         setMakingOn(false);
                         moveOn();
@@ -1506,10 +1602,31 @@ export const LeadWorkspace = ({
               ]}
               onStarted={setSelectedId}
               onMessagesChange={setMessages}
+              onBusyChange={setAskBusy}
               renderAfter={renderAfter}
               // A typed reply takes the plan (and the changes made to it on
               // the right) along, so a change reaches the Planner whole.
               prepareSend={(t) => withPlanContext(t, wp.plan, wp.takeEdits())}
+              // A typed "yes" to a plan that can be built builds it, as Yes;
+              // a reply while the plan has questions answers them — straight
+              // to the Planner.
+              controlRef={askCtl}
+              takeReply={(t) => {
+                if (next === "question" || (next === "nothing" && wp.plan))
+                  return planActions.onAnswer(t);
+                if (
+                  !isPlainYes(t) ||
+                  answering ||
+                  walking ||
+                  starting ||
+                  wp.sent ||
+                  (wp.build && !removed) ||
+                  !canBuild({ plan: wp.plan, check: wp.check })
+                )
+                  return false;
+                buildIt();
+                return true;
+              }}
               placeholder="Reply"
               hint={null}
               // While it builds, the reply box says what's going on and Stop
@@ -1642,6 +1759,24 @@ export const LeadWorkspace = ({
           {contact ? (
             <WorkspaceSide
               contact={contact}
+              // The plan card's next step (plan → build).
+              next={next}
+              planActions={planActions}
+              buildNext={
+                wp.build ? (
+                  <BuildNext
+                    build={wp.build}
+                    state={pb.state}
+                    actions={buildActions}
+                    restored={pb.restored}
+                    change={buildChange(wp.build)}
+                    cell={buildCell(wp.build)}
+                    onStop={pb.stop}
+                    stopping={pb.stopping}
+                    actionError={pb.actionError || buildError}
+                  />
+                ) : null
+              }
               // A change to one widget (release 6c): in place or new, and
               // signing in to change it in place.
               onWidgetMode={

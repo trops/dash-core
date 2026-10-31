@@ -21,6 +21,8 @@ import { usePlanBuild } from "./usePlanBuild";
 import {
   buildChat,
   buildLogLine,
+  buildPlanLine,
+  isBuilding,
   buildLogRows,
   checkLine,
   checkRows,
@@ -153,17 +155,7 @@ export const BuildInChat = ({
   restored = false,
 }) => {
   const { muted } = useConfigTokens();
-  const chat = buildChat(state, {
-    kind: build.kind,
-    leftOff: build.leftOff || [],
-    cell,
-    change,
-    restored,
-    // The app's theme now (theme change leftovers).
-    ...(actions.appThemeKey !== undefined
-      ? { appThemeKey: actions.appThemeKey }
-      : {}),
-  });
+  const chat = chatOf(build, state, { actions, cell, change, restored });
   const card = chat.card;
   const openCard = () => {
     // A theme it made opens in the theme editor (theme round).
@@ -230,6 +222,75 @@ export const BuildInChat = ({
           step={{ label: "Starting the build", status: "asking" }}
         />
       )}
+    </div>
+  );
+};
+
+/** What the chat says about a build (buildChat), as BuildInChat shows it. */
+function chatOf(build, state, { actions = {}, cell, change, restored }) {
+  return buildChat(state, {
+    kind: build.kind,
+    leftOff: build.leftOff || [],
+    cell,
+    change,
+    restored,
+    // The app's theme now (theme change leftovers).
+    ...(actions.appThemeKey !== undefined
+      ? { appThemeKey: actions.appThemeKey }
+      : {}),
+  });
+}
+
+/**
+ * The plan card's next step once it builds (plan → build, frames 5-7):
+ * where the build stands, Stop while it runs, and the same choices as the
+ * chat — Try again, Leave it off, Looks good, Open it, … — so the right
+ * column always has a way on.
+ */
+export const BuildNext = ({
+  build,
+  state,
+  actions = {},
+  cell = null,
+  change = null,
+  restored = false,
+  onStop = null,
+  stopping = false,
+  actionError = null,
+}) => {
+  const { muted, strong } = useConfigTokens();
+  if (!build) return null;
+  if (!state) {
+    return <span className={`text-sm ${muted}`}>Starting the build…</span>;
+  }
+  const chat = chatOf(build, state, { actions, cell, change, restored });
+  const running = isBuilding(state);
+  return (
+    <div className="flex flex-col gap-3" data-testid="workspace-build-next">
+      <span className={`text-sm ${strong}`}>
+        {buildPlanLine(state, build.leftOff || [])}
+      </span>
+      {running && onStop ? (
+        <div>
+          <Button3
+            size="sm"
+            title={stopping ? "Stopping…" : "Stop"}
+            disabled={stopping}
+            onClick={onStop}
+          />
+        </div>
+      ) : null}
+      {running ? null : (
+        <BuildChoices
+          chat={chat}
+          state={state}
+          build={build}
+          actions={actions}
+        />
+      )}
+      {actionError ? (
+        <span className={`text-xs ${muted}`}>{actionError}</span>
+      ) : null}
     </div>
   );
 };
@@ -362,19 +423,42 @@ const BuildChoices = ({ chat, state, build, actions }) => {
       </div>
     );
   }
-  // A theme it made (theme round, frame 47): small changes by hand.
+  // A theme it made (theme round, frame 47): use it for the app (plan →
+  // build, frame 7), or small changes by hand.
   if (chat.choices === "theme" && state.madeTheme && actions.openThemeEditor) {
+    const key = state.madeTheme.key;
+    const forApp =
+      !!actions.useThemeForApp &&
+      !usedForApp &&
+      !(actions.appThemeKey && actions.appThemeKey === key);
     return (
       <div
         className="flex flex-col gap-1"
         data-testid="workspace-build-choices"
       >
-        <div>
+        <div className="flex flex-row flex-wrap items-center gap-2">
+          {forApp ? (
+            <Button
+              title="Use it for the app"
+              onClick={() => {
+                actions.useThemeForApp(key);
+                setUsedForApp(true);
+              }}
+            />
+          ) : null}
           <Button2
             title="Open in the theme editor"
-            onClick={() => actions.openThemeEditor(state.madeTheme.key)}
+            onClick={() => actions.openThemeEditor(key)}
           />
         </div>
+        {usedForApp ? (
+          <span
+            className={`text-sm ${muted}`}
+            data-testid="workspace-theme-for-app"
+          >
+            The app uses {state.madeTheme.name || "it"} now.
+          </span>
+        ) : null}
         <span className={`text-xs ${muted}`}>
           For small changes by hand — a color, a font, a corner.
         </span>

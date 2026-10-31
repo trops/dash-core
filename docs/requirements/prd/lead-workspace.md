@@ -344,3 +344,36 @@ Frames 22, 27–29.
   - A theme installed from the user's own registry scope is theirs (`isOwnPackage`; the main process reads the stored username, the app `useRegistryUsername`): changed in place, Publish the update, and the Themes page's Publish… for it. Signed out, it's treated as downloaded (a remix).
   - The Publish window (Themes page or the conversation) asks `getThemePublishPreview` for a published theme's version and visibility, starts there and says so ("Published as v1.2.0 · private — This update is v1.2.1…"); private when the registry can't be asked.
   - A remix made while the app uses the original offers **Use the remix for the app**; the app's theme changes only when it's clicked (`changeCurrentTheme`). Remove leaves the app's theme as it is.
+
+### Plan → build: always a next step (2026-10-31, approved mockups "Plan → build: always a next step", frames 1–8)
+
+**Why:** a new Halloween theme got stuck. The Planner asked "on a dashboard, or just saved?". The user answered "Just save the theme", but the Dash Lead (Haiku) never passed that answer to the Planner, so the plan kept its question and **Yes never appeared**. A typed "yes build it" made the Lead ask the Builder, which can't save themes. Whether you moved on depended on a model choosing the right route.
+
+- **The app routes, not the model.** Answers to the plan's questions go **straight to the Planner** from the app (`AskStep.askPlanner`, via `runTeamRole("planner", …)`), with the plan and the user's first words. This covers taps on the card or in the chat, "Or say it your way", and any reply typed while a question is open. The step is shown and saved like a lead's hand-off (`direct: true`), and its plan becomes the conversation's plan. The Lead isn't asked.
+- **The plan card always shows the next step** (`planNext` → `PlanNext` in Outputs):
+  - question: the question, its options, your own words, and **Decide for me and finish the plan**;
+  - waiting: "finishing the plan…" and Stop;
+  - ready: Yes;
+  - nothing new came back (no plan, failed, paused or stopped): **Decide for me / Ask again / Start the plan over**;
+  - gaps: Ask the Planner to fix it (direct);
+  - building and built: the build's own choices (`BuildNext` shares `BuildChoices`: Try again, Leave it off, Looks good, Open…; a new theme adds **Use it for the app**).
+  - The card is outlined whenever it waits on you.
+- **A typed plain "yes"** (`isPlainYes`: "yes", "yes build it", "go ahead"…) builds a ready plan. "yes but purple" goes to the Lead.
+- **An answer that made nothing** ("I haven't created anything…", `didNothing`) stays in the chat but isn't an output.
+- **Prompts:**
+  - The Lead sends answers to the Planner and can never ask the Builder to build a plan.
+  - A new theme doesn't ask where it goes unless a dashboard was mentioned.
+  - A reply typed while the plan asks carries "This answers the Planner's questions".
+  - Earlier texts are kept in history, so saved Leads and Planners upgrade.
+- **Tests:**
+  - `planFlow.test.js` plays whole conversations against a scripted team at `window.mainApi`, with the real workspace and AskStep. It covers the Halloween path end to end, typed answers, Decide for me, no new plan → Ask again, Planner paused, Start over, several questions, typed yes vs "yes but…", a failed step → Try again, the Lead asking the Builder, the Lead answering without the Planner, Stop mid-answer, reopening a conversation saved stuck, and a plan that needs a provider.
+  - Every scenario checks that the card has a button.
+  - `planNext.test.js` covers the pure parts.
+- **Review and live-check fixes:**
+  - A conversation reopened while the app's hand-off runs picks up its answer (`directRuns`). After a restart, the hand-off is marked stopped, so it never spins.
+  - Plan edits are taken only once the Planner is actually asked.
+  - Stop on the card stops only the Planner.
+  - The "nothing new" state keeps Yes when the plan can still be built.
+  - `didNothing` keeps answers that made something after all ("…but I added…").
+  - A bare "ok" or "sure" doesn't build.
+  - **The card waits while the Lead is still writing** (`onBusyChange`). The live run showed the Planner's plan arriving before the Lead finished, so the card offered taps that couldn't go through.

@@ -10,7 +10,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { normalizeType } from "../Create/planChecklist";
 import { toolName } from "./handoffSteps";
-import { BeforeItBuilds, OutputCard, PlanOutput } from "./PlanViews";
+import { BeforeItBuilds, OutputCard, PlanNext, PlanOutput } from "./PlanViews";
 import { RegistryOutput } from "./RegistryOutput";
 import {
   BuildLogOutput,
@@ -27,6 +27,9 @@ import {
 import { planTarget } from "../../utils/teamPlan";
 import { useRegistryUsername } from "../../hooks/useRegistryUsername";
 import {
+  isThemeChangeOnly,
+  isThemeOnly,
+  nextNeedsYou,
   planName,
   planStatus,
   planSubLine,
@@ -267,6 +270,9 @@ function memberState(
  *   holds — the folded column's button (release 6a)
  * @param {(dashboard, config) => void} [onUseRegistry]  a registry
  *   dashboard picked in Start from (opened as "registry", release 6c)
+ * @param {string|null} [next]  the plan's next step (planNext): shown on
+ *   its card, with `planActions` (PlanNext's handlers) and, once it
+ *   builds, `buildNext` (the build's choices)
  */
 export const WorkspaceSide = ({
   contact,
@@ -291,6 +297,9 @@ export const WorkspaceSide = ({
   // A change to one widget (release 6c): in place or new; sign in.
   onWidgetMode = null,
   onSignIn = null,
+  next = null,
+  planActions = null,
+  buildNext = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   // rawThemes: whose a changed theme is (theme change round).
@@ -344,8 +353,9 @@ export const WorkspaceSide = ({
   const buildState = build && pb ? pb.state : null;
   const leftOff = (build && build.leftOff) || [];
 
+  // An answer that made nothing ("I can't build that") stays in the chat.
   const answered = steps.filter(
-    (s) => s.status !== "asking" && s.answer && !s.plan,
+    (s) => s.status !== "asking" && s.answer && !s.plan && !s.nothing,
   );
   const isBot = contact && contact.kind === "bot";
   const approvalBots = contact
@@ -382,7 +392,8 @@ export const WorkspaceSide = ({
     (plan ? 1 : 0) +
     (builtDashboard ? 1 : 0) +
     answered.length;
-  const needsYou = needs.length > 0 || !!previewStep;
+  const needsYou =
+    needs.length > 0 || !!previewStep || (!!planActions && nextNeedsYou(next));
   useEffect(() => {
     if (onSummary) onSummary({ count: outputCount, needsYou });
   }, [onSummary, outputCount, needsYou]);
@@ -623,16 +634,47 @@ export const WorkspaceSide = ({
           onClick={() => onOpen("preview")}
         />
       ) : null}
-      {plan ? (
-        <OutputCard
-          testId="workspace-output-plan"
-          title={`${planName(plan)} — ${planTarget(plan) || plan.widgetChange ? "changes" : "plan"}`}
-          sub={
-            buildLine || planStatus({ plan, check: wp.check, open: wp.open })
-          }
-          kind="Plan"
-          onClick={() => onOpen("plan")}
-        />
+      {/* The plan, with its next step — never a dead end (plan → build). */}
+      {plan || (planActions && next) ? (
+        <div
+          className={`flex flex-col rounded-xl border overflow-hidden ${
+            planActions && nextNeedsYou(next)
+              ? statusTokens.info.accentBorder
+              : hairline
+          }`}
+          data-testid="workspace-plan-box"
+        >
+          {plan ? (
+            <OutputCard
+              testId="workspace-output-plan"
+              icon={
+                isThemeOnly(plan) || isThemeChangeOnly(plan)
+                  ? "palette"
+                  : undefined
+              }
+              title={`${planName(plan)} — ${planTarget(plan) || plan.widgetChange ? "changes" : "plan"}`}
+              sub={
+                buildLine ||
+                planStatus({ plan, check: wp.check, open: wp.open })
+              }
+              kind="Plan"
+              bordered={false}
+              onClick={() => onOpen("plan")}
+            />
+          ) : null}
+          {planActions && next ? (
+            <div className={`px-4 py-3 ${plan ? `border-t ${hairline}` : ""}`}>
+              <PlanNext
+                next={next}
+                plan={plan}
+                check={wp ? wp.check : null}
+                leadName={contact ? contact.name : undefined}
+                buildSlot={buildNext}
+                {...planActions}
+              />
+            </div>
+          ) : null}
+        </div>
       ) : null}
       {builtDashboard ? (
         <OutputCard
@@ -659,7 +701,7 @@ export const WorkspaceSide = ({
           onClick={() => onOpen(s.id)}
         />
       ))}
-      {!answered.length && !plan && !startFrom ? (
+      {!answered.length && !plan && !startFrom && !(planActions && next) ? (
         <span
           className={`rounded-xl border border-dashed p-6 text-center text-sm ${hairline} ${muted}`}
         >
