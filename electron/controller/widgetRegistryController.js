@@ -696,13 +696,16 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
 
     // 3.7 The same checks as an install (consolidation Phase 1a): it
     //     builds, starts no bots, and passes the app's code checks —
-    //     before the version is bumped or anything is sent.
+    //     before the version is bumped or anything is sent. What doesn't
+    //     block (hard-coded colors) comes back with the result.
+    let warnings = null;
     try {
-      await widgetRegistryModule.checkPackage(
-        packageId,
-        widget.path,
-        "published",
-      );
+      ({ warnings = null } =
+        (await widgetRegistryModule.checkPackage(
+          packageId,
+          widget.path,
+          "published",
+        )) || {});
     } catch (e) {
       return {
         success: false,
@@ -912,6 +915,7 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       registryResult,
       previousVersion,
       newVersion,
+      ...(warnings ? { warnings } : {}),
     };
   } catch (error) {
     console.error("[widgetRegistry] prepareWidgetForPublish failed:", error);

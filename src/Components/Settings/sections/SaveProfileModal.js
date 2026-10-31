@@ -142,6 +142,43 @@ export function savedSummaryText({
   } as missing on the other computer.`;
 }
 
+/**
+ * What the checks found that didn't block a publish, e.g. "14 hard-coded
+ * colors — it may look off in light mode. Fix them in the Widget Builder."
+ */
+export function warningsText(warnings) {
+  const list = warnings || [];
+  if (!list.length) return null;
+  const colors = list.filter((w) => /hard-coded color/.test(w)).length;
+  const other = list.length - colors;
+  return [
+    colors
+      ? `${plural(colors, "hard-coded color")} — it may look off in light mode. Fix ${
+          colors === 1 ? "it" : "them"
+        } in the Widget Builder.`
+      : null,
+    other ? `${plural(other, "note")} from the checks.` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * Why a widget didn't publish, short: its first problem, e.g. "Didn't
+ * publish — line 88: calls Google Drive directly with fetch". The rest
+ * show under "Show all N problems".
+ */
+export function failureText(out, expanded = false) {
+  const problems = (out && out.problems) || [];
+  if (problems.length > 1) {
+    return expanded
+      ? `Didn't publish — ${problems.length} problems:`
+      : `Didn't publish — ${problems[0]}`;
+  }
+  if (problems.length === 1) return `Didn't publish — ${problems[0]}`;
+  return `Didn't publish — ${(out && out.error) || "the registry refused it"}`;
+}
+
 /** "algolia-search 1.0.0 private, … and 4 more" — what was just published. */
 export function publishedText(list) {
   const shown = list
@@ -210,6 +247,15 @@ export const SaveProfileModal = ({
   const [reload, setReload] = useState(0);
   // Published, then the file save was cancelled: said in the dialog.
   const [notSaved, setNotSaved] = useState(false);
+  // Failed widgets showing all their problems.
+  const [expanded, setExpanded] = useState(() => new Set());
+  const toggleExpanded = (pkg) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(pkg)) next.delete(pkg);
+      else next.add(pkg);
+      return next;
+    });
   // 7. Closed mid-run (e.g. Settings closed from outside): the run stops.
   const running = useRef(false);
   const alive = useRef(true);
@@ -230,9 +276,12 @@ export const SaveProfileModal = ({
   // computer's") — set when a save was refused.
   const [replaceRevision, setReplaceRevision] = useState(replaceInitially);
 
+  // A refresh after a save keeps the list on screen until the new one comes.
+  const shownReload = useRef(reload);
   useEffect(() => {
     let alive = true;
-    setPlan(null);
+    if (shownReload.current === reload) setPlan(null);
+    shownReload.current = reload;
     Promise.resolve(
       window.mainApi?.profiles?.previewSave?.(appId, profile.id, options),
     )
@@ -327,6 +376,13 @@ export const SaveProfileModal = ({
           : raw;
       record[entry.package] = entry;
       setOutcomes((prev) => ({ ...prev, [entry.package]: entry }));
+      // A new outcome starts folded.
+      setExpanded((prev) => {
+        if (!prev.has(entry.package)) return prev;
+        const next = new Set(prev);
+        next.delete(entry.package);
+        return next;
+      });
     };
     setRun({ index: 0, total: pkgs.length, current: pkgs[0] });
     running.current = true;
@@ -442,7 +498,10 @@ export const SaveProfileModal = ({
       setAsNew(false);
       setReplaceRevision(null);
       const withPublished = { ...res, publishedWidgets: published };
-      if (left || needsLook.some((w) => !confirmed.has(w.package))) {
+      // Published with notes (hard-coded colors): the dialog stays open to
+      // show them.
+      const noted = published.some((o) => (o.warnings || []).length);
+      if (left || noted || needsLook.some((w) => !confirmed.has(w.package))) {
         setSavedRes(withPublished);
         setReload((n) => n + 1);
         return;
@@ -512,6 +571,13 @@ export const SaveProfileModal = ({
 
   const publishedList = Object.values(outcomes).filter(
     (o) => o.status === "published",
+  );
+  // Published with notes, no longer in the list to publish: shown as done
+  // rows with their notes.
+  const warned = publishedList.filter(
+    (o) =>
+      (o.warnings || []).length &&
+      !toCheck.some((w) => w.package === o.package),
   );
   const failedCount = Object.values(outcomes).filter(
     (o) => o.status === "failed",
@@ -621,7 +687,7 @@ export const SaveProfileModal = ({
               </div>
             ) : null}
 
-            {toCheck.length || needsLook.length ? (
+            {toCheck.length || needsLook.length || warned.length ? (
               <div
                 className={`flex flex-col gap-3 rounded-lg border p-3 ${hairline}`}
                 data-testid="save-widgets"
@@ -707,10 +773,40 @@ export const SaveProfileModal = ({
                   </span>
                 ) : null}
                 <div className="flex flex-col">
+                  {warned.map((o) => (
+                    <div
+                      key={o.package}
+                      className={`flex flex-col gap-1 py-2 border-b ${hairline}`}
+                      data-testid={`save-widget-${o.package}`}
+                    >
+                      <span>{`✓ ${o.package}`}</span>
+                      <span className={`${muted} max-w-prose`}>
+                        {[
+                          `Published as ${o.publishedAs || o.package}`,
+                          o.version,
+                          o.visibility ? `· ${o.visibility}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      </span>
+                      <span
+                        className="text-amber-400 max-w-prose"
+                        data-testid={`save-notes-${o.package}`}
+                      >
+                        {warningsText(o.warnings)}
+                      </span>
+                    </div>
+                  ))}
                   {toCheck.map((w) => {
                     const out = outcomes[w.package];
                     const running = run && run.current === w.package;
                     const failed = out && out.status === "failed";
+                    const problems = (failed && out.problems) || [];
+                    const open = expanded.has(w.package);
+                    const notes =
+                      out && out.status === "published"
+                        ? warningsText(out.warnings)
+                        : null;
                     return (
                       <div
                         key={w.package}
@@ -734,13 +830,44 @@ export const SaveProfileModal = ({
                             {running
                               ? "Publishing…"
                               : failed
-                                ? `Didn't publish — ${out.error || "the registry refused it"}`
+                                ? failureText(out, open)
                                 : out && out.status === "published"
                                   ? out.warning
                                     ? `Published as ${out.publishedAs || w.package} ${out.version || ""} — ${out.warning}`
                                     : `Published as ${out.publishedAs || w.package} ${out.version || ""}`
                                   : widgetStatusText(w)}
                           </span>
+                          {!running && failed && open
+                            ? problems.map((p, i) => (
+                                <span
+                                  key={i}
+                                  className="text-red-400 max-w-prose"
+                                >
+                                  {`• ${p}`}
+                                </span>
+                              ))
+                            : null}
+                          {!running && failed && problems.length > 1 ? (
+                            <div className="flex flex-row">
+                              <Button3
+                                title={
+                                  open
+                                    ? "Hide"
+                                    : `Show all ${problems.length} problems`
+                                }
+                                size="sm"
+                                onClick={() => toggleExpanded(w.package)}
+                              />
+                            </div>
+                          ) : null}
+                          {!running && notes ? (
+                            <span
+                              className="text-amber-400 max-w-prose"
+                              data-testid={`save-notes-${w.package}`}
+                            >
+                              {notes}
+                            </span>
+                          ) : null}
                         </div>
                         {w.publishable ? visSwitch(w) : null}
                       </div>

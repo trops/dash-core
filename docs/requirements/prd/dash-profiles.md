@@ -464,6 +464,11 @@ Mac's / use the account's).
      - After the save, anything that didn't publish stays checked with why, and widgets whose files mention this
        computer's folders are gathered with "Publish anyway"; the dialog stays open ("Publish 1 widget and save", or
        Close/Done). Stop saves with what's published so far.
+     - **Hard-coded colors warn, don't block** (2026-10-30, frame 6). The install check (dash-electron `installGate`)
+       returns hard-coded colors as `warnings`: they no longer stop a publish or an install (older AI-built widgets
+       predate the rule). Widgets the Builder and Dash team write still fail on them. The publish result carries
+       `warnings`; the row says "14 hard-coded colors — it may look off in light mode. Fix them in the Widget Builder."
+       A failure is one line (its first problem) with "Show all N problems" / Hide.
 
 ---
 
@@ -518,6 +523,7 @@ Mac's / use the account's).
 ## Revision History
 
 - 2026-10-30: Bulk publish in Save: all checked, Private/Public per widget, one "Publish N widgets and save" button.
+- 2026-10-30: Hard-coded colors warn instead of blocking publish/install; failures shown in one line with Show all.
 - 2026-10-28: v3 merged (core v0.1.850, registry v1.10.2). Live test fix: a widget just installed is listed by its bare name ("chat") until the next launch renames it — the out-of-sync check now finds it either way (it showed "8 widgets changed" after a relaunch). Loading from the account says "use the account's copy". Backlog: installs should key widgets by package id from the start.
 - 2026-10-28: v3 planned (user): widgets are the only items; dashboards, themes, folders, bots and teams are setup kept in the profile; saving never publishes; publish prompt in the Widget Builder; auto-save revised. Electron v0.0.1041 shipped the sync-status handler; core v0.1.849 the sync-load fix.
 - 2026-10-27: S3 merged (core v0.1.848). Sync-load fix: the account's copy wins when loaded into its linked profile.
