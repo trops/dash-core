@@ -1637,6 +1637,15 @@ function createPlanBuild(plan, deps, opts = {}) {
           const parsed =
             src && src.configCode ? parseDashConfig(src.configCode) : null;
           const config = parsed && parsed.ok ? parsed.config || {} : {};
+          // A change to a widget already on a dashboard, asked without
+          // naming a copy: preview it with a copy's own connection and
+          // settings — what the dashboard will run it with — never with
+          // none (a preview that looks right, then a dashboard that doesn't).
+          const pkg = made.package || piece.package || null;
+          const copy =
+            !piece.settings && !editOf("settings") && pkg && deps.copyInputs
+              ? await deps.copyInputs({ package: pkg })
+              : null;
           made = {
             ...made,
             preview: {
@@ -1653,11 +1662,17 @@ function createPlanBuild(plan, deps, opts = {}) {
               widgetName: (src && src.widgetName) || null,
               // What the plan said to use, to start from.
               // A change starts from the cell's own connection and settings.
-              provider: piece.provider || editOf("providers") || null,
+              provider:
+                piece.provider ||
+                editOf("providers") ||
+                (copy && plainObject(copy.providers) ? copy.providers : null) ||
+                null,
               settings:
                 piece.settings || editOf("settings")
                   ? { ...editOf("settings"), ...piece.settings }
-                  : null,
+                  : copy && plainObject(copy.settings)
+                    ? copy.settings
+                    : null,
             },
           };
           state.made[step.piece] = made;

@@ -250,6 +250,30 @@ describe("its build in the chat", () => {
     expect(c.reply).toMatch(/^Weather is updated — everywhere it's used/);
   });
 
+  test('the update step failed and was left off: never "is updated"', () => {
+    const failed = {
+      status: "finished-with-problems",
+      steps: [
+        {
+          kind: "build",
+          status: "done",
+          label: "Write the change into a draft",
+        },
+        { id: "save", kind: "save", status: "failed", label: "Update Weather" },
+      ],
+    };
+    const c = buildChat(failed, {
+      kind: "edit",
+      change: { ...W, mode: "update" },
+      leftOff: ["save"],
+    });
+    expect(c.reply).toBe(
+      "Weather wasn't updated — it still runs the code it had. Say if you want to try again.",
+    );
+    expect(c.card).toBeNull();
+    expect(c.choices).toBe("again");
+  });
+
   test("a new one in its place: placed, or why not, with Put it in its place", () => {
     const at = (placed) =>
       buildChat(DONE, {

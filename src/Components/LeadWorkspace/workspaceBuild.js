@@ -755,6 +755,16 @@ function chatFor(
       ? String(made.label).replace(/^(Install|Update) /, "")
       : was;
     const on = (change && change.dashboardName) || "your dashboard";
+    // Left off (or never reached) before it was saved: nothing changed —
+    // never "is updated" while the old code is what runs.
+    if (!made || made.status !== "done") {
+      return {
+        step: { label: `${was} wasn't updated`, status: "stopped" },
+        card: null,
+        reply: `${was} wasn't updated — it still runs the code it had. Say if you want to try again.`,
+        choices: "again",
+      };
+    }
     if (!change || change.mode === "update") {
       return {
         step: { label: builtLine(), status: "done" },

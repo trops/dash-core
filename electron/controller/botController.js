@@ -1317,6 +1317,46 @@ const botController = {
   },
 
   /**
+   * One copy of a widget package on the user's dashboards — its connection
+   * and settings ({ providers, settings }), or null when none is placed.
+   */
+  _widgetCopyInputs(pkg) {
+    const name = String(pkg || "");
+    const m = /^@([^/]+)\/(.+)$/.exec(name);
+    const prefix = m ? `${m[1]}.${m[2]}.` : null;
+    const isCopy = (it) =>
+      it &&
+      it.type !== "layout" &&
+      (it.packageId === name ||
+        it._sourcePackage === name ||
+        (prefix && String(it.component || "").startsWith(prefix)));
+    let workspaces = [];
+    try {
+      workspaces =
+        (
+          require("./workspaceController").listWorkspacesForApplication(
+            this._getMainWindow(),
+            this._appId,
+          ) || {}
+        ).workspaces || [];
+    } catch (_e) {
+      return null;
+    }
+    for (const w of workspaces) {
+      const layouts = [w.layout, ...(w.pages || []).map((p) => p.layout)];
+      for (const layout of layouts) {
+        const it = (layout || []).find(isCopy);
+        if (it)
+          return {
+            providers: it.selectedProviders || null,
+            settings: it.userPrefs || null,
+          };
+      }
+    }
+    return null;
+  },
+
+  /**
    * Team leads by dashboard for the AI Assistant's "To:" picker (bot-teams
    * TEAM-013), with running state and availability.
    */
@@ -2864,6 +2904,8 @@ const botController = {
           );
           return r && !r.error ? r.component : null;
         },
+        // A change's preview runs with a copy's own connection and settings.
+        copyInputs: ({ package: pkg }) => this._widgetCopyInputs(pkg),
         // A cell build's preview inputs: the draft's (or installed widget's)
         // config source — parsed, never run, in planBuild.
         previewConfig: async ({ draft, component }) => {
