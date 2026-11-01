@@ -174,6 +174,7 @@ describe("its plan", () => {
         displayName: "Weather",
         settings: { units: "f", days: 5 },
         providers: null,
+        workspaceId: 7,
       },
     });
   });
@@ -272,6 +273,36 @@ describe("its build in the chat", () => {
     );
     expect(c.card).toBeNull();
     expect(c.choices).toBe("again");
+  });
+
+  test("saving as new failed and was left off: says the new widget wasn't saved", () => {
+    const failed = {
+      status: "finished-with-problems",
+      steps: [
+        {
+          id: "save",
+          kind: "save",
+          status: "failed",
+          label: "Install Weather 2",
+        },
+      ],
+    };
+    const c = buildChat(failed, {
+      kind: "edit",
+      change: { ...W, mode: "new" },
+      leftOff: ["save"],
+    });
+    expect(c.reply).toBe(
+      "The new widget wasn't saved — Weather is unchanged. Say if you want to try again.",
+    );
+    expect(c.choices).toBe("again");
+  });
+
+  test("a change knows its dashboard, for the preview's inputs", () => {
+    const o = buildOptions("edit", {
+      widgetChange: { component: "a.b.C", mode: "update", workspaceId: 7 },
+    });
+    expect(o.edit.workspaceId).toBe(7);
   });
 
   test("a new one in its place: placed, or why not, with Put it in its place", () => {

@@ -215,6 +215,44 @@ describe("a change to a widget — the build", () => {
     });
   });
 
+  it("a change asked without a copy's inputs previews with one copy's connection and settings — the change's dashboard first", async () => {
+    const asked = [];
+    const d = deps({
+      copyInputs: async (req) => {
+        asked.push(req);
+        return {
+          providers: { gmail: "Home Gmail" },
+          settings: { maxMessages: 3 },
+        };
+      },
+    });
+    const bare = {
+      ...update,
+      settings: null,
+      providers: null,
+      workspaceId: 42,
+    };
+    const state = await createPlanBuild(updatePlan, d, { edit: bare }).run();
+    assert.deepEqual(asked, [{ package: "@jg/inbox", workspaceId: 42 }]);
+    const p = state.made[0].preview;
+    assert.deepEqual(p.provider, { gmail: "Home Gmail" });
+    assert.deepEqual(p.settings, { maxMessages: 3 });
+  });
+  it("a change with its cell's inputs never asks for another copy's (nothing mixed)", async () => {
+    let asked = 0;
+    const d = deps({
+      copyInputs: async () => {
+        asked += 1;
+        return { settings: { maxMessages: 3 } };
+      },
+    });
+    const onlyProviders = { ...update, settings: null };
+    const state = await createPlanBuild(updatePlan, d, {
+      edit: onlyProviders,
+    }).run();
+    assert.equal(asked, 0);
+    assert.deepEqual(state.made[0].preview.provider, { gmail: "Work Gmail" });
+  });
   it("Looks good installs the checked draft and says which component it is", async () => {
     const d = deps();
     const b = createPlanBuild(updatePlan, d, { edit: update });

@@ -248,7 +248,7 @@ describe("cell builds — the preview's inputs", () => {
     assert.deepEqual(p.provider, { slack: "Work Slack" });
     assert.deepEqual(p.settings, { rows: 5 });
   });
-  it("a change to a widget already on a dashboard previews with that copy's settings and connection", async () => {
+  it("a widget placed in a new cell never borrows another dashboard's settings", async () => {
     const asked = [];
     const b = createPlanBuild(
       yoursWidget,
@@ -268,9 +268,8 @@ describe("cell builds — the preview's inputs", () => {
       { cell: true },
     );
     const state = await b.run();
-    assert.deepEqual(asked, [{ package: "@ai-built/slack-pack" }]);
-    assert.deepEqual(state.made[0].preview.settings, { rows: 3 });
-    assert.deepEqual(state.made[0].preview.provider, { slack: "Work Slack" });
+    assert.deepEqual(asked, []);
+    assert.equal(state.made[0].preview.settings, null);
   });
   it("the plan's own settings win over a copy's", async () => {
     const plan = {

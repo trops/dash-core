@@ -1637,14 +1637,25 @@ function createPlanBuild(plan, deps, opts = {}) {
           const parsed =
             src && src.configCode ? parseDashConfig(src.configCode) : null;
           const config = parsed && parsed.ok ? parsed.config || {} : {};
-          // A change to a widget already on a dashboard, asked without
-          // naming a copy: preview it with a copy's own connection and
-          // settings — what the dashboard will run it with — never with
-          // none (a preview that looks right, then a dashboard that doesn't).
+          // A change (opts.edit) to a widget already on a dashboard, asked
+          // without a copy's inputs: preview it with one copy's own
+          // connection and settings — what the dashboard runs it with —
+          // never with none (a preview that looks right, then a dashboard
+          // that doesn't). Only when nothing was given, so one copy's
+          // inputs are never mixed with another's; never for a widget being
+          // placed in a new cell (another dashboard's settings would leak).
           const pkg = made.package || piece.package || null;
+          const given =
+            piece.provider ||
+            piece.settings ||
+            editOf("providers") ||
+            editOf("settings");
           const copy =
-            !piece.settings && !editOf("settings") && pkg && deps.copyInputs
-              ? await deps.copyInputs({ package: pkg })
+            opts.edit && !given && pkg && deps.copyInputs
+              ? await deps.copyInputs({
+                  package: pkg,
+                  workspaceId: opts.edit.workspaceId ?? null,
+                })
               : null;
           made = {
             ...made,
