@@ -386,7 +386,9 @@ class BotRunner {
       // Engine built-ins this bot may use: a team lead gets none (bot-teams
       // TEAM-002 AC4); Dash team roles get what their job needs (CRE-011) —
       // the run profile says which.
-      if (bot.role === "lead") ctx.builtinTools = "none";
+      // A run asked only to answer from its prompt (noTools — the Dash
+      // Lead routing a task via MCP, TEAM-016) gets none either.
+      if (bot.role === "lead" || opts.noTools) ctx.builtinTools = "none";
       else if (profile.builtinTools) ctx.builtinTools = profile.builtinTools;
 
       // Attempts (US-023 AC1): a run that fails on temporary trouble — before

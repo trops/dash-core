@@ -60,7 +60,7 @@ const TEAM_TOOLS = [
   {
     name: "give_task",
     description:
-      "Give one of the user's teams a task to do (not a question — use ask_team_lead for those). The team starts only after the user's task passphrase checks out: if the user said it along with the task, pass it as 'passphrase'; otherwise give_task returns a taskId — ask the user for their task passphrase and call confirm_task. Never guess or reuse a passphrase the user didn't just say. 'team' is a dashboard name or id from list_teams (only teams with takesTasks).",
+      "Give one of the user's teams a task to do (not a question — use ask_team_lead for those). The team starts only after the user's task passphrase checks out: if the user said it along with the task, pass it as 'passphrase'; otherwise give_task returns a taskId — ask the user for their task passphrase and call confirm_task. Never guess or reuse a passphrase the user didn't just say. 'team' is a dashboard name or id from list_teams (only teams with takesTasks); leave it out when the user didn't name one, and the Dash team picks the team that fits — or asks back which.",
     inputSchema: {
       type: "object",
       properties: {
@@ -143,6 +143,7 @@ const taskView = (t) => ({
   taskId: t.id,
   task: t.task,
   team: t.teamName,
+  ...(t.routedBy ? { routedBy: t.routedBy } : {}),
   status: t.status,
   createdAt: t.createdAt,
   ...(t.status === "waiting" ? { expiresAt: t.expiresAt } : {}),
@@ -353,37 +354,64 @@ function makeTeamToolHandlers({
         lastRunAt: () => null,
       }).filter((t) => takesTasks(t.id));
       const names = teams.map((t) => `${t.name} (id ${t.id})`).join(", ");
+      if (!teams.length) {
+        return json({
+          status: "needs-team",
+          message: `No team takes tasks via MCP yet. The user can turn on "Takes tasks via MCP" in a dashboard's Bots view.`,
+        });
+      }
+      let ws;
+      let routedBy = null;
       if (!args.team) {
-        return json({
-          status: "needs-team",
-          message: teams.length
-            ? `Which team? Teams that take tasks: ${names}. Call give_task again with 'team'.`
-            : `No team takes tasks via MCP yet. The user can turn on "Takes tasks via MCP" in a dashboard's Bots view.`,
-        });
+        // No team named: the Dash Lead picks the one that fits.
+        const route = await bots.routeTask(text, teams);
+        if (route.error) {
+          return json({
+            status: "needs-team",
+            message: `${route.error} Ask the user which team: ${names}. Then call give_task again with 'team'.`,
+          });
+        }
+        if (route.none) {
+          return json({
+            status: "no-team",
+            message: `None of the user's teams does that kind of work. Teams that take tasks: ${names}. If the user wants a team for it, they can ask the Dash team in Dash to make one.`,
+          });
+        }
+        if (route.ambiguous) {
+          return json({
+            status: "needs-team",
+            message: `Which team: ${route.ambiguous
+              .map((t) => `${t.name} (id ${t.id})`)
+              .join(
+                " or ",
+              )}? Ask the user, then call give_task again with 'team'.`,
+          });
+        }
+        ws = workspaces.find((w) => sameId(w.id, route.team.id));
+        routedBy = "dash-team";
+      } else {
+        const found = resolveDashboard(
+          workspaces.filter((w) => teams.some((t) => sameId(t.id, w.id))),
+          args.team,
+        );
+        if (found.none) {
+          return json({
+            status: "needs-team",
+            message: `No team that takes tasks matches "${args.team}". Teams that take tasks: ${names}.`,
+          });
+        }
+        if (found.ambiguous) {
+          return json({
+            status: "needs-team",
+            message: `Several teams match "${args.team}": ${found.ambiguous
+              .map((w) => `${w.name} (id ${w.id})`)
+              .join(
+                ", ",
+              )}. Ask the user which one, then call again with its id.`,
+          });
+        }
+        ws = found.match;
       }
-      const found = resolveDashboard(
-        workspaces.filter((w) => teams.some((t) => sameId(t.id, w.id))),
-        args.team,
-      );
-      if (found.none) {
-        return json({
-          status: "needs-team",
-          message: `No team that takes tasks matches "${args.team}". ${
-            teams.length
-              ? `Teams that take tasks: ${names}.`
-              : `No team takes tasks via MCP yet. The user can turn on "Takes tasks via MCP" in a dashboard's Bots view.`
-          }`,
-        });
-      }
-      if (found.ambiguous) {
-        return json({
-          status: "needs-team",
-          message: `Several teams match "${args.team}": ${found.ambiguous
-            .map((w) => `${w.name} (id ${w.id})`)
-            .join(", ")}. Ask the user which one, then call again with its id.`,
-        });
-      }
-      const ws = found.match;
       const name = ws.name || "Untitled";
       const lead = bots
         .list()
@@ -395,11 +423,14 @@ function makeTeamToolHandlers({
         task: text,
         team: { id: ws.id, name, leadId: lead.id },
         from: args.from,
+        routedBy,
       });
       if (args.passphrase) return confirm(task, args.passphrase);
       return json({
         ...taskView(task),
-        message: `${name} will do: "${text}". Ask the user for their task passphrase, then call confirm_task(taskId, passphrase). It expires at ${timeOf(
+        message: `${
+          routedBy ? `The Dash team picked ${name}. ` : ""
+        }${name} will do: "${text}". Ask the user for their task passphrase, then call confirm_task(taskId, passphrase). It expires at ${timeOf(
           task.expiresAt,
         )}.`,
       });
@@ -561,6 +592,7 @@ function registerTeamTools() {
       askLead: (id, q, opts) => botController.askLead(id, q, opts),
       takesMcpTasks: (id) => botController.takesMcpTasks(id),
       tasks: () => botController.mcpTasks(),
+      routeTask: (task, teams) => botController.routeMcpTask(task, teams),
     },
   });
 

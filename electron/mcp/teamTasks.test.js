@@ -44,6 +44,7 @@ function setup(over = {}) {
     newId: () => `task_${++n}`,
   });
   const calls = [];
+  const routed = [];
   const takes = new Set(over.takes || ["7", "8"]);
   const handlers = makeTeamToolHandlers({
     getWorkspaces: () => workspaces,
@@ -63,11 +64,16 @@ function setup(over = {}) {
         }),
       takesMcpTasks: (id) => takes.has(String(id)),
       tasks: () => tasks,
+      routeTask: async (task, teams) => {
+        routed.push({ task, teams: teams.map((x) => x.name) });
+        return over.route ? over.route(teams) : { ambiguous: teams };
+      },
     },
   });
   return {
     handlers,
     calls,
+    routed,
     tasks,
     takes,
     advance: (ms) => {
@@ -113,13 +119,67 @@ describe("give_task", () => {
     assert.doesNotMatch(calls[0].q, /otter/);
   });
 
-  it("asks which team, listing only teams that take tasks", async () => {
-    const { handlers } = setup();
+  it("no team named: the Dash team picks from the teams that take tasks", async () => {
+    const { handlers, routed, calls } = setup({
+      route: (teams) => ({ team: teams[0] }),
+    });
+    const r = body(
+      await handlers.give_task({ task: "Design the guest bedroom" }),
+    );
+    assert.deepEqual(routed, [
+      {
+        task: "Design the guest bedroom",
+        teams: ["Room Design", "Home Projects"],
+      },
+    ]);
+    assert.equal(r.status, "waiting");
+    assert.equal(r.team, "Room Design");
+    assert.equal(r.routedBy, "dash-team");
+    assert.match(r.message, /^The Dash team picked Room Design\. /);
+    assert.equal(calls.length, 0);
+  });
+
+  it("the Dash team can't tell: asks which, naming only those", async () => {
+    const { handlers, tasks } = setup();
     const r = body(await handlers.give_task({ task: "x" }));
     assert.equal(r.status, "needs-team");
-    assert.match(r.message, /Room Design \(id 7\)/);
-    assert.match(r.message, /Home Projects \(id 8\)/);
+    assert.match(
+      r.message,
+      /Which team: Room Design \(id 7\) or Home Projects \(id 8\)\?/,
+    );
     assert.doesNotMatch(r.message, /Inbox/);
+    assert.equal(tasks.list().length, 0);
+  });
+
+  it("no team fits: says so, and makes nothing", async () => {
+    const { handlers, tasks } = setup({ route: () => ({ none: true }) });
+    const r = body(await handlers.give_task({ task: "Order groceries" }));
+    assert.equal(r.status, "no-team");
+    assert.match(r.message, /None of the user's teams does that kind of work/);
+    assert.equal(tasks.list().length, 0);
+  });
+
+  it("the Dash Lead busy: asks the user for the team", async () => {
+    const { handlers } = setup({
+      route: () => ({ error: "The Dash Lead is busy with another request." }),
+    });
+    const r = body(await handlers.give_task({ task: "x" }));
+    assert.equal(r.status, "needs-team");
+    assert.match(r.message, /busy.*Ask the user which team: Room Design/);
+  });
+
+  it("routed, with the passphrase: starts straight away", async () => {
+    const { handlers, calls } = setup({
+      route: (teams) => ({ team: teams[1] }),
+    });
+    const r = body(
+      await handlers.give_task({
+        task: "Fix the fence",
+        passphrase: "purple otter",
+      }),
+    );
+    assert.equal(r.status, "done");
+    assert.equal(calls[0].id, "lead_8");
   });
 
   it("a team that doesn't take tasks isn't found", async () => {

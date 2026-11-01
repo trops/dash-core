@@ -849,6 +849,23 @@ describe("BotRunner — Dash team (CRE-011)", () => {
     await runner.run("bot_1", { prompt: "go" });
     assert.equal(engine.lastCtx.builtinTools, "read-only");
   });
+
+  it("a run with noTools gets no built-ins, whatever its profile (TEAM-016)", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine, {
+      deps: {
+        resolveRunProfile: async () => ({
+          providerId: "claude-code",
+          engineId: "tool-loop",
+          model: "claude-sonnet-4-6",
+          credentials: {},
+          builtinTools: "read-only",
+        }),
+      },
+    });
+    await runner.run("bot_1", { prompt: "go", noTools: true });
+    assert.equal(engine.lastCtx.builtinTools, "none");
+  });
 });
 
 describe("BotRunner — servers a run is configured with (CRE-011, 3b-1)", () => {

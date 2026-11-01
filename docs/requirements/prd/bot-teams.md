@@ -1019,7 +1019,7 @@ A draft (TEAM-005) is checked when it's drafted and checked again when it's acce
 
 ## TEAM-016: Tasks via MCP, confirmed with a passphrase (2026-11-01)
 
-**Status:** In Progress — PR 1 (tasks, passphrase, MCP tools) built; PR 2 (routing by the Dash Lead), PR 3 (UI, mockups on the canvas page "Tasks via MCP (proposed)") and the dash-electron release to come.
+**Status:** In Progress — PR 1 (tasks, passphrase, MCP tools; core 0.1.891) and PR 2 (routing by the Dash Lead) built; PR 3 (UI, mockups on the canvas page "Tasks via MCP (proposed)") and the dash-electron release to come.
 
 **Why:** the user speaks to Home Assistant, their own bridge (on the same Mac) passes the idea to Dash via MCP, and a team does it — e.g. "Room Design: design the guest bedroom, boho" ends as a new room on that dashboard. Until now an agent outside Dash could only *ask* a lead (`ask_team_lead`), and a lead asked that way can't run its bots.
 
@@ -1034,7 +1034,7 @@ Acceptance criteria:
 - [x] The passphrase is sealed at rest like provider keys (so Settings can Show it), and never appears in a reply, a task, the lead's prompt or a log. Tasks are sealed at rest too.
 - [x] A confirmed task runs the team's lead with `via: "mcp-task[:<from>]"`, and that lead **may run its bots** (an ask via `"mcp"` still can't). The bots still ask in Dash before anything that changes things (`approvalPolicy: "ask"`), and pause and budgets apply.
 - [x] `confirm_task` waits about 45 seconds for the answer; a longer task keeps going and `get_task_status` follows it. A busy lead or a failed run fails the task with why. A task running when Dash closed is marked as not finished.
-- [ ] No team named → the Dash Lead picks the team that fits, asks back when more than one fits, and never makes a team on its own (PR 2).
+- [x] No team named → the Dash Lead picks the team that fits, asks back when more than one fits, and never makes a team on its own (PR 2: an answer-only run of the Dash Lead, via "mcp-route" — its activity is the routing log).
 - [ ] Settings › MCP Server: set / Show / Change / Remove the passphrase, "Short and easy to guess" under 8 letters, the lock with Unlock now; a team's Bots view: the "Takes tasks via MCP" switch and its tasks, each "via MCP · <from>" (PR 3, to the approved mockups).
 
 Decisions: a passphrase instead of a PIN (harder to guess, easier to say); stored encrypted, not hashed, so the user can see it again — the lockout is what protects a short one; the agent names itself with `from` (the MCP server is stateless per request, so the client's own name isn't available on a tool call).

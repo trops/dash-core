@@ -82,6 +82,13 @@ const BOT_WIDGETS = {
 const { registryIdentity, zipAndPublish } = require("./botPublish");
 const { createMcpTasks, checkPassphrase } = require("../bots/mcpTasks");
 const {
+  describeTeams,
+  routePrompt,
+  readRoute,
+} = require("../bots/taskRouting");
+// How long give_task waits for the Dash Lead to pick a team (TEAM-016).
+const ROUTE_WAIT_MS = 60 * 1000;
+const {
   makeRegistryRef,
   readRegistryRef,
   samePackage,
@@ -1277,6 +1284,51 @@ const botController = {
   /** The task store (mcpTasks.js), for the MCP tools. */
   mcpTasks() {
     return this._mcpTasks;
+  },
+
+  /**
+   * A task with no team named: the Dash Lead picks from the teams that take
+   * tasks (taskRouting.js). It comes before any passphrase, so the run has
+   * no tools at all — not even ask_role — and answers from its prompt; a run
+   * past ROUTE_WAIT_MS is stopped. Its run (via "mcp-route") is its routing
+   * log.
+   * @returns {Promise<{ team } | { ambiguous } | { none: true } | { error }>}
+   */
+  async routeMcpTask(task, teams) {
+    const lead = dashTeamBot(this._store.list(), "dashlead");
+    if (!lead) return { error: "The Dash team isn't set up." };
+    if (this._runner.isRunning(lead.id)) {
+      return { error: "The Dash Lead is busy with another request." };
+    }
+    const run = this._run(lead.id, {
+      prompt: routePrompt(task, describeTeams(teams, this._store.list())),
+      trigger: "ask",
+      via: "mcp-route",
+      noTools: true,
+    });
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(null), ROUTE_WAIT_MS);
+    });
+    let record;
+    try {
+      record = await Promise.race([run, late]);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (record === null) {
+      this.stop(lead.id);
+      return { error: "The Dash Lead took too long to pick a team." };
+    }
+    if (!record || record.skipped) {
+      return {
+        error: `The Dash Lead didn't run: ${(record && record.reason) || "unknown reason"}.`,
+      };
+    }
+    if (record.status !== "completed") {
+      return { error: record.error || "The Dash Lead couldn't pick a team." };
+    }
+    return readRoute(record.output, teams);
   },
 
   /** Recent tasks via MCP, newest first — all, or one team's. */
@@ -2639,6 +2691,8 @@ const botController = {
       // A hand-off while the user is still planning: answers only — none
       // of the tools that change things (no approvals to wait on).
       ...(opts.adviseOnly ? { adviseOnly: true } : {}),
+      // No tools at all: answer from the prompt (TEAM-016 routing).
+      ...(opts.noTools ? { noTools: true } : {}),
       // A Dash team run inside a plan (or a question): that plan's memory
       // tools, and its memory calls go to the plan's bucket (4e-1). Dropped
       // here before, so the prompt's MEMORY_NOTE named tools it never had.
@@ -4604,6 +4658,12 @@ const botController = {
    * failures are surfaced in the run feed as warnings.
    */
   async _resolveTools(bot, runOpts = {}) {
+    // Asked only to answer from its prompt (a task routed via MCP before any
+    // passphrase, TEAM-016): no tools at all.
+    if (runOpts && runOpts.noTools) {
+      this._allowedByBot.set(bot.id, {});
+      return { tools: [], resolveServer: () => null };
+    }
     // A team lead gets ONLY its read-only team tools — no providers, no memory
     // writes (bot-teams TEAM-002 AC4). The runner also strips engine built-ins.
     if (isLead(bot)) {
