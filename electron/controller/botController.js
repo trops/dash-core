@@ -80,6 +80,7 @@ const BOT_WIDGETS = {
   activity: "dash.bots.BotActivity",
 };
 const { registryIdentity, zipAndPublish } = require("./botPublish");
+const { createMcpTasks, checkPassphrase } = require("../bots/mcpTasks");
 const {
   makeRegistryRef,
   readRegistryRef,
@@ -373,6 +374,19 @@ const botController = {
         return res;
       },
     };
+
+    // Tasks given to teams via MCP (TEAM-016). One that was running when
+    // Dash closed didn't finish.
+    this._mcpTasks = createMcpTasks({
+      store: {
+        loadTasks: () => this._store.getMcpTasks(),
+        saveTasks: (list) => this._store.setMcpTasks(list),
+        getPassphrase: () => this._store.getTaskPassphrase(),
+        getLock: () => this._store.getTaskLock(),
+        saveLock: (lock) => this._store.setTaskLock(lock),
+      },
+    });
+    this._mcpTasks.recover();
 
     // ask_role hand-offs per Planner run (CRE-011 AC4).
     this._handoffs = new HandoffCap();
@@ -1247,6 +1261,64 @@ const botController = {
     return this._store.getTeamSettings(workspaceId);
   },
 
+  // ---- Tasks via MCP (TEAM-016) ------------------------------------------
+
+  /** Does this dashboard's team take tasks via MCP? Off unless turned on. */
+  takesMcpTasks(workspaceId) {
+    return this._store.getTeamSettings(workspaceId).takesMcpTasks === true;
+  },
+
+  setTakesMcpTasks(workspaceId, on) {
+    return this._store.setTeamSettings(workspaceId, {
+      takesMcpTasks: !!on,
+    });
+  },
+
+  /** The task store (mcpTasks.js), for the MCP tools. */
+  mcpTasks() {
+    return this._mcpTasks;
+  },
+
+  /** Recent tasks via MCP, newest first — all, or one team's. */
+  listMcpTasks({ teamId = null, limit = 20 } = {}) {
+    return this._mcpTasks.list({ teamId, limit });
+  },
+
+  /** Settings › MCP Server: is a passphrase set, and is it short? Never the phrase. */
+  getTaskPassphraseState() {
+    const phrase = this._store.getTaskPassphrase();
+    return {
+      set: !!phrase,
+      short: phrase ? !!checkPassphrase(phrase).short : false,
+      lockedUntil: this._mcpTasks.lockedUntil(),
+    };
+  },
+
+  /** Its Show button. */
+  revealTaskPassphrase() {
+    return this._store.getTaskPassphrase();
+  },
+
+  /** Set it: { ok, short } or { ok: false, error }. */
+  setTaskPassphrase(text) {
+    const check = checkPassphrase(text);
+    if (!check.ok) return check;
+    this._store.setTaskPassphrase(String(text).trim());
+    this._mcpTasks.unlock();
+    return check;
+  },
+
+  removeTaskPassphrase() {
+    this._store.setTaskPassphrase(null);
+    return { ok: true };
+  },
+
+  /** "Unlock now" after 5 wrong passphrases. */
+  unlockMcpTasks() {
+    this._mcpTasks.unlock();
+    return { ok: true };
+  },
+
   /** Hide the lead's one-time introduction card on that dashboard. */
   dismissLeadIntro(workspaceId) {
     return this._store.setTeamSettings(workspaceId, { introDismissed: true });
@@ -1313,6 +1385,10 @@ const botController = {
     return {
       paused: this._pause.isPaused(botId),
       overBudget: this._budgets.isOverBudget(botId, (bot || {}).workspaceId),
+      // Why a task's lead wouldn't start at all (TEAM-016): checked before
+      // the user is asked for their passphrase.
+      allPaused: this._pause.isGloballyPaused(),
+      otherProfile: !this._inActiveProfile(bot),
     };
   },
 
