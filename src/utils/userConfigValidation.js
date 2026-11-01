@@ -24,6 +24,32 @@ export const KNOWN_TYPES = [
   "email",
 ];
 
+// A "text" setting that clearly holds a web address or an email (widgets
+// made before the "url"/"email" types) is checked as one. Hosts, servers and
+// postal addresses aren't web addresses (a bare "10.0.0.5" is a fine host),
+// and an endpoint or a URI can be a name, a path or "spotify:…".
+const URL_KEY = /(url|redirecturi|callbackuri)$/i;
+const URL_LABEL = /\b(url|web address)\b/i;
+const EMAIL_KEY = /e-?mail(address)?$/i;
+const EMAIL_LABEL = /\be-?mail( address)?\b/i;
+const NOT_AN_ADDRESS = /\b(subject|body|template|signature|name)\b/i;
+
+/** The type a setting is checked and shown as. */
+export function settingType(configItem = {}, key = "") {
+  const item = configItem || {};
+  const type = item.type || "text";
+  if (type !== "text") return type;
+  const label = item.displayName || "";
+  if (URL_KEY.test(key) || URL_LABEL.test(label)) return "url";
+  if (
+    (EMAIL_KEY.test(key) || EMAIL_LABEL.test(label)) &&
+    !NOT_AN_ADDRESS.test(label)
+  ) {
+    return "email";
+  }
+  return type;
+}
+
 const isEmpty = (v) =>
   v === undefined || v === null || (typeof v === "string" && v.trim() === "");
 
@@ -90,7 +116,7 @@ export function checkEmail(value) {
  */
 export function validateSetting(configItem = {}, value, key = "") {
   const item = configItem || {};
-  const type = item.type || "text";
+  const type = settingType(item, key);
   const name = nameOf(item, key);
   if (isEmpty(value)) {
     return item.required === true

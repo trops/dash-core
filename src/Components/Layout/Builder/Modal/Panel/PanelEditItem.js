@@ -12,10 +12,14 @@ import deepEqual from "deep-equal";
 import { ComponentManager } from "../../../../../ComponentManager";
 import {
   KNOWN_TYPES,
+  settingType,
   validateSetting,
   validateSettings,
 } from "../../../../../utils/userConfigValidation";
 import { useConfigTokens } from "../../../../Dashboard/ConfigListRow";
+
+// How long typing stops before a field's check shows.
+const TYPING_PAUSE_MS = 800;
 
 /** The id of a setting's field, so a Save that's held back can focus it. */
 export const settingFieldId = (key) => `widget-setting-${key}`;
@@ -220,11 +224,25 @@ export const PanelEditItem = ({
     setItemSelected(() => newItem);
     dirtyRef.current = true;
     if (onDraft) onDraft(newItem.userPrefs);
+    // A pause in typing counts as leaving the field, so the check shows
+    // while the cursor is still in it.
+    clearTimeout(pauseTimers.current[key]);
+    pauseTimers.current[key] = setTimeout(
+      () => setTouched((t) => (t[key] ? t : { ...t, [key]: true })),
+      TYPING_PAUSE_MS,
+    );
   }
 
-  // Shown under a field once it was left (blur), when it already failed as
-  // the panel opened, or after a Save that it held back (showAllErrors) —
-  // never while the first characters are still being typed.
+  const pauseTimers = useRef({});
+  useEffect(() => {
+    const timers = pauseTimers.current;
+    return () => Object.values(timers).forEach(clearTimeout);
+  }, []);
+
+  // Shown under a field once it was left (blur) or typing paused, when it
+  // already failed as the panel opened, or after a Save that it held back
+  // (showAllErrors) — never while the first characters are still being
+  // typed.
   function errorShown(key) {
     return showAllErrors || touched[key] || failedAtOpen[key];
   }
@@ -238,7 +256,7 @@ export const PanelEditItem = ({
     onChange,
     configItem,
   ) {
-    const type = configItem["type"] || "text";
+    const type = settingType(configItem, key);
     const known = KNOWN_TYPES.includes(type);
     const check = validateSetting(configItem, value, key);
     const error = check.error && errorShown(key) ? check.error : null;

@@ -81,6 +81,55 @@ test("a fresh field is checked when it's left, not on the first keystroke", () =
   expect(screen.getByText(/Not a web address/)).toBeInTheDocument();
 });
 
+test("a pause in typing shows the check while the cursor is still in the field", () => {
+  jest.useFakeTimers();
+  try {
+    mockUserConfig = { site: { type: "url", displayName: "Site" } };
+    render(
+      <PanelEditItem
+        item={itemWith({ site: "" })}
+        workspace={workspace}
+        onUpdate={() => {}}
+      />,
+    );
+    fireEvent.change(field("Site"), { target: { value: "http//10.0.0.107" } });
+    expect(screen.queryByText(/Not a web address/)).toBeNull();
+    React.act(() => {
+      jest.advanceTimersByTime(800);
+    });
+    expect(screen.getByText(/Not a web address/)).toBeInTheDocument();
+    expect(
+      screen.getByText("Did you mean http://10.0.0.107?"),
+    ).toBeInTheDocument();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('a widget made before the "url" type: its text URL setting is checked as one', () => {
+  mockUserConfig = {
+    haBaseUrl: {
+      type: "text",
+      displayName: "Home Assistant URL",
+    },
+  };
+  render(
+    <PanelEditItem
+      item={itemWith({ haBaseUrl: "" })}
+      workspace={workspace}
+      onUpdate={() => {}}
+    />,
+  );
+  fireEvent.change(field("Home Assistant URL"), {
+    target: { value: "http//10.0.0.107" },
+  });
+  fireEvent.blur(field("Home Assistant URL"));
+  expect(screen.getByText(/Not a web address/)).toBeInTheDocument();
+  expect(
+    screen.getByText("Did you mean http://10.0.0.107?"),
+  ).toBeInTheDocument();
+});
+
 test("required, and a Save held back shows every failing field", () => {
   mockUserConfig = {
     player: { type: "text", displayName: "Player name", required: true },

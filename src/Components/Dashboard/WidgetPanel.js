@@ -23,6 +23,7 @@ import { panelSections } from "../../utils/widgetSections";
 import { replaceItemInLayout } from "../../utils/layout";
 import { WorkspaceModel } from "../../Models";
 import {
+  settingType,
   validateSettings,
   fixFirstText,
   unsavedText,
@@ -313,7 +314,7 @@ export const WidgetPanel = ({
     : [];
   const urlKey =
     Object.keys(userConfig).find(
-      (k) => userConfig[k] && userConfig[k].type === "url",
+      (k) => userConfig[k] && settingType(userConfig[k], k) === "url",
     ) ||
     Object.keys(userConfig).find((k) => /url|address|host/i.test(k)) ||
     null;
