@@ -269,7 +269,12 @@ describe("Move to page ▸ (move a widget to another page, frame 1)", () => {
       screen.getByRole("menuitem", { name: "Music (here now)" }),
     ).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(screen.getByRole("menuitem", { name: "Home" }));
-    expect(moveToPage).toHaveBeenCalledWith("u-1", "home", "Composed Widget 3");
+    expect(moveToPage).toHaveBeenCalledWith(
+      "u-1",
+      "home",
+      "Composed Widget 3",
+      "music",
+    );
   });
 
   test("outside the editor there's no Move to page", () => {

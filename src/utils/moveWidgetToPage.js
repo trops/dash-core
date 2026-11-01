@@ -6,13 +6,20 @@
  * (selectedProviders), listeners, and anything inside it (a container's
  * children). It leaves its cell on the source page empty, and goes into the
  * first free cell of the target page's main grid, reading row by row. A full
- * grid gets a new row at the bottom. Its id (and its children's) are made new
- * on the target page, whose items count from 1 too; the cell points at the
- * new id.
+ * grid gets a new row at the bottom. A merged (spanned) cell stays an empty
+ * merged cell; the widget takes one cell there.
+ *
+ * Its id — and so its uuid (`dashboard-component-id`), which its
+ * connection binding and the listeners pointing at it use — stays the same
+ * when that id is free on the target page (each page counts from 1). When it
+ * isn't, it gets a new one, and what pointed at the old one follows: the
+ * dashboard's connection binding for it, and listeners on every page
+ * (`Component[id].event`) — unless another copy still answers to the old one.
  *
  * Pure — the workspace passed in is never changed.
  */
 import { addGridRowOp } from "../Models/addGridRowOp";
+import { layoutItemUuid } from "./layoutItemUuid";
 
 const isCellKey = (k) => /^\d+\.\d+$/.test(k);
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -133,15 +140,21 @@ export function moveWidgetToPage(
       return { ...it, grid };
     });
 
-  // Onto the target page: new ids above everything there.
+  // Onto the target page: the same ids when they're free there, else new
+  // ones above everything there.
   let grid = mainGrid(toLayout);
   if (!grid) return { ok: false, error: "That page has no grid to put it in." };
+  const taken = new Set(toLayout.map((it) => String(it && it.id)));
+  const keep = moving.every((it) => !taken.has(String(it.id)));
   let next =
     toLayout.reduce((m, it) => Math.max(m, Number(it && it.id) || 0), 0) + 1;
   const idMap = new Map();
-  for (const it of moving) idMap.set(String(it.id), next++);
+  for (const it of moving) idMap.set(String(it.id), keep ? it.id : next++);
   const moved = moving.map((it) => {
     const copy = { ...it, id: idMap.get(String(it.id)) };
+    if (!keep && it.component) {
+      copy.uuid = layoutItemUuid(workspace.id, it.component, copy.id);
+    }
     if (it === moving[0]) copy.parent = grid.id;
     else if (idMap.has(String(it.parent)))
       copy.parent = idMap.get(String(it.parent));
@@ -173,16 +186,79 @@ export function moveWidgetToPage(
     ...moved,
   ];
 
-  const pages = workspace.pages.map((p) =>
+  let pages = workspace.pages.map((p) =>
     p === from
       ? { ...p, layout: leftLayout }
       : p === to
         ? { ...p, layout: placedLayout }
         : p,
   );
+  let selectedProviders = workspace.selectedProviders;
+  const root = moving[0];
+  const newId = idMap.get(String(root.id));
+  if (!keep && root.component) {
+    const derivedOld = layoutItemUuid(workspace.id, root.component, root.id);
+    const newUuid = layoutItemUuid(workspace.id, root.component, newId);
+    // Its connection binding follows it (the old one stays for any other
+    // copy answering to it).
+    if (selectedProviders && typeof selectedProviders === "object") {
+      const sp = { ...selectedProviders };
+      for (const [from, to] of [
+        [root.uuid, newUuid],
+        [derivedOld, newUuid],
+        [String(root.id), String(newId)],
+      ]) {
+        if (from == null) continue;
+        if (sp[from] && sp[to] === undefined) sp[to] = sp[from];
+      }
+      selectedProviders = sp;
+    }
+    // Listeners pointing at it, when nothing else answers to its old id.
+    const stillThere = pages.some((p) =>
+      (p.layout || []).some(
+        (it) =>
+          it &&
+          it.component === root.component &&
+          String(it.id) === String(root.id),
+      ),
+    );
+    if (!stillThere) {
+      const esc = String(root.component).replace(
+        /[.*+?^${}()|[\]\\]/g,
+        (c) => "\\" + c,
+      );
+      const re = new RegExp(`^(${esc})\\[${root.id}\\]\\.`);
+      const fix = (it) => {
+        if (!it || !it.listeners || typeof it.listeners !== "object") return it;
+        let changed = false;
+        const listeners = {};
+        for (const [h, list] of Object.entries(it.listeners)) {
+          listeners[h] = Array.isArray(list)
+            ? list.map((ev) => {
+                if (typeof ev === "string" && re.test(ev)) {
+                  changed = true;
+                  return ev.replace(re, `$1[${newId}].`);
+                }
+                return ev;
+              })
+            : list;
+        }
+        return changed ? { ...it, listeners } : it;
+      };
+      pages = pages.map((p) => ({ ...p, layout: (p.layout || []).map(fix) }));
+    }
+  }
   return {
     ok: true,
-    workspace: { ...workspace, pages },
+    workspace: {
+      ...workspace,
+      pages,
+      ...(selectedProviders !== workspace.selectedProviders
+        ? { selectedProviders }
+        : {}),
+    },
+    itemId: newId,
+    uuid: moved[0].uuid || null,
     cell,
     fromPage: { id: from.id, name: from.name },
     toPage: { id: to.id, name: to.name },

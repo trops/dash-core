@@ -191,6 +191,8 @@ Approved mockup: canvas page "Move a widget to another page", frames 1-5.
   - the side panel's **Page** picker;
   - dragging the widget onto a page tab: the tab lights up and says "↪ Drop to move to Home".
 - **What moves:** the widget, with its uuid, settings (`userPrefs`), connections (`selectedProviders`) and listeners, plus anything inside it. Its cell on the old page is left empty. It goes into the first free cell of the target page's main grid, row by row, skipping merged cells. A full grid gets a new row at the bottom. Its ids are made new on the target page.
+- **Ids:** its id, and so its uuid (`dashboard-component-id`), stays the same when that id is free on the target page. When the id is taken, it gets a new one. The dashboard's connection binding for it, and listeners on every page (`Component[id].event`), then follow it, unless another copy still answers to the old id. Every move names the page it's from, because ids repeat across pages. A merged (spanned) cell stays an empty merged cell, and the widget takes one cell on the target page.
+- **Undo:** puts the dashboard back as it was when nothing else changed since the move. Otherwise only the widget goes back, and a page made for it is removed once it's empty.
 - **After:** a toast says "Moved Music Player to Home", with **Go to Home** and **Undo**. It's saved with the dashboard's Save, like any edit. The top-level `layout` mirror is synced from the active page on save, as before.
 - **Code:**
   - `src/utils/moveWidgetToPage.js`, pure (tests: full grid, merged cells, nested containers, undo, errors);

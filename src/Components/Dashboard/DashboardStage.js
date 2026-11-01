@@ -2204,11 +2204,7 @@ const DashboardStageInner = ({
     // unsaved user edits to the current page are preserved when
     // adding a new page (especially relevant when going from 1 → 2
     // pages where the lone page's tab is hidden but its grid is live).
-    const existingPages = workspacePages.map((p) => {
-      const pageRef = pageRefsMap.current[p.id];
-      const liveLayout = pageRef?.current?.layout;
-      return liveLayout ? { ...p, layout: liveLayout } : p;
-    });
+    const existingPages = livePages();
     const newPage = DashboardModel.createPage(
       `Page ${existingPages.length + 1}`,
     );
@@ -2238,8 +2234,17 @@ const DashboardStageInner = ({
   // settings, connection and listeners into the first free cell there;
   // saved with Save like any edit, with Undo in the toast.
   const [moveNotice, setMoveNotice] = useState(null);
-  function handleMoveWidgetToPage(uuid, toPageId, name = "") {
-    if (!workspaceSelected || !uuid) return;
+  // The widget is named by the page it's on and its uuid (or its id there):
+  // ids, and so uuids, repeat from page to page.
+  function handleMoveWidgetToPage(
+    uuid,
+    toPageId,
+    name = "",
+    fromPageId = null,
+    itemId = null,
+  ) {
+    if (!workspaceSelected || (!uuid && itemId == null)) return;
+    const from = fromPageId ?? currentActivePageId;
     const pages = livePages();
     const before = { ...workspaceSelected, pages };
     let ws = before;
@@ -2250,9 +2255,14 @@ const DashboardStageInner = ({
       ws = { ...before, pages: [...pages, page] };
       target = page.id;
     }
-    const r = moveWidgetToPage(ws, { uuid, toPageId: target });
+    const r = moveWidgetToPage(ws, {
+      uuid: itemId != null ? null : uuid,
+      itemId,
+      fromPageId: from,
+      toPageId: target,
+    });
     if (!r.ok) {
-      setMoveNotice({ error: r.error });
+      setMoveNotice({ error: r.error, at: Date.now() });
       return;
     }
     if (editSelection?.kind === "widget" && editSelection.uuid === uuid) {
@@ -2262,7 +2272,13 @@ const DashboardStageInner = ({
     setMoveNotice({
       name: name || "The widget",
       toPage: r.toPage,
+      fromPageId: r.fromPage.id,
+      itemId: r.itemId,
+      createdPageId: toPageId === "new" ? target : null,
       before: deepCopy(before),
+      // What the pages were right after the move: Undo puts back the whole
+      // snapshot only when nothing changed since.
+      after: JSON.stringify(r.workspace.pages),
       at: Date.now(),
     });
   }
@@ -2279,19 +2295,54 @@ const DashboardStageInner = ({
     const cell = grid && grid.grid && grid.grid[dragItem.cellNumber];
     const item =
       cell && layout.find((it) => String(it.id) === String(cell.component));
-    if (!item || !item.uuid) return;
+    if (!item) return;
     const cfg = ComponentManager.config(item.component, item) || {};
     handleMoveWidgetToPage(
-      item.uuid,
+      item.uuid || null,
       pageId,
       cfg.displayName || cfg.name || item.component,
+      currentActivePageId,
+      item.id,
     );
   }
 
+  // Undo: the snapshot from before the move when nothing else changed since;
+  // otherwise only the widget goes back (other edits stay), and a page made
+  // for it goes again once it's empty.
   function undoMove() {
-    if (!moveNotice || !moveNotice.before) return;
-    handleWorkspaceChange(moveNotice.before);
+    const n = moveNotice;
+    if (!n || !n.before || !workspaceSelected) return;
     setMoveNotice(null);
+    const pages = livePages();
+    const back = (ws) => {
+      handleWorkspaceChange(ws);
+      const ids = (ws.pages || []).map((p) => String(p.id));
+      if (!ids.includes(String(currentActivePageId))) {
+        setActivePageId(n.fromPageId);
+      }
+    };
+    if (JSON.stringify(pages) === n.after) {
+      back(n.before);
+      return;
+    }
+    const r = moveWidgetToPage(
+      { ...workspaceSelected, pages },
+      { itemId: n.itemId, fromPageId: n.toPage.id, toPageId: n.fromPageId },
+    );
+    if (!r.ok) {
+      setMoveNotice({ error: r.error, at: Date.now() });
+      return;
+    }
+    let ws = r.workspace;
+    if (n.createdPageId) {
+      const made = ws.pages.find((p) => p.id === n.createdPageId);
+      const empty =
+        made && !(made.layout || []).some((it) => it && it.type === "widget");
+      if (empty) {
+        ws = { ...ws, pages: ws.pages.filter((p) => p !== made) };
+      }
+    }
+    back(ws);
   }
 
   function handleRenamePage(pageId, newName) {
@@ -3349,12 +3400,15 @@ const DashboardStageInner = ({
                       : null
                   }
                   onMoveToPage={
-                    editSelection?.kind === "widget" && editSelection.uuid
+                    editSelection?.kind === "widget" &&
+                    editSelection.uuid &&
+                    (editSelection.scope || "main") === "main"
                       ? (pageId) =>
                           handleMoveWidgetToPage(
                             editSelection.uuid,
                             pageId,
                             editSelection.label || editSelection.component,
+                            currentActivePageId,
                           )
                       : null
                   }
@@ -3767,7 +3821,8 @@ const DashboardStageInner = ({
           data-testid="move-notice"
         >
           <Toast
-            key={moveNotice.at || "error"}
+            key={moveNotice.at}
+            type={moveNotice.error ? "error" : null}
             message={
               moveNotice.error
                 ? `Couldn't move it: ${moveNotice.error}`

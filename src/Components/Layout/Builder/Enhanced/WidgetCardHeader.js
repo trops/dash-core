@@ -269,7 +269,7 @@ export const WidgetCardHeader = ({
                 label: here ? `${p.name} (here now)` : p.name,
                 disabled: here,
                 onSelect: () =>
-                  edit.moveToPage(widgetItem.uuid, p.id, widgetName),
+                  edit.moveToPage(widgetItem.uuid, p.id, widgetName, onPage),
               };
             }),
             "separator",
@@ -277,7 +277,7 @@ export const WidgetCardHeader = ({
               key: "page-new",
               label: "+ New page",
               onSelect: () =>
-                edit.moveToPage(widgetItem.uuid, "new", widgetName),
+                edit.moveToPage(widgetItem.uuid, "new", widgetName, onPage),
             },
           ],
         }

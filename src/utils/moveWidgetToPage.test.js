@@ -52,26 +52,51 @@ const dashboard = () => ({
   ],
 });
 
-test("moves with its uuid, settings, connection and listeners, into the first free cell", () => {
+test("keeps its id and uuid when the id is free there, with its settings, connection and listeners", () => {
   const ws = dashboard();
+  ws.pages[0].layout = [ws.pages[0].layout[0]]; // Home: just its grid
+  ws.pages[0].layout[0].grid["1.1"] = { component: null, hide: false };
   const r = moveWidgetToPage(ws, { uuid: "u-player", toPageId: "home" });
   expect(r.ok).toBe(true);
-  expect(r.cell).toBe("1.2");
+  expect(r.cell).toBe("1.1");
   const home = r.workspace.pages[0].layout;
-  const moved = home.find((it) => it.uuid === "u-player");
-  expect(moved).toEqual({
+  expect(home.find((it) => it.uuid === "u-player")).toEqual({
     ...player,
-    id: 3, // the lights are 2 on Home
     parent: 1,
   });
-  expect(home[0].grid["1.2"]).toEqual({ component: 3, hide: false });
-  // Off Music, its cell empty.
+  expect(home[0].grid["1.1"]).toEqual({ component: 2, hide: false });
   const music = r.workspace.pages[1].layout;
   expect(music.find((it) => it.uuid === "u-player")).toBeUndefined();
   expect(music[0].grid["1.1"]).toEqual({ component: null, hide: false });
-  // Never changes what it was given.
-  expect(ws.pages[1].layout).toHaveLength(2);
+  expect(ws.pages[1].layout).toHaveLength(2); // never changes what it was given
   expect(r.toPage.name).toBe("Home");
+});
+
+test("its id taken there: a new id and uuid, and what pointed at it follows", () => {
+  const ws = dashboard();
+  ws.selectedProviders = {
+    "9-ai-built.player.Player-2": { mcp: "Home Assistant MCP" },
+  };
+  // A widget on Home listens to the player.
+  ws.pages[0].layout[1] = {
+    ...ws.pages[0].layout[1],
+    listeners: { onTrack: ["ai-built.player.Player[2].trackChanged"] },
+  };
+  const r = moveWidgetToPage(ws, { uuid: "u-player", toPageId: "home" });
+  expect(r.ok).toBe(true);
+  const home = r.workspace.pages[0].layout;
+  const moved = home.find((it) => it.component === "ai-built.player.Player");
+  expect(moved.id).toBe(3); // the lights are 2 on Home
+  expect(moved.uuid).toBe("9-ai-built.player.Player-3");
+  expect(moved.userPrefs).toEqual(player.userPrefs);
+  expect(moved.selectedProviders).toEqual(player.selectedProviders);
+  expect(home[0].grid["1.2"]).toEqual({ component: 3, hide: false });
+  expect(r.workspace.selectedProviders["9-ai-built.player.Player-3"]).toEqual({
+    mcp: "Home Assistant MCP",
+  });
+  expect(home[1].listeners.onTrack).toEqual([
+    "ai-built.player.Player[3].trackChanged",
+  ]);
 });
 
 test("a full grid gets a new row at the bottom", () => {
@@ -82,7 +107,7 @@ test("a full grid gets a new row at the bottom", () => {
   const g = r.workspace.pages[0].layout[0].grid;
   expect(g.rows).toBe(2);
   expect(r.cell).toBe("2.1");
-  expect(g["2.1"].component).toBe(3);
+  expect(g["2.1"].component).toBe(3); // id 2 is taken on Home
   expect(g["2.2"]).toEqual({ component: null, hide: false });
 });
 
@@ -121,9 +146,9 @@ test("a container moves with what's inside it, ids and cells kept together", () 
   const r = moveWidgetToPage(ws, { uuid: "u-inner", toPageId: "home" });
   expect(r.ok).toBe(true);
   const home = r.workspace.pages[0].layout;
-  const inner = home.find((it) => it.uuid === "u-inner");
-  const a = home.find((it) => it.uuid === "u-a");
-  const b = home.find((it) => it.uuid === "u-b");
+  const inner = home.find((it) => it.grid && it.parent === 1 && it.id !== 1);
+  const a = home.find((it) => it.component === "a.b.A");
+  const b = home.find((it) => it.component === "a.b.B");
   expect(inner.parent).toBe(1);
   expect(a.parent).toBe(inner.id);
   expect(b.parent).toBe(inner.id);
@@ -137,13 +162,13 @@ test("undo is the workspace before the move", () => {
   const before = dashboard();
   const r = moveWidgetToPage(before, { uuid: "u-player", toPageId: "home" });
   const back = moveWidgetToPage(r.workspace, {
-    uuid: "u-player",
+    uuid: r.uuid,
     toPageId: "music",
   });
   expect(back.ok).toBe(true);
   // Back on Music in its old cell, with everything it had.
   const music = back.workspace.pages[1].layout;
-  const it = music.find((x) => x.uuid === "u-player");
+  const it = music.find((x) => x.component === "ai-built.player.Player");
   expect(it.userPrefs).toEqual(player.userPrefs);
   expect(music[0].grid["1.1"].component).toBe(it.id);
   // The snapshot itself is what the dashboard restores on Undo.
