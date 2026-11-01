@@ -322,3 +322,36 @@ describe("EditPanel — moving a widget without dragging (phase 1e)", () => {
     expect(onMoveWidget).toHaveBeenCalledWith(false);
   });
 });
+
+describe("the Page picker (move a widget to another page, frame 2)", () => {
+  test("its page marked; picking another moves it; + New page makes one", () => {
+    const onMoveToPage = jest.fn();
+    render(
+      <EditPanel
+        workspace={{ id: 1, name: "Smart Home" }}
+        selection={{ kind: "widget", uuid: "u1", label: "Music Player" }}
+        pages={[
+          { id: "home", name: "Home" },
+          { id: "music", name: "Music" },
+        ]}
+        widgetPageId="music"
+        onMoveToPage={onMoveToPage}
+      />,
+    );
+    const picker = screen.getByTestId("widget-page-picker");
+    const select = picker.querySelector("select");
+    expect(select.value).toBe("music");
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "Home",
+      "Music (here now)",
+      "+ New page",
+    ]);
+    fireEvent.change(select, { target: { value: "home" } });
+    expect(onMoveToPage).toHaveBeenLastCalledWith("home");
+    fireEvent.change(select, { target: { value: "__new" } });
+    expect(onMoveToPage).toHaveBeenLastCalledWith("new");
+    expect(
+      screen.getByText(/goes in the first free spot on that page/),
+    ).toBeInTheDocument();
+  });
+});

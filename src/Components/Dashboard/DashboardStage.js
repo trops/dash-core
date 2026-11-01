@@ -25,6 +25,7 @@ import {
   ConfirmationModal,
   AlertBanner,
   Button2,
+  Button3,
   ButtonIcon3,
 } from "@trops/dash-react";
 import { LayoutModel, DashboardModel } from "../../Models";
@@ -54,6 +55,7 @@ import { DashSidebar } from "../Navigation/DashSidebar";
 import { EditPanel } from "./EditPanel";
 import { WidgetPanel } from "./WidgetPanel";
 import { WidgetCodeModal } from "./WidgetCodeModal";
+import { moveWidgetToPage } from "../../utils/moveWidgetToPage";
 import {
   PendingSettingsContext,
   createPendingSettings,
@@ -956,6 +958,25 @@ const DashboardStageInner = ({
   // them. `editing`: only while the dashboard is being edited (a crashed
   // widget's Remove); `changeBlocked`: why Change waits (the card's menu,
   // as the panel) — consolidation Phase 3P.
+  // Move a widget to another page (the card's ⋮ → Move to page, the panel's
+  // Page picker): the dashboard's pages and the move, for the cards.
+  const moveToPageRef = useRef(null);
+  const moveToPage = useCallback(
+    (...args) => moveToPageRef.current && moveToPageRef.current(...args),
+    [],
+  );
+  const pageChoices = useMemo(
+    () =>
+      [...(workspaceSelected?.pages || [])]
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+        .map((p) => ({ id: p.id, name: p.name || "Page" })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      (workspaceSelected?.pages || [])
+        .map((p) => `${p.id}:${p.order}:${p.name}`)
+        .join(","),
+    ],
+  );
   const editSelectionValue = useMemo(
     () => ({
       available: true,
@@ -964,8 +985,17 @@ const DashboardStageInner = ({
       selection: editSelection,
       related: editRelated,
       select: setEditSelection,
+      pages: isEditingDashboard ? pageChoices : null,
+      moveToPage: isEditingDashboard ? moveToPage : null,
     }),
-    [editSelection, editRelated, isEditingDashboard, changeBlocked],
+    [
+      editSelection,
+      editRelated,
+      isEditingDashboard,
+      changeBlocked,
+      pageChoices,
+      moveToPage,
+    ],
   );
   useEffect(() => {
     if (typeof globalThis !== "undefined") {
@@ -2174,11 +2204,7 @@ const DashboardStageInner = ({
     // unsaved user edits to the current page are preserved when
     // adding a new page (especially relevant when going from 1 → 2
     // pages where the lone page's tab is hidden but its grid is live).
-    const existingPages = workspacePages.map((p) => {
-      const pageRef = pageRefsMap.current[p.id];
-      const liveLayout = pageRef?.current?.layout;
-      return liveLayout ? { ...p, layout: liveLayout } : p;
-    });
+    const existingPages = livePages();
     const newPage = DashboardModel.createPage(
       `Page ${existingPages.length + 1}`,
     );
@@ -2194,6 +2220,129 @@ const DashboardStageInner = ({
 
   function handleSwitchPage(pageId) {
     navigateToPage(pageId);
+  }
+
+  // The pages as they are now: each page's live layout from its builder.
+  function livePages() {
+    return workspacePages.map((p) => {
+      const liveLayout = pageRefsMap.current[p.id]?.current?.layout;
+      return liveLayout ? { ...p, layout: liveLayout } : p;
+    });
+  }
+
+  // Move a widget to another page — or a new one ("new"). It goes with its
+  // settings, connection and listeners into the first free cell there;
+  // saved with Save like any edit, with Undo in the toast.
+  const [moveNotice, setMoveNotice] = useState(null);
+  // The widget is named by the page it's on and its uuid (or its id there):
+  // ids, and so uuids, repeat from page to page.
+  function handleMoveWidgetToPage(
+    uuid,
+    toPageId,
+    name = "",
+    fromPageId = null,
+    itemId = null,
+  ) {
+    if (!workspaceSelected || (!uuid && itemId == null)) return;
+    const from = fromPageId ?? currentActivePageId;
+    const pages = livePages();
+    const before = { ...workspaceSelected, pages };
+    let ws = before;
+    let target = toPageId;
+    if (toPageId === "new") {
+      const page = DashboardModel.createPage(`Page ${pages.length + 1}`);
+      page.order = pages.length;
+      ws = { ...before, pages: [...pages, page] };
+      target = page.id;
+    }
+    const r = moveWidgetToPage(ws, {
+      uuid: itemId != null ? null : uuid,
+      itemId,
+      fromPageId: from,
+      toPageId: target,
+    });
+    if (!r.ok) {
+      setMoveNotice({ error: r.error, at: Date.now() });
+      return;
+    }
+    if (editSelection?.kind === "widget" && editSelection.uuid === uuid) {
+      setEditSelection(null);
+    }
+    handleWorkspaceChange(r.workspace);
+    setMoveNotice({
+      name: name || "The widget",
+      toPage: r.toPage,
+      fromPageId: r.fromPage.id,
+      itemId: r.itemId,
+      createdPageId: toPageId === "new" ? target : null,
+      before: deepCopy(before),
+      // What the pages were right after the move: Undo puts back the whole
+      // snapshot only when nothing changed since.
+      after: JSON.stringify(r.workspace.pages),
+      at: Date.now(),
+    });
+  }
+  moveToPageRef.current = handleMoveWidgetToPage;
+
+  // A widget dragged onto a page tab: the one in that cell of this page.
+  function handleDropWidgetOnPage(pageId, dragItem) {
+    if (!dragItem || (dragItem.workspaceScope || "main") !== "main") return;
+    const page = livePages().find((p) => p.id === currentActivePageId);
+    const layout = (page && page.layout) || [];
+    const grid = layout.find(
+      (it) => String(it.id) === String(dragItem.gridContainerId),
+    );
+    const cell = grid && grid.grid && grid.grid[dragItem.cellNumber];
+    const item =
+      cell && layout.find((it) => String(it.id) === String(cell.component));
+    if (!item) return;
+    const cfg = ComponentManager.config(item.component, item) || {};
+    handleMoveWidgetToPage(
+      item.uuid || null,
+      pageId,
+      cfg.displayName || cfg.name || item.component,
+      currentActivePageId,
+      item.id,
+    );
+  }
+
+  // Undo: the snapshot from before the move when nothing else changed since;
+  // otherwise only the widget goes back (other edits stay), and a page made
+  // for it goes again once it's empty.
+  function undoMove() {
+    const n = moveNotice;
+    if (!n || !n.before || !workspaceSelected) return;
+    setMoveNotice(null);
+    const pages = livePages();
+    const back = (ws) => {
+      handleWorkspaceChange(ws);
+      const ids = (ws.pages || []).map((p) => String(p.id));
+      if (!ids.includes(String(currentActivePageId))) {
+        setActivePageId(n.fromPageId);
+      }
+    };
+    if (JSON.stringify(pages) === n.after) {
+      back(n.before);
+      return;
+    }
+    const r = moveWidgetToPage(
+      { ...workspaceSelected, pages },
+      { itemId: n.itemId, fromPageId: n.toPage.id, toPageId: n.fromPageId },
+    );
+    if (!r.ok) {
+      setMoveNotice({ error: r.error, at: Date.now() });
+      return;
+    }
+    let ws = r.workspace;
+    if (n.createdPageId) {
+      const made = ws.pages.find((p) => p.id === n.createdPageId);
+      const empty =
+        made && !(made.layout || []).some((it) => it && it.type === "widget");
+      if (empty) {
+        ws = { ...ws, pages: ws.pages.filter((p) => p !== made) };
+      }
+    }
+    back(ws);
   }
 
   function handleRenamePage(pageId, newName) {
@@ -3038,6 +3187,9 @@ const DashboardStageInner = ({
                           onRenamePage={handleRenamePage}
                           onDeletePage={handleDeletePage}
                           onReorderPages={handleReorderPages}
+                          onDropWidget={
+                            !previewMode ? handleDropWidgetOnPage : null
+                          }
                           editMode={!previewMode}
                           scrollableEnabled={getRootScrollable()}
                           onScrollableChange={
@@ -3241,6 +3393,25 @@ const DashboardStageInner = ({
                   }}
                   widgetOwner={selectedWidgetOwner}
                   widgetMeta={versionLine(selectedWidgetSources)}
+                  pages={pageChoices}
+                  widgetPageId={
+                    editSelection?.kind === "widget"
+                      ? currentActivePageId
+                      : null
+                  }
+                  onMoveToPage={
+                    editSelection?.kind === "widget" &&
+                    editSelection.uuid &&
+                    (editSelection.scope || "main") === "main"
+                      ? (pageId) =>
+                          handleMoveWidgetToPage(
+                            editSelection.uuid,
+                            pageId,
+                            editSelection.label || editSelection.component,
+                            currentActivePageId,
+                          )
+                      : null
+                  }
                   widgetNotYours={selectedWidgetOwner.startsWith(
                     "From the registry",
                   )}
@@ -3643,6 +3814,39 @@ const DashboardStageInner = ({
         }}
         onCancel={() => setPendingNavigation(null)}
       />
+      {/* A widget moved to another page: where, Go to it, Undo. */}
+      {moveNotice ? (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
+          data-testid="move-notice"
+        >
+          <Toast
+            key={moveNotice.at}
+            type={moveNotice.error ? "error" : null}
+            message={
+              moveNotice.error
+                ? `Couldn't move it: ${moveNotice.error}`
+                : `Moved ${moveNotice.name} to ${moveNotice.toPage.name}`
+            }
+            duration={10000}
+            onClose={() => setMoveNotice(null)}
+          >
+            {moveNotice.error ? null : (
+              <div className="flex flex-row gap-2 pt-2">
+                <Button3
+                  title={`Go to ${moveNotice.toPage.name}`}
+                  size="sm"
+                  onClick={() => {
+                    navigateToPage(moveNotice.toPage.id);
+                    setMoveNotice(null);
+                  }}
+                />
+                <Button3 title="Undo" size="sm" onClick={undoMove} />
+              </div>
+            )}
+          </Toast>
+        </div>
+      ) : null}
       <WidgetCodeModal
         isOpen={!!codeView}
         onClose={() => setCodeView(null)}

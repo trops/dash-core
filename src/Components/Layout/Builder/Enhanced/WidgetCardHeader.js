@@ -28,6 +28,8 @@ import { providerExists } from "../../../../utils/providerResolution";
 import { AppContext } from "../../../../Context";
 import { cardFixPill } from "../../../Dashboard/widgetPanelText";
 import { providerLabel } from "../../../Create/planChecklist";
+import { EditSelectionContext } from "../../../Dashboard/editSelection";
+import { LayoutPageContext } from "../WorkspaceScopeContext";
 
 // ComponentConfigModel's fallback `name` for a config that sets none.
 const DEFAULT_CONFIG_NAME = "My Workspace";
@@ -247,7 +249,41 @@ export const WidgetCardHeader = ({
         ),
     });
   }
+  // Move to page ▸ (editing): the dashboard's pages, this one marked and
+  // not pickable, and a new page — the dashboard moves it.
+  const edit = useContext(EditSelectionContext) || {};
+  const onPage = useContext(LayoutPageContext);
+  const pageMove =
+    edit.moveToPage &&
+    Array.isArray(edit.pages) &&
+    onPage != null &&
+    widgetItem &&
+    widgetItem.uuid
+      ? {
+          label: "Move to page",
+          items: [
+            ...edit.pages.map((p) => {
+              const here = String(p.id) === String(onPage);
+              return {
+                key: `page-${p.id}`,
+                label: here ? `${p.name} (here now)` : p.name,
+                disabled: here,
+                onSelect: () =>
+                  edit.moveToPage(widgetItem.uuid, p.id, widgetName, onPage),
+              };
+            }),
+            "separator",
+            {
+              key: "page-new",
+              label: "+ New page",
+              onSelect: () =>
+                edit.moveToPage(widgetItem.uuid, "new", widgetName, onPage),
+            },
+          ],
+        }
+      : null;
   const layoutActions = [
+    ...(pageMove ? [pageMove] : []),
     ...(onMove
       ? [{ label: "Move to another cell", onSelect: () => onMove(widgetItem) }]
       : []),

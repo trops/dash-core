@@ -887,6 +887,37 @@ function Toggle({ text, enabled, setEnabled }) {
 // badge show as data attributes / text, "separator" strings split the list.
 function ActionMenu({ label = "Actions", items = [], dot = false }) {
   const [open, setOpen] = React.useState(false);
+  // dash-react ≥1.0.86: an item with items is a submenu (Move to page ▸).
+  const [sub, setSub] = React.useState(null);
+  const row = (item, onPick) =>
+    React.createElement(
+      "button",
+      {
+        key: item.key || item.label,
+        type: "button",
+        role: "menuitem",
+        "aria-disabled": item.disabled ? true : undefined,
+        "aria-haspopup": item.items ? "menu" : undefined,
+        "aria-expanded": item.items ? sub === item.label : undefined,
+        "data-danger": item.danger ? "true" : undefined,
+        onClick: (e) => {
+          e.stopPropagation();
+          if (item.disabled) return;
+          onPick(item);
+        },
+      },
+      item.label,
+      item.badge ? " " + item.badge : null,
+    );
+  const pick = (item) => {
+    if (item.items) {
+      setSub(sub === item.label ? null : item.label);
+      return;
+    }
+    setOpen(false);
+    setSub(null);
+    if (item.onSelect) item.onSelect();
+  };
   return React.createElement(
     "div",
     null,
@@ -901,6 +932,7 @@ function ActionMenu({ label = "Actions", items = [], dot = false }) {
         onClick: (e) => {
           e.stopPropagation();
           setOpen(!open);
+          setSub(null);
         },
       },
       "⋯",
@@ -913,24 +945,24 @@ function ActionMenu({ label = "Actions", items = [], dot = false }) {
           item === "separator"
             ? React.createElement("hr", { key: "sep-" + i })
             : item
-              ? React.createElement(
-                  "button",
-                  {
-                    key: item.key || item.label,
-                    type: "button",
-                    role: "menuitem",
-                    "aria-disabled": item.disabled ? true : undefined,
-                    "data-danger": item.danger ? "true" : undefined,
-                    onClick: (e) => {
-                      e.stopPropagation();
-                      if (item.disabled) return;
-                      setOpen(false);
-                      if (item.onSelect) item.onSelect();
-                    },
-                  },
-                  item.label,
-                  item.badge ? " " + item.badge : null,
-                )
+              ? item.items && sub === item.label
+                ? React.createElement(
+                    React.Fragment,
+                    { key: item.key || item.label },
+                    row(item, pick),
+                    React.createElement(
+                      "div",
+                      { role: "menu", "aria-label": item.label },
+                      item.items.map((child, j) =>
+                        child === "separator"
+                          ? React.createElement("hr", { key: "s-" + j })
+                          : child
+                            ? row(child, pick)
+                            : null,
+                      ),
+                    ),
+                  )
+                : row(item, pick)
               : null,
         ),
       ),

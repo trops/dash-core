@@ -1,5 +1,75 @@
 import React, { useState, useRef, useContext } from "react";
+import { createPortal } from "react-dom";
+import { useDrop } from "react-dnd";
 import { ThemeContext, FontAwesomeIcon, Toggle } from "@trops/dash-react";
+import { GRID_CELL_WIDGET_TYPE } from "../../utils/dragTypes";
+
+/**
+ * A page tab a widget can be dropped on (approved mockup "Move a widget to
+ * another page", frame 3): it lights up and says "Drop to move to Home".
+ * Only while editing, never the page it's on. Needs the dashboard's
+ * DndProvider, so it's only used when the bar is given onDropWidget.
+ */
+const TabDropTarget = ({ page, enabled, onDropWidget, children }) => {
+  const { currentTheme } = useContext(ThemeContext);
+  const [{ over }, drop] = useDrop(
+    () => ({
+      accept: GRID_CELL_WIDGET_TYPE,
+      canDrop: (item) => enabled && (item.workspaceScope || "main") === "main",
+      drop: (item) => {
+        onDropWidget(page.id, item);
+      },
+      collect: (monitor) => ({
+        over: monitor.isOver() && monitor.canDrop(),
+      }),
+    }),
+    [enabled, page.id, onDropWidget],
+  );
+  const boxRef = useRef(null);
+  const setRefs = (el) => {
+    boxRef.current = el;
+    drop(el);
+  };
+  // The tab bar scrolls sideways (it clips what hangs below it): the hint
+  // goes on the page, under the tab.
+  const at =
+    over && boxRef.current && boxRef.current.getBoundingClientRect
+      ? boxRef.current.getBoundingClientRect()
+      : null;
+  const hint = over ? (
+    <span
+      role="status"
+      style={
+        at
+          ? {
+              position: "fixed",
+              left: Math.round(at.left),
+              top: Math.round(at.bottom + 6),
+            }
+          : undefined
+      }
+      className={`z-50 whitespace-nowrap px-2.5 py-1.5 rounded-md border-2 border-dashed text-xs shadow-lg ${
+        currentTheme["bg-neutral-very-dark"] || ""
+      } ${currentTheme["border-primary-medium"] || ""} ${
+        currentTheme["text-neutral-light"] || ""
+      }`}
+    >
+      ↪ Drop to move to {page.name}
+    </span>
+  ) : null;
+  return (
+    <span
+      ref={setRefs}
+      className="relative inline-flex"
+      data-testid={`page-drop-${page.id}`}
+    >
+      {children(over)}
+      {hint && typeof document !== "undefined"
+        ? createPortal(hint, document.body)
+        : hint}
+    </span>
+  );
+};
 
 /**
  * PageTabBar — tabbed navigation for pages within a workspace.
@@ -19,6 +89,8 @@ export const PageTabBar = ({
   onRenamePage = null,
   onDeletePage = null,
   onReorderPages = null,
+  // A widget dragged onto a tab moves to that page: (pageId, dragItem).
+  onDropWidget = null,
   editMode = false,
   scrollableEnabled = false,
   onScrollableChange = null,
@@ -101,7 +173,7 @@ export const PageTabBar = ({
           const isActive = page.id === activePageId;
           const isDragOver = page.id === dragOverId;
 
-          return (
+          const tab = (dropOver = false) => (
             <button
               key={page.id}
               type="button"
@@ -117,8 +189,10 @@ export const PageTabBar = ({
                   ? `${currentTheme["bg-neutral-very-dark"] || ""} ${currentTheme["text-neutral-light"] || ""}`
                   : `${currentTheme["text-neutral-medium"] || ""} ${currentTheme["hover-bg-neutral-very-dark"] || ""}`
               } ${isDragOver ? `ring-1 ${currentTheme["ring-primary-medium"] || ""}` : ""} ${
-                editMode ? "cursor-grab active:cursor-grabbing" : ""
-              }`}
+                dropOver
+                  ? `ring-2 ring-inset ${currentTheme["ring-primary-medium"] || ""} ${currentTheme["bg-primary-dark"] || ""} ${currentTheme["text-neutral-light"] || ""}`
+                  : ""
+              } ${editMode ? "cursor-grab active:cursor-grabbing" : ""}`}
             >
               {editingId === page.id ? (
                 <input
@@ -166,6 +240,18 @@ export const PageTabBar = ({
                 </span>
               )}
             </button>
+          );
+          return onDropWidget ? (
+            <TabDropTarget
+              key={page.id}
+              page={page}
+              enabled={editMode && !isActive}
+              onDropWidget={onDropWidget}
+            >
+              {(over) => tab(over)}
+            </TabDropTarget>
+          ) : (
+            tab()
           );
         })}
 
