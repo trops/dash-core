@@ -1637,6 +1637,26 @@ function createPlanBuild(plan, deps, opts = {}) {
           const parsed =
             src && src.configCode ? parseDashConfig(src.configCode) : null;
           const config = parsed && parsed.ok ? parsed.config || {} : {};
+          // A change (opts.edit) to a widget already on a dashboard, asked
+          // without a copy's inputs: preview it with one copy's own
+          // connection and settings — what the dashboard runs it with —
+          // never with none (a preview that looks right, then a dashboard
+          // that doesn't). Only when nothing was given, so one copy's
+          // inputs are never mixed with another's; never for a widget being
+          // placed in a new cell (another dashboard's settings would leak).
+          const pkg = made.package || piece.package || null;
+          const given =
+            piece.provider ||
+            piece.settings ||
+            editOf("providers") ||
+            editOf("settings");
+          const copy =
+            opts.edit && !given && pkg && deps.copyInputs
+              ? await deps.copyInputs({
+                  package: pkg,
+                  workspaceId: opts.edit.workspaceId ?? null,
+                })
+              : null;
           made = {
             ...made,
             preview: {
@@ -1653,11 +1673,17 @@ function createPlanBuild(plan, deps, opts = {}) {
               widgetName: (src && src.widgetName) || null,
               // What the plan said to use, to start from.
               // A change starts from the cell's own connection and settings.
-              provider: piece.provider || editOf("providers") || null,
+              provider:
+                piece.provider ||
+                editOf("providers") ||
+                (copy && plainObject(copy.providers) ? copy.providers : null) ||
+                null,
               settings:
                 piece.settings || editOf("settings")
                   ? { ...editOf("settings"), ...piece.settings }
-                  : null,
+                  : copy && plainObject(copy.settings)
+                    ? copy.settings
+                    : null,
             },
           };
           state.made[step.piece] = made;

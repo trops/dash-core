@@ -1317,6 +1317,49 @@ const botController = {
   },
 
   /**
+   * One copy of a widget package on the user's dashboards — its connection
+   * and settings ({ providers, settings }), or null when none is placed. A
+   * copy on `workspaceId` (the dashboard the change is about) comes first.
+   */
+  _widgetCopyInputs(pkg, workspaceId = null) {
+    const name = String(pkg || "").toLowerCase();
+    const m = /^@([^/]+)\/(.+)$/.exec(name);
+    const prefix = m ? `${m[1]}.${m[2]}.` : null;
+    const low = (v) => String(v || "").toLowerCase();
+    const isCopy = (it) =>
+      it &&
+      it.type !== "layout" &&
+      (low(it.packageId) === name ||
+        low(it._sourcePackage) === name ||
+        (prefix && low(it.component).startsWith(prefix)));
+    let workspaces = [];
+    try {
+      workspaces =
+        (
+          require("./workspaceController").listWorkspacesForApplication(
+            this._getMainWindow(),
+            this._appId,
+          ) || {}
+        ).workspaces || [];
+    } catch (_e) {
+      return null;
+    }
+    const first =
+      workspaceId != null
+        ? workspaces.filter((w) => String(w.id) === String(workspaceId))
+        : [];
+    for (const w of [...first, ...workspaces]) {
+      const it = allWidgetItems(w).find(isCopy);
+      if (it)
+        return {
+          providers: it.selectedProviders || null,
+          settings: it.userPrefs || null,
+        };
+    }
+    return null;
+  },
+
+  /**
    * Team leads by dashboard for the AI Assistant's "To:" picker (bot-teams
    * TEAM-013), with running state and availability.
    */
@@ -2864,6 +2907,9 @@ const botController = {
           );
           return r && !r.error ? r.component : null;
         },
+        // A change's preview runs with a copy's own connection and settings.
+        copyInputs: ({ package: pkg, workspaceId }) =>
+          this._widgetCopyInputs(pkg, workspaceId),
         // A cell build's preview inputs: the draft's (or installed widget's)
         // config source — parsed, never run, in planBuild.
         previewConfig: async ({ draft, component }) => {

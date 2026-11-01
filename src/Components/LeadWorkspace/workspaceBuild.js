@@ -71,6 +71,7 @@ export function buildOptions(kind, plan = null) {
         displayName: w.displayName || "",
         settings: w.settingsNow || null,
         providers: w.providers || null,
+        workspaceId: w.workspaceId ?? null,
       },
     };
   }
@@ -755,6 +756,22 @@ function chatFor(
       ? String(made.label).replace(/^(Install|Update) /, "")
       : was;
     const on = (change && change.dashboardName) || "your dashboard";
+    // Its save step didn't finish (left off): nothing changed — never "is
+    // updated" while the old code is what runs.
+    if (made && made.status !== "done") {
+      const asNew = change && change.mode === "new";
+      return {
+        step: {
+          label: asNew ? `${was} wasn't saved as new` : `${was} wasn't updated`,
+          status: "stopped",
+        },
+        card: null,
+        reply: asNew
+          ? `The new widget wasn't saved — ${was} is unchanged. Say if you want to try again.`
+          : `${was} wasn't updated — it still runs the code it had. Say if you want to try again.`,
+        choices: "again",
+      };
+    }
     if (!change || change.mode === "update") {
       return {
         step: { label: builtLine(), status: "done" },

@@ -248,6 +248,50 @@ describe("cell builds — the preview's inputs", () => {
     assert.deepEqual(p.provider, { slack: "Work Slack" });
     assert.deepEqual(p.settings, { rows: 5 });
   });
+  it("a widget placed in a new cell never borrows another dashboard's settings", async () => {
+    const asked = [];
+    const b = createPlanBuild(
+      yoursWidget,
+      deps({
+        previewConfig: async () => ({
+          configCode: CONFIG,
+          componentName: "SlackUnreads",
+        }),
+        copyInputs: async (req) => {
+          asked.push(req);
+          return {
+            providers: { slack: "Work Slack" },
+            settings: { rows: 3 },
+          };
+        },
+      }),
+      { cell: true },
+    );
+    const state = await b.run();
+    assert.deepEqual(asked, []);
+    assert.equal(state.made[0].preview.settings, null);
+  });
+  it("the plan's own settings win over a copy's", async () => {
+    const plan = {
+      ...yoursWidget,
+      pieces: [{ ...yoursWidget.pieces[0], settings: { rows: 9 } }],
+    };
+    let asked = 0;
+    const b = createPlanBuild(
+      plan,
+      deps({
+        previewConfig: async () => ({ configCode: CONFIG }),
+        copyInputs: async () => {
+          asked += 1;
+          return { settings: { rows: 3 } };
+        },
+      }),
+      { cell: true },
+    );
+    const state = await b.run();
+    assert.equal(asked, 0);
+    assert.deepEqual(state.made[0].preview.settings, { rows: 9 });
+  });
   it("a config it can't parse leaves no inputs, and the preview still waits", async () => {
     const b = createPlanBuild(
       newWidget,

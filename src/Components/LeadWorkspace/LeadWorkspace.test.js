@@ -3014,6 +3014,7 @@ describe("Change with AI (release 6c, frame 40)", () => {
         displayName: "Weather",
         settings: { units: "f", days: 5 },
         providers: null,
+        workspaceId: "7",
       },
       recentId: "q_new",
     });
