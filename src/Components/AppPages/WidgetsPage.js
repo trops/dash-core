@@ -14,6 +14,8 @@ import {
   StatusBadge,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { WidgetCodeModal } from "../Dashboard/WidgetCodeModal";
+import { builtText, useWidgetSources } from "../Dashboard/useWidgetSources";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
 import { WidgetPreview } from "./WidgetPreview";
@@ -197,6 +199,9 @@ const PackageDetail = ({
   const { muted, strong, hairline } = useConfigTokens();
   const first = pkg.widgets[0] || {};
   const installed = !pkg.isBuiltIn && !pkg.isDraft;
+  // View code: the code it runs now (read when asked).
+  const [codeOpen, setCodeOpen] = useState(false);
+  const sources = useWidgetSources(codeOpen ? pkg.id : null, null);
   // The user's own package (their scope, or local AI-built): they can
   // publish it — always under their own username — and edit it.
   const own = pkg.mine && !pkg.isBuiltIn;
@@ -225,6 +230,7 @@ const PackageDetail = ({
             <span className={`text-xs ${muted}`}>
               {pkg.source}
               {pkg.version ? ` · v${pkg.version}` : ""}
+              {builtText(pkg.builtAt) ? ` · ${builtText(pkg.builtAt)}` : ""}
             </span>
           </div>
         </div>
@@ -265,6 +271,13 @@ const PackageDetail = ({
               onClick={() => changeWidget(first, pkg)}
             />
           ) : null}
+          {installed ? (
+            <Button3
+              title="View code"
+              size="sm"
+              onClick={() => setCodeOpen(true)}
+            />
+          ) : null}
           {/* Less-used and destructive actions: the … menu (Uninstall
               and Delete confirm first). */}
           <OverflowMenu
@@ -300,6 +313,12 @@ const PackageDetail = ({
         <span className="text-xs text-red-400">{updateError}</span>
       ) : null}
       <PackageChecks pkg={pkg} installed={installed} />
+      <WidgetCodeModal
+        isOpen={codeOpen}
+        onClose={() => setCodeOpen(false)}
+        name={packageLabel(pkg)}
+        sources={sources}
+      />
       {pkg.description ? <p className="text-sm">{pkg.description}</p> : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -899,7 +918,7 @@ export const WidgetsPage = ({
         }
         meta={`${plural(pkg.widgets.length, "widget")}${
           pkg.version ? ` · v${pkg.version}` : ""
-        }`}
+        }${builtText(pkg.builtAt) ? ` · ${builtText(pkg.builtAt)}` : ""}`}
         onClick={() => openPackage(pkg)}
       />
     );

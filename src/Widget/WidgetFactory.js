@@ -31,10 +31,13 @@ import {
   widgetKey as guardKey,
 } from "./widgetGuard";
 import { WidgetGuardGate } from "./WidgetGuardViews";
+import { installPictureWatch } from "./pictureProblems";
 
 // One widget can never freeze Dash: count every widget's failures, from the
-// start (widgetGuard.js).
+// start (widgetGuard.js). A picture one couldn't show is kept with why, for
+// its side panel (pictureProblems.js).
 installWidgetGuard();
+installPictureWatch();
 
 /**
  * WidgetErrorBoundary - Catches errors from widget rendering

@@ -36,12 +36,18 @@ function InputText({
   ariaLabel,
   onKeyDown,
   type,
+  // Like dash-react: the rest (aria-*, onBlur, name, inputMode) reaches the
+  // <input>; style-only props don't.
+  inputClassName: _inputClassName,
+  className: _className,
+  ...rest
 }) {
   return React.createElement(
     "label",
     null,
     label,
     React.createElement("input", {
+      ...rest,
       id,
       type,
       "aria-label": ariaLabel || undefined,
@@ -50,6 +56,38 @@ function InputText({
       onKeyDown,
       placeholder: placeholder,
     }),
+  );
+}
+
+// dash-react FormField: label, description and error tied to its one field
+// (id, aria-describedby, aria-invalid, aria-required).
+function FormField({ label, description, required, error, children }) {
+  const only = React.Children.count(children) === 1 ? children : null;
+  const fieldId = (only && only.props.id) || "field-" + String(label || "x");
+  const descId = description ? fieldId + "-desc" : null;
+  const errId = error ? fieldId + "-error" : null;
+  const field = only
+    ? React.cloneElement(only, {
+        id: fieldId,
+        "aria-describedby":
+          [descId, errId].filter(Boolean).join(" ") || undefined,
+        ...(error ? { "aria-invalid": true } : {}),
+        ...(required ? { "aria-required": true } : {}),
+      })
+    : children;
+  return React.createElement(
+    "div",
+    null,
+    label
+      ? React.createElement(
+          "label",
+          { htmlFor: only ? fieldId : undefined },
+          label,
+        )
+      : null,
+    description ? React.createElement("p", { id: descId }, description) : null,
+    field,
+    error ? React.createElement("p", { id: errId }, error) : null,
   );
 }
 
@@ -1170,6 +1208,7 @@ module.exports = {
   Modal,
   Stepper,
   InputText,
+  FormField,
   SelectMenu,
   TextArea,
   SegmentedControl,

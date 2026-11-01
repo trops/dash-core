@@ -201,6 +201,8 @@ export const useInstalledWidgets = () => {
             description: config.description || null,
             icon: config.icon || null,
             version: reg.version || null,
+            // When Dash built it (dash.json builtAt) — widget versions, frame 5.
+            builtAt: reg.builtAt || null,
             path: reg.path || null,
             source: "installed",
             kind: classification.kind,
@@ -239,6 +241,7 @@ export const useInstalledWidgets = () => {
             description: w.description || null,
             icon: w.icon || null,
             version: w.version || null,
+            builtAt: w.builtAt || null,
             path: w.path || null,
             source: "installed",
             kind: classification.kind,

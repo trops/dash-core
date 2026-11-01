@@ -95,6 +95,7 @@ describe("WidgetCardHeader — the ⋮ menu", () => {
     ).toEqual([
       "Edit in panel !",
       "Change Composed Widget 3",
+      "View code",
       "Move to another cell",
       "Split side by side",
       "Split top and bottom",
@@ -103,6 +104,17 @@ describe("WidgetCardHeader — the ⋮ menu", () => {
     for (const old of ["Configure", "Providers", "Listeners"]) {
       expect(screen.queryByRole("menuitem", { name: old })).toBeNull();
     }
+  });
+
+  test("View code asks the dashboard to show the code it runs now", () => {
+    const heard = [];
+    const listen = (e) => heard.push(e.detail);
+    window.addEventListener("dash:view-widget-code", listen);
+    open({});
+    fireEvent.click(screen.getByRole("menuitem", { name: /View code/ }));
+    window.removeEventListener("dash:view-widget-code", listen);
+    expect(heard).toHaveLength(1);
+    expect(heard[0].component).toMatch(/ComposedWidget3$/);
   });
 
   test("each item calls its handler", () => {

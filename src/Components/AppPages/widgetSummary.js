@@ -139,6 +139,9 @@ export function widgetOrgs(
         id,
         org,
         version: w.version || null,
+        // When Dash built it (dash.json builtAt; AI-built widgets) — so an
+        // update shows it's the new code (widget versions, frame 5).
+        builtAt: w.builtAt || null,
         source: sourceOf(w, org),
         isBuiltIn: w.source === "builtin",
         isDraft: w.kind === "draft",
@@ -172,6 +175,7 @@ export function widgetOrgs(
     }
     pkg.widgets.push(w);
     if (!pkg.version && w.version) pkg.version = w.version;
+    if (!pkg.builtAt && w.builtAt) pkg.builtAt = w.builtAt;
     if (!pkg.description && w.description) pkg.description = w.description;
     if (!pkg.build && w.build) pkg.build = w.build;
     if (!pkg.checks && w.checks) pkg.checks = w.checks;

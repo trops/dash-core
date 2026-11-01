@@ -64,7 +64,11 @@ export const WidgetGuardGate = ({
   const key = widgetKey(component);
   const stopped = stoppedInfo(key);
   const box = (body) => (
-    <div className="flex flex-col h-full w-full min-h-0" data-widget-key={key}>
+    <div
+      className="flex flex-col h-full w-full min-h-0"
+      data-widget-key={key}
+      data-widget-uuid={uuid || undefined}
+    >
       {body}
     </div>
   );
@@ -85,9 +89,14 @@ export const WidgetGuardGate = ({
     );
   }
   // Running: a box that takes no space of its own (display: contents) —
-  // only there so a file it fails to load is counted as its.
+  // only there so a file it fails to load is counted as its (and a picture
+  // it couldn't show is this copy's, for its side panel).
   return (
-    <div style={{ display: "contents" }} data-widget-key={key}>
+    <div
+      style={{ display: "contents" }}
+      data-widget-key={key}
+      data-widget-uuid={uuid || undefined}
+    >
       {children}
     </div>
   );
