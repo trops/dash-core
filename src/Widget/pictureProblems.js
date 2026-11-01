@@ -38,7 +38,10 @@ export function subscribePictures(fn) {
   return () => listeners.delete(fn);
 }
 
-const WEB = /^(https?:\/\/|data:|blob:)/i;
+// Written like a web address, but isn't one: "http//host", "http:/host",
+// or a server path with no server in front ("/api/…" → file:///api/…).
+const BROKEN_WEB = /^(https?(?!:\/\/)[:/]|\/(?!\/))/i;
+const MAX_COPIES = 200;
 
 /**
  * Why a picture failed, from its src as written (`raw`) and as the page
@@ -46,7 +49,7 @@ const WEB = /^(https?:\/\/|data:|blob:)/i;
  */
 export function pictureReason(raw, resolved = "", wasBlocked = false) {
   const src = String(raw || "").trim();
-  if (src && !WEB.test(src)) return "not-address";
+  if (src && BROKEN_WEB.test(src)) return "not-address";
   if (wasBlocked || blocked.has(resolved) || blocked.has(src)) return "blocked";
   return "failed";
 }
@@ -93,7 +96,12 @@ export function notePictureFailed(copy, raw, resolved = "", now = Date.now()) {
   if (had && had.reason === reason) return;
   if (!had && list.size >= MAX_PER_COPY) return;
   list.set(address, { address, raw: String(raw || ""), reason, at: now });
+  problems.delete(copy);
   problems.set(copy, list);
+  // Never grows without end: the copies heard from longest ago go first.
+  while (problems.size > MAX_COPIES) {
+    problems.delete(problems.keys().next().value);
+  }
   notify();
 }
 

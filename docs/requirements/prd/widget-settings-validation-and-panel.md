@@ -68,6 +68,8 @@ was narrow; there was no way to see the code a widget runs, or whether an update
 - A number field keeps what was typed (never drops a key) and says what's wrong.
 - An unknown type is shown as a text box with a note, instead of nothing.
 
+**Only what you changed holds Save back:** a setting that was already wrong when the widget was selected shows its error (and its fix), but never blocks other edits from saving. Any `scheme://` address (`ws://`, `rtsp://`, `mqtt://`) counts as a web address. Cancel puts back only the widget's settings, connections and listeners. After a save, what's saved is the new starting point. A number that isn't one (or is out of range) when you switch widgets goes back to its last good value. Yes/no types (`boolean`, `checkbox`, `toggle`, `switch`) are a switch. An unknown type holding a list or object is shown, not turned into text.
+
 **When an error shows:** a value that already fails when the panel opens shows its error at once. A fresh field shows its
 error after it's left (blur), never on the first keystroke. A Save that's held back shows every failing field and focuses
 the first one.

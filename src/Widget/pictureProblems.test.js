@@ -102,3 +102,18 @@ describe("watching the window", () => {
     outside.remove();
   });
 });
+
+describe("review fixes", () => {
+  test("a relative file or another protocol isn't called 'not a web address'", () => {
+    expect(pictureReason("images/logo.png")).toBe("failed");
+    expect(pictureReason("file:///x/a.png")).toBe("failed");
+    expect(pictureReason("//cdn.example.com/a.png")).toBe("failed");
+    expect(pictureReason("http:/10.0.0.107/a.png")).toBe("not-address");
+  });
+  test("never grows without end", () => {
+    for (let i = 0; i < 250; i += 1)
+      notePictureFailed(`c-${i}`, "/a.png", "file:///a.png");
+    expect(pictureProblemsFor("c-0")).toEqual([]);
+    expect(pictureProblemsFor("c-249")).toHaveLength(1);
+  });
+});

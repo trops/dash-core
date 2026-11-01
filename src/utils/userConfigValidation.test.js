@@ -95,3 +95,12 @@ describe("any setting", () => {
     expect(unsavedText(3)).toBe("3 unsaved changes");
   });
 });
+
+describe("review fixes", () => {
+  test("any scheme:// address is one (ws, rtsp, mqtt…)", () => {
+    expect(
+      checkUrl("ws://homeassistant.local:8123/api/websocket").error,
+    ).toBeNull();
+    expect(checkUrl("rtsp://10.0.0.5/stream").error).toBeNull();
+  });
+});

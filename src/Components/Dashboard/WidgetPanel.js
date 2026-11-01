@@ -28,6 +28,7 @@ import {
   unsavedText,
 } from "../../utils/userConfigValidation";
 import {
+  clearPictureProblems,
   pictureProblemsFor,
   pictureReasonText,
   subscribePictures,
@@ -130,6 +131,8 @@ export const WidgetPanel = ({
   onSave = null,
   checkRef = null,
   sources = null,
+  // Bumped when the dashboard saves: what's on screen is the new baseline.
+  savedAt = 0,
 }) => {
   const { currentTheme } = useContext(ThemeContext) || {};
   const { muted, hairline } = useConfigTokens();
@@ -148,6 +151,9 @@ export const WidgetPanel = ({
   // A new key starts Settings over (Cancel).
   const [settingsKey, setSettingsKey] = useState(0);
   const [, setPicturesSeen] = useState(0);
+  const currentPrefsRef = useRef({});
+  // A new baseline (after a save) draws the bar again.
+  const [, setBaseline] = useState(0);
   const refs = {
     settings: useRef(null),
     connections: useRef(null),
@@ -179,6 +185,22 @@ export const WidgetPanel = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus && focus.section, focus && focus.request]);
 
+  // Saved: what's on screen now is what Cancel goes back to, and an old
+  // picture problem goes (the saved settings draw it again if it's still
+  // wrong).
+  useEffect(() => {
+    if (!savedAt) return;
+    openedRef.current = local.item
+      ? { ...local.item, userPrefs: currentPrefsRef.current }
+      : local.item;
+    setDraftPrefs(null);
+    setRevealAll(false);
+    setBaseline((n) => n + 1);
+    const id = local.item && (local.item.uuid || local.item.uuidString);
+    if (id) clearPictureProblems(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedAt]);
+
   // A picture this copy couldn't show (or that loaded after all).
   useEffect(() => subscribePictures(() => setPicturesSeen((n) => n + 1)), []);
 
@@ -204,6 +226,7 @@ export const WidgetPanel = ({
 
   // What's set now (typed or applied), what fails, what changed.
   const currentPrefs = draftPrefs || (local.item && local.item.userPrefs) || {};
+  currentPrefsRef.current = currentPrefs;
   const current = local.item
     ? { ...local.item, userPrefs: currentPrefs }
     : null;
@@ -214,15 +237,24 @@ export const WidgetPanel = ({
   );
   const failingKeys = Object.keys(failing);
   const changes = changeCount(openedRef.current, current);
+  // Save waits only for a setting changed since it was selected that fails
+  // — one that was already wrong says so, but never blocks other edits.
+  const openedPrefs = (openedRef.current && openedRef.current.userPrefs) || {};
+  const blockingKeys = failingKeys.filter(
+    (k) => !deepEqual(openedPrefs[k], currentPrefs[k]),
+  );
 
   // Take the user to the first setting that fails (in the larger view when
   // it's open — its fields are the ones on screen).
   const goToSetting = (key) => {
     setTimeout(() => {
+      const doc = typeof document !== "undefined" ? document : null;
+      // The field, or its row (a select that doesn't carry the id).
+      const row = doc ? doc.querySelector(`[data-setting="${key}"]`) : null;
       const el =
-        typeof document !== "undefined"
-          ? document.getElementById(settingFieldId(key))
-          : null;
+        (doc && doc.getElementById(settingFieldId(key))) ||
+        (row && row.querySelector("input, select, textarea, button")) ||
+        row;
       if (el) {
         if (typeof el.scrollIntoView === "function")
           el.scrollIntoView({ block: "center" });
@@ -231,10 +263,10 @@ export const WidgetPanel = ({
     }, 0);
   };
   const check = () => {
-    if (!failingKeys.length) return 0;
+    if (!blockingKeys.length) return 0;
     setRevealAll(true);
-    goToSetting(failingKeys[0]);
-    return failingKeys.length;
+    goToSetting(blockingKeys[0]);
+    return blockingKeys.length;
   };
   useEffect(() => {
     if (!checkRef) return undefined;
@@ -249,18 +281,25 @@ export const WidgetPanel = ({
     if (typeof flushRef.current === "function") flushRef.current();
     if (onSave) onSave();
   };
-  // Cancel: this widget as it was when it was selected (its settings,
-  // connections, listeners). Anything typed is applied first, so nothing
-  // lands on top of the undo.
+  // Cancel: this widget's settings, connections and listeners as they were
+  // when it was selected — nothing else about it (where it sits stays).
+  // Anything typed is applied first, so nothing lands on top of the undo.
   const cancel = () => {
     const flushed =
       typeof flushRef.current === "function" ? flushRef.current() : null;
     const ws = (flushed && flushed.workspace) || local.workspace;
     const opened = openedRef.current;
-    if (ws && opened) {
+    const now = (flushed && flushed.item) || local.item;
+    if (ws && opened && now) {
+      const back = {
+        ...now,
+        userPrefs: opened.userPrefs,
+        selectedProviders: opened.selectedProviders,
+        listeners: opened.listeners,
+      };
       const next = WorkspaceModel(ws);
-      next.layout = replaceItemInLayout(next.layout, opened.id, opened);
-      onUpdate(opened, next);
+      next.layout = replaceItemInLayout(next.layout, now.id, back);
+      onUpdate(back, next);
     }
     setDraftPrefs(null);
     setRevealAll(false);
@@ -377,7 +416,7 @@ export const WidgetPanel = ({
   );
 
   const saveBar =
-    changes > 0 || failingKeys.length > 0 ? (
+    changes > 0 || blockingKeys.length > 0 ? (
       <div
         role="group"
         aria-label="Unsaved changes"
@@ -387,11 +426,11 @@ export const WidgetPanel = ({
         <span
           role="status"
           className={`flex-1 text-xs ${
-            failingKeys.length ? status.error.icon : muted
+            blockingKeys.length ? status.error.icon : muted
           }`}
         >
-          {failingKeys.length
-            ? fixFirstText(failingKeys.length)
+          {blockingKeys.length
+            ? fixFirstText(blockingKeys.length)
             : unsavedText(changes)}
         </span>
         <Button2 title="Cancel" size="sm" onClick={cancel} />
@@ -399,7 +438,7 @@ export const WidgetPanel = ({
           title="Save"
           size="sm"
           onClick={save}
-          disabled={failingKeys.length > 0}
+          disabled={blockingKeys.length > 0}
         />
       </div>
     ) : null;

@@ -296,6 +296,9 @@ const DashboardStageInner = ({
   const panelFlushRef = useRef(null);
   // The widget panel's settings check: Save waits while one fails.
   const panelCheckRef = useRef(null);
+  // Bumped on every save, so the widget panel takes what's saved as its
+  // new starting point (its Save bar and Cancel).
+  const [panelSavedAt, setPanelSavedAt] = useState(0);
   // Bot approvals waiting anywhere — the sidebar's Bots dot (NAV-001 AC3).
   const pendingApprovals = usePendingApprovalCount();
   // Providers that still need a credential — the Providers item's dot.
@@ -2680,6 +2683,7 @@ const DashboardStageInner = ({
 
   function handleSaveWorkspaceComplete(e, message) {
     console.log("handle save complete ", e, message);
+    setPanelSavedAt((n) => n + 1);
 
     // Reconstruct workspaces through LayoutModel (same as load path).
     // Filter nulls so a partially-failed normalize doesn't poison the
@@ -3260,6 +3264,7 @@ const DashboardStageInner = ({
                         checkRef={panelCheckRef}
                         onSave={handleClickSaveWorkspace}
                         sources={selectedWidgetSources}
+                        savedAt={panelSavedAt}
                       />
                     ) : null
                   }

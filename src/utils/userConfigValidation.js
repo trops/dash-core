@@ -42,7 +42,8 @@ const looksLikeHost = (s) =>
 export function checkUrl(value) {
   const v = String(value || "").trim();
   if (!v) return { error: null, suggestion: null };
-  if (/^https?:\/\//i.test(v)) {
+  // Any scheme:// address counts (http, https, ws, wss, rtsp, mqtt…).
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) {
     try {
       const u = new URL(v);
       if (u.hostname) return { error: null, suggestion: null };

@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { SelectMenu, InputText, FormField, Button3 } from "@trops/dash-react";
+import {
+  SelectMenu,
+  InputText,
+  FormField,
+  Button3,
+  Switch,
+} from "@trops/dash-react";
 import { replaceItemInLayout } from "../../../../../utils/layout";
 import { WorkspaceModel } from "../../../../../Models";
 import deepEqual from "deep-equal";
@@ -70,9 +76,11 @@ export const PanelEditItem = ({
   // render, but the caller already has the new value in hand.
   //
   // Returns null when there's nothing to flush.
-  function flushPending() {
+  function flushPending(leaving = false) {
     if (!dirtyRef.current) return null;
-    const latestItem = itemSelectedRef.current;
+    const latestItem = leaving
+      ? withoutBadNumbers(itemSelectedRef.current)
+      : itemSelectedRef.current;
     const latestWorkspace = workspaceSelectedRef.current;
     if (!latestItem || !latestWorkspace) return null;
     const workspaceTemp = WorkspaceModel(latestWorkspace);
@@ -107,7 +115,9 @@ export const PanelEditItem = ({
   // calling onUpdate from cleanup is safe.
   useEffect(() => {
     return () => {
-      if (dirtyRef.current) flushPending();
+      // Leaving with a number that isn't one (or out of its range) keeps the
+      // last good value — never a string where the widget expects a number.
+      if (dirtyRef.current) flushPending(true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -155,6 +165,29 @@ export const PanelEditItem = ({
       }
     }
     return null;
+  }
+
+  // A number setting that isn't a number in range goes back to what it was.
+  function withoutBadNumbers(it) {
+    const cfg = it && ComponentManager.getComponent(it.component);
+    const userConfig = (cfg && cfg.userConfig) || {};
+    const prefs = (it && it.userPrefs) || {};
+    const was = (item && item.userPrefs) || {};
+    let changed = false;
+    const next = { ...prefs };
+    for (const key of Object.keys(prefs)) {
+      const c = userConfig[key];
+      if (!c || c.type !== "number") continue;
+      if (
+        validateSetting(c, prefs[key], key).error ||
+        typeof prefs[key] !== "number"
+      ) {
+        if (key in was) next[key] = was[key];
+        else delete next[key];
+        changed = true;
+      }
+    }
+    return changed ? { ...it, userPrefs: next } : it;
   }
 
   // The settings that already failed when the panel opened say so at once.
@@ -223,7 +256,26 @@ export const PanelEditItem = ({
       />
     );
     let field = null;
-    if (type === "select") {
+    const boolType = ["boolean", "checkbox", "toggle", "switch"].includes(type);
+    const structured = value !== null && typeof value === "object";
+    if (boolType) {
+      field = (
+        <Switch
+          id={fieldId}
+          checked={value === true || value === "true"}
+          onChange={(on) => onChange(key, !!on)}
+          ariaLabel={displayName || key}
+        />
+      );
+    } else if (!known && structured) {
+      // A list or an object: shown, not flattened to text (Advanced: raw
+      // settings changes it).
+      field = (
+        <span id={fieldId} className={`text-xs font-mono break-all ${muted}`}>
+          {JSON.stringify(value)}
+        </span>
+      );
+    } else if (type === "select") {
       field = (
         <SelectMenu
           id={fieldId}
@@ -296,10 +348,11 @@ export const PanelEditItem = ({
             />
           </div>
         ) : null}
-        {!known ? (
+        {!known && !boolType ? (
           <span className={`text-xs ${muted}`}>
-            Shown as text: this widget asked for a “{type}” setting, which Dash
-            doesn't know.
+            {structured
+              ? `Change it in Advanced: raw settings — this widget asked for a “${type}” setting, which Dash doesn't know.`
+              : `Shown as text: this widget asked for a “${type}” setting, which Dash doesn't know.`}
           </span>
         ) : null}
       </div>

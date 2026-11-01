@@ -139,3 +139,59 @@ test("a type Dash doesn't know is still shown, as text", () => {
   expect(field("Colour")).toHaveValue("red");
   expect(screen.getByText(/asked for a “colour” setting/)).toBeInTheDocument();
 });
+
+describe("review fixes", () => {
+  test("a yes/no setting is a switch, and stays a boolean", () => {
+    mockUserConfig = { shuffle: { type: "boolean", displayName: "Shuffle" } };
+    const onDraft = jest.fn();
+    render(
+      <PanelEditItem
+        item={itemWith({ shuffle: true })}
+        workspace={workspace}
+        onUpdate={() => {}}
+        onDraft={onDraft}
+      />,
+    );
+    const sw = screen.getByRole("switch");
+    expect(sw).toBeChecked();
+    fireEvent.click(sw);
+    expect(onDraft).toHaveBeenLastCalledWith({ shuffle: false });
+    expect(screen.queryByText(/Dash doesn't know/)).toBeNull();
+  });
+
+  test("an unknown setting holding a list isn't flattened to text", () => {
+    mockUserConfig = { rooms: { type: "rooms", displayName: "Rooms" } };
+    render(
+      <PanelEditItem
+        item={itemWith({ rooms: ["Kitchen", "Den"] })}
+        workspace={workspace}
+        onUpdate={() => {}}
+      />,
+    );
+    expect(screen.getByText('["Kitchen","Den"]')).toBeInTheDocument();
+    expect(screen.getByText(/Advanced: raw settings/)).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  test("leaving with a number that isn't one keeps the last good value", () => {
+    mockUserConfig = {
+      rows: { type: "number", displayName: "Rows", min: 1, max: 10 },
+    };
+    const onUpdate = jest.fn();
+    const { unmount } = render(
+      <PanelEditItem
+        item={itemWith({ rows: 3 })}
+        workspace={{ id: 1, layout: [itemWith({ rows: 3 })] }}
+        onUpdate={onUpdate}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Rows"), {
+      target: { value: "9999" },
+    });
+    unmount();
+    expect(onUpdate).toHaveBeenCalled();
+    expect(
+      onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0].userPrefs,
+    ).toEqual({ rows: 3 });
+  });
+});

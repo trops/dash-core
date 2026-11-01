@@ -96,7 +96,14 @@ export function useWidgetSources(pkg, component) {
       });
       return undefined;
     }
-    setState((s) => ({ ...s, loading: true }));
+    // Never the last widget's version while this one's loads.
+    setState({
+      loading: true,
+      error: null,
+      files: [],
+      version: null,
+      builtAt: null,
+    });
     Promise.resolve(api.readSources(pkg, component))
       .then((res) => {
         if (!alive) return;

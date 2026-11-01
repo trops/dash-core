@@ -307,3 +307,73 @@ describe("View code and Open larger (frames 4-5)", () => {
     expect(screen.getByText("settings form")).toBeInTheDocument();
   });
 });
+
+describe("review fixes", () => {
+  test("a setting that was already wrong shows, but never holds Save back", () => {
+    mockConfig = { userConfig: { title: { type: "url" } } };
+    const checkRef = { current: null };
+    const bad = { ...item, userPrefs: { title: "http//10.0.0.107" } };
+    render(
+      <WidgetPanel
+        item={bad}
+        workspace={{ id: 7, layout: [bad] }}
+        name="Counter"
+        checkRef={checkRef}
+      />,
+    );
+    expect(screen.queryByTestId("widget-save-bar")).toBeNull();
+    let n;
+    act(() => {
+      n = checkRef.current();
+    });
+    expect(n).toBe(0);
+  });
+
+  test("after the dashboard saves, the Save bar goes and Cancel keeps what was saved", () => {
+    mockConfig = { userConfig: { title: { type: "text" } } };
+    const onCommit = jest.fn();
+    const { rerender } = render(
+      <WidgetPanel
+        item={item}
+        workspace={workspace}
+        name="Counter"
+        onCommit={onCommit}
+      />,
+    );
+    fireEvent.click(screen.getByText("settings form"));
+    expect(screen.getByText("1 unsaved change")).toBeInTheDocument();
+    rerender(
+      <WidgetPanel
+        item={item}
+        workspace={workspace}
+        name="Counter"
+        onCommit={onCommit}
+        savedAt={1}
+      />,
+    );
+    expect(screen.queryByTestId("widget-save-bar")).toBeNull();
+  });
+
+  test("Cancel puts back its settings only — where it sits stays", () => {
+    mockConfig = { userConfig: { title: { type: "text" } } };
+    const onCommit = jest.fn();
+    render(
+      <WidgetPanel
+        item={item}
+        workspace={workspace}
+        name="Counter"
+        onCommit={onCommit}
+      />,
+    );
+    fireEvent.click(screen.getByText("settings form"));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    const last = onCommit.mock.calls[onCommit.mock.calls.length - 1][0];
+    expect(last.layout[0]).toEqual(
+      expect.objectContaining({
+        id: 3,
+        uuid: "7-c-3",
+        userPrefs: { title: "My Counter" },
+      }),
+    );
+  });
+});
