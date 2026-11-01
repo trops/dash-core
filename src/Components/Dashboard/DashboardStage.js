@@ -53,11 +53,17 @@ import { PinnedSidebar } from "./PinnedSidebar";
 import { DashSidebar } from "../Navigation/DashSidebar";
 import { EditPanel } from "./EditPanel";
 import { WidgetPanel } from "./WidgetPanel";
+import { WidgetCodeModal } from "./WidgetCodeModal";
 import {
   PendingSettingsContext,
   createPendingSettings,
 } from "./pendingSettings";
 import { ownerLabel, changeBlockedText } from "./widgetPanelText";
+import {
+  useWidgetSources,
+  versionLine,
+  widgetPackageOf,
+} from "./useWidgetSources";
 import { BotConfigPanel } from "./BotConfigPanel";
 import { keepLatest } from "../Settings/details/botFormMerge";
 import { EditBotsRow } from "./EditBotsRow";
@@ -288,6 +294,11 @@ const DashboardStageInner = ({
   const [widgetLink, setWidgetLink] = useState(null);
   // The widget panel's "apply what's typed" — Save calls it first.
   const panelFlushRef = useRef(null);
+  // The widget panel's settings check: Save waits while one fails.
+  const panelCheckRef = useRef(null);
+  // Bumped on every save, so the widget panel takes what's saved as its
+  // new starting point (its Save bar and Cancel).
+  const [panelSavedAt, setPanelSavedAt] = useState(0);
   // Bot approvals waiting anywhere — the sidebar's Bots dot (NAV-001 AC3).
   const pendingApprovals = usePendingApprovalCount();
   // Providers that still need a credential — the Providers item's dot.
@@ -468,6 +479,37 @@ const DashboardStageInner = ({
       username: authProfile?.username || "",
     });
   }, [editSelection, editConfigTarget, authProfile]);
+  // The selected widget's code, version and when it was built (View code,
+  // and its header line).
+  const selectedWidgetSources = useWidgetSources(
+    editSelection?.kind === "widget"
+      ? widgetPackageOf(editSelection.component, editConfigTarget?.item || null)
+      : null,
+    editSelection?.kind === "widget" ? editSelection.component : null,
+  );
+  // A widget's ⋮ View code (WidgetCardHeader): its code, version and when
+  // it was built.
+  const [codeView, setCodeView] = useState(null);
+  useEffect(() => {
+    const open = (e) => {
+      const d = (e && e.detail) || {};
+      if (!d.component) return;
+      setCodeView({
+        component: d.component,
+        name: d.name || d.component,
+        pkg: widgetPackageOf(
+          d.component,
+          d.packageId ? { packageId: d.packageId } : null,
+        ),
+      });
+    };
+    window.addEventListener("dash:view-widget-code", open);
+    return () => window.removeEventListener("dash:view-widget-code", open);
+  }, []);
+  const codeViewSources = useWidgetSources(
+    codeView ? codeView.pkg : null,
+    codeView ? codeView.component : null,
+  );
   // Which section the panel shows; a selection can ask for one (the card's
   // menu → Edit in panel, a footer badge → Listens for, …).
   const [editConfigSection, setEditConfigSection] = useState("edit");
@@ -2533,6 +2575,13 @@ const DashboardStageInner = ({
     // apply it now. It reaches the page refs synchronously, which is
     // what saveDashboardWorkspace reads.
     if (typeof panelFlushRef.current === "function") panelFlushRef.current();
+    // A widget setting that fails its check (a URL that isn't one): the panel
+    // shows why and goes to it; nothing is saved until it's fixed.
+    if (
+      typeof panelCheckRef.current === "function" &&
+      panelCheckRef.current() > 0
+    )
+      return undefined;
     const staged = Object.entries(pendingBotEdits);
     if (staged.length === 0) return saveDashboardWorkspace();
     const api = window.mainApi.bots;
@@ -2634,6 +2683,7 @@ const DashboardStageInner = ({
 
   function handleSaveWorkspaceComplete(e, message) {
     console.log("handle save complete ", e, message);
+    setPanelSavedAt((n) => n + 1);
 
     // Reconstruct workspaces through LayoutModel (same as load path).
     // Filter nulls so a partially-failed normalize doesn't poison the
@@ -3190,6 +3240,7 @@ const DashboardStageInner = ({
                     );
                   }}
                   widgetOwner={selectedWidgetOwner}
+                  widgetMeta={versionLine(selectedWidgetSources)}
                   widgetNotYours={selectedWidgetOwner.startsWith(
                     "From the registry",
                   )}
@@ -3210,6 +3261,10 @@ const DashboardStageInner = ({
                           dispatchEditAction("update", null, { workspace: ws })
                         }
                         flushRef={panelFlushRef}
+                        checkRef={panelCheckRef}
+                        onSave={handleClickSaveWorkspace}
+                        sources={selectedWidgetSources}
+                        savedAt={panelSavedAt}
                       />
                     ) : null
                   }
@@ -3587,6 +3642,12 @@ const DashboardStageInner = ({
           }
         }}
         onCancel={() => setPendingNavigation(null)}
+      />
+      <WidgetCodeModal
+        isOpen={!!codeView}
+        onClose={() => setCodeView(null)}
+        name={codeView ? codeView.name : ""}
+        sources={codeViewSources}
       />
     </LayoutContainer>
   );

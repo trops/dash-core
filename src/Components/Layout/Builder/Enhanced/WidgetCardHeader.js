@@ -228,6 +228,25 @@ export const WidgetCardHeader = ({
       onSelect: () => onEditWithAI(widgetItem),
     });
   }
+  // View code: the code it runs now, with its version and when it was built
+  // (widget versions, frame 3) — the dashboard opens it.
+  if (widgetItem && !builtIn && typeof window !== "undefined") {
+    menuItems.push({
+      label: "View code",
+      description: "The code it runs now, and its version",
+      onSelect: () =>
+        window.dispatchEvent(
+          new CustomEvent("dash:view-widget-code", {
+            detail: {
+              component: widgetItem.component,
+              packageId:
+                widgetItem.packageId || widgetItem._sourcePackage || null,
+              name: widgetName || "",
+            },
+          }),
+        ),
+    });
+  }
   const layoutActions = [
     ...(onMove
       ? [{ label: "Move to another cell", onSelect: () => onMove(widgetItem) }]

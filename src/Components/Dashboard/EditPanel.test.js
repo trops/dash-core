@@ -156,10 +156,26 @@ describe("EditPanel — selection tabs (phase 1c)", () => {
       screen.getByRole("button", { name: "Change Important Emails" }),
     );
     expect(onWidgetAction.mock.calls).toEqual([["edit-with-ai"]]);
+    // The panel's own Save bar says what waits for Save (widget side
+    // panel, frame 1) — no standing footnote.
     expect(
-      screen.getByText(
+      screen.queryByText(
         "Settings wait for Save. To change what it does, use Change on it.",
       ),
+    ).toBeNull();
+  });
+
+  test("the widget's version and when it was built follow whose it is", () => {
+    render(
+      <EditPanel
+        workspace={{ id: 1, name: "Home" }}
+        selection={{ kind: "widget", uuid: "u1", label: "Music Player" }}
+        widgetOwner="Built by AI · yours"
+        widgetMeta="v1.0.4 · built today at 5:37 PM"
+      />,
+    );
+    expect(
+      screen.getByText("Built by AI · yours · v1.0.4 · built today at 5:37 PM"),
     ).toBeInTheDocument();
   });
 

@@ -474,3 +474,22 @@ describe("widgetOrgs — @local packages", () => {
     expect(orgs[0].packages[0].mine).toBe(true);
   });
 });
+
+describe("when Dash built a package (widget versions, frame 5)", () => {
+  test("its dash.json builtAt is on the package", () => {
+    const orgs = widgetOrgs(
+      [
+        W({
+          name: "ai-built.player.Player",
+          packageId: "@ai-built/player",
+          version: "1.0.7",
+          builtAt: "2026-10-31T21:14:00.000Z",
+        }),
+      ],
+      { workspaces: [], updates: new Map() },
+    );
+    const pkg = orgs.flatMap((o) => o.packages)[0];
+    expect(pkg.version).toBe("1.0.7");
+    expect(pkg.builtAt).toBe("2026-10-31T21:14:00.000Z");
+  });
+});

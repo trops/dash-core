@@ -1,16 +1,38 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { SelectMenu, InputText, FormLabel } from "@trops/dash-react";
+import {
+  SelectMenu,
+  InputText,
+  FormField,
+  Button3,
+  Switch,
+} from "@trops/dash-react";
 import { replaceItemInLayout } from "../../../../../utils/layout";
 import { WorkspaceModel } from "../../../../../Models";
 import deepEqual from "deep-equal";
 import { ComponentManager } from "../../../../../ComponentManager";
+import {
+  KNOWN_TYPES,
+  validateSetting,
+  validateSettings,
+} from "../../../../../utils/userConfigValidation";
+import { useConfigTokens } from "../../../../Dashboard/ConfigListRow";
+
+/** The id of a setting's field, so a Save that's held back can focus it. */
+export const settingFieldId = (key) => `widget-setting-${key}`;
 
 export const PanelEditItem = ({
   workspace,
   onUpdate,
   item = null,
   flushRef = null,
+  // Each keystroke's settings ({ key: value }), before they're applied —
+  // so the panel's Save bar shows at once (approved mockup frame 1).
+  onDraft = null,
+  // A Save that was held back: every failing field says why.
+  showAllErrors = false,
 }) => {
+  const { muted } = useConfigTokens();
+  const [touched, setTouched] = useState({});
   const [itemSelected, setItemSelected] = useState(item);
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const [, updateState] = useState();
@@ -54,9 +76,11 @@ export const PanelEditItem = ({
   // render, but the caller already has the new value in hand.
   //
   // Returns null when there's nothing to flush.
-  function flushPending() {
+  function flushPending(leaving = false) {
     if (!dirtyRef.current) return null;
-    const latestItem = itemSelectedRef.current;
+    const latestItem = leaving
+      ? withoutBadNumbers(itemSelectedRef.current)
+      : itemSelectedRef.current;
     const latestWorkspace = workspaceSelectedRef.current;
     if (!latestItem || !latestWorkspace) return null;
     const workspaceTemp = WorkspaceModel(latestWorkspace);
@@ -91,7 +115,9 @@ export const PanelEditItem = ({
   // calling onUpdate from cleanup is safe.
   useEffect(() => {
     return () => {
-      if (dirtyRef.current) flushPending();
+      // Leaving with a number that isn't one (or out of its range) keeps the
+      // last good value — never a string where the widget expects a number.
+      if (dirtyRef.current) flushPending(true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -141,6 +167,42 @@ export const PanelEditItem = ({
     return null;
   }
 
+  // A number setting that isn't a number in range goes back to what it was.
+  function withoutBadNumbers(it) {
+    const cfg = it && ComponentManager.getComponent(it.component);
+    const userConfig = (cfg && cfg.userConfig) || {};
+    const prefs = (it && it.userPrefs) || {};
+    const was = (item && item.userPrefs) || {};
+    let changed = false;
+    const next = { ...prefs };
+    for (const key of Object.keys(prefs)) {
+      const c = userConfig[key];
+      if (!c || c.type !== "number") continue;
+      if (
+        validateSetting(c, prefs[key], key).error ||
+        typeof prefs[key] !== "number"
+      ) {
+        if (key in was) next[key] = was[key];
+        else delete next[key];
+        changed = true;
+      }
+    }
+    return changed ? { ...it, userPrefs: next } : it;
+  }
+
+  // The settings that already failed when the panel opened say so at once.
+  const [failedAtOpen] = useState(() => {
+    const cfg = item && ComponentManager.getComponent(item.component);
+    const prefs = (item && item.userPrefs) || {};
+    return cfg && cfg.userConfig
+      ? validateSettings(
+          cfg.userConfig,
+          prefs,
+          Object.keys(cfg.userConfig).filter((k) => k in prefs),
+        )
+      : {};
+  });
+
   function handleTextChangeCustom(key, value) {
     const newItem = JSON.parse(JSON.stringify(itemSelected));
     if ("userPrefs" in itemSelected === false) {
@@ -157,6 +219,14 @@ export const PanelEditItem = ({
     // landed but the input lagged.
     setItemSelected(() => newItem);
     dirtyRef.current = true;
+    if (onDraft) onDraft(newItem.userPrefs);
+  }
+
+  // Shown under a field once it was left (blur), when it already failed as
+  // the panel opened, or after a Save that it held back (showAllErrors) —
+  // never while the first characters are still being typed.
+  function errorShown(key) {
+    return showAllErrors || touched[key] || failedAtOpen[key];
   }
 
   function renderFormItem(
@@ -168,72 +238,123 @@ export const PanelEditItem = ({
     onChange,
     configItem,
   ) {
+    const type = configItem["type"] || "text";
+    const known = KNOWN_TYPES.includes(type);
+    const check = validateSetting(configItem, value, key);
+    const error = check.error && errorShown(key) ? check.error : null;
+    const fieldId = settingFieldId(key);
+    const leave = () => setTouched((t) => (t[key] ? t : { ...t, [key]: true }));
+    const text = (props = {}) => (
+      <InputText
+        id={fieldId}
+        name={key}
+        value={value ?? ""}
+        onChange={(v) => onChange(key, v)}
+        onBlur={leave}
+        inputClassName="text-sm"
+        {...props}
+      />
+    );
+    let field = null;
+    const boolType = ["boolean", "checkbox", "toggle", "switch"].includes(type);
+    const structured = value !== null && typeof value === "object";
+    if (boolType) {
+      field = (
+        <Switch
+          id={fieldId}
+          checked={value === true || value === "true"}
+          onChange={(on) => onChange(key, !!on)}
+          ariaLabel={displayName || key}
+        />
+      );
+    } else if (!known && structured) {
+      // A list or an object: shown, not flattened to text (Advanced: raw
+      // settings changes it).
+      field = (
+        <span id={fieldId} className={`text-xs font-mono break-all ${muted}`}>
+          {JSON.stringify(value)}
+        </span>
+      );
+    } else if (type === "select") {
+      field = (
+        <SelectMenu
+          id={fieldId}
+          name={key}
+          selectedValue={value}
+          onChange={(e) => onChange(key, e.target.value)}
+          textSize="text-xs"
+          className="font-normal"
+        >
+          {"options" in configItem &&
+            configItem.options.map((option) => (
+              <option
+                key={String(option.value)}
+                value={option.value}
+                className={"text-sm"}
+              >
+                {option.displayName}
+              </option>
+            ))}
+          {"optionsValues" in configItem && (
+            <option>{configItem["optionsValues"]}</option>
+          )}
+        </SelectMenu>
+      );
+    } else if (type === "secret") {
+      field = text({ type: "password" });
+    } else if (type === "number") {
+      // A number is kept as one when it reads as one; anything else is kept
+      // as typed, so the check can say what's wrong (never a dropped key).
+      field = text({
+        type: "text",
+        inputMode: "decimal",
+        onChange: (v) => {
+          const t = String(v);
+          const n = Number(t);
+          onChange(key, t.trim() !== "" && Number.isFinite(n) ? n : t);
+        },
+      });
+    } else if (type === "url") {
+      field = text({ type: "text", inputMode: "url", autoComplete: "off" });
+    } else if (type === "email") {
+      field = text({ type: "text", inputMode: "email", autoComplete: "off" });
+    } else {
+      field = text({ type: "text" });
+    }
     return (
-      <div key={`config-item-${key}`} className="flex flex-col space-y-1">
-        <div className="flex items-center gap-1">
-          <FormLabel title={displayName} textSize="text-sm" />
-          {required === true && <span className="text-red-500 text-sm">*</span>}
-        </div>
-        {instructions && (
-          <div className="text-xs opacity-50 pb-1">{instructions}</div>
-        )}
-        {configItem["type"] === "text" && (
-          <InputText
-            type="text"
-            name={key}
-            value={value}
-            onChange={(value) => onChange(key, value)}
-            inputClassName="text-sm"
-          />
-        )}
-        {configItem["type"] === "secret" && (
-          <InputText
-            type="password"
-            name={key}
-            value={value}
-            onChange={(value) => onChange(key, value)}
-            inputClassName="text-sm"
-          />
-        )}
-        {configItem["type"] === "number" && (
-          <InputText
-            type="number"
-            name={key}
-            value={value}
-            onChange={(value) => {
-              const num = Number(value);
-              if (value === "" || isNaN(num)) return;
-              if (configItem.min != null && num < configItem.min) return;
-              if (configItem.max != null && num > configItem.max) return;
-              onChange(key, num);
-            }}
-            inputClassName="text-sm"
-            min={configItem.min}
-            max={configItem.max}
-            step={configItem.step ?? 1}
-          />
-        )}
-        {configItem["type"] === "select" && (
-          <SelectMenu
-            name={key}
-            selectedValue={value}
-            onChange={(e) => onChange(key, e.target.value)}
-            textSize="text-xs"
-            className="font-normal"
-          >
-            {"options" in configItem &&
-              configItem.options.map((option) => {
-                return (
-                  <option value={option.value} className={"text-sm"}>
-                    {option.displayName}
-                  </option>
-                );
-              })}
-            {"optionsValues" in configItem && (
-              <option>{configItem["optionsValues"]}</option>
-            )}
-          </SelectMenu>
-        )}
+      <div
+        key={`config-item-${key}`}
+        className="flex flex-col gap-1"
+        data-setting={key}
+      >
+        <FormField
+          label={displayName || key}
+          description={instructions || null}
+          required={required === true}
+          error={error}
+        >
+          {field}
+        </FormField>
+        {error && check.suggestion ? (
+          <div className="flex flex-row flex-wrap items-center gap-2 text-xs">
+            <span>Did you mean {check.suggestion}?</span>
+            <Button3
+              title="Use this"
+              size="sm"
+              onClick={() => {
+                onChange(key, check.suggestion);
+                setTouched((t) => ({ ...t, [key]: true }));
+              }}
+            />
+          </div>
+        ) : null}
+        {!known && !boolType ? (
+          <span className={`text-xs ${muted}`}>
+            {structured
+              ? `Change it in Advanced: raw settings — this widget asked for a “${type}” setting, which Dash doesn't know.`
+              : `Shown as text: this widget asked for a “${type}” setting, which Dash doesn't know.`}
+          </span>
+        ) : null}
       </div>
     );
   }

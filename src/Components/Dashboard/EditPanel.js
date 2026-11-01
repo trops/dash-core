@@ -64,6 +64,8 @@ export const EditPanel = ({
   // The selected widget: whose it is ("Built by AI · yours"), whether a
   // change can go in place, and why Change waits (unsaved edits).
   widgetOwner = "",
+  // Its version and when it was built: "v1.0.4 · built today at 5:37 PM".
+  widgetMeta = "",
   widgetNotYours = false,
   changeBlocked = "",
   // False for a built-in widget (it ships with Dash; nothing to change).
@@ -197,8 +199,10 @@ export const EditPanel = ({
                   <span className="text-base font-semibold truncate">
                     {widgetName}
                   </span>
-                  {widgetOwner ? (
-                    <span className={`text-xs ${muted}`}>{widgetOwner}</span>
+                  {widgetOwner || widgetMeta ? (
+                    <span className={`text-xs ${muted}`}>
+                      {[widgetOwner, widgetMeta].filter(Boolean).join(" · ")}
+                    </span>
                   ) : null}
                 </div>
                 {!selection.moving && (
@@ -283,13 +287,6 @@ export const EditPanel = ({
               ) : null}
             </div>
             {widgetConfig}
-            <span
-              className={`px-4 py-2 border-t text-xs ${muted} ${
-                currentTheme["border-neutral-dark"] || ""
-              }`}
-            >
-              Settings wait for Save. To change what it does, use Change on it.
-            </span>
           </Tabs3.Content>
         )}
 

@@ -193,7 +193,7 @@ describe("WidgetPanel — wires the flushRef so Save reads what was typed", () =
       /const flushRef = outerFlushRef \|\| ownFlushRef/,
     );
     expect(PANEL_SOURCE).toMatch(
-      /<PanelEditItem \{\.\.\.props\} flushRef=\{flushRef\} \/>/,
+      /<PanelEditItem[^>]*\{\.\.\.props\}[^>]*flushRef=\{flushRef\}/,
     );
   });
 
