@@ -1,11 +1,69 @@
 import {
   checkUrl,
   checkEmail,
+  settingType,
   validateSetting,
   validateSettings,
   fixFirstText,
   unsavedText,
 } from "./userConfigValidation";
+
+describe("settingType: a text setting that clearly holds an address", () => {
+  test("a URL by its key or its label is checked as one", () => {
+    expect(settingType({ type: "text" }, "haBaseUrl")).toBe("url");
+    expect(
+      settingType({ type: "text", displayName: "Server URL" }, "server"),
+    ).toBe("url");
+    expect(settingType({}, "webhookURL")).toBe("url");
+    expect(
+      validateSetting({ type: "text" }, "http//10.0.0.107", "haBaseUrl")
+        .suggestion,
+    ).toBe("http://10.0.0.107");
+  });
+  test("an email by its key or its label", () => {
+    expect(settingType({ type: "text" }, "notifyEmail")).toBe("email");
+    expect(settingType({ type: "text", displayName: "E-mail" }, "to")).toBe(
+      "email",
+    );
+  });
+  test("a URL that mentions email is a URL; email text that isn't an address stays text", () => {
+    expect(
+      settingType(
+        { type: "text", displayName: "Email webhook URL" },
+        "emailWebhookUrl",
+      ),
+    ).toBe("url");
+    expect(
+      settingType({ type: "text", displayName: "Email subject" }, "subject"),
+    ).toBe("text");
+    expect(
+      settingType(
+        { type: "text", displayName: "Email template" },
+        "emailTemplate",
+      ),
+    ).toBe("text");
+  });
+  test("endpoints and URIs aren't guessed (names, paths, spotify:…)", () => {
+    expect(
+      settingType(
+        { type: "text", displayName: "Endpoint name" },
+        "endpointName",
+      ),
+    ).toBe("text");
+    expect(settingType({ type: "text" }, "apiEndpoint")).toBe("text");
+    expect(settingType({ type: "text" }, "playlistUri")).toBe("text");
+    expect(settingType({ type: "text" }, "redirectUri")).toBe("url");
+  });
+  test("hosts, names and other types stay as they are", () => {
+    expect(settingType({ type: "text" }, "host")).toBe("text");
+    expect(
+      settingType({ type: "text", displayName: "Home address" }, "home"),
+    ).toBe("text");
+    expect(settingType({ type: "text" }, "curlyName")).toBe("text");
+    expect(settingType({ type: "secret" }, "apiUrl")).toBe("secret");
+    expect(settingType({ type: "number" }, "url")).toBe("number");
+  });
+});
 
 describe("a URL setting", () => {
   test("web addresses pass", () => {
