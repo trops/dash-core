@@ -224,3 +224,61 @@ test("a connection picked for it on the dashboard counts: no pill (4c)", () => {
   );
   expect(screen.queryByTestId("widget-fix-pill")).toBeNull();
 });
+
+describe("Move to page ▸ (move a widget to another page, frame 1)", () => {
+  const { EditSelectionContext } = require("../../../Dashboard/editSelection");
+  const { LayoutPageContext } = require("../WorkspaceScopeContext");
+  test("lists the pages, this one marked and not pickable, plus a new page", () => {
+    const moveToPage = jest.fn();
+    render(
+      <ThemeContext.Provider value={{ currentTheme: theme }}>
+        <EditSelectionContext.Provider
+          value={{
+            available: true,
+            editing: true,
+            pages: [
+              { id: "home", name: "Home" },
+              { id: "music", name: "Music" },
+            ],
+            moveToPage,
+          }}
+        >
+          <LayoutPageContext.Provider value="music">
+            <WidgetCardHeader
+              item={{
+                component: "trops.composed.ComposedWidget3",
+                uuid: "u-1",
+              }}
+              onConfigure={jest.fn()}
+            />
+          </LayoutPageContext.Provider>
+        </EditSelectionContext.Provider>
+      </ThemeContext.Provider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Composed Widget 3 options" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move to page" }));
+    const sub = screen.getByRole("menu", { name: "Move to page" });
+    expect(
+      Array.from(sub.querySelectorAll("[role=menuitem]")).map(
+        (b) => b.textContent,
+      ),
+    ).toEqual(["Home", "Music (here now)", "+ New page"]);
+    expect(
+      screen.getByRole("menuitem", { name: "Music (here now)" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Home" }));
+    expect(moveToPage).toHaveBeenCalledWith("u-1", "home", "Composed Widget 3");
+  });
+
+  test("outside the editor there's no Move to page", () => {
+    renderHeader({
+      item: { component: "trops.composed.ComposedWidget3", uuid: "u-1" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Composed Widget 3 options" }),
+    );
+    expect(screen.queryByRole("menuitem", { name: "Move to page" })).toBeNull();
+  });
+});

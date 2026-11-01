@@ -38,19 +38,19 @@ workspace = {
   id: Number,
   name: String,
   // Existing fields...
-  layout: Array,        // Legacy single-page layout (backward compat)
+  layout: Array, // Legacy single-page layout (backward compat)
 
   // NEW fields:
   pages: [
     {
-      id: String,       // Unique page ID (e.g., "page-1712000000000")
-      name: String,     // Display name (shown in tab)
-      order: Number,    // Sort order for tab display
-      layout: Array,    // Independent LayoutModel items for this page
+      id: String, // Unique page ID (e.g., "page-1712000000000")
+      name: String, // Display name (shown in tab)
+      order: Number, // Sort order for tab display
+      layout: Array, // Independent LayoutModel items for this page
     },
   ],
   activePageId: String, // Currently active page
-}
+};
 ```
 
 ### Migration Rules
@@ -66,22 +66,22 @@ workspace = {
 
 ### Page Management (Edit Mode Only)
 
-| Feature | Behavior |
-|---------|----------|
-| **Add Page** | "+" button in tab bar creates a new page with a default 1x1 grid |
-| **Switch Page** | Click a tab to switch the visible page |
-| **Rename Page** | Double-click a tab to inline-edit the page name |
-| **Delete Page** | "x" button on tab removes the page (minimum 1 page enforced) |
-| **Reorder Pages** | Drag tabs left/right to change order |
+| Feature           | Behavior                                                         |
+| ----------------- | ---------------------------------------------------------------- |
+| **Add Page**      | "+" button in tab bar creates a new page with a default 1x1 grid |
+| **Switch Page**   | Click a tab to switch the visible page                           |
+| **Rename Page**   | Double-click a tab to inline-edit the page name                  |
+| **Delete Page**   | "x" button on tab removes the page (minimum 1 page enforced)     |
+| **Reorder Pages** | Drag tabs left/right to change order                             |
 
 ### Tab Bar Visibility
 
-| State | Tabs Shown |
-|-------|-----------|
-| Single page, preview mode | No tabs |
-| Single page, edit mode | Tab bar with "Add Page" button only |
-| Multiple pages, preview mode | Tabs shown |
-| Multiple pages, edit mode | Tabs shown with add/delete/reorder controls |
+| State                        | Tabs Shown                                  |
+| ---------------------------- | ------------------------------------------- |
+| Single page, preview mode    | No tabs                                     |
+| Single page, edit mode       | Tab bar with "Add Page" button only         |
+| Multiple pages, preview mode | Tabs shown                                  |
+| Multiple pages, edit mode    | Tabs shown with add/delete/reorder controls |
 
 ### Per-Page Settings
 
@@ -104,12 +104,12 @@ All pages render their `LayoutGridContainer` simultaneously. Inactive pages use 
 
 ### Key Components
 
-| Component | File | Purpose |
-|-----------|------|---------|
-| `PageTabBar` | `src/Components/Navigation/PageTabBar.js` | Tabbed navigation UI with drag-to-reorder |
-| `PageLayoutBuilder` | `src/Components/Dashboard/DashboardStage.js` | Memoized LayoutBuilder wrapper per page |
-| `DashboardModel.createPage()` | `src/Models/DashboardModel.js` | Static factory for new page objects |
-| `WorkspaceModel` | `src/Models/WorkspaceModel.js` | Extended with `pages` and `activePageId` |
+| Component                     | File                                         | Purpose                                   |
+| ----------------------------- | -------------------------------------------- | ----------------------------------------- |
+| `PageTabBar`                  | `src/Components/Navigation/PageTabBar.js`    | Tabbed navigation UI with drag-to-reorder |
+| `PageLayoutBuilder`           | `src/Components/Dashboard/DashboardStage.js` | Memoized LayoutBuilder wrapper per page   |
+| `DashboardModel.createPage()` | `src/Models/DashboardModel.js`               | Static factory for new page objects       |
+| `WorkspaceModel`              | `src/Models/WorkspaceModel.js`               | Extended with `pages` and `activePageId`  |
 
 ### Rendering Flow
 
@@ -175,7 +175,26 @@ DashboardStage
 
 ## Revision History
 
-| Date | Version | Changes |
-|------|---------|---------|
-| 2026-04-02 | 1.0 | Initial implementation — Phases 1-4 complete |
-| 2026-04-08 | 1.1 | Always-pages model: auto-migrate single-page workspaces, per-page scrollable toggle in PageTabBar |
+| Date       | Version | Changes                                                                                           |
+| ---------- | ------- | ------------------------------------------------------------------------------------------------- |
+| 2026-04-02 | 1.0     | Initial implementation — Phases 1-4 complete                                                      |
+| 2026-04-08 | 1.1     | Always-pages model: auto-migrate single-page workspaces, per-page scrollable toggle in PageTabBar |
+
+---
+
+## Move a widget to another page (2026-11-01)
+
+Approved mockup: canvas page "Move a widget to another page", frames 1-5.
+
+- **Three ways in (editing):**
+  - the widget's ⋮ → **Move to page ▸**, which lists the pages, marks this one "(here now)" and can't pick it, and has **+ New page**;
+  - the side panel's **Page** picker;
+  - dragging the widget onto a page tab: the tab lights up and says "↪ Drop to move to Home".
+- **What moves:** the widget, with its uuid, settings (`userPrefs`), connections (`selectedProviders`) and listeners, plus anything inside it. Its cell on the old page is left empty. It goes into the first free cell of the target page's main grid, row by row, skipping merged cells. A full grid gets a new row at the bottom. Its ids are made new on the target page.
+- **After:** a toast says "Moved Music Player to Home", with **Go to Home** and **Undo**. It's saved with the dashboard's Save, like any edit. The top-level `layout` mirror is synced from the active page on save, as before.
+- **Code:**
+  - `src/utils/moveWidgetToPage.js`, pure (tests: full grid, merged cells, nested containers, undo, errors);
+  - DashboardStage `handleMoveWidgetToPage`, which reads live page layouts from the builders first;
+  - `EditSelectionContext.pages / moveToPage`;
+  - `PageTabBar onDropWidget`;
+  - the dash-react 1.0.86 `ActionMenu` submenu.

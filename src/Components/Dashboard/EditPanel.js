@@ -72,6 +72,11 @@ export const EditPanel = ({
   canChange = true,
   // Phase 1e: move the selected widget without dragging (true = start).
   onMoveWidget = null,
+  // Move it to another page (approved mockup, frame 2): the pages, the one
+  // it's on, and the move (a page id, or "new").
+  pages = null,
+  widgetPageId = null,
+  onMoveToPage = null,
 }) => {
   const { currentTheme = {}, themes: contextThemes } = useContext(ThemeContext);
   const [tab, setTab] = useState("add");
@@ -286,6 +291,38 @@ export const EditPanel = ({
                 </div>
               ) : null}
             </div>
+            {onMoveToPage && Array.isArray(pages) && widgetPageId != null ? (
+              <div
+                className="flex flex-col gap-1.5 px-4 pb-3"
+                data-testid="widget-page-picker"
+              >
+                <SectionLabel>Page</SectionLabel>
+                <SelectInput
+                  value={widgetPageId}
+                  ariaLabel="Page"
+                  options={[
+                    ...pages.map((p) => ({
+                      value: p.id,
+                      label:
+                        String(p.id) === String(widgetPageId)
+                          ? `${p.name} (here now)`
+                          : p.name,
+                    })),
+                    { value: "__new", label: "+ New page" },
+                  ]}
+                  onChange={(v) => {
+                    const next = v && v.target ? v.target.value : v;
+                    if (next == null || String(next) === String(widgetPageId))
+                      return;
+                    onMoveToPage(next === "__new" ? "new" : next);
+                  }}
+                />
+                <span className={`text-xs ${muted}`}>
+                  Moves the widget with its settings and connection. It goes in
+                  the first free spot on that page.
+                </span>
+              </div>
+            ) : null}
             {widgetConfig}
           </Tabs3.Content>
         )}
