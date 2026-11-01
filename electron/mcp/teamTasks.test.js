@@ -1,0 +1,341 @@
+/**
+ * teamTasks.test.js — tasks via MCP (bot-teams TEAM-016): give_task,
+ * confirm_task, get_task_status and list_tasks, with the real task store and
+ * injected bots. A team starts only on the user's passphrase, only if it takes
+ * tasks, and the lead's run may then run its bots (via "mcp-task").
+ */
+"use strict";
+
+const { describe, it } = require("node:test");
+const assert = require("node:assert/strict");
+const { makeTeamToolHandlers } = require("./teamTools");
+const { createMcpTasks } = require("../bots/mcpTasks");
+
+const workspaces = [
+  { id: 7, name: "Room Design" },
+  { id: 8, name: "Home Projects" },
+  { id: 9, name: "Inbox" },
+];
+const bots = [
+  { id: "lead_7", role: "lead", workspaceId: "7", name: "Room Design Lead" },
+  { id: "b7", workspaceId: "7", name: "Designer" },
+  { id: "lead_8", role: "lead", workspaceId: "8", name: "Home Projects Lead" },
+  { id: "lead_9", role: "lead", workspaceId: "9", name: "Inbox Lead" },
+];
+
+function setup(over = {}) {
+  const state = { tasks: null, lock: null };
+  let t = Date.parse("2026-11-01T09:14:00.000Z");
+  let n = 0;
+  const tasks = createMcpTasks({
+    store: {
+      loadTasks: () => state.tasks,
+      saveTasks: (l) => {
+        state.tasks = l;
+      },
+      getPassphrase: () =>
+        "passphrase" in over ? over.passphrase : "purple otter",
+      getLock: () => state.lock,
+      saveLock: (l) => {
+        state.lock = l;
+      },
+    },
+    now: () => t,
+    newId: () => `task_${++n}`,
+  });
+  const calls = [];
+  const takes = new Set(over.takes || ["7", "8"]);
+  const handlers = makeTeamToolHandlers({
+    getWorkspaces: () => workspaces,
+    taskWaitMs: over.taskWaitMs || 1000,
+    bots: {
+      list: () => bots,
+      getRuns: () => [],
+      leadAvailability: over.leadAvailability || (() => ({})),
+      askLead:
+        over.askLead ||
+        (async (id, q, opts) => {
+          calls.push({ id, q, opts });
+          return {
+            status: "completed",
+            output: "Designed the guest bedroom: 3 looks, 12 images.",
+          };
+        }),
+      takesMcpTasks: (id) => takes.has(String(id)),
+      tasks: () => tasks,
+    },
+  });
+  return {
+    handlers,
+    calls,
+    tasks,
+    takes,
+    advance: (ms) => {
+      t += ms;
+    },
+  };
+}
+const body = (r) => JSON.parse(r.content[0].text);
+
+describe("give_task", () => {
+  it("waits for the passphrase, naming the team", async () => {
+    const { handlers, calls } = setup();
+    const r = body(
+      await handlers.give_task({
+        task: "Design the guest bedroom, boho",
+        team: "room design",
+        from: "ha-bridge",
+      }),
+    );
+    assert.equal(r.status, "waiting");
+    assert.equal(r.team, "Room Design");
+    assert.match(r.message, /Room Design will do/);
+    assert.match(r.message, /confirm_task/);
+    assert.equal(calls.length, 0);
+  });
+
+  it("with the passphrase, starts the lead — allowed to run its bots", async () => {
+    const { handlers, calls } = setup();
+    const r = body(
+      await handlers.give_task({
+        task: "Design the guest bedroom",
+        team: "7",
+        passphrase: "Purple, otter.",
+        from: "ha-bridge",
+      }),
+    );
+    assert.equal(r.status, "done");
+    assert.match(r.summary, /3 looks/);
+    assert.equal(calls[0].id, "lead_7");
+    assert.equal(calls[0].opts.via, "mcp-task:ha-bridge");
+    assert.match(calls[0].q, /^Design the guest bedroom/);
+    assert.match(calls[0].q, /confirmed it with their task passphrase/);
+    assert.doesNotMatch(calls[0].q, /otter/);
+  });
+
+  it("asks which team, listing only teams that take tasks", async () => {
+    const { handlers } = setup();
+    const r = body(await handlers.give_task({ task: "x" }));
+    assert.equal(r.status, "needs-team");
+    assert.match(r.message, /Room Design \(id 7\)/);
+    assert.match(r.message, /Home Projects \(id 8\)/);
+    assert.doesNotMatch(r.message, /Inbox/);
+  });
+
+  it("a team that doesn't take tasks isn't found", async () => {
+    const { handlers, tasks } = setup();
+    const r = body(await handlers.give_task({ task: "x", team: "Inbox" }));
+    assert.equal(r.status, "needs-team");
+    assert.equal(tasks.list().length, 0);
+  });
+
+  it("says when no team takes tasks yet", async () => {
+    const { handlers } = setup({ takes: [] });
+    const r = body(await handlers.give_task({ task: "x" }));
+    assert.match(r.message, /No team takes tasks via MCP yet/);
+  });
+
+  it("a paused or over-budget team says so, and no task is made", async () => {
+    for (const [avail, re] of [
+      [{ paused: true }, /paused/],
+      [{ overBudget: true }, /over its budget/],
+    ]) {
+      const { handlers, tasks } = setup({ leadAvailability: () => avail });
+      const r = body(await handlers.give_task({ task: "x", team: "7" }));
+      assert.equal(r.status, "blocked");
+      assert.match(r.message, re);
+      assert.equal(tasks.list().length, 0);
+    }
+  });
+
+  it("needs a task", async () => {
+    const { handlers } = setup();
+    assert.equal((await handlers.give_task({})).isError, true);
+  });
+});
+
+describe("confirm_task", () => {
+  const give = async (handlers) =>
+    body(await handlers.give_task({ task: "Design it", team: "7" })).taskId;
+
+  it("the right passphrase starts it; the answer comes back", async () => {
+    const { handlers, calls } = setup();
+    const id = await give(handlers);
+    const r = body(
+      await handlers.confirm_task({ taskId: id, passphrase: "purple otter" }),
+    );
+    assert.equal(r.status, "done");
+    assert.match(r.message, /Room Design finished/);
+    assert.equal(calls.length, 1);
+  });
+
+  it("a wrong one says how many tries are left, and never repeats it", async () => {
+    const { handlers, calls } = setup();
+    const id = await give(handlers);
+    const r = await handlers.confirm_task({
+      taskId: id,
+      passphrase: "blue whale",
+    });
+    assert.match(body(r).message, /isn't right\. 4 tries left/);
+    assert.doesNotMatch(r.content[0].text, /whale|otter/);
+    assert.equal(body(r).status, "waiting");
+    assert.equal(calls.length, 0);
+  });
+
+  it("5 wrong lock tasks — the right one too, and give_task", async () => {
+    const { handlers, calls } = setup();
+    const id = await give(handlers);
+    let r;
+    for (let i = 0; i < 5; i++) {
+      r = body(await handlers.confirm_task({ taskId: id, passphrase: "no" }));
+    }
+    assert.match(r.message, /locked until/);
+    r = body(
+      await handlers.confirm_task({ taskId: id, passphrase: "purple otter" }),
+    );
+    assert.match(r.message, /5 wrong passphrases: tasks are locked/);
+    r = body(await handlers.give_task({ task: "y", team: "7" }));
+    assert.equal(r.status, "locked");
+    assert.equal(calls.length, 0);
+  });
+
+  it("no passphrase set: says where to set it", async () => {
+    const { handlers } = setup({ passphrase: null });
+    const id = await give(handlers);
+    const r = body(
+      await handlers.confirm_task({ taskId: id, passphrase: "x" }),
+    );
+    assert.match(r.message, /Settings › MCP Server › Task passphrase/);
+  });
+
+  it("an expired task can't start", async () => {
+    const { handlers, advance, calls } = setup();
+    const id = await give(handlers);
+    advance(10 * 60 * 1000);
+    const r = body(
+      await handlers.confirm_task({ taskId: id, passphrase: "purple otter" }),
+    );
+    assert.equal(r.status, "expired");
+    assert.equal(calls.length, 0);
+  });
+
+  it("a long task is still running when the wait is up; status follows it", async () => {
+    let finish;
+    const { handlers } = setup({
+      taskWaitMs: 10,
+      askLead: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
+    const id = await give(handlers);
+    const r = body(
+      await handlers.confirm_task({ taskId: id, passphrase: "purple otter" }),
+    );
+    assert.equal(r.status, "running");
+    assert.match(r.message, /get_task_status/);
+    finish({ status: "completed", output: "All done." });
+    await new Promise((res) => setImmediate(res));
+    const s = body(await handlers.get_task_status({ taskId: id }));
+    assert.equal(s.status, "done");
+    assert.equal(s.summary, "All done.");
+  });
+
+  it("a busy lead or a failed run fails the task with why", async () => {
+    for (const [result, re] of [
+      [{ skipped: true }, /busy/],
+      [{ status: "failed", error: "credit balance is too low" }, /credit/],
+    ]) {
+      const { handlers } = setup({ askLead: async () => result });
+      const id = await give(handlers);
+      const r = body(
+        await handlers.confirm_task({ taskId: id, passphrase: "purple otter" }),
+      );
+      assert.equal(r.status, "failed");
+      assert.match(r.message, re);
+    }
+  });
+
+  it("a run stopped in Dash, cut off by Dash closing, or blocked isn't done", async () => {
+    for (const [result, re] of [
+      [{ status: "stopped", output: "Half a" }, /stopped in Dash/],
+      [{ status: "interrupted", output: "Half a" }, /Dash closed/],
+      [
+        { skipped: true, reason: "all bots are paused" },
+        /didn't start: all bots are paused/,
+      ],
+    ]) {
+      const { handlers } = setup({ askLead: async () => result });
+      const id = await give(handlers);
+      const r = body(
+        await handlers.confirm_task({ taskId: id, passphrase: "purple otter" }),
+      );
+      assert.equal(r.status, "failed");
+      assert.match(r.message, re);
+    }
+  });
+
+  it("all bots paused or another profile: refused before the passphrase", async () => {
+    for (const [avail, re] of [
+      [{ allPaused: true }, /All bots are paused/],
+      [{ otherProfile: true }, /isn't in the profile/],
+    ]) {
+      const { handlers, tasks } = setup({ leadAvailability: () => avail });
+      const r = body(await handlers.give_task({ task: "x", team: "7" }));
+      assert.equal(r.status, "blocked");
+      assert.match(r.message, re);
+      assert.equal(tasks.list().length, 0);
+    }
+  });
+
+  it("a team turned off after the task was given doesn't start", async () => {
+    const { handlers, calls, takes } = setup();
+    const id = await give(handlers);
+    takes.delete("7");
+    const r = body(
+      await handlers.confirm_task({ taskId: id, passphrase: "purple otter" }),
+    );
+    assert.equal(r.status, "failed");
+    assert.match(r.message, /doesn't take tasks via MCP/);
+    assert.equal(calls.length, 0);
+  });
+
+  it("an unknown taskId is an error", async () => {
+    const { handlers } = setup();
+    assert.equal(
+      (await handlers.confirm_task({ taskId: "nope", passphrase: "x" }))
+        .isError,
+      true,
+    );
+  });
+});
+
+describe("list_tasks and list_teams", () => {
+  it("lists recent tasks, newest first", async () => {
+    const { handlers } = setup();
+    await handlers.give_task({ task: "first", team: "7" });
+    await handlers.give_task({ task: "second", team: "8" });
+    const r = body(await handlers.list_tasks({}));
+    assert.deepEqual(
+      r.tasks.map((t) => [t.task, t.team]),
+      [
+        ["second", "Home Projects"],
+        ["first", "Room Design"],
+      ],
+    );
+    assert.ok(!("leadId" in r.tasks[0]));
+  });
+
+  it("list_teams says which teams take tasks", async () => {
+    const { handlers } = setup();
+    const r = body(await handlers.list_teams({}));
+    assert.deepEqual(
+      r.teams.map((t) => [t.name, t.takesTasks]),
+      [
+        ["Room Design", true],
+        ["Home Projects", true],
+        ["Inbox", false],
+      ],
+    );
+  });
+});

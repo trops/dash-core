@@ -6,8 +6,9 @@
  * Safety: the lead only passes requests on, and its words can be steered by
  * team data (email text, other bots' answers), so a bot run this way always
  * asks the user before anything that changes things (approvalPolicy "ask";
- * tools the user chose to always allow stay allowed). A lead asked from
- * outside Dash (an MCP client) can't run its bots at all.
+ * tools the user chose to always allow stay allowed). A lead asked a
+ * question from outside Dash (via "mcp") can't run its bots at all; a task
+ * given via MCP and confirmed with the user's passphrase can (TEAM-016).
  */
 "use strict";
 
@@ -15,7 +16,9 @@
 // going — usually it's waiting on the user's approval.
 const LEAD_ASK_WAIT_MS = 3 * 60 * 1000;
 
-// Where a lead's own run can come from that may not run its bots.
+// Where a lead's own run can come from that may not run its bots. A task
+// given via MCP ("mcp-task[:<from>]") may: the user confirmed it with their
+// task passphrase (TEAM-016).
 const OUTSIDE_CALLERS = new Set(["mcp"]);
 
 /**

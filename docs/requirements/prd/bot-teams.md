@@ -1017,6 +1017,28 @@ _(Superseded by the lead's hand-off (2026-10-20): there are no lead drafts now. 
 
 A draft (TEAM-005) is checked when it's drafted and checked again when it's accepted — accepting goes through the same save check as every bot (bot-factory: "Saving and turning on a bot"), so an edit made after drafting can't skip it. The accepted bot starts paused until the user turns it on.
 
+## TEAM-016: Tasks via MCP, confirmed with a passphrase (2026-11-01)
+
+**Status:** In Progress — PR 1 (tasks, passphrase, MCP tools) built; PR 2 (routing by the Dash Lead), PR 3 (UI, mockups on the canvas page "Tasks via MCP (proposed)") and the dash-electron release to come.
+
+**Why:** the user speaks to Home Assistant, their own bridge (on the same Mac) passes the idea to Dash via MCP, and a team does it — e.g. "Room Design: design the guest bedroom, boho" ends as a new room on that dashboard. Until now an agent outside Dash could only *ask* a lead (`ask_team_lead`), and a lead asked that way can't run its bots.
+
+**As a user**, I want to give one of my teams a task through an agent connected to Dash's MCP server, so that things get done without opening Dash — and only when I've confirmed it.
+
+Acceptance criteria:
+
+- [x] `give_task(task, team?, passphrase?, from?)`, `confirm_task(taskId, passphrase)`, `get_task_status(taskId)`, `list_tasks` on the Dash MCP server; `list_teams` says which teams take tasks.
+- [x] A team takes tasks only when the user turned on "Takes tasks via MCP" for it (team setting `takesMcpTasks`, off by default). Other teams are invisible to `give_task`.
+- [x] A task starts only after the user's **task passphrase** checks out: any word or phrase, set in Settings › MCP Server. It's compared loosely (case, punctuation and spaces don't count — it's usually spoken). No passphrase set → no tasks, with where to set it.
+- [x] 5 wrong passphrases lock tasks for 15 minutes (the user can unlock early). A task with no passphrase expires after 10 minutes.
+- [x] The passphrase is sealed at rest like provider keys (so Settings can Show it), and never appears in a reply, a task, the lead's prompt or a log. Tasks are sealed at rest too.
+- [x] A confirmed task runs the team's lead with `via: "mcp-task[:<from>]"`, and that lead **may run its bots** (an ask via `"mcp"` still can't). The bots still ask in Dash before anything that changes things (`approvalPolicy: "ask"`), and pause and budgets apply.
+- [x] `confirm_task` waits about 45 seconds for the answer; a longer task keeps going and `get_task_status` follows it. A busy lead or a failed run fails the task with why. A task running when Dash closed is marked as not finished.
+- [ ] No team named → the Dash Lead picks the team that fits, asks back when more than one fits, and never makes a team on its own (PR 2).
+- [ ] Settings › MCP Server: set / Show / Change / Remove the passphrase, "Short and easy to guess" under 8 letters, the lock with Unlock now; a team's Bots view: the "Takes tasks via MCP" switch and its tasks, each "via MCP · <from>" (PR 3, to the approved mockups).
+
+Decisions: a passphrase instead of a PIN (harder to guess, easier to say); stored encrypted, not hashed, so the user can see it again — the lockout is what protects a short one; the agent names itself with `from` (the MCP server is stateless per request, so the client's own name isn't available on a tool call).
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams

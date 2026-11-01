@@ -73,6 +73,14 @@ describe("askTeamBot", () => {
     assert.equal(counted, false);
   });
 
+  it("a task given via MCP and confirmed with the passphrase can (TEAM-016), still asking before changes", async () => {
+    const { args, calls } = setup({ leadVia: "mcp-task:ha-bridge" });
+    const res = await askTeamBot(args);
+    assert.equal(res.status, "completed");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].approvalPolicy, "ask");
+  });
+
   it("the controller's run entry: an MCP-started lead is refused; the conversation goes on the bot's run (release 5)", async () => {
     // What botController keeps per running lead.
     const fromMcp = leadRunInfo({ via: "mcp", conversationId: null });

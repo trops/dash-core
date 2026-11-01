@@ -377,6 +377,62 @@ class BotStore {
     return data.teams[key];
   }
 
+  // ---- Tasks via MCP (bot-teams TEAM-016) ---------------------------------
+
+  /** Tasks given via MCP — the user's words, so sealed at rest like results. */
+  getMcpTasks() {
+    const { mcpTasks } = this._load();
+    if (typeof mcpTasks !== "string") return null;
+    const json = this._box ? this._box.open(mcpTasks) : mcpTasks;
+    if (typeof json !== "string") return null;
+    try {
+      return JSON.parse(json);
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  setMcpTasks(tasks) {
+    const data = this._load();
+    const json = JSON.stringify(tasks || []);
+    data.mcpTasks = this._box ? this._box.seal(json) : json;
+    this._save(data);
+  }
+
+  /** The task passphrase (sealed, like provider keys), or null. */
+  getTaskPassphrase() {
+    const { taskPassphrase } = this._load();
+    if (typeof taskPassphrase !== "string" || !taskPassphrase) return null;
+    const text = this._box ? this._box.open(taskPassphrase) : taskPassphrase;
+    return typeof text === "string" && text ? text : null;
+  }
+
+  /** Set it, or clear it with null. */
+  setTaskPassphrase(text) {
+    const data = this._load();
+    if (typeof text === "string" && text) {
+      data.taskPassphrase = this._box ? this._box.seal(text) : text;
+    } else {
+      delete data.taskPassphrase;
+    }
+    this._save(data);
+  }
+
+  /** Wrong passphrases in a row and the lock: { wrong, until }. */
+  getTaskLock() {
+    const { taskLock } = this._load();
+    return taskLock || null;
+  }
+
+  setTaskLock(lock) {
+    const data = this._load();
+    data.taskLock = {
+      wrong: Number(lock && lock.wrong) || 0,
+      until: (lock && lock.until) || null,
+    };
+    this._save(data);
+  }
+
   /**
    * Global bot settings. Defaults: autoLeads on; background mode (US-018) —
    * keep running with the window closed, start at login, don't keep awake.

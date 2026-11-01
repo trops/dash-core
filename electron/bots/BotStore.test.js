@@ -507,3 +507,48 @@ describe("BotStore — paused-bot event queue", () => {
     assert.deepEqual(again.getPausedQueue(), queue);
   });
 });
+
+// Tasks via MCP (bot-teams TEAM-016).
+describe("BotStore — tasks via MCP and the task passphrase", () => {
+  const { createSecretBox } = require("./secretBox");
+  const crypto = {
+    isEncryptionAvailable: () => true,
+    encryptString: (s) => Buffer.from("X" + s, "utf8"),
+    decryptString: (b) => b.toString("utf8").slice(1),
+  };
+  const sealedStore = () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "botstore-test-"));
+    tmpRoots.push(root);
+    const persistence = memPersistence();
+    const store = new BotStore({
+      persistence,
+      paths: { botsRoot: root },
+      secretBox: createSecretBox(crypto),
+    });
+    return { store, persistence };
+  };
+
+  it("seals the passphrase and the tasks at rest", () => {
+    const { store, persistence } = sealedStore();
+    assert.equal(store.getTaskPassphrase(), null);
+    store.setTaskPassphrase("purple otter");
+    store.setMcpTasks([{ id: "task_1", task: "Design the guest bedroom" }]);
+    const raw = JSON.stringify(persistence._blob());
+    assert.ok(!raw.includes("otter"));
+    assert.ok(!raw.includes("guest bedroom"));
+    assert.equal(store.getTaskPassphrase(), "purple otter");
+    assert.equal(store.getMcpTasks()[0].task, "Design the guest bedroom");
+  });
+
+  it("clears the passphrase, and keeps the lock", () => {
+    const { store } = sealedStore();
+    store.setTaskPassphrase("purple otter");
+    store.setTaskPassphrase(null);
+    assert.equal(store.getTaskPassphrase(), null);
+    store.setTaskLock({ wrong: 5, until: "2026-11-01T09:31:00.000Z" });
+    assert.deepEqual(store.getTaskLock(), {
+      wrong: 5,
+      until: "2026-11-01T09:31:00.000Z",
+    });
+  });
+});
