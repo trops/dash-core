@@ -28,6 +28,11 @@ jest.mock("@trops/dash-react", () => ({
   FontAwesomeIcon: () => null,
 }));
 
+// The task passphrase has its own tests (TaskPassphraseSection.test.js).
+jest.mock("./TaskPassphraseSection", () => ({
+  TaskPassphraseSection: () => null,
+}));
+
 import { McpServerSection } from "./McpServerSection";
 
 const stopped = {

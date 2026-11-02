@@ -368,6 +368,16 @@ class BotStore {
     return { leadEnabled: true, ...((teams && teams[key]) || {}) };
   }
 
+  /** Every dashboard's team settings: { [workspaceId]: settings }. */
+  listTeamSettings() {
+    const { teams } = this._load();
+    const out = {};
+    for (const key of Object.keys(teams || {})) {
+      out[key] = this.getTeamSettings(key);
+    }
+    return out;
+  }
+
   setTeamSettings(workspaceId, patch) {
     const data = this._load();
     const key = String(workspaceId);
@@ -399,6 +409,27 @@ class BotStore {
     this._save(data);
   }
 
+  /** The Dash Lead's routing log (tasks with no team named) — sealed too. */
+  getMcpRoutes() {
+    const { mcpRoutes } = this._load();
+    if (typeof mcpRoutes !== "string") return [];
+    const json = this._box ? this._box.open(mcpRoutes) : mcpRoutes;
+    if (typeof json !== "string") return [];
+    try {
+      const list = JSON.parse(json);
+      return Array.isArray(list) ? list : [];
+    } catch (_e) {
+      return [];
+    }
+  }
+
+  setMcpRoutes(routes) {
+    const data = this._load();
+    const json = JSON.stringify(routes || []);
+    data.mcpRoutes = this._box ? this._box.seal(json) : json;
+    this._save(data);
+  }
+
   /** The task passphrase (sealed, like provider keys), or null. */
   getTaskPassphrase() {
     const { taskPassphrase } = this._load();
@@ -412,10 +443,18 @@ class BotStore {
     const data = this._load();
     if (typeof text === "string" && text) {
       data.taskPassphrase = this._box ? this._box.seal(text) : text;
+      data.taskPassphraseSetAt = this._now();
     } else {
       delete data.taskPassphrase;
+      delete data.taskPassphraseSetAt;
     }
     this._save(data);
+  }
+
+  /** When it was set (ISO), or null — Settings shows "Set Nov 1". */
+  getTaskPassphraseSetAt() {
+    const { taskPassphrase, taskPassphraseSetAt } = this._load();
+    return taskPassphrase && taskPassphraseSetAt ? taskPassphraseSetAt : null;
   }
 
   /** Wrong passphrases in a row and the lock: { wrong, until }. */

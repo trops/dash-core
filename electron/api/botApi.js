@@ -55,6 +55,15 @@ const {
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,
   BOTS_LIST_LEADS,
+  BOTS_LIST_MCP_TASKS,
+  BOTS_LIST_MCP_ROUTES,
+  BOTS_LIST_MCP_TASK_TEAMS,
+  BOTS_SET_TAKES_MCP_TASKS,
+  BOTS_TASK_PASSPHRASE_STATE,
+  BOTS_TASK_PASSPHRASE_REVEAL,
+  BOTS_TASK_PASSPHRASE_SET,
+  BOTS_TASK_PASSPHRASE_REMOVE,
+  BOTS_UNLOCK_MCP_TASKS,
   BOTS_GET_RUNS,
   BOTS_GET_LATEST_RESULT,
   BOTS_LIST_RECENT_RUNS,
@@ -77,6 +86,7 @@ const {
   BOT_LIST_CHANGED,
   BOT_OPEN_REQUEST,
   BOT_PLAN_BUILD_PROGRESS,
+  BOT_MCP_TASKS_CHANGED,
 } = require("../events/botEvents");
 
 let _nextListenerId = 0;
@@ -284,6 +294,29 @@ const botApi = {
    */
   listLeads: () => ipcRenderer.invoke(BOTS_LIST_LEADS),
 
+  // ---- Tasks via MCP (bot-teams TEAM-016) ----
+  /** A team's tasks via MCP, newest first (all teams without one). */
+  listMcpTasks: (workspaceId = null, limit = 20) =>
+    ipcRenderer.invoke(BOTS_LIST_MCP_TASKS, { workspaceId, limit }),
+  /** The Dash Lead's routing log, newest first. */
+  listMcpRoutes: (limit = 20) =>
+    ipcRenderer.invoke(BOTS_LIST_MCP_ROUTES, { limit }),
+  /** Ids of the dashboards whose teams take tasks via MCP. */
+  listMcpTaskTeams: () => ipcRenderer.invoke(BOTS_LIST_MCP_TASK_TEAMS),
+  /** The team's "Takes tasks via MCP" switch. */
+  setTakesMcpTasks: (workspaceId, on) =>
+    ipcRenderer.invoke(BOTS_SET_TAKES_MCP_TASKS, { workspaceId, on }),
+  /** { set, short, setAt, lockedUntil } — never the phrase. */
+  getTaskPassphraseState: () => ipcRenderer.invoke(BOTS_TASK_PASSPHRASE_STATE),
+  /** The phrase itself, for Settings' Show button. */
+  revealTaskPassphrase: () => ipcRenderer.invoke(BOTS_TASK_PASSPHRASE_REVEAL),
+  /** → { ok, short } or { ok: false, error } */
+  setTaskPassphrase: (text) =>
+    ipcRenderer.invoke(BOTS_TASK_PASSPHRASE_SET, { text }),
+  removeTaskPassphrase: () => ipcRenderer.invoke(BOTS_TASK_PASSPHRASE_REMOVE),
+  /** "Unlock now" after 5 wrong passphrases. */
+  unlockMcpTasks: () => ipcRenderer.invoke(BOTS_UNLOCK_MCP_TASKS),
+
   /** Subscribe to streamed run events: { botId, event }. */
   onStream: (callback) => _addListener(BOT_STREAM, callback),
   /** Subscribe to new pending approvals: { id, request }. */
@@ -301,6 +334,9 @@ const botApi = {
   onOpenRequest: (callback) => _addListener(BOT_OPEN_REQUEST, callback),
   /** A plan build's progress: ({ buildId, state }) after every change. */
   onPlanBuild: (callback) => _addListener(BOT_PLAN_BUILD_PROGRESS, callback),
+  /** Tasks via MCP, the routing log, the passphrase or the lock changed. */
+  onMcpTasksChanged: (callback) =>
+    _addListener(BOT_MCP_TASKS_CHANGED, callback),
   /** Recent changed (a save, a build's progress, a removal). */
   onCreateRecent: (callback) => _addListener(CREATE_RECENT_CHANGED, callback),
 

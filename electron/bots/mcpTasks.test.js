@@ -14,6 +14,7 @@ const {
   cleanFrom,
   TASK_EXPIRES_MS,
   LOCK_MS,
+  taskNoteFor,
 } = require("./mcpTasks");
 
 function setup({ passphrase = "purple otter" } = {}) {
@@ -55,6 +56,11 @@ describe("the passphrase", () => {
 
   it("needs 4 letters, and says when it's short", () => {
     assert.equal(checkPassphrase("cat").ok, false);
+    // Refused, never cut: a cut phrase would never match the spoken one.
+    assert.deepEqual(checkPassphrase("a ".repeat(101)), {
+      ok: false,
+      error: "Keep it under 200 characters.",
+    });
     assert.deepEqual(checkPassphrase("otter"), { ok: true, short: true });
     assert.deepEqual(checkPassphrase("purple otter"), {
       ok: true,
@@ -124,9 +130,16 @@ describe("tasks", () => {
     assert.equal(tasks.running(a.id).status, "running");
     assert.equal(tasks.done(a.id, { summary: "Done." }).summary, "Done.");
     assert.equal(tasks.failed(b.id, "Busy").error, "Busy");
+    assert.equal(tasks.get(a.id).needsYou, undefined);
+    const c = tasks.create({ task: "c", team });
+    assert.equal(
+      tasks.done(c.id, { summary: "Part.", needsYou: "Designer is paused." })
+        .needsYou,
+      "Designer is paused.",
+    );
     assert.deepEqual(
       tasks.list().map((t) => t.id),
-      [b.id, a.id],
+      [c.id, b.id, a.id],
     );
   });
 
@@ -165,5 +178,32 @@ describe("tasks", () => {
     tasks.verify("purple otter");
     assert.doesNotMatch(JSON.stringify(state.tasks), /otter/);
     assert.doesNotMatch(JSON.stringify(state.lock), /otter/);
+  });
+
+  it("a bot that didn't run says what the user can do — or nothing when it's not theirs", () => {
+    assert.equal(
+      taskNoteFor("Designer", "this bot is paused"),
+      "Designer is paused. Turn it on in this team's Bots view, then ask for the rest again.",
+    );
+    assert.match(
+      taskNoteFor("Designer", "all bots are paused"),
+      /^All bots are paused/,
+    );
+    assert.match(
+      taskNoteFor("Designer", "this bot is over its budget"),
+      /Raise it in Settings › Bots/,
+    );
+    assert.match(
+      taskNoteFor("Designer", "this bot isn't in the active profile"),
+      /Switch profiles/,
+    );
+    assert.equal(taskNoteFor("Designer", "a run is already in progress"), null);
+    assert.equal(
+      taskNoteFor(
+        "Designer",
+        "you've asked your bots as many times as one answer allows",
+      ),
+      null,
+    );
   });
 });

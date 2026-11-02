@@ -2,7 +2,9 @@ import React, { useCallback, useContext, useEffect, useState } from "react";
 import { Button3, ThemeContext } from "@trops/dash-react";
 import {
   INTERRUPTED_TEXT,
+  askedText,
   errorNextSteps,
+  mcpViaLabel,
   readableError,
   toPlainText,
   triggerLabel,
@@ -66,6 +68,12 @@ function when(run) {
 
 function statusLabel(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "Unknown";
+}
+
+// What started it: a task via MCP (TEAM-016) says so, not just "Asked".
+function startedBy(run) {
+  if (mcpViaLabel(run.via)) return "via MCP";
+  return TRIGGER_LABELS[run.trigger] || statusLabel(run.trigger);
 }
 
 function dotFor(status) {
@@ -175,10 +183,7 @@ export const BotRunHistory = ({
                       ) : null}
                     </span>
                     <span className="min-w-0 truncate">
-                      <span className={muted}>
-                        {TRIGGER_LABELS[r.trigger] || statusLabel(r.trigger)}{" "}
-                        ·{" "}
-                      </span>
+                      <span className={muted}>{startedBy(r)} · </span>
                       {firstLine(r)}
                     </span>
                   </>
@@ -188,7 +193,7 @@ export const BotRunHistory = ({
                       {when(r)}
                     </span>
                     <span className={`w-20 flex-shrink-0 ${muted}`}>
-                      {TRIGGER_LABELS[r.trigger] || statusLabel(r.trigger)}
+                      {startedBy(r)}
                     </span>
                     <span className="w-24 flex-shrink-0 flex flex-row items-center gap-1.5 text-xs">
                       <span
@@ -259,10 +264,13 @@ export const BotRunHistory = ({
                     {triggerLabel(r, nameOf)}
                   </div>
                 ) : null}
+                {mcpViaLabel(r.via) ? (
+                  <div className={`text-xs ${muted}`}>{mcpViaLabel(r.via)}</div>
+                ) : null}
                 {r.prompt ? (
                   <div>
                     <div className={`text-xs ${muted}`}>Asked</div>
-                    <div className="whitespace-pre-wrap">{r.prompt}</div>
+                    <div className="whitespace-pre-wrap">{askedText(r)}</div>
                   </div>
                 ) : null}
                 {Array.isArray(r.toolCalls) && r.toolCalls.length ? (

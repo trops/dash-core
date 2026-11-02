@@ -47,6 +47,17 @@ const BOTS_ASK_LEAD = "bots-ask-lead";
 const BOTS_LIST_LEADS = "bots-list-leads";
 // The Dash team (create-entry CRE-011): its four role bots for the Bots page.
 const BOTS_LIST_DASH_TEAM = "bots-list-dash-team";
+// Tasks via MCP (bot-teams TEAM-016): a team's tasks, the Dash Lead's
+// routing log, which teams take tasks, and the task passphrase.
+const BOTS_LIST_MCP_TASKS = "bots-list-mcp-tasks";
+const BOTS_LIST_MCP_ROUTES = "bots-list-mcp-routes";
+const BOTS_LIST_MCP_TASK_TEAMS = "bots-list-mcp-task-teams";
+const BOTS_SET_TAKES_MCP_TASKS = "bots-set-takes-mcp-tasks";
+const BOTS_TASK_PASSPHRASE_STATE = "bots-task-passphrase-state";
+const BOTS_TASK_PASSPHRASE_REVEAL = "bots-task-passphrase-reveal";
+const BOTS_TASK_PASSPHRASE_SET = "bots-task-passphrase-set";
+const BOTS_TASK_PASSPHRASE_REMOVE = "bots-task-passphrase-remove";
+const BOTS_UNLOCK_MCP_TASKS = "bots-unlock-mcp-tasks";
 // Building an approved plan (create-entry CRE-004, phase 4d).
 const BOTS_START_PLAN_BUILD = "bots-start-plan-build";
 const BOTS_STOP_PLAN_BUILD = "bots-stop-plan-build";
@@ -103,6 +114,8 @@ const BOT_LIST_CHANGED = "bot-list-changed"; // {}
 // A notification was clicked: open its bot — take it with takeOpenRequest.
 const BOT_OPEN_REQUEST = "bot-open-request"; // {}
 const BOT_PLAN_BUILD_PROGRESS = "bot-plan-build-progress"; // { buildId, state }
+// Tasks via MCP, the routing log, the passphrase or the lock changed.
+const BOT_MCP_TASKS_CHANGED = "bot-mcp-tasks-changed"; // {}
 
 module.exports = {
   BOTS_LIST,
@@ -139,6 +152,15 @@ module.exports = {
   BOTS_ASK_LEAD,
   BOTS_LIST_LEADS,
   BOTS_LIST_DASH_TEAM,
+  BOTS_LIST_MCP_TASKS,
+  BOTS_LIST_MCP_ROUTES,
+  BOTS_LIST_MCP_TASK_TEAMS,
+  BOTS_SET_TAKES_MCP_TASKS,
+  BOTS_TASK_PASSPHRASE_STATE,
+  BOTS_TASK_PASSPHRASE_REVEAL,
+  BOTS_TASK_PASSPHRASE_SET,
+  BOTS_TASK_PASSPHRASE_REMOVE,
+  BOTS_UNLOCK_MCP_TASKS,
   BOTS_START_PLAN_BUILD,
   BOTS_STOP_PLAN_BUILD,
   BOTS_GET_PLAN_BUILD,
@@ -175,4 +197,5 @@ module.exports = {
   BOT_LIST_CHANGED,
   BOT_OPEN_REQUEST,
   BOT_PLAN_BUILD_PROGRESS,
+  BOT_MCP_TASKS_CHANGED,
 };

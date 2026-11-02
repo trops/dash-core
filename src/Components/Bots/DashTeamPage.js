@@ -20,6 +20,7 @@ import { BotAvatar } from "./BotAvatar";
 import { DASH_TEAM_CONTACT } from "./dashTeamContact";
 import { DashTeamApprovals } from "./DashTeamApprovals";
 import { BotRunHistory } from "./BotRunHistory";
+import { McpRoutingLog } from "./McpTasksPanel";
 
 // Managing only (lead-workspace releases 5, 6b): the role's runs and the
 // team's settings; the team is talked to in the Dash Lead's conversations.
@@ -301,6 +302,12 @@ export const DashTeamPage = ({
       </div>
       {shownTab === "activity" ? (
         <div className="flex-1 min-h-0 overflow-y-auto pb-6">
+          {/* Tasks via MCP it routed (TEAM-016). */}
+          {role === "dashlead" ? (
+            <div className="px-5">
+              <McpRoutingLog />
+            </div>
+          ) : null}
           <BotRunHistory bot={roleBot} />
         </div>
       ) : (
