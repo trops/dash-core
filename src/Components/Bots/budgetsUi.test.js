@@ -81,6 +81,11 @@ describe("spendingText", () => {
     expect(spentLine(summary.bots[1])).toBe(
       "15.7k tokens · covered by your Claude plan",
     );
+    expect(
+      spentLine({ usd: 0, tokens: 15700, planTokens: 15700, planUsd: 0.31 }),
+    ).toBe(
+      "15.7k tokens · ≈ $0.31 at API prices · covered by your Claude plan",
+    );
     expect(spentLine({ usd: 0, tokens: 0 })).toBe("Nothing yet this month");
     expect(spentLine(null)).toBe("Nothing yet this month");
   });

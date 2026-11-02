@@ -641,13 +641,13 @@ describe("paused bots (US-011 AC8)", () => {
 
 describe("tasks via MCP (TEAM-016)", () => {
   const taskPrompt =
-    "Design the guest bedroom\n\n(A task given via MCP by ha-bridge; the user confirmed it with their task passphrase. Do it with your team's bots, then sum up in a few sentences what was done and anything still waiting on the user.)";
+    "Design the guest bedroom\n\n(A task given via MCP by voice-assistant; the user confirmed it with their task passphrase. Do it with your team's bots, then sum up in a few sentences what was done and anything still waiting on the user.)";
 
   it("labels a team lead's task: via MCP, who, confirmed — and shows just the task", () => {
     const turns = buildConversation([
       {
         trigger: "ask",
-        via: "mcp-task:ha-bridge",
+        via: "mcp-task:voice-assistant",
         status: "completed",
         prompt: taskPrompt,
         output: "Added to Rooms.",
@@ -655,13 +655,14 @@ describe("tasks via MCP (TEAM-016)", () => {
     ]);
     expect(turns[0]).toMatchObject({
       kind: "system",
-      text: "via MCP · ha-bridge · confirmed with passphrase",
+      text: "via MCP · voice-assistant",
     });
     expect(turns[1]).toMatchObject({
       kind: "user",
       text: "Design the guest bedroom",
     });
-    expect(mcpViaLabel("mcp-task")).toBe("via MCP · confirmed with passphrase");
+    // Whether a passphrase was asked is the task's to say, not the run's.
+    expect(mcpViaLabel("mcp-task")).toBe("via MCP");
     expect(mcpViaLabel("mcp")).toBe(null);
   });
 

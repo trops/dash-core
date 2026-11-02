@@ -5,6 +5,10 @@ import {
   routeRow,
   approvalForTasks,
   taskTimesText,
+  leadTimeline,
+  matchTaskRuns,
+  taskSettingLine,
+  mcpSource,
 } from "./mcpTaskText";
 
 const NOW = new Date(2026, 10, 1, 9, 20).getTime();
@@ -14,7 +18,7 @@ const task = (over = {}) => ({
   id: "task_1",
   task: "Design the guest bedroom, boho, lots of plants",
   teamName: "Room Design",
-  from: "ha-bridge",
+  from: "voice-assistant",
   status: "waiting",
   createdAt: at(9, 14),
   expiresAt: at(9, 24),
@@ -36,7 +40,7 @@ describe("mcpTaskText", () => {
 
   it("waiting, running, done, failed, expired", () => {
     const w = taskRow(task(), { now: NOW });
-    expect(w.meta).toMatch(/^via MCP · ha-bridge · 9:14/);
+    expect(w.meta).toMatch(/^via MCP · voice-assistant · 9:14/);
     expect(w.tag).toMatch(/^Waiting for passphrase · expires 9:24/);
     expect(w.state).toBe("pending");
     expect(w.summary).toBe("Waiting for the passphrase. Nothing has started.");
@@ -98,7 +102,9 @@ describe("mcpTaskText", () => {
 
   it("a task the Dash team routed says so", () => {
     const r = taskRow(task({ routedBy: "dash-team" }), { now: NOW });
-    expect(r.meta).toMatch(/^via MCP · routed by Dash team for ha-bridge/);
+    expect(r.meta).toMatch(
+      /^via MCP · routed by Dash team for voice-assistant/,
+    );
   });
 
   it("the newest confirmed task gets the team's approval asked after it started", () => {
@@ -184,13 +190,17 @@ describe("mcpTaskText", () => {
   });
 
   it("routing log rows: sent, asked back, none, couldn't", () => {
-    const base = { at: at(9, 4), from: "ha-bridge", task: "Fix up the garage" };
+    const base = {
+      at: at(9, 4),
+      from: "voice-assistant",
+      task: "Fix up the garage",
+    };
     const s = routeRow(
       { ...base, team: { id: "7", name: "Room Design" } },
       NOW,
     );
     expect(s.title).toBe("Sent 'Fix up the garage' to Room Design");
-    expect(s.meta).toMatch(/^via MCP · ha-bridge · 9:04/);
+    expect(s.meta).toMatch(/^via MCP · voice-assistant · 9:04/);
     expect(s.tag).toBe("Sent");
     const a = routeRow(
       { ...base, ambiguous: ["Room Design", "Home Projects"] },
@@ -204,5 +214,157 @@ describe("mcpTaskText", () => {
     expect(
       routeRow({ ...base, error: "The Dash Lead is busy." }, NOW).summary,
     ).toBe("The Dash Lead is busy. The agent asked which team instead.");
+  });
+
+  it("matches a task to its run: by start, or the nearest after it was confirmed", () => {
+    const run1 = { startedAt: at(9, 4), via: "mcp-task:va" };
+    const run2 = { startedAt: at(9, 15, 1), via: "mcp-task" };
+    const other = { startedAt: at(9, 14), via: "create" };
+    const done = task({ id: "a", runAt: at(9, 4), confirmedAt: at(9, 4) });
+    const going = task({ id: "b", status: "running", confirmedAt: at(9, 14) });
+    const m = matchTaskRuns([going, done], [run2, other, run1]);
+    expect(m.get("a")).toBe(run1);
+    expect(m.get("b")).toBe(run2);
+    // Too long after: not its run.
+    const late = task({ id: "c", confirmedAt: at(8, 0) });
+    expect(matchTaskRuns([late], [run2]).has("c")).toBe(false);
+  });
+
+  it("one list: runs tagged by where they came from, tasks without runs in place, filters", () => {
+    const tRun = {
+      startedAt: at(9, 4),
+      via: "mcp-task:va",
+      trigger: "ask",
+      status: "completed",
+      prompt: "Design it",
+      output: "Done it.",
+    };
+    const asked = {
+      startedAt: at(9, 5),
+      trigger: "ask",
+      via: "create",
+      status: "completed",
+      prompt: "Anything?",
+      output: "No.",
+    };
+    const sched = {
+      startedAt: at(7, 0),
+      trigger: "schedule",
+      status: "failed",
+      error: "boom",
+    };
+    const done = task({
+      id: "d",
+      status: "done",
+      summary: "Done it.",
+      runAt: at(9, 4),
+      confirmedAt: at(9, 4),
+      routedBy: "dash-team",
+    });
+    const waiting = task({ id: "w", createdAt: at(9, 20) });
+    const rows = leadTimeline([asked, tRun, sched], [waiting, done], {
+      now: NOW,
+    });
+    expect(rows.map((r) => r.source)).toEqual([
+      "via MCP · voice-assistant",
+      "You asked",
+      "via MCP · routed by Dash team",
+      "On its schedule",
+    ]);
+    expect(rows[2]).toMatchObject({
+      mcp: true,
+      tag: "Done",
+      title: "Design the guest bedroom, boho, lots of plants",
+    });
+    expect(rows[3]).toMatchObject({
+      tag: "Failed",
+      state: "error",
+      line: "boom",
+    });
+    expect(
+      leadTimeline([asked, tRun, sched], [waiting, done], {
+        filter: "mcp",
+        now: NOW,
+      }),
+    ).toHaveLength(2);
+    expect(
+      leadTimeline([asked, tRun, sched], [waiting, done], {
+        filter: "asked",
+        now: NOW,
+      }),
+    ).toHaveLength(1);
+    expect(
+      leadTimeline([asked, tRun, sched], [waiting, done], {
+        filter: "scheduled",
+        now: NOW,
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("a team's setting in a line; a task started without a passphrase doesn't claim one", () => {
+    expect(taskSettingLine({ takes: false })).toBe(
+      "Doesn't take tasks via MCP",
+    );
+    expect(taskSettingLine({ takes: true, asks: true })).toBe(
+      "Takes tasks via MCP · asks for a passphrase first",
+    );
+    expect(taskSettingLine({ takes: true, asks: false })).toBe(
+      "Takes tasks via MCP · starts them without a passphrase",
+    );
+    const r = taskRow(
+      task({
+        status: "running",
+        confirmedAt: at(9, 14),
+        needsPassphrase: false,
+      }),
+      { now: NOW },
+    );
+    expect(r.meta).not.toMatch(/passphrase/);
+    expect(mcpSource({ from: "voice-assistant" })).toBe(
+      "via MCP · voice-assistant",
+    );
+  });
+
+  it("two tasks close together keep their own runs", () => {
+    // A finished fast (names its run); B was confirmed 3s later and is
+    // still going — A's run must not be given to B.
+    const runA = { startedAt: at(9, 4), via: "mcp-task:va" };
+    const runB = {
+      startedAt: new Date(Date.parse(at(9, 4)) + 4000).toISOString(),
+      via: "mcp-task:va",
+    };
+    const A = task({
+      id: "A",
+      status: "done",
+      confirmedAt: at(9, 4),
+      runAt: runA.startedAt,
+    });
+    const B = task({
+      id: "B",
+      status: "running",
+      confirmedAt: new Date(Date.parse(at(9, 4)) + 3000).toISOString(),
+    });
+    const m = matchTaskRuns([B, A], [runB, runA]);
+    expect(m.get("A")).toBe(runA);
+    expect(m.get("B")).toBe(runB);
+    // B refused before running: no run at all, not A's.
+    expect(matchTaskRuns([B, A], [runA]).has("B")).toBe(false);
+  });
+
+  it("a catch-up run is a scheduled one", () => {
+    const run = {
+      startedAt: at(7, 0),
+      trigger: "catch-up",
+      status: "completed",
+      output: "ok",
+    };
+    const rows = leadTimeline([run], [], { now: NOW });
+    expect(rows[0].source).toBe("On its schedule");
+    expect(
+      leadTimeline([run], [], { filter: "scheduled", now: NOW }),
+    ).toHaveLength(1);
+    expect(leadTimeline([run], [], { filter: "asked", now: NOW })).toHaveLength(
+      0,
+    );
   });
 });

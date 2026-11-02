@@ -52,7 +52,14 @@ export const BotSpending = ({ bot }) => {
                 data-testid="bot-spending-run"
               >
                 <span className="truncate">
-                  {r.startedAt ? new Date(r.startedAt).toLocaleString() : "Run"}
+                  {r.startedAt
+                    ? new Date(r.startedAt).toLocaleString([], {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                    : "Run"}
                 </span>
                 <span className={`text-xs flex-shrink-0 ${muted}`}>
                   {runCostLabel(r)}

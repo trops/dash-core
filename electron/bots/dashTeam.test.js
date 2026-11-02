@@ -288,7 +288,7 @@ describe("Dash team instructions (slice 3c)", () => {
       builder.instructions,
       /nothing is installed until the Checker passes it/,
     );
-    assert.equal(builder.history.length, 6);
+    assert.equal(builder.history.length, 7);
   });
 });
 
@@ -464,7 +464,7 @@ describe("Dash team instructions (Create build fixes 3)", () => {
     );
     assert.match(checker.instructions, /must-fix/);
     assert.match(checker.instructions, /installed only if you pass it/);
-    assert.equal(checker.history.length, 5);
+    assert.equal(checker.history.length, 6);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[3].instructions = checker.history[1];
     const plan = planEnsureDashTeam(bots);
@@ -619,10 +619,62 @@ describe("Dash team instructions (design guide)", () => {
     const checker = role("checker");
     assert.match(checker.instructions, /hard-coded color/);
     assert.match(checker.instructions, /useDashTokens/);
+    // (the latest is the text before raw controls failed, which already
+    // had the colors rule)
     assert.doesNotMatch(
-      checker.history[checker.history.length - 1],
+      checker.history[checker.history.length - 2],
       /hard-coded color/,
     );
+  });
+  it("the Builder builds from dash-react, naming its components; the Checker fails raw controls", () => {
+    const builder = role("builder");
+    assert.match(
+      builder.instructions,
+      /Build every widget's UI from @trops\/dash-react/,
+    );
+    for (const c of [
+      "Panel",
+      "Button2",
+      "ButtonIcon",
+      "InputText",
+      "SelectInput",
+      "Switch",
+      "EmptyState",
+      "Skeleton",
+      "AlertBanner",
+      "useDashTokens",
+    ]) {
+      assert.match(builder.instructions, new RegExp(`\\b${c}\\b`), c);
+    }
+    assert.match(
+      builder.instructions,
+      /Never a raw <button>, <input>, <select> or <textarea>/,
+    );
+    assert.doesNotMatch(
+      builder.history[builder.history.length - 1],
+      /@trops\/dash-react/,
+    );
+    const checker = role("checker");
+    assert.match(
+      checker.instructions,
+      /raw <button>, <input>, <select> or <textarea>/,
+    );
+    assert.doesNotMatch(
+      checker.history[checker.history.length - 1],
+      /raw <button>/,
+    );
+    // A Builder or Checker still on the earlier text upgrades.
+    const bots = ROLE_IDS.map((r) => {
+      if (r !== "builder" && r !== "checker") return teamBot(r);
+      const h = role(r).history;
+      return teamBot(r, { instructions: h[h.length - 1] });
+    });
+    const plan = planEnsureDashTeam(bots);
+    for (const r of ["builder", "checker"]) {
+      const p = plan.find((x) => x.role === r);
+      assert.equal(p && p.action, "upgrade", r);
+      assert.equal(p.instructions, role(r).instructions);
+    }
   });
   it("teams on the text before the guide upgrade", () => {
     const bots = ROLE_IDS.map((r) => {

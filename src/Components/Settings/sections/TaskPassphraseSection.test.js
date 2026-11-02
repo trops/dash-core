@@ -96,10 +96,10 @@ describe("TaskPassphraseSection", () => {
       await screen.findByPlaceholderText("e.g. purple otter"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("passphrase-none")).toHaveTextContent(
-      "No passphrase yet, so teams won't take tasks via MCP.",
+      "No passphrase yet, so teams that ask for one can't start tasks.",
     );
     expect(screen.getByTestId("passphrase-teams")).toHaveTextContent(
-      "No team takes tasks via MCP yet",
+      "No team asks for a passphrase",
     );
   });
 
@@ -136,7 +136,9 @@ describe("TaskPassphraseSection", () => {
     expect(await screen.findByTestId("passphrase-value")).toHaveTextContent(
       "• • • • • •",
     );
-    expect(screen.getByText(/^Set Nov 1\. Agents never see it/)).toBeTruthy();
+    expect(
+      screen.getByText(/^Set Nov 1\. It's never kept in replies or logs\./),
+    ).toBeTruthy();
     expect(screen.getByText("Change")).toBeInTheDocument();
   });
 
@@ -192,18 +194,35 @@ describe("TaskPassphraseSection", () => {
     expect(bots.unlockMcpTasks).toHaveBeenCalled();
   });
 
-  it("lists the teams that take tasks, one per line, and follows changes", async () => {
-    const { bots, fireChanged } = install({ set: true }, { teams: ["7"] });
+  it("lists the teams that ask for a passphrase and those that don't, one per line, and follows changes", async () => {
+    const { bots, fireChanged } = install(
+      { set: true },
+      { teams: [{ id: "7", asksPassphrase: true }] },
+    );
     render(<TaskPassphraseSection workspaces={workspaces} />);
     expect(await screen.findByText("Room Design")).toBeInTheDocument();
-    expect(screen.queryByText("Home Projects")).toBeNull();
-    bots.listMcpTaskTeams.mockResolvedValue(["7", "8", "99"]);
+    expect(screen.getByTestId("passphrase-teams")).toHaveTextContent(
+      "Teams that ask for a passphrase",
+    );
+    expect(screen.queryByTestId("passphrase-teams-without")).toBeNull();
+    bots.listMcpTaskTeams.mockResolvedValue([
+      { id: "7", asksPassphrase: true },
+      { id: "8", asksPassphrase: false },
+      { id: "99", asksPassphrase: false },
+    ]);
     await act(async () => fireChanged());
     await waitFor(() =>
-      expect(screen.getByText("Home Projects")).toBeInTheDocument(),
+      expect(screen.getByTestId("passphrase-teams-without")).toHaveTextContent(
+        "Home Projects",
+      ),
     );
     // A dashboard that's gone isn't listed.
-    expect(screen.getByTestId("passphrase-teams").children).toHaveLength(3);
+    expect(
+      screen.getByTestId("passphrase-teams-without").children,
+    ).toHaveLength(2);
+    // Plain about what it is; and no one user's own setup in the wording.
+    expect(document.body.textContent).toMatch(/It isn't secret from the app/);
+    expect(document.body.textContent).not.toMatch(/home assistant|ha-bridge/i);
   });
 
   it("the short hint is a warning, alone (not with 'No passphrase yet')", async () => {

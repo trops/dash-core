@@ -131,6 +131,11 @@ class BudgetController {
       if (priced.includedInPlan) {
         bucket.planTokens =
           (bucket.planTokens || 0) + inTok + outTok + cacheTok;
+        // What they'd have cost on the API, at today's price — shown, never
+        // counted against a budget.
+        if (typeof priced.equivalentUsd === "number") {
+          bucket.planUsd = (bucket.planUsd || 0) + priced.equivalentUsd;
+        }
       }
       d.spend[mk][key] = bucket;
     }
@@ -209,7 +214,8 @@ class BudgetController {
    * not kept running this month), and its own spend this month.
    * @returns {{ overall: "ok"|"warn"|"exceeded", over: boolean,
    *   keptRunning: boolean, scopes: object[], limit: object|null,
-   *   spent: { usd: number, tokens: number, planTokens: number } }}
+   *   spent: { usd: number, tokens: number, planTokens: number,
+   *            planUsd: number } }}  planUsd: plan runs at API prices
    *   limit — the scope that decides (the most used one)
    */
   botStatus(botId, workspaceId) {
@@ -234,6 +240,7 @@ class BudgetController {
           (mine.outputTokens || 0) +
           (mine.cacheTokens || 0),
         planTokens: mine.planTokens || 0,
+        planUsd: mine.planUsd || 0,
       },
     };
   }

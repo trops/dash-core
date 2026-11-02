@@ -68,7 +68,8 @@ export function triggerLabel(r, nameOf = sameId) {
 
 /**
  * A run that came via Dash's MCP server for a task (bot-teams TEAM-016):
- * "via MCP · ha-bridge · confirmed with passphrase" for a team lead's task,
+ * "via MCP · voice-assistant" for a team lead's task (the task itself says
+ * whether it was confirmed with a passphrase — teams choose),
  * "Picking a team for a task via MCP" for the Dash Lead's routing. Null
  * otherwise.
  */
@@ -77,9 +78,7 @@ export function mcpViaLabel(via) {
   if (v === "mcp-route") return "Picking a team for a task via MCP";
   const m = /^mcp-task(?::(.+))?$/.exec(v);
   if (!m) return null;
-  return ["via MCP", m[1] || null, "confirmed with passphrase"]
-    .filter(Boolean)
-    .join(" · ");
+  return ["via MCP", m[1] || null].filter(Boolean).join(" · ");
 }
 
 /**
