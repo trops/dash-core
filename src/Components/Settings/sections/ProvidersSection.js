@@ -89,6 +89,9 @@ export const ProvidersSection = ({
   // cross-modal "Add new <type>" CTA from the Widget Builder.
   initialProviderType = null,
   initialProviderClass = null,
+  // With initialProviderName: open it straight in its edit form (a profile's
+  // provider that needs its key — dash-profiles).
+  initialEdit = false,
 }) => {
   const appContext = useContext(AppContext);
   const providers = appContext?.providers || {};
@@ -630,7 +633,11 @@ export const ProvidersSection = ({
       startCreate(initialProviderClass, initialProviderType);
     } else if (initialProviderName && providers[initialProviderName]) {
       linkApplied.current = true;
-      setSelectedName(initialProviderName);
+      if (initialEdit) {
+        handleStartEdit(initialProviderName, providers[initialProviderName]);
+      } else {
+        setSelectedName(initialProviderName);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCreateRequested, initialProviderName, providers]);
@@ -664,6 +671,20 @@ export const ProvidersSection = ({
   const needsSetupCount = Object.keys(providers).filter(
     (name) => status.statusOf(name).key === "needsSetup",
   ).length;
+
+  // A program that came with a loaded profile: the user's OK lets it run.
+  // → an error to show, or null.
+  const approveRun = async (name) => {
+    const api = window.mainApi && window.mainApi.providers;
+    if (!api || !api.approveRun || !appId) return "Couldn't allow it here.";
+    const res = await api.approveRun(appId, name).catch((e) => ({
+      error: true,
+      message: e && e.message,
+    }));
+    if (res && res.error) return res.message || "Couldn't allow it. Try again.";
+    if (refreshProviders) refreshProviders();
+    return null;
+  };
 
   const iconForClass = (cls) =>
     cls === "mcp" ? "server" : cls === "websocket" ? "plug" : "key";
@@ -870,6 +891,7 @@ export const ProvidersSection = ({
         onOpenWorkspace={onOpenWorkspace}
         onOpenBotInBotsView={onOpenBotInBotsView}
         onChooseWhereToUse={openChooseWhereToUse}
+        onApproveRun={approveRun}
         isEditing={isEditing}
         formName={formName}
         setFormName={setFormName}

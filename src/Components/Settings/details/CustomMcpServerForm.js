@@ -590,6 +590,19 @@ export const CustomMcpServerForm = ({
         });
       } else {
         setAuthResult({ success: true, message: "Authorized!" });
+        // Signed in here: a provider that came with a profile is set up
+        // now (dash-profiles). Only one this form is editing.
+        const name = (initialName || "").trim();
+        const pApi = window.mainApi && window.mainApi.providers;
+        const appId = appContext?.credentials?.appId || appContext?.appId;
+        if (name && pApi && pApi.markSetUp && appId) {
+          Promise.resolve(pApi.markSetUp(appId, name))
+            .then(
+              () =>
+                appContext.refreshProviders && appContext.refreshProviders(),
+            )
+            .catch(() => {});
+        }
       }
       setIsAuthorizing(false);
     };

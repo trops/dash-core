@@ -693,8 +693,10 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
               `${res.replaced ? "Replaced" : "Loaded"} "${res.profile.name}"${
                 parts.length ? ` · ${parts.join(", ")}` : ""
               }.${
-                (res.providersToSetUp || []).length
-                  ? ` Set up on this Mac: ${res.providersToSetUp.join(", ")}.`
+                (res.providersAdded || []).length
+                  ? ` ${plural(res.providersAdded.length, "provider")} added without ${
+                      res.providersAdded.length === 1 ? "its key" : "their keys"
+                    } — Providers shows what each needs.`
                   : ""
               }${
                 (res.secretsToEnter || []).length

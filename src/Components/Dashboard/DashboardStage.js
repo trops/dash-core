@@ -88,6 +88,7 @@ import { BotPageModal } from "../Bots/BotPageModal";
 import { LeadWorkspace } from "../LeadWorkspace/LeadWorkspace";
 import { usePendingApprovalCount } from "../Bots/usePendingApprovalCount";
 import { useProvidersNeedingSetup } from "../AppPages/useProviderStatus";
+import { ProviderSetupHost } from "../Provider/ProviderSetupHost";
 import { AppPage } from "../AppPages/AppPage";
 import {
   pageForSettingsSection,
@@ -3853,6 +3854,8 @@ const DashboardStageInner = ({
         name={codeView ? codeView.name : ""}
         sources={codeViewSources}
       />
+      {/* A provider's setup, in front of any window (dash-profiles). */}
+      <ProviderSetupHost />
     </LayoutContainer>
   );
 };

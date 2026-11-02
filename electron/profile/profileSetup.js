@@ -341,11 +341,12 @@ function parseProfileV3(input) {
             str(p.type, 100) &&
             !UNSAFE_KEYS.has(p.name),
         )
-        .map((p) => ({
-          name: p.name,
-          type: p.type,
-          providerClass: str(p.providerClass, 50),
-        }))
+        // Name, type and connection settings — never keys; stripped again
+        // here, since a profile is untrusted input (profileProviders.js).
+        .map((p) => {
+          const safe = require("./profileProviders").safeProfileProvider(p);
+          return { ...safe, providerClass: str(p.providerClass, 50) };
+        })
         .slice(0, MAX_ITEMS),
       settings: {
         app: app

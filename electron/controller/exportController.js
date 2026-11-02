@@ -65,6 +65,10 @@ const SAFE_PROVIDER_FIELDS = [
  * @param {Array<Object>} providers - raw listProviders() output
  * @returns {Array<Object>} sanitized copies
  */
+// A key's field name looks like one ("apiKey") — a typed-in name that's
+// really a value, or a sentence, doesn't travel.
+const FIELD_NAME = /^[A-Za-z_][\w.-]{0,63}$/;
+
 function stripProviderCredentials(providers) {
   if (!Array.isArray(providers)) return [];
   return providers.map((p) => {
@@ -74,6 +78,17 @@ function stripProviderCredentials(providers) {
     }
     if (safe.mcpConfig) safe.mcpConfig = safeMcpConfig(safe.mcpConfig);
     if (safe.wsConfig) safe.wsConfig = safeWsConfig(safe.wsConfig);
+    // Which fields its key goes in ("appId", "apiKey") — names only,
+    // never values — so the provider can be set up from the other side.
+    if (p.credentials && typeof p.credentials === "object") {
+      safe.credentialKeys = Object.keys(p.credentials)
+        .filter((k) => FIELD_NAME.test(k))
+        .slice(0, 50);
+    } else if (Array.isArray(p.credentialKeys)) {
+      safe.credentialKeys = p.credentialKeys
+        .filter((k) => typeof k === "string" && FIELD_NAME.test(k))
+        .slice(0, 50);
+    }
     return safe;
   });
 }

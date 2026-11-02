@@ -20,6 +20,9 @@ import { AppContext } from "../../../Context/App/AppContext";
 
 import { WidgetCard } from "./Enhanced/WidgetCard";
 import { renderComponent } from "../../../utils/layout";
+import { ProviderNeedsSetupNotice } from "../../Provider/ProviderNeedsSetupNotice";
+import { providerSetupNeeds } from "../../Provider/providerSetupNeeds";
+import { resolveProviderName } from "../../../utils/providerResolution";
 import { ComponentManager } from "../../../ComponentManager";
 import { WidgetNotFound } from "../../../Widget/WidgetNotFound";
 import { isContainer, isWorkspace } from "../../../utils/layout";
@@ -1212,11 +1215,36 @@ export const LayoutGridContainer = memo(
         return null;
       }
 
-      const rendered = renderComponent(
-        cellComponent.component,
-        cellComponent.id,
-        cellComponent,
-        null,
+      // A provider it uses came with a loaded profile and still needs its
+      // key, a sign-in or the user's OK (dash-profiles): say which, in place
+      // of a widget that would only fail.
+      const setupNeeds = providerSetupNeeds(
+        (
+          (
+            ComponentManager.config(cellComponent.component, cellComponent) ||
+            {}
+          ).providers || []
+        ).filter((p) => p && p.type),
+        (providerType) =>
+          resolveProviderName({
+            providerType,
+            layoutItem: cellComponent,
+            widgetId: cellComponent.id,
+            workspace,
+            appProviders: providersObj,
+            providersLoaded: appCtx?.providersLoaded,
+          }),
+        availableProviders,
+      );
+      const rendered = setupNeeds.length ? (
+        <ProviderNeedsSetupNotice needs={setupNeeds} />
+      ) : (
+        renderComponent(
+          cellComponent.component,
+          cellComponent.id,
+          cellComponent,
+          null,
+        )
       );
 
       // Prefer uuid over id — uuid is `${dashboardId}-${component}-${id}`

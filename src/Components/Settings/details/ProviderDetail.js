@@ -1,5 +1,6 @@
 import React, { useState, useContext, useMemo, useRef } from "react";
 import {
+  AlertBanner,
   Button,
   Button3,
   InputText,
@@ -49,6 +50,8 @@ export const ProviderDetail = ({
   onOpenBotInBotsView = null,
   // NAV-015: opens "Use <provider> for…" (tick the widgets and bots).
   onChooseWhereToUse = null,
+  // A program from a loaded profile: the user's OK lets it run (dash-profiles).
+  onApproveRun = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const appContext = useContext(AppContext);
@@ -56,6 +59,9 @@ export const ProviderDetail = ({
   const isMcp = provider?.providerClass === "mcp";
   const isWs = provider?.providerClass === "websocket";
 
+  const [approveError, setApproveError] = useState(null);
+  // A held provider from a profile runs a program here, or reaches an address.
+  const runsProgram = !!(provider?.mcpConfig && provider.mcpConfig.command);
   // MCP test connection state
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -242,6 +248,20 @@ export const ProviderDetail = ({
           setAuthResult({ success: false, message: result.message });
         } else {
           setAuthResult({ success: true, message: "Authorized!" });
+          // Signed in here: a provider from a profile is set up now.
+          if (provider && provider.needsSetup) {
+            const pApi = window.mainApi && window.mainApi.providers;
+            const appId = appContext?.credentials?.appId;
+            if (pApi && pApi.markSetUp && appId) {
+              Promise.resolve(pApi.markSetUp(appId, providerName))
+                .then(
+                  () =>
+                    appContext.refreshProviders &&
+                    appContext.refreshProviders(),
+                )
+                .catch(() => {});
+            }
+          }
         }
         setIsAuthorizing(false);
       },
@@ -686,6 +706,61 @@ export const ProviderDetail = ({
           />
         </div>
       </div>
+
+      {/* From a loaded profile (dash-profiles): where it came from, and a
+          program it runs waits for the user's OK. */}
+      {status && status.runApproval ? (
+        <div
+          className={`flex flex-col gap-2 rounded-lg border p-3 text-sm ${hairline}`}
+          data-testid="provider-run-approval"
+        >
+          <span className={strong}>
+            {`"${providerName}" came with your profile${
+              provider.fromProfile ? ` "${provider.fromProfile}"` : ""
+            }. ${
+              runsProgram
+                ? "To connect, it runs this program on this Mac:"
+                : "It connects to this address — the key you add is sent there:"
+            }`}
+          </span>
+          <code
+            className={`block rounded-md border px-3 py-2 font-mono text-xs break-all ${hairline}`}
+          >
+            {runsProgram
+              ? [provider.mcpConfig.command, ...(provider.mcpConfig.args || [])]
+                  .filter(Boolean)
+                  .join(" ")
+              : (provider.mcpConfig && provider.mcpConfig.url) || ""}
+          </code>
+          <span className={muted}>
+            {`Only allow it if you know this profile — you made it, or someone you trust did. It won't ${
+              runsProgram ? "run" : "connect"
+            } until you do.`}
+          </span>
+          {onApproveRun ? (
+            <span className="flex flex-row flex-wrap items-center gap-3">
+              <Button
+                title="Allow"
+                size="sm"
+                onClick={async () =>
+                  setApproveError((await onApproveRun(providerName)) || null)
+                }
+              />
+              {approveError ? <span role="alert">{approveError}</span> : null}
+            </span>
+          ) : null}
+        </div>
+      ) : status && status.fromProfile ? (
+        <AlertBanner
+          variant="warning"
+          size="compact"
+          message={
+            status.label === "Sign in on this Mac"
+              ? `Came with your profile "${status.fromProfile}". Sign-ins stay on the Mac they were made on — sign in here with Authorize.`
+              : `Came with your profile "${status.fromProfile}" without its key — add it with Edit. Its other settings came along.`
+          }
+        />
+      ) : null}
 
       {/* Default-for-type: any widget that needs this type and hasn't been
           bound explicitly uses this provider. Single winner per type —

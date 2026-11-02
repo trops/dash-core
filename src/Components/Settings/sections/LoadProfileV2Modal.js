@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import {
   AlertBanner,
   Button2,
@@ -7,7 +7,9 @@ import {
   InputText,
   SelectInput,
 } from "@trops/dash-react";
+import { AppContext } from "../../../Context/App/AppContext";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
+import { openProviderSetup } from "../../Provider/providerSetupEvent";
 
 const plural = (n, noun) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
@@ -21,6 +23,36 @@ const KINDS = [
 ];
 
 const rowId = (row) => `${row.kind}:${row.package}`;
+
+// After loading: what each added provider needs, and its button.
+const afterNeed = (p) =>
+  p.needsRun
+    ? p.reach === "address"
+      ? "connect"
+      : "run"
+    : p.signIn
+      ? "signIn"
+      : "key";
+const AFTER_TEXT = {
+  key: "paste your key",
+  signIn: "sign in on this Mac",
+  run: "runs a program — you OK it first",
+  connect: "connects to an address — you OK it first",
+};
+const AFTER_ACTION = {
+  key: "Add key",
+  signIn: "Sign in",
+  run: "Review",
+  connect: "Review",
+};
+
+// What a provider the profile adds here still needs (dash-profiles).
+const NEED_TEXT = {
+  key: "added without its key — you add it after loading",
+  signIn: "added — you sign in on this Mac after loading",
+  run: "added — runs a program, so you OK it before it runs",
+  connect: "added — connects to an address, so you OK it first",
+};
 
 /**
  * What replacing takes out of the profile. It stays on this computer; what
@@ -99,6 +131,7 @@ export function choiceLabel(row, fromAccount = false) {
  */
 export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
   const { muted, strong, hairline } = useConfigTokens();
+  const app = useContext(AppContext) || {};
   const replacing = preview.target.mode === "replace";
   const [asNew, setAsNew] = useState(false);
   const [name, setName] = useState(
@@ -118,6 +151,9 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
   const [applySettings, setApplySettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Loaded, with providers added that still need the user: the list of
+  // what's left, before the window closes (dash-profiles).
+  const [done, setDone] = useState(null);
 
   const toggle = (set, setter, key, on) => {
     const next = new Set(set);
@@ -146,7 +182,13 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
       setLoading(false);
     }
     if (res && res.success) {
-      onLoaded(res);
+      // The providers it added: every screen sees them now (the after-load
+      // list opens them), not after a restart.
+      if ((res.providersAdded || []).length && app.refreshProviders) {
+        await Promise.resolve(app.refreshProviders()).catch(() => {});
+      }
+      if ((res.providersAdded || []).length) setDone(res);
+      else onLoaded(res);
       return;
     }
     setError(res?.error || "Couldn't load the profile.");
@@ -155,12 +197,68 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
   const close = () => {
     if (!loading) onClose();
   };
-  const setUp = (p) =>
-    window.dispatchEvent(
-      new CustomEvent("dash:open-settings-create-provider", {
-        detail: { type: p.type, providerClass: p.providerClass || null },
-      }),
+  if (done) {
+    const added = done.providersAdded || [];
+    const finish = () => onLoaded(done);
+    return (
+      <ConfirmationModal
+        isOpen
+        // Only Done or Later close it: a provider's setup opening in front
+        // takes the focus, and that mustn't close the list underneath.
+        setIsOpen={() => {}}
+        title={`Add keys for ${plural(added.length, "provider")}`}
+        confirmLabel="Done"
+        cancelLabel="Later"
+        onConfirm={finish}
+        onCancel={finish}
+      >
+        <div
+          className={`flex flex-col gap-3 text-sm max-h-96 overflow-y-auto pr-1 ${strong}`}
+          data-testid="load-v2-after"
+        >
+          <AlertBanner
+            variant="success"
+            size="compact"
+            message={`${done.profile.name} is loaded.`}
+          />
+          <span className="max-w-prose">
+            Its dashboards work once these have their keys. Each opens in front
+            of this list.
+          </span>
+          <div className={`flex flex-col rounded-lg border ${hairline}`}>
+            {added.map((p, i) => (
+              <div
+                key={p.name}
+                className={`flex flex-row items-center gap-3 px-3 py-2 ${
+                  i ? `border-t ${hairline}` : ""
+                }`}
+                data-testid="load-v2-after-row"
+              >
+                <span className="flex-1 min-w-0 flex flex-col">
+                  <span className="font-medium truncate">{p.name}</span>
+                  <span className={`text-xs ${muted}`}>
+                    {`${p.type} · ${AFTER_TEXT[afterNeed(p)]}`}
+                  </span>
+                </span>
+                <Button2
+                  title={AFTER_ACTION[afterNeed(p)]}
+                  size="sm"
+                  onClick={() =>
+                    openProviderSetup(p.name, { review: p.needsRun })
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <span className={`${muted} max-w-prose`}>
+            You can also add them later — each one shows what it needs on the
+            Providers page and on its widgets.
+          </span>
+        </div>
+      </ConfirmationModal>
     );
+  }
+
   const rows = preview.rows || [];
   const providers = preview.providers || [];
   const newBots = rows.filter(
@@ -310,6 +408,12 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
             data-testid="load-v2-providers"
           >
             <span className="font-medium">Providers</span>
+            {providers.some((p) => p.status !== "ready") ? (
+              <span className={`${muted} max-w-prose`}>
+                Ones this Mac doesn&apos;t have are added with their settings,
+                without their keys. You add each key after loading.
+              </span>
+            ) : null}
             {providers.map((p) => (
               <div key={p.name} className="flex flex-col gap-1">
                 {p.status === "ready" ? (
@@ -323,24 +427,17 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
                     }
                     options={[
                       ...p.options.map((o) => ({ value: o, label: o })),
-                      { value: "", label: `None — set up "${p.name}" later` },
+                      {
+                        value: "",
+                        label: `None — add "${p.name}" without its key`,
+                      },
                     ]}
                   />
                 ) : (
-                  <div className="flex flex-row flex-wrap items-center gap-2">
-                    <span>{`${p.name} (${p.type})`}</span>
-                    <Button2
-                      title="Set up"
-                      size="sm"
-                      onClick={() => setUp(p)}
-                    />
-                  </div>
-                )}
-                {p.status === "setup" ? (
-                  <span className={muted}>
-                    {`Not on this Mac. Set it up with your key and name it "${p.name}" so the profile's dashboards and bots find it.`}
+                  <span>
+                    {`${p.name} (${p.type}) · ${NEED_TEXT[p.need] || NEED_TEXT.key}`}
                   </span>
-                ) : null}
+                )}
               </div>
             ))}
           </div>

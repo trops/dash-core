@@ -131,6 +131,10 @@ export function useProviderStatus({
           running: !!running[name],
           credentialSchema: p ? schemaFor(catalog, p) : {},
           credentialOptions: p ? optionsFor(catalog, p) : null,
+          signIn: !!(
+            p &&
+            (catalog || []).some((e) => e && e.id === p.type && e.authCommand)
+          ),
         });
       },
       usageOf: (name) => providerUsage(name, { workspaces, bots, bindingsFor }),

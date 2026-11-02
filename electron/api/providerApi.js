@@ -10,6 +10,8 @@ const {
   PROVIDER_LIST,
   PROVIDER_GET,
   PROVIDER_DELETE,
+  PROVIDER_APPROVE_RUN,
+  PROVIDER_MARK_SET_UP,
 } = require("../events");
 
 const providerApi = {
@@ -90,6 +92,17 @@ const providerApi = {
    */
   deleteProvider: (appId, providerName) =>
     ipcRenderer.invoke(PROVIDER_DELETE, { appId, providerName }),
+
+  /**
+   * A program that came with a loaded profile runs only after the user
+   * OKs it (Providers › Allow). → { success } | { error, message }
+   */
+  approveRun: (appId, providerName) =>
+    ipcRenderer.invoke(PROVIDER_APPROVE_RUN, { appId, providerName }),
+
+  /** Signed in on this Mac: a provider from a profile is set up now. */
+  markSetUp: (appId, providerName) =>
+    ipcRenderer.invoke(PROVIDER_MARK_SET_UP, { appId, providerName }),
 
   /**
    * listProvidersForApplication

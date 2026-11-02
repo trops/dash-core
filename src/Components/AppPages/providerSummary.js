@@ -89,9 +89,40 @@ export function missingFields(
  */
 export function providerStatus(
   provider,
-  { running = false, credentialSchema, credentialOptions = null } = {},
+  {
+    running = false,
+    credentialSchema,
+    credentialOptions = null,
+    signIn = false,
+  } = {},
 ) {
   const missing = missingFields(provider, credentialSchema, credentialOptions);
+  // From a loaded profile (dash-profiles): a program waits for the user's
+  // OK before it first runs; one with no key yet says which it needs.
+  if (provider && provider.needsRunApproval) {
+    return {
+      key: "needsSetup",
+      label:
+        provider.mcpConfig &&
+        !provider.mcpConfig.command &&
+        provider.mcpConfig.url
+          ? "Needs your OK to connect"
+          : "Needs your OK to run",
+      missing,
+      runApproval: true,
+    };
+  }
+  if (provider && provider.needsSetup && !provider.signedIn) {
+    return {
+      key: "needsSetup",
+      label:
+        signIn || provider.needsSignIn
+          ? "Sign in on this Mac"
+          : "Needs your key",
+      missing,
+      fromProfile: provider.fromProfile || null,
+    };
+  }
   if (missing.length)
     return { key: "needsSetup", label: "Needs setup", missing };
   const cls = classOf(provider);
