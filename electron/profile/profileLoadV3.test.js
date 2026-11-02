@@ -531,6 +531,105 @@ describe("loading", () => {
     assert.equal(JSON.stringify(added).includes("credentials"), false);
   });
 
+  it("unlocked keys: each provider gets its key, each password its widget — this Mac's own values win", async () => {
+    const { d, state, calls } = computer({ providers: [] });
+    d.addProviderFromProfile = (appId_, p, opts) => {
+      calls.push(["addProvider", p, opts]);
+      const withKey = !!opts.credentials;
+      state.providers.push({ ...p, needsSetup: !withKey });
+      return { success: true, added: true, ...(withKey ? { withKey } : {}) };
+    };
+    const m = manifest();
+    assert.equal(m.secretsToEnter.length, 1);
+    const unlockedKeys = {
+      providers: { "Work Slack": { token: "xoxb-1" } },
+      widgetSecrets: [
+        {
+          dashboardId: "1",
+          item: "layout/1",
+          field: "apiKey",
+          value: "HA-KEY",
+        },
+        // Not a secret setting of that widget: never written.
+        { dashboardId: "1", item: "layout/1", field: "room", value: "Garage" },
+      ],
+    };
+    const res = await applyLoadV3(null, appId, m, { unlockedKeys }, d);
+    assert.equal(res.success, true, res.error);
+    const slack = calls.find(
+      (c) => c[0] === "addProvider" && c[1].name === "Work Slack",
+    );
+    assert.deepEqual(slack[2].credentials, { token: "xoxb-1" });
+    const home = calls.find(
+      (c) => c[0] === "addProvider" && c[1].name === "Home",
+    );
+    assert.equal("credentials" in home[2], false);
+    assert.deepEqual(
+      res.providersAdded.map((p) => [p.name, !!p.withKey]),
+      [
+        ["Work Slack", true],
+        ["Home", false],
+      ],
+    );
+    const prefs = state.workspaces[0].layout[0].userPrefs;
+    assert.equal(prefs.apiKey, "HA-KEY");
+    assert.equal(prefs.room, "Kitchen");
+    assert.deepEqual(res.secretsToEnter, []);
+    assert.deepEqual(res.keysFilled, { providers: 1, passwords: 1 });
+  });
+
+  it("without unlocked keys, nothing is filled and the passwords are still to enter", async () => {
+    const { d, calls } = computer({ providers: [] });
+    const res = await applyLoadV3(null, appId, manifest(), {}, d);
+    assert.equal(res.success, true, res.error);
+    assert.equal(res.secretsToEnter.length, 1);
+    assert.ok(
+      calls
+        .filter((c) => c[0] === "addProvider")
+        .every((c) => !c[2].credentials),
+    );
+  });
+
+  it("a provider of the same name here gets only its missing key", async () => {
+    const { d, calls } = computer({
+      providers: [{ name: "Work Slack", type: "slack", needsSetup: true }],
+    });
+    d.addProviderFromProfile = (appId_, p, opts) => {
+      calls.push(["addProvider", p, opts]);
+      return { success: true, added: false, filled: !!opts.credentials };
+    };
+    const res = await applyLoadV3(
+      null,
+      appId,
+      manifest(),
+      {
+        unlockedKeys: {
+          providers: { "Work Slack": { token: "x" } },
+          widgetSecrets: [],
+        },
+      },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    const slack = calls.find(
+      (c) => c[0] === "addProvider" && c[1].name === "Work Slack",
+    );
+    assert.deepEqual(slack[2].credentials, { token: "x" });
+    assert.equal(res.keysFilled.providers, 1);
+  });
+
+  it("the preview says the keys are there, locked", async () => {
+    const { lockKeys } = require("./profileKeys");
+    const { d } = computer();
+    const locked = await lockKeys(
+      { providers: { a: { k: "v" } }, widgetSecrets: [] },
+      "purple otter river",
+    );
+    const plan = await planLoadV3(appId, manifest({ lockedKeys: locked }), d);
+    assert.deepEqual(plan.lockedKeys, { providers: 1, widgetSecrets: 0 });
+    assert.equal((await planLoadV3(appId, manifest(), d)).lockedKeys, null);
+  });
+
   it("a provider that couldn't be added: the bot still loads, and says what to add", async () => {
     const { d, state, calls } = computer({ providers: [] });
     d.addProviderFromProfile = () => ({ error: true, message: "disk full" });
@@ -874,14 +973,14 @@ describe("a dashboard's own provider choices, per widget", () => {
     },
     layout: [{ id: "w2", selectedProviders: { algolia: "Algolia Prod" } }],
   };
-  it("are saved with the profile", () => {
+  it("are saved with the profile", async () => {
     assert.deepEqual([...providerNamesIn(ws, new Set())].sort(), [
       "Algolia Demos",
       "Algolia Prod",
       "Work Slack",
     ]);
   });
-  it("are kept on load, renamed to this Mac's — not dropped", () => {
+  it("are kept on load, renamed to this Mac's — not dropped", async () => {
     const names = {
       "Work Slack": "Slack",
       "Algolia Demos": "Algolia Demos",

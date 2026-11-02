@@ -33,6 +33,9 @@ const PROFILE_PLAN_BUILT_PUBLISH = "profile:plan-built-publish";
 const PROFILE_PUBLISH_BUILT = "profile:publish-built";
 // Auto-save to the account (v3, Slice 3).
 const PROFILE_SET_AUTO_SAVE = "profile:set-auto-save";
+// "Include keys and passwords": the phrase, on its own unlogged channels.
+const PROFILE_SET_KEYS_PHRASE = "profile:set-keys-phrase";
+const PROFILE_UNLOCK_KEYS = "profile:unlock-keys";
 
 module.exports = {
   PROFILE_LIST,
@@ -58,4 +61,6 @@ module.exports = {
   PROFILE_PLAN_BUILT_PUBLISH,
   PROFILE_PUBLISH_BUILT,
   PROFILE_SET_AUTO_SAVE,
+  PROFILE_SET_KEYS_PHRASE,
+  PROFILE_UNLOCK_KEYS,
 };

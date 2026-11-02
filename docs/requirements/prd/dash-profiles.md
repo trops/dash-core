@@ -485,7 +485,20 @@ folders, bots }`, compressed so layouts stay well under the account's 350 KB per
        in / Review, each opening in front (`ProviderSetupHost`, event `dash:open-provider-setup`). Providers shows
        "Needs your key" / "Sign in on this Mac" / "Needs your OK to run"; a widget whose provider still needs it says
        which, with the same button, in place of a widget that would fail.
-     - Next (approved, part 2): "Include keys and passwords", locked with a phrase only the user knows.
+   - **Include keys and passwords** (2026-11-02, part 2, same mockups): a switch in the save window, for the account
+     and for a file. On: provider keys and the passwords typed into widgets are locked on this Mac with a phrase only
+     the user knows (`profileKeys.js`: scrypt N 2^17 async, AES-256-GCM, 16-byte tag; phrase 12+ characters) and the
+     blob goes in the profile as `lockedKeys` (counts readable, nothing else). The rest of the profile is private to
+     the account but not encrypted. Sign-ins (OAuth) never travel.
+     - The phrase goes to the main process on its own unlogged channels (`profile:set-keys-phrase`,
+       `profile:unlock-keys`, plain `ipcMain.handle`), never with a save's or load's options.
+     - The account copy and a file keep their own phrase state (`profileKeysPhrase.js`, `profile-keys.json`). Only
+       the account copy can remember the phrase (sealed by safeStorage) so auto-save locks new keys; otherwise
+       auto-save reuses the keys as last locked. Saving with the switch off forgets that copy's phrase and keys.
+     - Loading: "Phrase to unlock the keys" + Unlock, or "Load without keys". Unlocked keys stay in the main process
+       (with the opened profile, same expiry) and are applied there: a provider added with its key is set up (a whole
+       key; a WebSocket still needs its address); one of the same name and type here still waiting for its key gets
+       it; a key or sign-in this Mac has is never replaced; passwords fill only empty, secret-looking settings.
 
 ---
 

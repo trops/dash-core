@@ -95,7 +95,7 @@ describe("the setting", () => {
       d,
     );
     const s = getSettings(appId, "trops", d).mm;
-    assert.deepEqual(s.options, { bots: false, settings: true });
+    assert.deepEqual(s.options, { bots: false, settings: true, keys: false });
     assert.equal(s.last.ok, true);
     assert.equal(s.last.savedAt, "T");
     forgetProfile(appId, "mm", d);
@@ -159,7 +159,11 @@ describe("a pass", () => {
     );
     const res = await runOnce("change", () => null, d);
     assert.deepEqual(res, [{ profileId: "mm", saved: true }]);
-    assert.deepEqual(calls[0], ["save", "mm", { bots: false, settings: true }]);
+    assert.deepEqual(calls[0], [
+      "save",
+      "mm",
+      { bots: false, settings: true, keys: false },
+    ]);
     assert.equal(getSettings(appId, "trops", d).mm.last.ok, true);
     // The daily tick doesn't save a "when I make changes" profile.
     assert.deepEqual(await runOnce("tick", () => null, d), []);

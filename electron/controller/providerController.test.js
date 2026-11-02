@@ -833,6 +833,111 @@ describe("providerController", () => {
       );
     });
 
+    it("with its unlocked key: set up at once; an empty one here gets it, a key here is kept", () => {
+      const r1 = controller.addFromProfile(
+        null,
+        "test-app",
+        {
+          name: "Algolia",
+          type: "algolia",
+          providerClass: "credential",
+          credentialKeys: ["appId", "apiKey"],
+        },
+        { credentials: { appId: "A1", apiKey: "K1", __proto__x: 1 } },
+      );
+      assert.deepEqual(r1, { success: true, added: true, withKey: true });
+      let p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Algolia");
+      assert.equal(p.needsSetup, undefined);
+      assert.deepEqual(p.credentials, { appId: "A1", apiKey: "K1" });
+      // Loaded earlier without keys: the key fills it.
+      controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Slack", type: "slack", credentialKeys: ["token"] },
+        {},
+      );
+      const r2 = controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Slack", type: "slack" },
+        { credentials: { token: "xoxb" } },
+      );
+      assert.equal(r2.filled, true);
+      p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Slack");
+      assert.equal(p.needsSetup, undefined);
+      assert.equal(p.credentials.token, "xoxb");
+      // A key here: never replaced.
+      const r3 = controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Algolia", type: "algolia" },
+        { credentials: { apiKey: "OTHER" } },
+      );
+      assert.deepEqual(r3, { success: true, added: false });
+      p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Algolia");
+      assert.equal(p.credentials.apiKey, "K1");
+      // A sign-in provider still needs its sign-in.
+      controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Drive", type: "google-drive", providerClass: "mcp" },
+        { signIn: true, credentials: { clientId: "c" } },
+      );
+      p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Drive");
+      assert.equal(p.needsSignIn, true);
+    });
+
+    it("a profile's key never goes to another kind of provider, and only a whole key sets one up", () => {
+      controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Shared", type: "slack", credentialKeys: ["token"] },
+        {},
+      );
+      const r = controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Shared", type: "algolia" },
+        { credentials: { token: "evil" } },
+      );
+      assert.deepEqual(r, { success: true, added: false });
+      let p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Shared");
+      assert.equal(p.credentials.token, "");
+      // Half a key: added with it, still needs the rest.
+      const half = controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Half", type: "algolia", credentialKeys: ["appId", "apiKey"] },
+        { credentials: { appId: "A" } },
+      );
+      assert.equal(half.withKey, undefined);
+      p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Half");
+      assert.equal(p.needsSetup, true);
+      // A WebSocket arrives without its address: its key alone doesn't set it up.
+      controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Feed", type: "ws", providerClass: "websocket", wsConfig: {} },
+        { credentials: { token: "t" } },
+      );
+      p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Feed");
+      assert.equal(p.needsSetup, true);
+    });
+
     it("never a name Dash keeps, never over a sign-in this Mac has", () => {
       assert.equal(
         controller.addFromProfile(

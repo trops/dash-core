@@ -24,6 +24,13 @@ const KINDS = [
 
 const rowId = (row) => `${row.kind}:${row.package}`;
 
+// What still needs the user after loading: the ones that came with their
+// key (unlocked) are set up — unless they need a sign-in or an OK.
+const stillToSetUp = (res) =>
+  ((res && res.providersAdded) || []).filter(
+    (p) => !p.withKey || p.needsRun || p.signIn,
+  );
+
 // After loading: what each added provider needs, and its button.
 const afterNeed = (p) =>
   p.needsRun
@@ -154,6 +161,37 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
   // Loaded, with providers added that still need the user: the list of
   // what's left, before the window closes (dash-profiles).
   const [done, setDone] = useState(null);
+  // "Include keys and passwords": unlocked in the main process; here only
+  // which providers' keys it holds.
+  const [phrase, setPhrase] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState(null);
+  const [unlocked, setUnlocked] = useState(null);
+  const locked = !!preview.lockedKeys;
+
+  async function unlock() {
+    if (unlocking || !phrase) return;
+    setUnlocking(true);
+    setUnlockError(null);
+    let res;
+    try {
+      res = await window.mainApi?.profiles?.unlockKeys?.(
+        appId,
+        preview.token,
+        phrase,
+      );
+    } catch (e) {
+      res = { success: false, error: e?.message };
+    } finally {
+      setUnlocking(false);
+    }
+    if (res && res.success) {
+      setPhrase("");
+      setUnlocked({ providers: res.providers || [], counts: res.counts });
+      return;
+    }
+    setUnlockError(res?.error || "Couldn't unlock the keys.");
+  }
 
   const toggle = (set, setter, key, on) => {
     const next = new Set(set);
@@ -175,6 +213,8 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
         take: [...take],
         providerMap,
         applySettings,
+        // Locked keys not unlocked: loaded without them.
+        withoutKeys: locked && !unlocked,
       });
     } catch (e) {
       res = { success: false, error: e?.message };
@@ -187,7 +227,7 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
       if ((res.providersAdded || []).length && app.refreshProviders) {
         await Promise.resolve(app.refreshProviders()).catch(() => {});
       }
-      if ((res.providersAdded || []).length) setDone(res);
+      if (stillToSetUp(res).length) setDone(res);
       else onLoaded(res);
       return;
     }
@@ -198,7 +238,7 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
     if (!loading) onClose();
   };
   if (done) {
-    const added = done.providersAdded || [];
+    const added = stillToSetUp(done);
     const finish = () => onLoaded(done);
     return (
       <ConfirmationModal
@@ -275,8 +315,33 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
     : preview.unreachable
       ? "Can't reach the registry"
       : replacing && !asNew
-        ? "Replace"
-        : "Load";
+        ? locked && !unlocked
+          ? "Replace without keys"
+          : "Replace"
+        : locked && !unlocked
+          ? "Load without keys"
+          : "Load";
+  // "1 provider key and 2 passwords"
+  const lockedWhat = [
+    preview.lockedKeys?.providers
+      ? plural(preview.lockedKeys.providers, "provider key")
+      : null,
+    preview.lockedKeys?.widgetSecrets
+      ? plural(preview.lockedKeys.widgetSecrets, "password")
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" and ");
+  // A provider's line in the preview.
+  const providerLine = (p) => {
+    const need = p.need || "key";
+    if (locked && need === "key") {
+      const has = unlocked && unlocked.providers.includes(p.name);
+      if (has) return `${p.name} (${p.type}) · added with its key, unlocked`;
+      if (!unlocked) return `${p.name} (${p.type}) · added — its key is locked`;
+    }
+    return `${p.name} (${p.type}) · ${NEED_TEXT[need] || NEED_TEXT.key}`;
+  };
 
   return (
     <ConfirmationModal
@@ -407,36 +472,95 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
             className={`flex flex-col gap-3 rounded-lg border p-3 ${hairline}`}
             data-testid="load-v2-providers"
           >
-            <span className="font-medium">Providers</span>
-            {providers.some((p) => p.status !== "ready") ? (
+            <span className="font-medium">
+              Providers
+              {locked ? (
+                <span className={muted}>
+                  {unlocked
+                    ? " · keys included, unlocked"
+                    : " · keys included, locked"}
+                </span>
+              ) : null}
+            </span>
+            {locked ? (
+              <span className={`${muted} max-w-prose`}>
+                {unlocked
+                  ? "Unlocked on this Mac — the keys go into this Mac's keychain like any key you type in."
+                  : `This profile was saved with ${lockedWhat || "its keys"}, locked with a phrase. Unlock them here, or load without them.`}
+              </span>
+            ) : providers.some((p) => p.status !== "ready") ? (
               <span className={`${muted} max-w-prose`}>
                 Ones this Mac doesn&apos;t have are added with their settings,
                 without their keys. You add each key after loading.
               </span>
+            ) : null}
+            {locked && !unlocked ? (
+              <div className="flex flex-col gap-2" data-testid="load-unlock">
+                <div className="flex flex-row items-end gap-2">
+                  <div className="flex-1 min-w-0">
+                    <InputText
+                      label="Phrase to unlock the keys"
+                      type="password"
+                      value={phrase}
+                      autoComplete="off"
+                      spellCheck={false}
+                      ariaLabel="Phrase to unlock the keys"
+                      onChange={(v) => {
+                        setPhrase(v);
+                        setUnlockError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") unlock();
+                      }}
+                    />
+                  </div>
+                  <Button2
+                    title={unlocking ? "Unlocking…" : "Unlock"}
+                    size="sm"
+                    disabled={!phrase || unlocking}
+                    onClick={unlock}
+                  />
+                </div>
+                {unlockError ? (
+                  <AlertBanner
+                    variant="error"
+                    size="compact"
+                    message={unlockError}
+                  />
+                ) : null}
+                <span className={`text-xs ${muted}`}>
+                  Or load without them, and add each key after.
+                </span>
+              </div>
             ) : null}
             {providers.map((p) => (
               <div key={p.name} className="flex flex-col gap-1">
                 {p.status === "ready" ? (
                   <span>{`${p.name} · ready on this Mac`}</span>
                 ) : p.status === "map" ? (
-                  <SelectInput
-                    label={`Use for "${p.name}"`}
-                    value={providerMap[p.name] || ""}
-                    onChange={(v) =>
-                      setProviderMap({ ...providerMap, [p.name]: v || null })
-                    }
-                    options={[
-                      ...p.options.map((o) => ({ value: o, label: o })),
-                      {
-                        value: "",
-                        label: `None — add "${p.name}" without its key`,
-                      },
-                    ]}
-                  />
+                  <>
+                    <SelectInput
+                      label={`Use for "${p.name}"`}
+                      value={providerMap[p.name] || ""}
+                      onChange={(v) =>
+                        setProviderMap({ ...providerMap, [p.name]: v || null })
+                      }
+                      options={[
+                        ...p.options.map((o) => ({ value: o, label: o })),
+                        {
+                          value: "",
+                          label: `None — add "${p.name}" without its key`,
+                        },
+                      ]}
+                    />
+                    {locked && providerMap[p.name] ? (
+                      <span className={`text-xs ${muted}`}>
+                        {`Uses your "${providerMap[p.name]}" with its own key — the profile's key for "${p.name}" isn't used.`}
+                      </span>
+                    ) : null}
+                  </>
                 ) : (
-                  <span>
-                    {`${p.name} (${p.type}) · ${NEED_TEXT[p.need] || NEED_TEXT.key}`}
-                  </span>
+                  <span>{providerLine(p)}</span>
                 )}
               </div>
             ))}
@@ -457,8 +581,9 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
           >
             <span className="font-medium">Enter on this Mac</span>
             <span className={`${muted} max-w-prose`}>
-              Keys and passwords typed into widgets aren't in the profile. Add
-              them in each widget's settings after loading:
+              {unlocked && unlocked.counts?.widgetSecrets
+                ? "The unlocked keys fill these in. Any that aren't, you add in the widget's settings after loading:"
+                : "Keys and passwords typed into widgets aren't in the profile. Add them in each widget's settings after loading:"}
             </span>
             {preview.secretsToEnter.map((s, i) => (
               <span key={i}>

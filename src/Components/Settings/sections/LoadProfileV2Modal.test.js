@@ -175,6 +175,7 @@ describe("LoadProfileV2Modal", () => {
         take: ["dashboard:@trops/kitchen"],
         providerMap: { "Work Slack": "Slack" },
         applySettings: true,
+        withoutKeys: false,
       },
     );
   });
@@ -313,6 +314,78 @@ describe("leavingText", () => {
       ]),
     ).toBe(
       "Leaves this profile (still in your other profiles): Office. Not in any other profile, so hidden until you tick it back in Settings › Profiles (it stays on this computer): Mailer.",
+    );
+  });
+
+  test("locked keys: unlock with the phrase (main process), or load without them", async () => {
+    const unlockKeys = jest
+      .fn()
+      .mockResolvedValueOnce({
+        success: false,
+        error: "That phrase doesn't open these keys.",
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        counts: { providers: 1, widgetSecrets: 0 },
+        providers: ["Algolia Demos"],
+      });
+    const { onLoaded } = mount(
+      {
+        lockedKeys: { providers: 1, widgetSecrets: 0 },
+        providers: [
+          {
+            name: "Algolia Demos",
+            type: "algolia",
+            status: "setup",
+            need: "key",
+          },
+        ],
+      },
+      { unlockKeys },
+    );
+    expect(
+      screen.getByText("Algolia Demos (algolia) · added — its key is locked"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Load without keys" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Phrase to unlock the keys"), {
+      target: { value: "wrong phrase" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(
+      await screen.findByText("That phrase doesn't open these keys."),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Phrase to unlock the keys"), {
+      target: { value: "purple otter river" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(
+      await screen.findByText(
+        "Algolia Demos (algolia) · added with its key, unlocked",
+      ),
+    ).toBeInTheDocument();
+    expect(unlockKeys).toHaveBeenLastCalledWith(
+      appId,
+      "pl_1",
+      "purple otter river",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Load" }));
+    await waitFor(() => expect(onLoaded).toHaveBeenCalled());
+    const choices = window.mainApi.profiles.applyLoad.mock.calls[0][2];
+    expect(choices.withoutKeys).toBe(false);
+    // The keys never pass through here.
+    expect(JSON.stringify(choices)).not.toMatch(/otter|unlocked/);
+  });
+
+  test("loaded without unlocking: says so", async () => {
+    const { onLoaded } = mount({
+      lockedKeys: { providers: 2, widgetSecrets: 1 },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Load without keys" }));
+    await waitFor(() => expect(onLoaded).toHaveBeenCalled());
+    expect(window.mainApi.profiles.applyLoad.mock.calls[0][2].withoutKeys).toBe(
+      true,
     );
   });
 });

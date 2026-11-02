@@ -53,6 +53,19 @@ function defaultDeps() {
     store: {
       setLink: (...args) => require("./profileStore").setLink(...args),
     },
+    keys: () => require("./profileKeysPhrase"),
+    keysStatus: (appId, profileId, target) => {
+      try {
+        return require("./profileKeysPhrase").status(
+          appId,
+          profileId,
+          undefined,
+          target,
+        );
+      } catch (_e) {
+        return { remembered: false, lockedBefore: false };
+      }
+    },
     appVersion: () => {
       try {
         return require("electron").app.getVersion();
@@ -126,7 +139,7 @@ function widgetRow(w) {
   }
 }
 
-async function planFrom(g, user, d) {
+async function planFrom(g, user, d, appId = null, target = "file") {
   const registry = d.widgetRegistry();
   const usedBy = new Map();
   for (const ws of g.dashboards) {
@@ -199,6 +212,13 @@ async function planFrom(g, user, d) {
       notInRegistry: count(NOT_IN_REGISTRY),
     },
     secretsLeftOut: (g.secretsLeftOut || []).length,
+    // "Include keys and passwords": what it would lock, and what this Mac
+    // remembers (a phrase; keys locked before).
+    keys: {
+      providers: (g.keyCounts && g.keyCounts.providers) || 0,
+      widgetSecrets: (g.keyCounts && g.keyCounts.widgetSecrets) || 0,
+      ...d.keysStatus(appId, g.profile.id, target),
+    },
   };
 }
 
@@ -211,7 +231,13 @@ async function planSave(appId, profileId, options = {}, deps = {}) {
   const d = { ...defaultDeps(), ...deps };
   const user = await d.username();
   const g = await d.gather(appId, profileId, options);
-  return planFrom(g, user, d);
+  return planFrom(
+    g,
+    user,
+    d,
+    appId,
+    options.target === "account" ? "account" : "file",
+  );
 }
 
 function computerName() {
@@ -230,6 +256,15 @@ function computerName() {
  *   removed); `replaceRevision`: the newer account revision the user chose
  *   to replace ("keep this computer's")
  */
+/** Saved with keys off: that copy's phrase and locked keys are forgotten. */
+function forgetKeys(d, appId, profileId, target) {
+  try {
+    d.keys().forgetTarget(appId, profileId, undefined, target);
+  } catch (_e) {
+    // a convenience: the save happened
+  }
+}
+
 async function executeSave(
   win,
   appId,
@@ -316,6 +351,34 @@ async function executeSave(
       leftOut.push({ kind: "widget", name: r.package, reason: r.note });
     }
   }
+  // "Include keys and passwords": locked here with the user's phrase
+  // before anything leaves this Mac. No phrase now (an auto-save that
+  // doesn't remember it): the keys as they were last locked.
+  let lockedKeys = null;
+  const keyTarget = toAccount ? "account" : "file";
+  if (options.keys) {
+    const keys = d.keys();
+    const phrase = keys.takePhrase(appId, profileId, undefined, keyTarget);
+    if (phrase) {
+      lockedKeys = await require("./profileKeys").lockKeys(
+        g.keysBundle || {},
+        phrase,
+      );
+      keys.setLastLocked(appId, profileId, lockedKeys, undefined, keyTarget);
+    } else {
+      // Only the account copy auto-saves; a file is always saved by hand.
+      lockedKeys = toAccount
+        ? keys.lastLocked(appId, profileId, undefined, keyTarget)
+        : null;
+      if (!lockedKeys) {
+        return {
+          success: false,
+          needsPhrase: true,
+          error: "Type a phrase to lock the keys and passwords.",
+        };
+      }
+    }
+  }
   const { buildManifestV3, MAX_ACCOUNT_BYTES } = require("./profileSetup");
   const { portableSettings } = require("./profileFile");
   const revision = ((g.profile.link && g.profile.link.revision) || 0) + 1;
@@ -335,12 +398,14 @@ async function executeSave(
     revision,
     createdOn: computerName(),
     appVersion: d.appVersion(),
+    lockedKeys,
   });
   const result = {
     leftOut,
     unpublished,
     counts: plan.counts,
     secretsLeftOut: plan.secretsLeftOut,
+    ...(lockedKeys ? { keysLocked: lockedKeys.counts } : {}),
   };
 
   if (toAccount) {
@@ -360,6 +425,7 @@ async function executeSave(
       accountTarget.baseRevision,
     );
     if (!put.success) return put;
+    if (!options.keys) forgetKeys(d, appId, profileId, "account");
     const link = account.setLink(appId, user, profileId, {
       accountId: accountTarget.accountId,
       revision: put.saved.revision,
@@ -392,6 +458,7 @@ async function executeSave(
     filePath = res.filePath;
   }
   require("fs").writeFileSync(filePath, JSON.stringify(manifest, null, 2));
+  if (!options.keys) forgetKeys(d, appId, profileId, "file");
   if (g.explicit && typeof d.store.setLink === "function") {
     d.store.setLink(appId, profileId, {
       revision,
