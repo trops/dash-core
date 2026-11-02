@@ -4,7 +4,13 @@
  */
 import React from "react";
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from "@testing-library/react";
 import { LoadProfileV2Modal, leavingText, rowText } from "./LoadProfileV2Modal";
 
 const appId = "@test/app";
@@ -137,8 +143,10 @@ describe("LoadProfileV2Modal", () => {
       "Notion · ready on this Mac",
     );
     expect(screen.getByTestId("load-v2-providers")).toHaveTextContent(
-      'name it "Home" so the profile\'s dashboards and bots find it',
+      "Home (home-assistant) · added without its key — you add it after loading",
     );
+    // The old Set up (it opened behind this window) is gone.
+    expect(screen.queryByRole("button", { name: "Set up" })).toBeNull();
     expect(screen.getByText(/New bots arrive paused/)).toBeInTheDocument();
     expect(screen.getByTestId("load-v2-secrets")).toHaveTextContent(
       "Home Lab › Lights › apiKey",
@@ -239,16 +247,42 @@ describe("LoadProfileV2Modal", () => {
     );
   });
 
-  test("Set up opens the provider form for that type", () => {
-    mount();
+  test("after loading: what each added provider needs, each opening in front", async () => {
+    const { onLoaded } = mount(
+      {},
+      {
+        applyLoad: jest.fn().mockResolvedValue({
+          success: true,
+          profile: { id: "mac-mini", name: "Mac Mini" },
+          providersAdded: [
+            { name: "Home", type: "home-assistant" },
+            { name: "Drive", type: "google-drive", signIn: true },
+            { name: "Files", type: "filesystem", needsRun: true },
+          ],
+        }),
+      },
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Load" }));
+    });
+    expect(onLoaded).not.toHaveBeenCalled();
+    expect(screen.getByText("Add keys for 3 providers")).toBeInTheDocument();
+    const rows = screen.getAllByTestId("load-v2-after-row");
+    expect(rows[0]).toHaveTextContent("home-assistant · paste your key");
+    expect(rows[1]).toHaveTextContent("sign in on this Mac");
+    expect(rows[2]).toHaveTextContent("runs a program — you OK it first");
     const seen = [];
     const listener = (e) => seen.push(e.detail);
-    window.addEventListener("dash:open-settings-create-provider", listener);
-    fireEvent.click(screen.getByRole("button", { name: "Set up" }));
-    window.removeEventListener("dash:open-settings-create-provider", listener);
+    window.addEventListener("dash:open-provider-setup", listener);
+    fireEvent.click(screen.getByRole("button", { name: "Add key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    window.removeEventListener("dash:open-provider-setup", listener);
     expect(seen).toEqual([
-      { type: "home-assistant", providerClass: "credential" },
+      { name: "Home", review: false },
+      { name: "Files", review: true },
     ]);
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(onLoaded).toHaveBeenCalled();
   });
 
   test("an unreachable registry: said, and nothing loads", () => {

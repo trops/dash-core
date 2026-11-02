@@ -15,6 +15,46 @@ const {
 
 const appName = "Dashboard";
 const configFilename = "providers.json";
+// What came with a loaded profile and waits for the user's OK, kept by what
+// it runs or reaches — not by name, so a rename or a re-save can't lift it
+// (dash-profiles).
+const holdsFilename = "provider-holds.json";
+
+/**
+ * What a provider runs or reaches, as one string: an address, or a program
+ * with its arguments (spaces evened out — the edit form re-spaces them).
+ */
+function reachFingerprint(cfg, cls) {
+  if (!cfg || typeof cfg !== "object") return null;
+  if (cls === "websocket") return cfg.url ? `ws ${String(cfg.url)}` : null;
+  if (typeof cfg.command === "string" && cfg.command) {
+    return `run ${[cfg.command, ...(Array.isArray(cfg.args) ? cfg.args : [])]
+      .map(String)
+      .join(" ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .join(" ")}`;
+  }
+  if (typeof cfg.url === "string" && cfg.url) return `url ${cfg.url}`;
+  return null;
+}
+
+function holdsPath(appId) {
+  return path.join(app.getPath("userData"), appName, appId, holdsFilename);
+}
+
+function readHolds(appId) {
+  const list = getFileContents(holdsPath(appId), []);
+  return Array.isArray(list) ? list.filter((x) => typeof x === "string") : [];
+}
+
+function writeHolds(appId, list) {
+  const file = holdsPath(appId);
+  ensureDirectoryExistence(file);
+  writeFileSync(file, JSON.stringify([...new Set(list)], null, 2), {
+    mode: 0o600,
+  });
+}
 
 // Name prefix of the throwaway servers "Fetch Tools" / Test Connection start.
 const TEST_PREFIX = "__test__";
@@ -61,6 +101,9 @@ function isFreshTestEntry(entry) {
     Number.isFinite(created) && Date.now() - created <= TEST_SIGN_IN_TTL_MS
   );
 }
+
+// Never field names a profile could use to reach an object's prototype.
+const UNSAFE_KEY = new Set(["__proto__", "constructor", "prototype"]);
 
 const providerController = {
   /**
@@ -118,6 +161,7 @@ const providerController = {
       const encryptedCredentials = safeStorage.encryptString(credentialsJson);
 
       // Add/update provider
+      const prev0 = providers[providerName] || {};
       const providerEntry = {
         type: providerType,
         providerClass: providerClass || "credential",
@@ -140,6 +184,27 @@ const providerController = {
       // Add wsConfig for WebSocket providers
       if (providerClass === "websocket" && wsConfig) {
         providerEntry.wsConfig = wsConfig;
+      }
+
+      // From a loaded profile (dash-profiles). What it runs or reaches
+      // stays held until the user OKs it — only Allow clears it, never a
+      // save, a rename or an edit.
+      const was =
+        renamedFrom && renamedFrom !== providerName && providers[renamedFrom]
+          ? providers[renamedFrom]
+          : prev0;
+      if (was.needsRunApproval || prev0.needsRunApproval) {
+        providerEntry.needsRunApproval = true;
+      }
+      if (was.fromProfile) providerEntry.fromProfile = was.fromProfile;
+      // Still needs its key until one is actually entered (a save of its
+      // allowed tools or default flag isn't one).
+      const hasKey = Object.values(credentials || {}).some(
+        (v) => v !== "" && v !== null && v !== undefined,
+      );
+      if (was.needsSetup && !hasKey) {
+        providerEntry.needsSetup = true;
+        if (was.signIn) providerEntry.signIn = true;
       }
 
       // Preserve existing flag if caller didn't pass one; otherwise honor
@@ -238,6 +303,181 @@ const providerController = {
   },
 
   /**
+   * A provider a loaded profile brings (dash-profiles, 2026-11-02): its
+   * settings without a key, marked as needing setup, so the profile's
+   * dashboards and bots find it. A program from the profile waits for the
+   * user's OK before it first runs. Never replaces a provider this Mac has.
+   *
+   * @param {object} p  profileProviders.safeProfileProvider(...)
+   * @param {{ profileName?: string, needsRunApproval?: boolean,
+   *   signIn?: boolean }} [opts]  signIn: set up by signing in here
+   * @returns {{ success: true, added: boolean } | { error: true, message }}
+   */
+  addFromProfile: (win, appId, p, opts = {}) => {
+    try {
+      const filename = path.join(
+        app.getPath("userData"),
+        appName,
+        appId,
+        configFilename,
+      );
+      ensureDirectoryExistence(filename);
+      const providers = getFileContents(filename, {});
+      if (!p || !p.name || !p.type) {
+        return { error: true, message: "A provider needs a name and type." };
+      }
+      // Never one the app keeps for itself, and never over one this Mac
+      // has (with a key, or only a sign-in).
+      if (String(p.name).startsWith("__test__")) {
+        return { error: true, message: "That name is kept for Dash itself." };
+      }
+      if (providers[p.name]) {
+        return { success: true, added: false };
+      }
+      const now = new Date().toISOString();
+      const entry = {
+        type: p.type,
+        providerClass: p.providerClass || "credential",
+        // Its key's fields, empty, so the form asks for each one.
+        credentials: safeStorage
+          .encryptString(
+            JSON.stringify(
+              Object.fromEntries(
+                (Array.isArray(p.credentialKeys) ? p.credentialKeys : [])
+                  .filter((k) => typeof k === "string" && !UNSAFE_KEY.has(k))
+                  .map((k) => [k, ""]),
+              ),
+            ),
+          )
+          .toString("base64"),
+        dateCreated: now,
+        dateUpdated: now,
+        needsSetup: true,
+        ...(opts.profileName ? { fromProfile: String(opts.profileName) } : {}),
+        ...(opts.needsRunApproval ? { needsRunApproval: true } : {}),
+        // Set up by signing in here, not by pasting a key.
+        ...(opts.signIn ? { signIn: true } : {}),
+      };
+      if (entry.providerClass === "mcp" && p.mcpConfig) {
+        entry.mcpConfig = p.mcpConfig;
+      }
+      if (entry.providerClass === "mcp" && Array.isArray(p.allowedTools)) {
+        entry.allowedTools = p.allowedTools;
+      }
+      if (entry.providerClass === "websocket" && p.wsConfig) {
+        entry.wsConfig = p.wsConfig;
+      }
+      providers[p.name] = entry;
+      writeFileSync(filename, JSON.stringify(providers, null, 2), {
+        mode: 0o600,
+      });
+      if (opts.needsRunApproval) {
+        const fp = reachFingerprint(
+          entry.providerClass === "websocket"
+            ? entry.wsConfig
+            : entry.mcpConfig,
+          entry.providerClass,
+        );
+        if (fp) writeHolds(appId, [...readHolds(appId), fp]);
+      }
+      return { success: true, added: true };
+    } catch (error) {
+      return { error: true, message: error.message };
+    }
+  },
+
+  /** The user OK'd a profile's program: it may run from now on. */
+  approveProviderRun: (win, appId, providerName) => {
+    try {
+      const filename = path.join(
+        app.getPath("userData"),
+        appName,
+        appId,
+        configFilename,
+      );
+      const providers = getFileContents(filename, {});
+      const entry = providers[providerName];
+      if (!entry) return { error: true, message: "No such provider." };
+      delete entry.needsRunApproval;
+      entry.dateUpdated = new Date().toISOString();
+      const fp = reachFingerprint(
+        entry.providerClass === "websocket" ? entry.wsConfig : entry.mcpConfig,
+        entry.providerClass,
+      );
+      if (fp)
+        writeHolds(
+          appId,
+          readHolds(appId).filter((h) => h !== fp),
+        );
+      writeFileSync(filename, JSON.stringify(providers, null, 2), {
+        mode: 0o600,
+      });
+      return { success: true };
+    } catch (error) {
+      return { error: true, message: error.message };
+    }
+  },
+
+  /** Is what this config runs or reaches held for the user's OK? */
+  isReachHeld: (appId, cfg, providerClass = "mcp") => {
+    try {
+      const fp = reachFingerprint(cfg, providerClass);
+      return !!fp && readHolds(appId).includes(fp);
+    } catch (_e) {
+      return false;
+    }
+  },
+
+  /** Signed in on this Mac (a sign-in, not a key): it's set up now. */
+  markProviderSetUp: (win, appId, providerName) => {
+    try {
+      const filename = path.join(
+        app.getPath("userData"),
+        appName,
+        appId,
+        configFilename,
+      );
+      const providers = getFileContents(filename, {});
+      const entry = providers[providerName];
+      if (!entry) return { error: true, message: "No such provider." };
+      if (entry.needsSetup) {
+        delete entry.needsSetup;
+        delete entry.signIn;
+        entry.dateUpdated = new Date().toISOString();
+        writeFileSync(filename, JSON.stringify(providers, null, 2), {
+          mode: 0o600,
+        });
+      }
+      return { success: true };
+    } catch (error) {
+      return { error: true, message: error.message };
+    }
+  },
+
+  /** Is this provider's program still waiting for the user's OK? */
+  needsRunApproval: (appId, providerName) => {
+    try {
+      const filename = path.join(
+        app.getPath("userData"),
+        appName,
+        appId,
+        configFilename,
+      );
+      const providers = getFileContents(filename, {});
+      const entry = providers[providerName];
+      if (!entry) return false;
+      if (entry.needsRunApproval) return true;
+      const fp = reachFingerprint(
+        entry.providerClass === "websocket" ? entry.wsConfig : entry.mcpConfig,
+        entry.providerClass,
+      );
+      return !!fp && readHolds(appId).includes(fp);
+    } catch (_e) {
+      return false;
+    }
+  },
+
+  /**
    * listProviders
    * Get list of all providers with decrypted credentials
    *
@@ -272,6 +512,8 @@ const providerController = {
       } catch (e) {
         // Catalog is optional — merge is best-effort
       }
+
+      const holds = readHolds(appId);
 
       // Decrypt all credentials
       const decryptedProviders = [];
@@ -321,6 +563,26 @@ const providerController = {
           if (data.wsConfig) {
             provider.wsConfig = data.wsConfig;
           }
+
+          // Came with a loaded profile and still needs its key (or sign-in),
+          // and/or the user's OK before its program first runs.
+          if (data.needsSetup) provider.needsSetup = true;
+          if (
+            data.needsRunApproval ||
+            (holds.length &&
+              holds.includes(
+                reachFingerprint(
+                  data.providerClass === "websocket"
+                    ? data.wsConfig
+                    : data.mcpConfig,
+                  data.providerClass,
+                ),
+              ))
+          ) {
+            provider.needsRunApproval = true;
+          }
+          if (data.fromProfile) provider.fromProfile = data.fromProfile;
+          if (data.needsSetup && data.signIn) provider.needsSignIn = true;
 
           // Holds an OAuth sign-in (lets the edit form skip Authorize). A
           // yes/no only — the tokens stay in the main process.
@@ -614,5 +876,7 @@ const providerController = {
     }
   },
 };
+
+providerController.reachFingerprint = reachFingerprint;
 
 module.exports = providerController;

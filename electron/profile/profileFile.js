@@ -289,8 +289,15 @@ function providerNamesIn(value, out) {
     return out;
   }
   if (value.selectedProviders && typeof value.selectedProviders === "object") {
-    for (const name of Object.values(value.selectedProviders)) {
-      if (typeof name === "string") out.add(name);
+    // A widget's own: { type: name }. A dashboard's, per widget (what
+    // "Choose where to use" saves): { widgetId: { type: name } }.
+    for (const v of Object.values(value.selectedProviders)) {
+      if (typeof v === "string") out.add(v);
+      else if (v && typeof v === "object" && !Array.isArray(v)) {
+        for (const name of Object.values(v)) {
+          if (typeof name === "string") out.add(name);
+        }
+      }
     }
   }
   for (const key of ["layout", "items", "pages", "sidebarLayout"]) {
@@ -630,6 +637,7 @@ module.exports = {
   buildProfileFiles,
   gatherProfile,
   summarize,
+  providerNamesIn,
   saveProfileToFile,
   lookupRegistryPackage,
 };

@@ -416,3 +416,41 @@ describe("missingFields — Salesforce", () => {
     ).toEqual(["Consumer Key"]);
   });
 });
+
+describe("providerStatus — from a loaded profile (dash-profiles)", () => {
+  test("no key yet, a sign-in, or a program waiting for the OK", () => {
+    expect(
+      providerStatus({
+        type: "algolia",
+        credentials: {},
+        needsSetup: true,
+        fromProfile: "Work",
+      }),
+    ).toMatchObject({
+      key: "needsSetup",
+      label: "Needs your key",
+      fromProfile: "Work",
+    });
+    expect(
+      providerStatus({
+        type: "google-drive",
+        providerClass: "mcp",
+        credentials: {},
+        needsSetup: true,
+        needsSignIn: true,
+      }),
+    ).toMatchObject({ label: "Sign in on this Mac" });
+    expect(
+      providerStatus({
+        type: "filesystem",
+        providerClass: "mcp",
+        credentials: { a: 1 },
+        needsRunApproval: true,
+      }),
+    ).toMatchObject({
+      key: "needsSetup",
+      label: "Needs your OK to run",
+      runApproval: true,
+    });
+  });
+});

@@ -9,7 +9,12 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { buildManifestV3, parseProfileV3 } = require("./profileSetup");
-const { planLoadV3, applyLoadV3 } = require("./profileLoadV3");
+const {
+  planLoadV3,
+  applyLoadV3,
+  mapDashboardProviders,
+} = require("./profileLoadV3");
+const { providerNamesIn } = require("./profileFile");
 
 const appId = "@test/app";
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -153,6 +158,16 @@ function computer(state0 = {}) {
       state.unreachable ? "unreachable" : state.info[pkg] || null,
     downloadUrl: (pkg, v) => `https://registry/${pkg}@${v}`,
     providers: () => state.providers,
+    // As the real store does: a provider this Mac has isn't replaced.
+    addProviderFromProfile: (appId_, p, opts) => {
+      calls.push(["addProvider", p, opts]);
+      if (state.providers.some((x) => x.name === p.name)) {
+        return { success: true, added: false };
+      }
+      state.providers.push({ ...p, needsSetup: true });
+      return { success: true, added: true };
+    },
+    mcpCatalog: () => state.catalog || [],
     settings: () => state.settings,
     saveSettings: (s) => calls.push(["saveSettings", s]),
     now: () => new Date("2026-10-28T12:00:00.000Z"),
@@ -497,9 +512,28 @@ describe("loading", () => {
     assert.equal(brief.instructions, "summarize the house");
   });
 
-  it("a bot whose provider isn't here yet still loads, and says what to add", async () => {
+  it("a provider this Mac doesn't have is added without its key, so the bot keeps it", async () => {
     const { d, state, calls } = computer({ providers: [] });
-    // As the real bot save does: a connection this Mac doesn't have fails.
+    const res = await applyLoadV3(null, appId, manifest(), {}, d);
+    assert.equal(res.success, true, res.error);
+    assert.deepEqual(res.problems, []);
+    assert.deepEqual(res.botsWaiting, []);
+    assert.deepEqual(
+      res.providersAdded.map((p) => p.name),
+      ["Work Slack", "Home"],
+    );
+    const added = calls.filter((c) => c[0] === "addProvider");
+    assert.equal(added[0][2].profileName, manifest().name);
+    assert.ok(state.providers.every((p) => p.needsSetup));
+    const brief = calls.find((c) => c[0] === "saveBot" && c[1].id === "brief");
+    assert.deepEqual(brief[1].mcpServers, ["Work Slack"]);
+    // No key ever comes from the profile.
+    assert.equal(JSON.stringify(added).includes("credentials"), false);
+  });
+
+  it("a provider that couldn't be added: the bot still loads, and says what to add", async () => {
+    const { d, state, calls } = computer({ providers: [] });
+    d.addProviderFromProfile = () => ({ error: true, message: "disk full" });
     const realSave = d.saveBot;
     d.saveBot = (def, opts) => {
       for (const n of def.mcpServers || []) {
@@ -513,13 +547,51 @@ describe("loading", () => {
     };
     const res = await applyLoadV3(null, appId, manifest(), {}, d);
     assert.equal(res.success, true, res.error);
-    assert.deepEqual(res.problems, []);
+    assert.ok(
+      res.problems.some((p) => /Work Slack wasn't added: disk full/.test(p)),
+    );
     assert.deepEqual(res.botsWaiting, [
       { bot: "Brief", providers: ["Work Slack"] },
     ]);
     const brief = calls.find((c) => c[0] === "saveBot" && c[1].id === "brief");
     assert.deepEqual(brief[1].mcpServers, []);
-    assert.deepEqual(brief[1].toolSelections, {});
+  });
+
+  it("a program from a profile waits for the user's OK; the catalog's own doesn't", async () => {
+    const { d, state, calls } = computer({ providers: [] });
+    state.catalog = [
+      { id: "slack", mcpConfig: { command: "npx", args: ["-y", "slack-mcp"] } },
+    ];
+    const m = manifest();
+    m.providers = [
+      {
+        name: "Files",
+        type: "filesystem",
+        providerClass: "mcp",
+        mcpConfig: {
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "@mcp/fs", "/Users/x/Documents"],
+        },
+      },
+      {
+        name: "Work Slack",
+        type: "slack",
+        providerClass: "mcp",
+        mcpConfig: {
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "slack-mcp"],
+        },
+      },
+    ];
+    const res = await applyLoadV3(null, appId, m, {}, d);
+    assert.equal(res.success, true, res.error);
+    const opts = Object.fromEntries(
+      calls.filter((c) => c[0] === "addProvider").map((c) => [c[1].name, c[2]]),
+    );
+    assert.equal(opts.Files.needsRunApproval, true);
+    assert.equal(opts["Work Slack"].needsRunApproval, false);
   });
 
   it("a bot that can't be saved isn't left in the profile", async () => {
@@ -791,5 +863,34 @@ describe("loading", () => {
       calls2.find((c) => c[0] === "saveSettings")[1].theme,
       "Ocean",
     );
+  });
+});
+
+describe("a dashboard's own provider choices, per widget", () => {
+  const ws = {
+    id: 1,
+    selectedProviders: {
+      w1: { algolia: "Algolia Demos", slack: "Work Slack" },
+    },
+    layout: [{ id: "w2", selectedProviders: { algolia: "Algolia Prod" } }],
+  };
+  it("are saved with the profile", () => {
+    assert.deepEqual([...providerNamesIn(ws, new Set())].sort(), [
+      "Algolia Demos",
+      "Algolia Prod",
+      "Work Slack",
+    ]);
+  });
+  it("are kept on load, renamed to this Mac's — not dropped", () => {
+    const names = {
+      "Work Slack": "Slack",
+      "Algolia Demos": "Algolia Demos",
+      "Algolia Prod": null,
+    };
+    const out = mapDashboardProviders(ws, (n) => names[n] || null);
+    assert.deepEqual(out.selectedProviders, {
+      w1: { algolia: "Algolia Demos", slack: "Slack" },
+    });
+    assert.deepEqual(out.layout[0].selectedProviders, {});
   });
 });

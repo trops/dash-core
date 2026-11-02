@@ -254,3 +254,16 @@ test("manifest counts handle empty/missing inputs cleanly", () => {
     providers: 0,
   });
 });
+
+test("stripProviderCredentials keeps the key's field names, never values", () => {
+  const [safe] = stripProviderCredentials([
+    {
+      name: "A",
+      type: "algolia",
+      credentials: { appId: "APP-1", apiKey: "sk-secret-xyz" },
+    },
+  ]);
+  assert.deepEqual(safe.credentialKeys, ["appId", "apiKey"]);
+  assert.equal("credentials" in safe, false);
+  assert.doesNotMatch(JSON.stringify(safe), /sk-secret-xyz|APP-1/);
+});

@@ -627,6 +627,21 @@ const mcpController = {
     ) {
       credentials = applyPathScopeToCredentials(credentials, pathScope);
     }
+    // A program that came with a loaded profile runs only after the user
+    // OKs it (dash-profiles: profileProviders.js).
+    if (appId) {
+      const providerController = require("./providerController");
+      if (
+        providerController.needsRunApproval(appId, serverName) ||
+        providerController.isReachHeld(appId, mcpConfig, "mcp")
+      ) {
+        return {
+          error: true,
+          needsRunApproval: true,
+          message: `"${serverName}" came with a profile and runs a program on this Mac. Review it in Providers and allow it before it runs.`,
+        };
+      }
+    }
     // 1. Already connected? Return existing connection
     const existing = activeServers.get(key);
     if (existing && existing.status === STATUS.CONNECTED && existing.client) {

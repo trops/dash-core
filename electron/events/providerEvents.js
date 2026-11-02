@@ -16,6 +16,10 @@ const PROVIDER_GET_COMPLETE = "provider-get-complete";
 const PROVIDER_GET_ERROR = "provider-get-error";
 
 const PROVIDER_DELETE = "provider-delete";
+// A program that came with a loaded profile: the user's OK lets it run.
+const PROVIDER_APPROVE_RUN = "provider-approve-run";
+// Signed in on this Mac: a profile's provider is set up.
+const PROVIDER_MARK_SET_UP = "provider-mark-set-up";
 const PROVIDER_DELETE_COMPLETE = "provider-delete-complete";
 const PROVIDER_DELETE_ERROR = "provider-delete-error";
 
@@ -30,6 +34,8 @@ module.exports = {
   PROVIDER_GET_COMPLETE,
   PROVIDER_GET_ERROR,
   PROVIDER_DELETE,
+  PROVIDER_APPROVE_RUN,
+  PROVIDER_MARK_SET_UP,
   PROVIDER_DELETE_COMPLETE,
   PROVIDER_DELETE_ERROR,
 };

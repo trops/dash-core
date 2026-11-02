@@ -122,6 +122,20 @@ function defaultDeps() {
           appId,
         ) || {}
       ).providers || [],
+    addProviderFromProfile: (appId, p, opts) =>
+      require("../controller/providerController").addFromProfile(
+        null,
+        appId,
+        p,
+        opts,
+      ),
+    mcpCatalog: () => {
+      try {
+        return require("../mcp/mcpServerCatalog.json").servers || [];
+      } catch (_e) {
+        return [];
+      }
+    },
     settings: () =>
       require("../controller/settingsController").getSettingsForApplication(
         null,
@@ -237,8 +251,17 @@ async function planLoadV3(
   }
 
   // Providers: this Mac's of the same name; else one of the same type to
-  // use instead; else set up here (keys never travel).
+  // use instead; else added here without a key, saying what it'll need
+  // (its key, a sign-in, the user's OK to run — profileProviders.js).
   const mine = (d.providers(appId) || []).filter(Boolean);
+  const { prepareProfileProvider: prepare } = require("./profileProviders");
+  const needCatalog = d.mcpCatalog ? d.mcpCatalog() : [];
+  const needOf = (p) => {
+    const n = prepare(p, needCatalog);
+    if (n.needsRun)
+      return n.reach && n.reach.kind === "address" ? "connect" : "run";
+    return n.signIn ? "signIn" : "key";
+  };
   const providers = manifest.providers.map((p) => {
     if (mine.some((m) => m.name === p.name)) {
       return { name: p.name, type: p.type, status: "ready" };
@@ -252,12 +275,14 @@ async function planLoadV3(
           status: "map",
           options,
           mapTo: options[0],
+          need: needOf(p),
         }
       : {
           name: p.name,
           type: p.type,
           providerClass: p.providerClass || null,
           status: "setup",
+          need: needOf(p),
         };
   });
   const { providerNamer } = require("./profileLoadV2");
@@ -510,12 +535,18 @@ async function planLoadV3(
 
 /** A dashboard with its provider names as this computer has them. */
 function mapDashboardProviders(ws, nameProvider) {
-  const mapSel = (sel) => {
+  // A widget's own picks are { type: name }; a dashboard's are per widget,
+  // { widgetId: { type: name } } — mapped a level down, not dropped.
+  const mapSel = (sel, depth = 0) => {
     if (!sel || typeof sel !== "object") return sel;
     const out = {};
     for (const [k, v] of Object.entries(sel)) {
       if (UNSAFE_KEYS.has(k)) continue;
-      const to = nameProvider(v);
+      if (v && typeof v === "object" && !Array.isArray(v) && depth === 0) {
+        out[k] = mapSel(v, 1);
+        continue;
+      }
+      const to = typeof v === "string" ? nameProvider(v) : null;
       if (to) out[k] = to;
     }
     return out;
@@ -615,6 +646,46 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
     if (to && p.options.includes(to)) providerMap[p.name] = to;
   }
   const nameProvider = providerNamer(manifest, providerMap);
+
+  // 0. Providers this Mac doesn't have (none of the same name, none picked
+  //    to use instead) are added with the profile's settings and no key,
+  //    so its dashboards and bots find them; each still needs the user
+  //    (profileProviders.js). Before the bots, so they keep them.
+  const { prepareProfileProvider } = require("./profileProviders");
+  const catalog = d.mcpCatalog ? d.mcpCatalog() : [];
+  const byName = new Map((manifest.providers || []).map((p) => [p.name, p]));
+  const providersAdded = [];
+  for (const p of plan.providers) {
+    const unmatched =
+      p.status === "setup" || (p.status === "map" && !providerMap[p.name]);
+    const src = byName.get(p.name);
+    if (!unmatched || !src || !d.addProviderFromProfile) continue;
+    const needs = prepareProfileProvider(src, catalog);
+    if (!needs.provider) continue;
+    const res =
+      d.addProviderFromProfile(appId, needs.provider, {
+        profileName: manifest.name,
+        needsRunApproval: needs.needsRun,
+        signIn: needs.signIn,
+      }) || {};
+    if (res.error) {
+      problems.push(
+        `${p.name} wasn't added: ${res.message || "unknown error"}`,
+      );
+      continue;
+    }
+    if (res.added) {
+      providersAdded.push({
+        name: p.name,
+        type: p.type,
+        providerClass: src.providerClass || "credential",
+        signIn: needs.signIn,
+        needsRun: needs.needsRun,
+        reach: needs.reach ? needs.reach.kind : null,
+      });
+    }
+  }
+
   const rid = (row) => `${row.kind}:${row.package}`;
   const loads = (row) =>
     row.action === "install" ||
@@ -901,6 +972,8 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
       )
       .map((p) => p.name),
     providersMapped: { ...providerMap },
+    // Added here without a key: what each still needs (the after-load list).
+    providersAdded,
     problems,
   };
 }

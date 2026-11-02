@@ -171,10 +171,10 @@ publish it when I install it from the Widget Builder (a new build or an AI edit)
    - A dashboard's lead bot goes with it: Save includes it; on load this Mac's lead for that dashboard is kept and the
      file's isn't added.
    - New bots arrive **paused** (a loaded lead too); their ids go into the loaded profile's list (`botController.save(def, {addToProfile,
-     keepId})`), never the active one's.
+keepId})`), never the active one's.
    - App settings (theme, update check): opt-in checkbox, off.
-   - Providers aren't created (one without its key would look set up but fail): the preview and the result list the ones
-     to set up on this Mac.
+   - ~~Providers aren't created~~ — changed 2026-11-02 (below, "Profiles bring their providers"): every provider this
+     Mac doesn't have is added without its key and marked as needing it, so it can't look set up.
    - The profile records `link: { revision, savedAt, loadedAt, loadedFrom, dashboardHashes }` for sync.
    - **Secrets (hotfix, 2026-10-27, `electron/profile/secretFields.js`):** a key typed into a widget is stored in plain
      text in the dashboard. Saving keeps the setting but blanks its value — settings the widget declares `type: "secret"`
@@ -302,59 +302,59 @@ registry's existing per-user table (no new storage or IAM; about 350 KB per prof
 item (it waits for the user to release it); when both computers changed, the choice is for the whole profile (keep this
 Mac's / use the account's).
 
-   - **S1 — registry** (dash-registry v1.10.0): `/api/auth/me/profiles` list / get / save / delete, only the signed-in
-     user's. A save sends the revision it last saw and is refused (409) when the account has a newer one — checked again
-     as it's written. Stored in the UserLibrary table under `~profile#<id>` (no package scope can start with `~`).
+- **S1 — registry** (dash-registry v1.10.0): `/api/auth/me/profiles` list / get / save / delete, only the signed-in
+  user's. A save sends the revision it last saw and is refused (409) when the account has a newer one — checked again
+  as it's written. Stored in the UserLibrary table under `~profile#<id>` (no package scope can start with `~`).
 
-   - **S2 — save to and load from the account** (`electron/profile/profileAccount.js`, `AccountProfilesModal`):
-     - Each profile here can be linked to one account copy: `profileAccounts.json` (`{ accountId, revision, savedAt,
-       updatedOn }`), kept apart from profiles.json so Default can be kept in the account without starting profiles.
-       An account copy is linked to one profile here at most; deleting a profile here forgets its link.
-     - **Save to my account** (next to Save to file): the same review and publishing, then kept in the account. When
-       another computer saved it since, nothing is published and the save says when and where the newer copy came from;
-       a copy removed from the account is added back as new on the next save.
-     - **Load from my account…** lists the account's profiles (where and when saved, which profile here holds it) and
-       opens the same Load preview as a file — the account copy is untrusted, checked like a file. Loading replaces the
-       profile it's linked to (even if renamed here); Default is never replaced, so Default's account copy loads as its
-       own profile and Default stays linked. A profile can be removed from the account there (asked first).
-     - New IPC: `profile:save-account | list-account | preview-load-account | delete-account` (handlers in dash-electron).
-     - Review fixes: links belong to the registry user who made them (`{ owner: { profileId: link } }`) — someone else
-       signed in on the same computer sees none and can't move them. A load links only when no other profile here holds
-       that copy and the target isn't linked to a different one (loading "as new" never steals a link). After a refused
-       save the dialog offers **Replace the account's copy** ("keep this computer's", the approved whole-profile choice) —
-       it replaces only the revision the user saw — so Default, which a load never replaces, can always be saved again.
-       A refusal after publishing says what was published. Registry text is checked before it's stored or shown.
+- **S2 — save to and load from the account** (`electron/profile/profileAccount.js`, `AccountProfilesModal`):
+  - Each profile here can be linked to one account copy: `profileAccounts.json` (`{ accountId, revision, savedAt,
+updatedOn }`), kept apart from profiles.json so Default can be kept in the account without starting profiles.
+    An account copy is linked to one profile here at most; deleting a profile here forgets its link.
+  - **Save to my account** (next to Save to file): the same review and publishing, then kept in the account. When
+    another computer saved it since, nothing is published and the save says when and where the newer copy came from;
+    a copy removed from the account is added back as new on the next save.
+  - **Load from my account…** lists the account's profiles (where and when saved, which profile here holds it) and
+    opens the same Load preview as a file — the account copy is untrusted, checked like a file. Loading replaces the
+    profile it's linked to (even if renamed here); Default is never replaced, so Default's account copy loads as its
+    own profile and Default stays linked. A profile can be removed from the account there (asked first).
+  - New IPC: `profile:save-account | list-account | preview-load-account | delete-account` (handlers in dash-electron).
+  - Review fixes: links belong to the registry user who made them (`{ owner: { profileId: link } }`) — someone else
+    signed in on the same computer sees none and can't move them. A load links only when no other profile here holds
+    that copy and the target isn't linked to a different one (loading "as new" never steals a link). After a refused
+    save the dialog offers **Replace the account's copy** ("keep this computer's", the approved whole-profile choice) —
+    it replaces only the revision the user saw — so Default, which a load never replaces, can always be saved again.
+    A refusal after publishing says what was published. Registry text is checked before it's stored or shown.
 
-   - **S3 — knowing when you're out of sync** (`electron/profile/profileDigest.js`, `useProfileSync`, the updates dialog):
-     - Each account save and load records the profile's digest in its link: a fingerprint per dashboard, bot, theme and
-       folder it holds (published content + widget settings and provider choices + name, folder, theme). Opening a
-       dashboard or a bot run doesn't change it.
-     - `profile:sync-status` compares each linked profile with the account: **account newer** (revision differs),
-       **changed here** (digest differs, counted per kind), **both**, or in step. Copies no longer in the account aren't
-       listed.
-     - It runs with the other update checks: at launch (the updates dialog pops when `checkForUpdatesOnLaunch` is on,
-       and "Remind me later" works the same), after signing in, and from "Check for updates". The dialog's
-       **Profiles in your account** section says "Updated on laptop · Oct 27, 9:00 AM" → **Load**, "You changed 2
-       dashboards here" → **Save**, or both → **Keep this computer's** / **Use the account's** (the whole profile; user
-       decision). Each opens Settings › Profiles straight into that Save or Load dialog; "keep" replaces only the account
-       revision shown.
-     - **Default is replaced in place by its own account copy** (user decision, 2026-10-27): loading the copy Default is
-       linked to replaces what Default holds, and Default keeps its name. Any other copy of Default (a file, someone
-       else's) still loads as its own profile.
-     - Replacing a profile now lists what leaves it ("Leaves this profile (stays on this computer): Office, Mailer").
-     - The Welcome screen of a new install offers **Load a profile from my account**.
-     - New IPC: `profile:sync-status`.
-     - Fix (found by the S3 live test): loading a profile's own account copy into the profile it's linked to now
-       **keeps it in step** — the account's copy wins for what's already here: dashboard names, folders and themes,
-       folder names, widget settings and bot provider choices (a blanked key still never overwrites one here). Before,
-       a rename made on another computer never arrived although the check then said "in step". Loading a file or
-       someone else's copy still only fills in what's missing. The main process decides (`syncLinked`), never the
-       renderer.
-       Review fixes: a dashboard or bot kept at this computer's version keeps its settings and how it runs (only the
-       name, folder and theme follow); a bot is never left without providers (when none of the account's map to one
-       here it keeps its own); a folder another profile here uses isn't renamed (folder 1 is on every computer); a
-       setting cleared elsewhere is cleared here, a blanked key or password still isn't. Known limits: a folder or
-       theme the account copy has none for isn't cleared here, and team members are matched by name.
+- **S3 — knowing when you're out of sync** (`electron/profile/profileDigest.js`, `useProfileSync`, the updates dialog):
+  - Each account save and load records the profile's digest in its link: a fingerprint per dashboard, bot, theme and
+    folder it holds (published content + widget settings and provider choices + name, folder, theme). Opening a
+    dashboard or a bot run doesn't change it.
+  - `profile:sync-status` compares each linked profile with the account: **account newer** (revision differs),
+    **changed here** (digest differs, counted per kind), **both**, or in step. Copies no longer in the account aren't
+    listed.
+  - It runs with the other update checks: at launch (the updates dialog pops when `checkForUpdatesOnLaunch` is on,
+    and "Remind me later" works the same), after signing in, and from "Check for updates". The dialog's
+    **Profiles in your account** section says "Updated on laptop · Oct 27, 9:00 AM" → **Load**, "You changed 2
+    dashboards here" → **Save**, or both → **Keep this computer's** / **Use the account's** (the whole profile; user
+    decision). Each opens Settings › Profiles straight into that Save or Load dialog; "keep" replaces only the account
+    revision shown.
+  - **Default is replaced in place by its own account copy** (user decision, 2026-10-27): loading the copy Default is
+    linked to replaces what Default holds, and Default keeps its name. Any other copy of Default (a file, someone
+    else's) still loads as its own profile.
+  - Replacing a profile now lists what leaves it ("Leaves this profile (stays on this computer): Office, Mailer").
+  - The Welcome screen of a new install offers **Load a profile from my account**.
+  - New IPC: `profile:sync-status`.
+  - Fix (found by the S3 live test): loading a profile's own account copy into the profile it's linked to now
+    **keeps it in step** — the account's copy wins for what's already here: dashboard names, folders and themes,
+    folder names, widget settings and bot provider choices (a blanked key still never overwrites one here). Before,
+    a rename made on another computer never arrived although the check then said "in step". Loading a file or
+    someone else's copy still only fills in what's missing. The main process decides (`syncLinked`), never the
+    renderer.
+    Review fixes: a dashboard or bot kept at this computer's version keeps its settings and how it runs (only the
+    name, folder and theme follow); a bot is never left without providers (when none of the account's map to one
+    here it keeps its own); a folder another profile here uses isn't renamed (folder 1 is on every computer); a
+    setting cleared elsewhere is cleared here, a blanked key or password still isn't. Known limits: a folder or
+    theme the account copy has none for isn't cleared here, and team members are matched by name.
 
 9. **v3: the profile is your setup** (user, 2026-10-28; replaces v2's "publish everything on save"). v2 made every
    dashboard, theme and bot a registry package, so saving a profile had to publish whatever had changed — which pulled in
@@ -368,47 +368,37 @@ Mac's / use the account's).
      settings — secret values blanked, listed in `secretsToEnter`), themes, folders, bots and teams (instructions, tools,
      triggers, providers, schedule — never approvals already granted, sessions, run history or run state), providers without keys,
      app settings.
-   - **Slice 1 — format, save, load, sync check:**
-     - **Format (`schemaVersion: 3`)**, the same JSON for a file and for the account: `{ kind, schemaVersion, profileId,
-       name, owner, revision, createdAt, createdOn, appVersion, widgets: { pkg: version }, setup: "<gzip+base64>",
-       providers, settings: { app }, secretsToEnter, leftOut, unpublished }`. `setup` holds `{ dashboards, themes,
-       folders, bots }`, compressed so layouts stay well under the account's 350 KB per profile (no registry change); a
-       profile still over it is refused with a clear message, never saved in part. Loading caps the unpacked size and
-       checks it like any untrusted file.
-     - **Save never publishes.** Each widget a saved dashboard uses: the exact version is in the registry → listed; built
-       or changed here (a local build of a published version, or newer than the registry) → the newest version the user
-       published is listed, and the review says "Smart Lights: the profile has 1.2.0 — you have changes you haven't
-       published"; not in the registry at all (`@ai-built`, never published) → **Publish…** (the normal publish screen,
-       then the review refreshes) or **Leave out** (its dashboards still go; the widget shows as missing there, and the
-       review says which dashboards use it). The registry can't be reached → the save stops and says so.
-     - Gone from save: publishing dashboards, themes, bots and teams; public releases. The review's **Publish** button
-       (the user's own widgets: `@ai-built` or their scope) publishes that one widget — the personal-folder check
-       stays with it — then the review is checked again.
-     - Provider names and types always go in (never keys): the setup's widgets and bots need them on the other
-       computer, and a profile can only connect to providers it lists. The save offers Bots and App settings.
-     - Needs the registry: dash-registry #120 accepts `schemaVersion: 3` in the account (v2 still accepted).
-     - Implementation: `electron/profile/profileSetup.js` (format, pack/unpack, checks, `setupHash`),
-       `profileSaveV3.js`, `profileLoadV3.js` (v1's keep-the-ids load with v2's target, keeping in step, provider
-       mapping and leaving list), `profileDigest.js` (setup hashes + widget versions). `profileSaveV2.js` removed.
-     - Review fixes: this Mac's bots on the profile's dashboards (leads, teams) stay in it; a bot using a provider
-       this Mac doesn't have yet loads without it and the notice says to add it once set up (a bot can't be saved
-       with an unknown connection); keys typed, blank or missing compare the same (digest and load); a results
-       widget keeps pointing at this Mac's bot; copies compare without their ids and with provider names mapped; a
-       bot's widget triggers follow its dashboard's id; repeated ids in a profile are dropped; a profile's bot
-       never lands on this Mac's Dash team; a bot that fails to save isn't left in the profile; "load as new"
-       loads what the preview ticked and says the records are shared; a folder another profile uses shows as not
-       renamed.
-     - **Load:** widgets install at their versions (today's v2 installer); dashboards, themes, folders and bots are
-       restored with their ids kept, as v1 files were (this computer's keys kept, bots arrive paused, this Mac's lead for
-       a dashboard kept). The preview lists added / changed / leaving per kind, widgets to install or update, providers
-       to set up and keys to enter. Default's rules, "Load as a new profile", the account links and keeping in step
-       (loading a profile's own account copy into its linked profile: the account's copy wins, except keys) stay as they
-       are.
-     - **Out of sync** compares the setup (a hash per dashboard, bot, theme and folder, without volatile fields), the
-       widget versions and the app settings with what the last save or load recorded. Unpublished widget edits don't
-       count as "changed here"; publishing a new version does.
-     - **Older profiles still load:** v1 files and v2 files and account copies, with their own loaders (read only — new
-       saves are v3).
+   - **Slice 1 — format, save, load, sync check:** - **Format (`schemaVersion: 3`)**, the same JSON for a file and for the account: `{ kind, schemaVersion, profileId,
+name, owner, revision, createdAt, createdOn, appVersion, widgets: { pkg: version }, setup: "<gzip+base64>",
+providers, settings: { app }, secretsToEnter, leftOut, unpublished }`. `setup` holds `{ dashboards, themes,
+folders, bots }`, compressed so layouts stay well under the account's 350 KB per profile (no registry change); a
+     profile still over it is refused with a clear message, never saved in part. Loading caps the unpacked size and
+     checks it like any untrusted file. - **Save never publishes.** Each widget a saved dashboard uses: the exact version is in the registry → listed; built
+     or changed here (a local build of a published version, or newer than the registry) → the newest version the user
+     published is listed, and the review says "Smart Lights: the profile has 1.2.0 — you have changes you haven't
+     published"; not in the registry at all (`@ai-built`, never published) → **Publish…** (the normal publish screen,
+     then the review refreshes) or **Leave out** (its dashboards still go; the widget shows as missing there, and the
+     review says which dashboards use it). The registry can't be reached → the save stops and says so. - Gone from save: publishing dashboards, themes, bots and teams; public releases. The review's **Publish** button
+     (the user's own widgets: `@ai-built` or their scope) publishes that one widget — the personal-folder check
+     stays with it — then the review is checked again. - Provider names and types always go in (never keys): the setup's widgets and bots need them on the other
+     computer, and a profile can only connect to providers it lists. The save offers Bots and App settings. - Needs the registry: dash-registry #120 accepts `schemaVersion: 3` in the account (v2 still accepted). - Implementation: `electron/profile/profileSetup.js` (format, pack/unpack, checks, `setupHash`),
+     `profileSaveV3.js`, `profileLoadV3.js` (v1's keep-the-ids load with v2's target, keeping in step, provider
+     mapping and leaving list), `profileDigest.js` (setup hashes + widget versions). `profileSaveV2.js` removed. - Review fixes: this Mac's bots on the profile's dashboards (leads, teams) stay in it; a bot using a provider
+     this Mac doesn't have yet loads without it and the notice says to add it once set up (a bot can't be saved
+     with an unknown connection); keys typed, blank or missing compare the same (digest and load); a results
+     widget keeps pointing at this Mac's bot; copies compare without their ids and with provider names mapped; a
+     bot's widget triggers follow its dashboard's id; repeated ids in a profile are dropped; a profile's bot
+     never lands on this Mac's Dash team; a bot that fails to save isn't left in the profile; "load as new"
+     loads what the preview ticked and says the records are shared; a folder another profile uses shows as not
+     renamed. - **Load:** widgets install at their versions (today's v2 installer); dashboards, themes, folders and bots are
+     restored with their ids kept, as v1 files were (this computer's keys kept, bots arrive paused, this Mac's lead for
+     a dashboard kept). The preview lists added / changed / leaving per kind, widgets to install or update, providers
+     to set up and keys to enter. Default's rules, "Load as a new profile", the account links and keeping in step
+     (loading a profile's own account copy into its linked profile: the account's copy wins, except keys) stay as they
+     are. - **Out of sync** compares the setup (a hash per dashboard, bot, theme and folder, without volatile fields), the
+     widget versions and the app settings with what the last save or load recorded. Unpublished widget edits don't
+     count as "changed here"; publishing a new version does. - **Older profiles still load:** v1 files and v2 files and account copies, with their own loaders (read only — new
+     saves are v3).
    - **Slice 2 — publish prompt** after **Install** in the Widget Builder (US-5). No prompts for dashboards, themes or bots;
      publishing them is for sharing, from their menus as today.
      - The Builder's success screen shows "Publish it? Publishing is how it gets to your other computers, and to anyone
@@ -470,6 +460,33 @@ Mac's / use the account's).
        `warnings`; the row says "14 hard-coded colors — it may look off in light mode. Fix them in the Widget Builder."
        A failure is one line (its first problem) with "Show all N problems" / Hide.
 
+   - **Profiles bring their providers** (2026-11-02, user report: a profile loaded on a new Mac came with 0 providers,
+     so its dashboards were useless, and Set up did nothing — it opened Settings › Providers behind the Load and
+     Settings windows). User-approved mockups: canvas page "Profiles bring their providers — and, optionally, their
+     keys", frames 3, 6–10, 13–14.
+     - Loading adds every provider this Mac doesn't have (none of that name, none picked to use instead) with the
+       profile's settings — connection settings and allowed tools, never keys — and no key, marked `needsSetup` (and
+       `fromProfile`), **before the bots**, so bots keep their providers. A provider this Mac has is never replaced.
+       The profile's providers are re-stripped on read (`profileProviders.safeProfileProvider`): a crafted profile
+       can't plant keys, headers or tokens.
+     - A profile is untrusted, so nothing it says about where a provider connects is used as is: a type the MCP
+       catalog knows takes this Mac's catalog settings (program, address, headers, sign-in, key fields); any other
+       MCP provider that runs a program (any transport) or reaches an address waits for the user's OK, which shows
+       exactly what it runs or where its key will go; a WebSocket comes without its address (the user types it).
+       Key field names only (`credentialKeys`, names that look like names); names Dash keeps (`__test__…`) refused;
+       never over a provider this Mac has (a sign-in included).
+     - The hold is kept by what it runs or reaches (`provider-holds.json`, arguments' spacing evened out), so a
+       rename, a re-save or Test Connection can't lift it; only Providers › Allow does (`provider-approve-run`).
+       `mcpController.startServer` refuses a held name or a held program/address.
+     - "Needs your key" clears only when a key is entered (not a save of its tools or default flag) or a sign-in
+       succeeds (`provider-mark-set-up` after Authorize; an OAuth sign-in counts too). A widget's notice uses the
+       same provider resolution the widget runs with (`resolveProviderName`).
+     - The preview says what each will need; after loading, one list "Add keys for N providers" with Add key / Sign
+       in / Review, each opening in front (`ProviderSetupHost`, event `dash:open-provider-setup`). Providers shows
+       "Needs your key" / "Sign in on this Mac" / "Needs your OK to run"; a widget whose provider still needs it says
+       which, with the same button, in place of a widget that would fail.
+     - Next (approved, part 2): "Include keys and passwords", locked with a phrase only the user knows.
+
 ---
 
 ## Implementation Notes
@@ -522,6 +539,7 @@ Mac's / use the account's).
 
 ## Revision History
 
+- 2026-11-02: Profiles bring their providers: added without keys, what each needs, an after-load list that opens in front, widgets say which key they wait for.
 - 2026-10-30: Bulk publish in Save: all checked, Private/Public per widget, one "Publish N widgets and save" button.
 - 2026-10-30: Hard-coded colors warn instead of blocking publish/install; failures shown in one line with Show all.
 - 2026-10-28: v3 merged (core v0.1.850, registry v1.10.2). Live test fix: a widget just installed is listed by its bare name ("chat") until the next launch renames it — the out-of-sync check now finds it either way (it showed "8 widgets changed" after a relaunch). Loading from the account says "use the account's copy". Backlog: installs should key widgets by package id from the start.
