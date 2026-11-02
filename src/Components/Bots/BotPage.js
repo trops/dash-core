@@ -17,6 +17,7 @@ import { approvalText } from "../AppPages/botSummary";
 import { BotAvatar } from "./BotAvatar";
 import { BotRunHistory } from "./BotRunHistory";
 import { BotSpending } from "./BotSpending";
+import { McpTasksPanel } from "./McpTasksPanel";
 import { botStatus } from "./botConversation";
 import { STATUS_DOT } from "./teamUtils";
 import { useBotContacts } from "./useBotContacts";
@@ -408,6 +409,17 @@ export const BotPage = ({
       >
         {tab === "activity" ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-6">
+            {/* A team's tasks via MCP (TEAM-016): its switch and tasks. */}
+            {isLead && hasDashboard ? (
+              <McpTasksPanel
+                lead={bot}
+                workspaceId={bot.workspaceId}
+                bots={bots}
+                approvals={c.approvals || EMPTY}
+                onApprove={(id, allow) => c.approve(id, { allow })}
+                onTalk={talk}
+              />
+            ) : null}
             <BotRunHistory
               bot={bot}
               isLead={isLead}

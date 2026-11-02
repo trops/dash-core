@@ -10,6 +10,8 @@ import {
   readableError,
   skipNotice,
   toPlainText,
+  mcpViaLabel,
+  askedText,
 } from "./botConversation";
 
 test("jobRunNote: what a message does to a bot that runs on its own", () => {
@@ -634,5 +636,51 @@ describe("paused bots (US-011 AC8)", () => {
     expect(turns.map((t) => [t.kind, t.text])).toEqual([
       ["system", "Skipped while paused · Clock · tick"],
     ]);
+  });
+});
+
+describe("tasks via MCP (TEAM-016)", () => {
+  const taskPrompt =
+    "Design the guest bedroom\n\n(A task given via MCP by ha-bridge; the user confirmed it with their task passphrase. Do it with your team's bots, then sum up in a few sentences what was done and anything still waiting on the user.)";
+
+  it("labels a team lead's task: via MCP, who, confirmed — and shows just the task", () => {
+    const turns = buildConversation([
+      {
+        trigger: "ask",
+        via: "mcp-task:ha-bridge",
+        status: "completed",
+        prompt: taskPrompt,
+        output: "Added to Rooms.",
+      },
+    ]);
+    expect(turns[0]).toMatchObject({
+      kind: "system",
+      text: "via MCP · ha-bridge · confirmed with passphrase",
+    });
+    expect(turns[1]).toMatchObject({
+      kind: "user",
+      text: "Design the guest bedroom",
+    });
+    expect(mcpViaLabel("mcp-task")).toBe("via MCP · confirmed with passphrase");
+    expect(mcpViaLabel("mcp")).toBe(null);
+  });
+
+  it("the Dash Lead's routing run: its label, the task, and no <route> block", () => {
+    const run = {
+      trigger: "ask",
+      via: "mcp-route",
+      status: "completed",
+      prompt:
+        "A task came in via MCP with no team named. Pick the team…\n<task>\nFix up the garage\n</task>\n\nDon't do the task…",
+      output: 'Home Projects does this.\n<route>{"teams": ["8"]}</route>',
+    };
+    const turns = buildConversation([run]);
+    expect(turns[0]).toMatchObject({
+      kind: "system",
+      text: "Picking a team for a task via MCP",
+    });
+    expect(turns[1]).toMatchObject({ kind: "user", text: "Fix up the garage" });
+    expect(toPlainText(run.output)).toBe("Home Projects does this.");
+    expect(askedText({ prompt: "Hi", via: "create" })).toBe("Hi");
   });
 });

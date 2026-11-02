@@ -1019,9 +1019,9 @@ A draft (TEAM-005) is checked when it's drafted and checked again when it's acce
 
 ## TEAM-016: Tasks via MCP, confirmed with a passphrase (2026-11-01)
 
-**Status:** In Progress — PR 1 (tasks, passphrase, MCP tools; core 0.1.891) and PR 2 (routing by the Dash Lead) built; PR 3 (UI, mockups on the canvas page "Tasks via MCP (proposed)") and the dash-electron release to come.
+**Status:** In Progress — PR 1 (tasks, passphrase, MCP tools; core 0.1.891), PR 2 (routing by the Dash Lead; core 0.1.892) and PR 3 (the screens, to the approved mockups) built; the dash-electron release to come.
 
-**Why:** the user speaks to Home Assistant, their own bridge (on the same Mac) passes the idea to Dash via MCP, and a team does it — e.g. "Room Design: design the guest bedroom, boho" ends as a new room on that dashboard. Until now an agent outside Dash could only *ask* a lead (`ask_team_lead`), and a lead asked that way can't run its bots.
+**Why:** the user speaks to Home Assistant, their own bridge (on the same Mac) passes the idea to Dash via MCP, and a team does it — e.g. "Room Design: design the guest bedroom, boho" ends as a new room on that dashboard. Until now an agent outside Dash could only _ask_ a lead (`ask_team_lead`), and a lead asked that way can't run its bots.
 
 **As a user**, I want to give one of my teams a task through an agent connected to Dash's MCP server, so that things get done without opening Dash — and only when I've confirmed it.
 
@@ -1035,7 +1035,13 @@ Acceptance criteria:
 - [x] A confirmed task runs the team's lead with `via: "mcp-task[:<from>]"`, and that lead **may run its bots** (an ask via `"mcp"` still can't). The bots still ask in Dash before anything that changes things (`approvalPolicy: "ask"`), and pause and budgets apply.
 - [x] `confirm_task` waits about 45 seconds for the answer; a longer task keeps going and `get_task_status` follows it. A busy lead or a failed run fails the task with why. A task running when Dash closed is marked as not finished.
 - [x] No team named → the Dash Lead picks the team that fits, asks back when more than one fits, and never makes a team on its own (PR 2: an answer-only run of the Dash Lead, via "mcp-route" — its activity is the routing log).
-- [ ] Settings › MCP Server: set / Show / Change / Remove the passphrase, "Short and easy to guess" under 8 letters, the lock with Unlock now; a team's Bots view: the "Takes tasks via MCP" switch and its tasks, each "via MCP · <from>" (PR 3, to the approved mockups).
+- [x] Settings › MCP Server: set / Show / Change / Remove the passphrase, "Short and easy to guess" under 8 letters, the lock with Unlock now; a team's Bots view: the "Takes tasks via MCP" switch and its tasks, each "via MCP · <from>" (PR 3, to the approved mockups).
+- [x] A team lead's Activity: the switch and its tasks, newest first. A task opens in place with its times, the task and the team's whole answer (the lead's chat conversations don't hold task runs). A task whose bot waits on an approval says "Waiting for your approval" with Allow / Deny; one whose bot didn't run (paused, over budget) is "Needs you", not Done, and the agent is told so too.
+- [x] The Dash Lead's Activity: "Routed via MCP" — each pick (sent, asked back, no team, couldn't), sealed at rest, last 50. Its routing runs read "Picking a team for a task via MCP" with the task alone, never the <route> block.
+- [x] Settings › MCP Server lists the teams that take tasks, one per line. Every task, lock, switch or passphrase change refreshes open windows (bot-mcp-tasks-changed).
+- [x] A task whose text says the passphrase is refused (status `invalid`) before anything is kept or routed — the phrase goes only in `passphrase`.
+- [x] A bot that didn't run during a task gets its own next step (paused → turn it on; all paused → resume; over budget → raise it; another profile → switch). A bot busy with another run isn't the user's to fix and isn't counted. A team bot's approval shows on a finished task only if it was asked while the task ran (plus 2 minutes).
+- **Known risk (accepted 2026-11-01):** Show reads the passphrase back through `window.mainApi.bots`, which any code in the main window can call — including an installed widget's bundle — the same as the app's other secrets today. A future hardening could put Show behind the OS's own check (Touch ID / password).
 
 Decisions: a passphrase instead of a PIN (harder to guess, easier to say); stored encrypted, not hashed, so the user can see it again — the lockout is what protects a short one; the agent names itself with `from` (the MCP server is stateless per request, so the client's own name isn't available on a tool call).
 

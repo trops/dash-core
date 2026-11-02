@@ -64,8 +64,10 @@ function setup(over = {}) {
         }),
       takesMcpTasks: (id) => takes.has(String(id)),
       tasks: () => tasks,
-      routeTask: async (task, teams) => {
+      takeTaskNotes: over.takeTaskNotes,
+      routeTask: async (task, teams, opts) => {
         routed.push({ task, teams: teams.map((x) => x.name) });
+        if (opts && opts.from) routed.from = opts.from;
         return over.route ? over.route(teams) : { ambiguous: teams };
       },
     },
@@ -124,14 +126,21 @@ describe("give_task", () => {
       route: (teams) => ({ team: teams[0] }),
     });
     const r = body(
-      await handlers.give_task({ task: "Design the guest bedroom" }),
-    );
-    assert.deepEqual(routed, [
-      {
+      await handlers.give_task({
         task: "Design the guest bedroom",
-        teams: ["Room Design", "Home Projects"],
-      },
-    ]);
+        from: "ha-bridge",
+      }),
+    );
+    assert.equal(routed.from, "ha-bridge"); // for the routing log
+    assert.deepEqual(
+      [...routed],
+      [
+        {
+          task: "Design the guest bedroom",
+          teams: ["Room Design", "Home Projects"],
+        },
+      ],
+    );
     assert.equal(r.status, "waiting");
     assert.equal(r.team, "Room Design");
     assert.equal(r.routedBy, "dash-team");
@@ -212,6 +221,23 @@ describe("give_task", () => {
     const { handlers } = setup();
     assert.equal((await handlers.give_task({})).isError, true);
   });
+
+  it("a task with the passphrase in it is refused — never kept or routed", async () => {
+    const { handlers, tasks, routed } = setup();
+    const r = body(
+      await handlers.give_task({
+        task: "Purple otter. Design the guest bedroom",
+        from: "ha-bridge",
+      }),
+    );
+    assert.equal(r.status, "invalid");
+    assert.match(r.message, /separately as 'passphrase'/);
+    assert.doesNotMatch(JSON.stringify(r), /otter/i);
+    assert.equal(tasks.list().length, 0);
+    assert.equal(routed.length, 0);
+    // Words that only contain it don't count.
+    assert.equal(tasks.mentionsPassphrase("purple otters everywhere"), false);
+  });
 });
 
 describe("confirm_task", () => {
@@ -227,6 +253,26 @@ describe("confirm_task", () => {
     assert.equal(r.status, "done");
     assert.match(r.message, /Room Design finished/);
     assert.equal(calls.length, 1);
+  });
+
+  it("a bot that didn't run (paused) leaves it needing the user", async () => {
+    // Notes from an earlier run are dropped when the task starts.
+    const notes = [["stale"], ["Designer didn't run: this bot is paused."]];
+    const { handlers, tasks } = setup({
+      takeTaskNotes: (leadId) => {
+        assert.equal(leadId, "lead_7");
+        return notes.shift() || [];
+      },
+    });
+    const id = await give(handlers);
+    const r = body(
+      await handlers.confirm_task({ taskId: id, passphrase: "purple otter" }),
+    );
+    assert.equal(r.status, "done");
+    assert.equal(r.needsUser, "Designer didn't run: this bot is paused.");
+    assert.match(r.message, /needs the user in Dash: Designer didn't run/);
+    assert.doesNotMatch(r.message, /stale/);
+    assert.equal(tasks.get(id).needsYou, r.needsUser);
   });
 
   it("a wrong one says how many tries are left, and never repeats it", async () => {

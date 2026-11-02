@@ -7,15 +7,18 @@ import {
   FontAwesomeIcon,
 } from "@trops/dash-react";
 import { useMcpDashServer } from "../../../hooks/useMcpDashServer";
+import { TaskPassphraseSection } from "./TaskPassphraseSection";
 
 /**
  * McpServerSection
  *
  * Settings section for controlling the hosted MCP Dash server.
  * Provides toggle, port configuration, status indicator, token display,
- * and connection stats.
+ * connection stats, and the task passphrase (bot-teams TEAM-016).
+ *
+ * @param {object[]} [workspaces]  dashboards (which teams take tasks)
  */
-export const McpServerSection = () => {
+export const McpServerSection = ({ workspaces = [] }) => {
   const {
     running,
     port,
@@ -125,6 +128,9 @@ export const McpServerSection = () => {
           <Switch checked={running} onChange={handleToggle} />
         </div>
       </div>
+
+      {/* Tasks via MCP: the phrase an agent gives before a team starts. */}
+      <TaskPassphraseSection workspaces={workspaces} />
 
       {/* Status */}
       <div className="flex flex-col space-y-3">

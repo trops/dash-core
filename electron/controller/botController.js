@@ -80,7 +80,12 @@ const BOT_WIDGETS = {
   activity: "dash.bots.BotActivity",
 };
 const { registryIdentity, zipAndPublish } = require("./botPublish");
-const { createMcpTasks, checkPassphrase } = require("../bots/mcpTasks");
+const {
+  createMcpTasks,
+  checkPassphrase,
+  cleanFrom,
+  taskNoteFor,
+} = require("../bots/mcpTasks");
 const {
   describeTeams,
   routePrompt,
@@ -253,8 +258,12 @@ const {
   BOT_LIST_CHANGED,
   BOT_OPEN_REQUEST,
   BOT_PLAN_BUILD_PROGRESS,
+  BOT_MCP_TASKS_CHANGED,
   CREATE_RECENT_CHANGED,
 } = require("../events/botEvents");
+
+// The Dash Lead's routing log keeps this many (TEAM-016).
+const MAX_ROUTES = 50;
 
 const { runCost } = require("../bots/runCost");
 
@@ -384,13 +393,24 @@ const botController = {
 
     // Tasks given to teams via MCP (TEAM-016). One that was running when
     // Dash closed didn't finish.
+    // Every change tells open windows, so task lists and Settings › MCP
+    // Server refresh (one broadcast per burst).
+    this._notifyTasksChanged = coalesce(() =>
+      this._broadcast(BOT_MCP_TASKS_CHANGED, {}),
+    );
     this._mcpTasks = createMcpTasks({
       store: {
         loadTasks: () => this._store.getMcpTasks(),
-        saveTasks: (list) => this._store.setMcpTasks(list),
+        saveTasks: (list) => {
+          this._store.setMcpTasks(list);
+          this._notifyTasksChanged();
+        },
         getPassphrase: () => this._store.getTaskPassphrase(),
         getLock: () => this._store.getTaskLock(),
-        saveLock: (lock) => this._store.setTaskLock(lock),
+        saveLock: (lock) => {
+          this._store.setTaskLock(lock);
+          this._notifyTasksChanged();
+        },
       },
     });
     this._mcpTasks.recover();
@@ -1276,9 +1296,17 @@ const botController = {
   },
 
   setTakesMcpTasks(workspaceId, on) {
-    return this._store.setTeamSettings(workspaceId, {
+    const saved = this._store.setTeamSettings(workspaceId, {
       takesMcpTasks: !!on,
     });
+    this._notifyTasksChanged();
+    return saved;
+  },
+
+  /** Ids of the dashboards whose teams take tasks via MCP. */
+  listMcpTaskTeams() {
+    const all = this._store.listTeamSettings();
+    return Object.keys(all).filter((id) => all[id].takesMcpTasks === true);
   },
 
   /** The task store (mcpTasks.js), for the MCP tools. */
@@ -1290,11 +1318,40 @@ const botController = {
    * A task with no team named: the Dash Lead picks from the teams that take
    * tasks (taskRouting.js). It comes before any passphrase, so the run has
    * no tools at all — not even ask_role — and answers from its prompt; a run
-   * past ROUTE_WAIT_MS is stopped. Its run (via "mcp-route") is its routing
-   * log.
+   * past ROUTE_WAIT_MS is stopped. Each pick goes in the routing log (the
+   * Dash Lead's Activity: "Routed via MCP").
+   * @param {string} task
+   * @param {{ id, name }[]} teams
+   * @param {{ from?: string|null }} [opts]  the agent's name for itself
    * @returns {Promise<{ team } | { ambiguous } | { none: true } | { error }>}
    */
-  async routeMcpTask(task, teams) {
+  async routeMcpTask(task, teams, { from = null } = {}) {
+    const route = await this._pickTeam(task, teams);
+    const entry = {
+      id: `route_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      at: new Date().toISOString(),
+      task: String(task || "").slice(0, 300),
+      from: cleanFrom(from),
+      ...(route.team
+        ? { team: { id: String(route.team.id), name: route.team.name } }
+        : route.ambiguous
+          ? { ambiguous: route.ambiguous.map((t) => t.name) }
+          : route.none
+            ? { none: true }
+            : { error: route.error || "unknown error" }),
+    };
+    const log = [...this._store.getMcpRoutes(), entry].slice(-MAX_ROUTES);
+    this._store.setMcpRoutes(log);
+    this._notifyTasksChanged();
+    return route;
+  },
+
+  /** The routing log, newest first. */
+  listMcpRoutes({ limit = 20 } = {}) {
+    return this._store.getMcpRoutes().slice().reverse().slice(0, limit);
+  },
+
+  async _pickTeam(task, teams) {
     const lead = dashTeamBot(this._store.list(), "dashlead");
     if (!lead) return { error: "The Dash team isn't set up." };
     if (this._runner.isRunning(lead.id)) {
@@ -1342,6 +1399,7 @@ const botController = {
     return {
       set: !!phrase,
       short: phrase ? !!checkPassphrase(phrase).short : false,
+      setAt: this._store.getTaskPassphraseSetAt(),
       lockedUntil: this._mcpTasks.lockedUntil(),
     };
   },
@@ -1356,13 +1414,25 @@ const botController = {
     const check = checkPassphrase(text);
     if (!check.ok) return check;
     this._store.setTaskPassphrase(String(text).trim());
-    this._mcpTasks.unlock();
+    this._mcpTasks.unlock(); // tells windows (saveLock)
     return check;
   },
 
   removeTaskPassphrase() {
     this._store.setTaskPassphrase(null);
+    this._notifyTasksChanged();
     return { ok: true };
+  },
+
+  /**
+   * What a task's team couldn't do because a bot didn't run (paused, over
+   * budget…) — collected while the lead does a task via MCP, then taken
+   * once by the task (it's "done, but needs you").
+   */
+  takeTaskNotes(leadId) {
+    const notes = (this._taskNotes && this._taskNotes.get(leadId)) || [];
+    if (this._taskNotes) this._taskNotes.delete(leadId);
+    return notes;
   },
 
   /** "Unlock now" after 5 wrong passphrases. */
@@ -4584,13 +4654,14 @@ const botController = {
   async _leadAskBot(lead, member, request) {
     const runKey = this._runner.startedAt(lead.id) || "idle";
     if (!this._leadAsked) this._leadAsked = new Map();
-    return askTeamBot({
+    const info = leadRunInfo(this._runVia ? this._runVia.get(lead.id) : null);
+    const result = await askTeamBot({
       lead,
       member,
       request,
       // Who started the lead's run (its `via` — an outside caller can't
       // run its bots) and the conversation it's in.
-      ...leadRunInfo(this._runVia ? this._runVia.get(lead.id) : null),
+      ...info,
       takeHandoff: () => this._handoffs.take(lead.id, runKey),
       run: (opts) => this._run(member.id, opts),
       // Stopping the lead stops the bots it's waiting on (stop()).
@@ -4601,6 +4672,20 @@ const botController = {
         p.catch(() => {}).finally(() => asked.delete(member.id));
       },
     });
+    // Doing a task via MCP, a bot that didn't run (paused, over budget…)
+    // leaves the task needing the user (TEAM-016). The lead's own limits
+    // ("you've asked…") aren't the user's to fix.
+    const note =
+      /^mcp-task(:|$)/.test(info.leadVia || "") && result && result.skipped
+        ? taskNoteFor(member.name, result.reason)
+        : null;
+    if (note) {
+      if (!this._taskNotes) this._taskNotes = new Map();
+      const notes = this._taskNotes.get(lead.id) || [];
+      notes.push(note);
+      this._taskNotes.set(lead.id, notes);
+    }
+    return result;
   },
 
   /**

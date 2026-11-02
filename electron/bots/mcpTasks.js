@@ -27,6 +27,7 @@ const MAX_TASKS = 50;
 const MIN_LETTERS = 4;
 const SHORT_LETTERS = 8;
 const MAX_TASK_CHARS = 4000;
+const MAX_PASSPHRASE_CHARS = 200;
 
 /** "Purple, Otter." → "purple otter" */
 function normalizePassphrase(text) {
@@ -42,6 +43,12 @@ function normalizePassphrase(text) {
  * ("Short and easy to guess"), not a refusal.
  */
 function checkPassphrase(text) {
+  if (String(text == null ? "" : text).length > MAX_PASSPHRASE_CHARS) {
+    return {
+      ok: false,
+      error: `Keep it under ${MAX_PASSPHRASE_CHARS} characters.`,
+    };
+  }
   const letters = normalizePassphrase(text).replace(/ /g, "");
   if (letters.length < MIN_LETTERS) {
     return {
@@ -171,6 +178,17 @@ function createMcpTasks({
       return until && Date.parse(until) > now() ? until : null;
     },
 
+    /**
+     * Does this text say the passphrase (as whole words, loosely)? A task
+     * that does is refused, so the phrase is never kept in a task, the
+     * routing log or the lead's prompt.
+     */
+    mentionsPassphrase(text) {
+      const set = normalizePassphrase(store.getPassphrase());
+      if (!set) return false;
+      return ` ${normalizePassphrase(text)} `.includes(` ${set} `);
+    },
+
     /** Unlock early (Settings › MCP Server: "Unlock now"). */
     unlock() {
       store.saveLock({ wrong: 0, until: null });
@@ -208,12 +226,17 @@ function createMcpTasks({
       return update(id, { status: "running", confirmedAt: iso(now()) });
     },
 
-    done(id, { summary = "", runAt = null } = {}) {
+    /**
+     * Finished. `needsYou`: what's left for the user in Dash (a bot that
+     * was paused, so it never ran) — done, but not all of it.
+     */
+    done(id, { summary = "", runAt = null, needsYou = null } = {}) {
       return update(id, {
         status: "done",
         summary: String(summary || "").slice(0, MAX_TASK_CHARS),
         endedAt: iso(now()),
         ...(runAt ? { runAt } : {}),
+        ...(needsYou ? { needsYou: String(needsYou).slice(0, 500) } : {}),
       });
     },
 
@@ -244,8 +267,33 @@ function createMcpTasks({
   };
 }
 
+/**
+ * A bot the lead asked during a task via MCP didn't run: what the user can
+ * do about it, or null when it isn't theirs to fix (busy for a moment, or
+ * the lead's own limits).
+ */
+function taskNoteFor(name, reason) {
+  const r = String(reason || "");
+  if (/^you|in progress/.test(r)) return null;
+  const then = "then ask for the rest again.";
+  if (r === "this bot is paused") {
+    return `${name} is paused. Turn it on in this team's Bots view, ${then}`;
+  }
+  if (r === "all bots are paused") {
+    return `All bots are paused, so ${name} didn't run. Resume them, ${then}`;
+  }
+  if (/budget/.test(r)) {
+    return `${name} is over its budget. Raise it in Settings › Bots, ${then}`;
+  }
+  if (/profile/.test(r)) {
+    return `${name} isn't in the profile Dash has open. Switch profiles, ${then}`;
+  }
+  return `${name} didn't run (${r || "skipped"}).`;
+}
+
 module.exports = {
   createMcpTasks,
+  taskNoteFor,
   normalizePassphrase,
   checkPassphrase,
   cleanFrom,

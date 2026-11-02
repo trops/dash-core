@@ -134,7 +134,7 @@ export const AppSettingsModal = ({
               panelStyles.textColor || "text-gray-200"
             }`}
           >
-            <McpServerSection />
+            <McpServerSection workspaces={workspaces} />
           </div>
         )}
         {activeDef.key === "ai-assistant" && (

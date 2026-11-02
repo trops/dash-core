@@ -540,6 +540,19 @@ describe("BotStore — tasks via MCP and the task passphrase", () => {
     assert.equal(store.getMcpTasks()[0].task, "Design the guest bedroom");
   });
 
+  it("keeps when the passphrase was set, and a sealed routing log", () => {
+    const { store, persistence } = sealedStore();
+    assert.equal(store.getTaskPassphraseSetAt(), null);
+    store.setTaskPassphrase("purple otter");
+    assert.ok(store.getTaskPassphraseSetAt());
+    assert.deepEqual(store.getMcpRoutes(), []);
+    store.setMcpRoutes([{ id: "route_1", task: "Fix up the garage" }]);
+    assert.ok(!JSON.stringify(persistence._blob()).includes("garage"));
+    assert.equal(store.getMcpRoutes()[0].task, "Fix up the garage");
+    store.setTaskPassphrase(null);
+    assert.equal(store.getTaskPassphraseSetAt(), null);
+  });
+
   it("clears the passphrase, and keeps the lock", () => {
     const { store } = sealedStore();
     store.setTaskPassphrase("purple otter");

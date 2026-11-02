@@ -148,6 +148,7 @@ const taskView = (t) => ({
   createdAt: t.createdAt,
   ...(t.status === "waiting" ? { expiresAt: t.expiresAt } : {}),
   ...(t.summary ? { summary: t.summary } : {}),
+  ...(t.needsYou ? { needsUser: t.needsYou } : {}),
   ...(t.error ? { error: t.error } : {}),
   ...(t.endedAt ? { endedAt: t.endedAt } : {}),
 });
@@ -156,7 +157,10 @@ const STATUS_MESSAGE = {
   waiting: (t) =>
     `Waiting for the user's task passphrase (expires at ${timeOf(t.expiresAt)}). Ask them for it and call confirm_task.`,
   running: (t) => `${t.teamName} is working on it.`,
-  done: (t) => `${t.teamName} finished: ${t.summary || "(no summary)"}`,
+  done: (t) =>
+    t.needsYou
+      ? `${t.teamName} did what it could, but part of it needs the user in Dash: ${t.needsYou} ${t.summary || ""}`.trim()
+      : `${t.teamName} finished: ${t.summary || "(no summary)"}`,
   failed: (t) => `${t.teamName} couldn't do it: ${t.error}`,
   expired: () =>
     "It expired before the passphrase was given. Give the task again if the user still wants it.",
@@ -214,6 +218,10 @@ function makeTeamToolHandlers({
     const tasks = bots.tasks();
     tasks.running(task.id);
     const via = `mcp-task${task.from ? `:${task.from}` : ""}`;
+    // Notes left by an earlier run don't belong to this task.
+    const takeNotes = () =>
+      (bots.takeTaskNotes && bots.takeTaskNotes(task.leadId)) || [];
+    takeNotes();
     return Promise.resolve()
       .then(() => bots.askLead(task.leadId, taskPrompt(task), { via }))
       .then((result) => {
@@ -239,9 +247,11 @@ function makeTeamToolHandlers({
             (result && result.error) || "unknown error",
           );
         }
+        const notes = takeNotes();
         return tasks.done(task.id, {
           summary: withoutHandoff(result.output) || "",
           runAt: result.startedAt || null,
+          needsYou: notes.length ? notes.join(" ") : null,
         });
       })
       .catch((err) =>
@@ -338,6 +348,14 @@ function makeTeamToolHandlers({
       const text = String((args && args.task) || "").trim();
       if (!text) return json({ message: "give_task needs a 'task'." }, true);
       const tasks = bots.tasks();
+      if (tasks.mentionsPassphrase && tasks.mentionsPassphrase(text)) {
+        // Never kept: not in a task, the routing log or the lead's prompt.
+        return json({
+          status: "invalid",
+          message:
+            "The task text has the passphrase in it. Give the task without it, and the passphrase separately as 'passphrase'.",
+        });
+      }
       const locked = tasks.lockedUntil();
       if (locked) {
         return json({
@@ -364,7 +382,9 @@ function makeTeamToolHandlers({
       let routedBy = null;
       if (!args.team) {
         // No team named: the Dash Lead picks the one that fits.
-        const route = await bots.routeTask(text, teams);
+        const route = await bots.routeTask(text, teams, {
+          from: args.from || null,
+        });
         if (route.error) {
           return json({
             status: "needs-team",
@@ -592,7 +612,9 @@ function registerTeamTools() {
       askLead: (id, q, opts) => botController.askLead(id, q, opts),
       takesMcpTasks: (id) => botController.takesMcpTasks(id),
       tasks: () => botController.mcpTasks(),
-      routeTask: (task, teams) => botController.routeMcpTask(task, teams),
+      routeTask: (task, teams, opts) =>
+        botController.routeMcpTask(task, teams, opts),
+      takeTaskNotes: (leadId) => botController.takeTaskNotes(leadId),
     },
   });
 

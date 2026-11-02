@@ -66,6 +66,40 @@ export function triggerLabel(r, nameOf = sameId) {
   return text;
 }
 
+/**
+ * A run that came via Dash's MCP server for a task (bot-teams TEAM-016):
+ * "via MCP · ha-bridge · confirmed with passphrase" for a team lead's task,
+ * "Picking a team for a task via MCP" for the Dash Lead's routing. Null
+ * otherwise.
+ */
+export function mcpViaLabel(via) {
+  const v = String(via || "");
+  if (v === "mcp-route") return "Picking a team for a task via MCP";
+  const m = /^mcp-task(?::(.+))?$/.exec(v);
+  if (!m) return null;
+  return ["via MCP", m[1] || null, "confirmed with passphrase"]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * What the run was asked, as the user should read it: a task via MCP is
+ * the task itself — not the note added for the lead, nor the routing
+ * instructions around it.
+ */
+export function askedText(r) {
+  const prompt = String((r && r.prompt) || "");
+  const via = String((r && r.via) || "");
+  if (via === "mcp-route") {
+    const m = /<task>\n?([\s\S]*?)\n?<\/task>/.exec(prompt);
+    return m ? m[1].trim() : prompt;
+  }
+  if (/^mcp-task(:|$)/.test(via)) {
+    return prompt.replace(/\n\n\(A task given via MCP[\s\S]*\)\s*$/, "");
+  }
+  return prompt;
+}
+
 const BOT_EVENT_RE = /^bot:.+\[([^\]]+)\]\.(.+)$/;
 
 /**
@@ -180,9 +214,12 @@ function turnsForRun(
     } else if (r.via === "create") {
       // From Create's Ask box "To:" (create-entry 5e-2a).
       turns.push({ kind: "system", text: "Asked from Create", at });
+    } else if (mcpViaLabel(r.via)) {
+      // A task via MCP, or the Dash Lead picking its team (TEAM-016).
+      turns.push({ kind: "system", text: mcpViaLabel(r.via), at });
     }
     // Typed by the user: a manual run, a reply, or a question to the lead.
-    turns.push({ kind: "user", text: r.prompt, at });
+    turns.push({ kind: "user", text: askedText(r), at });
   } else {
     // Started with no prompt (Run now) — still its own, labelled run.
     turns.push({ kind: "system", text: "Run now", at });
@@ -306,12 +343,17 @@ export function botStatus({ botId, running, paused, approvals, lastRun }) {
  * team lead's hand-off marker (2c-2; its button is shown instead).
  */
 export function toPlainText(text) {
-  return withoutHandoff(text)
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^>\s?/gm, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/`([^`]+)`/g, "$1");
+  return (
+    withoutHandoff(text)
+      // The Dash Lead's pick for a task via MCP (TEAM-016) is for Dash, not
+      // the reader — its sentence says the same.
+      .replace(/\s*<route>[\s\S]*?<\/route>/gi, "")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/^>\s?/gm, "")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/__([^_]+)__/g, "$1")
+      .replace(/`([^`]+)`/g, "$1")
+  );
 }
 
 /**

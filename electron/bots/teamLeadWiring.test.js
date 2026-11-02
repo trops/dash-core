@@ -122,7 +122,7 @@ describe("botController — a lead asks its bots (team_ask_bot)", () => {
       ctrl,
       /askBot: \(_teamCtx, member, request\) =>\s*this\._leadAskBot\(caller, member, request\)/,
     );
-    assert.match(ctrl, /return askTeamBot\(\{/);
+    assert.match(ctrl, /const result = await askTeamBot\(\{/);
     assert.match(
       ctrl,
       /takeHandoff: \(\) => this\._handoffs\.take\(lead\.id, runKey\)/,
@@ -133,7 +133,7 @@ describe("botController — a lead asks its bots (team_ask_bot)", () => {
     // (leadAsk.test.js), never the entry object itself.
     assert.match(
       ctrl,
-      /\.\.\.leadRunInfo\(this\._runVia \? this\._runVia\.get\(lead\.id\) : null\)/,
+      /const info = leadRunInfo\(this\._runVia \? this\._runVia\.get\(lead\.id\) : null\);\s*const result = await askTeamBot\(\{\s*lead,\s*member,\s*request,[\s\S]{0,200}\.\.\.info,/,
     );
     assert.doesNotMatch(ctrl, /leadVia: this\._runVia/);
   });
@@ -143,5 +143,61 @@ describe("botController — a lead asks its bots (team_ask_bot)", () => {
       ctrl,
       /const asked = this\._leadAsked \? this\._leadAsked\.get\(botId\) : null;\s*for \(const id of asked \? \[\.\.\.asked\] : \[\]\) this\.stop\(id\);/,
     );
+  });
+});
+
+describe("botController — tasks via MCP for the screens (TEAM-016)", () => {
+  it("a bot that didn't run during a task via MCP is noted for the task (taskNoteFor, mcpTasks.test.js)", () => {
+    assert.match(
+      ctrl,
+      /\/\^mcp-task\(:\|\$\)\/\.test\(info\.leadVia \|\| ""\) && result && result\.skipped\s*\? taskNoteFor\(member\.name, result\.reason\)/,
+    );
+    assert.match(
+      ctrl,
+      /takeTaskNotes\(leadId\) \{[\s\S]{0,200}delete\(leadId\)/,
+    );
+  });
+
+  it("every pick goes in the routing log, kept to MAX_ROUTES, and windows are told", () => {
+    assert.match(
+      ctrl,
+      /async routeMcpTask\(task, teams, \{ from = null \} = \{\}\) \{\s*const route = await this\._pickTeam\(task, teams\);[\s\S]{0,900}\.slice\(-MAX_ROUTES\);\s*this\._store\.setMcpRoutes\(log\);\s*this\._notifyTasksChanged\(\);/,
+    );
+  });
+
+  it("task, lock, switch and passphrase changes broadcast BOT_MCP_TASKS_CHANGED", () => {
+    assert.match(
+      ctrl,
+      /this\._notifyTasksChanged = coalesce\(\(\) =>\s*this\._broadcast\(BOT_MCP_TASKS_CHANGED, \{\}\),/,
+    );
+    assert.match(
+      ctrl,
+      /saveTasks: \(list\) => \{\s*this\._store\.setMcpTasks\(list\);\s*this\._notifyTasksChanged\(\);/,
+    );
+    assert.match(
+      ctrl,
+      /saveLock: \(lock\) => \{\s*this\._store\.setTaskLock\(lock\);\s*this\._notifyTasksChanged\(\);/,
+    );
+    assert.match(
+      ctrl,
+      /takesMcpTasks: !!on,\s*\}\);\s*this\._notifyTasksChanged\(\);/,
+    );
+  });
+
+  it("botApi exposes the task calls and the change event", () => {
+    for (const fn of [
+      "listMcpTasks",
+      "listMcpRoutes",
+      "listMcpTaskTeams",
+      "setTakesMcpTasks",
+      "getTaskPassphraseState",
+      "revealTaskPassphrase",
+      "setTaskPassphrase",
+      "removeTaskPassphrase",
+      "unlockMcpTasks",
+      "onMcpTasksChanged",
+    ]) {
+      assert.match(api, new RegExp(`\\b${fn}:`), fn);
+    }
   });
 });
