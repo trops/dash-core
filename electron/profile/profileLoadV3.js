@@ -31,6 +31,7 @@ const {
 const {
   secretFieldLookup,
   restoreSecrets,
+  fillSecrets,
   hasSecretValue,
   mapItems,
   itemsByKey,
@@ -497,6 +498,10 @@ async function planLoadV3(
       title: e.title || null,
       component: e.component || null,
       field: e.field,
+      // Where it is (the profile's dashboard id, the item's key): what
+      // unlocked keys fill in is taken off the list.
+      dashboardId: String(e.dashboardId),
+      item: e.item || null,
     }))
     // The top-level layout mirrors a page: the same setting once.
     .filter(
@@ -528,6 +533,8 @@ async function planLoadV3(
     secretsToEnter,
     leftOut: manifest.leftOut,
     settings: (manifest.settings && manifest.settings.app) || null,
+    // Saved with its keys, locked with a phrase: how many of each.
+    lockedKeys: manifest.lockedKeys ? manifest.lockedKeys.counts : null,
   };
 }
 
@@ -655,11 +662,25 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
   const catalog = d.mcpCatalog ? d.mcpCatalog() : [];
   const byName = new Map((manifest.providers || []).map((p) => [p.name, p]));
   const providersAdded = [];
+  // The profile's keys, unlocked in the main process (never the renderer's
+  // say): each goes to its provider by name.
+  const unlocked =
+    choices.unlockedKeys && typeof choices.unlockedKeys === "object"
+      ? choices.unlockedKeys
+      : null;
+  const keyFor = (name) =>
+    unlocked && unlocked.providers && own(unlocked.providers, name)
+      ? unlocked.providers[name]
+      : null;
+  let keysFilled = 0;
   for (const p of plan.providers) {
     const unmatched =
       p.status === "setup" || (p.status === "map" && !providerMap[p.name]);
     const src = byName.get(p.name);
-    if (!unmatched || !src || !d.addProviderFromProfile) continue;
+    if (!src || !d.addProviderFromProfile) continue;
+    // One of the same name here: only its missing key is filled in.
+    const sameHere = p.status === "ready";
+    if (!unmatched && !(sameHere && keyFor(p.name))) continue;
     const needs = prepareProfileProvider(src, catalog);
     if (!needs.provider) continue;
     const res =
@@ -667,7 +688,9 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
         profileName: manifest.name,
         needsRunApproval: needs.needsRun,
         signIn: needs.signIn,
+        ...(keyFor(p.name) ? { credentials: keyFor(p.name) } : {}),
       }) || {};
+    if (res.filled) keysFilled += 1;
     if (res.error) {
       problems.push(
         `${p.name} wasn't added: ${res.message || "unknown error"}`,
@@ -682,7 +705,9 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
         signIn: needs.signIn,
         needsRun: needs.needsRun,
         reach: needs.reach ? needs.reach.kind : null,
+        ...(res.withKey ? { withKey: true } : {}),
       });
+      if (res.withKey) keysFilled += 1;
     }
   }
 
@@ -777,6 +802,8 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
       return { ...item, userPrefs: prefs };
     });
   };
+  let passwordsFilled = 0;
+  let written = null;
   {
     const secretLookup = secretFieldLookup(registry);
     const list = [...(d.workspaceFile(appId) || [])];
@@ -789,22 +816,40 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
       );
       const id = localId(row);
       const i = list.findIndex((w) => w && String(w.id) === String(id));
+      // The passwords from the unlocked keys, where nothing's typed here.
+      const withPasswords = (ws) => {
+        if (!unlocked || !Array.isArray(unlocked.widgetSecrets)) return ws;
+        const mine = unlocked.widgetSecrets.filter(
+          (e) => e && String(e.dashboardId) === String(row.package),
+        );
+        const res = fillSecrets(ws, mine, secretLookup);
+        passwordsFilled += res.filled;
+        return res.workspace;
+      };
       if (i >= 0) {
         list[i] = {
           ...pointHere(
-            restoreSecrets(incoming, list[i], secretLookup),
+            withPasswords(restoreSecrets(incoming, list[i], secretLookup)),
             list[i],
           ),
           id: list[i].id,
         };
       } else {
-        list.push(pointHere(incoming, null));
+        list.push(pointHere(withPasswords(incoming), null));
       }
       count(row);
       touched = true;
     }
     if (touched) d.writeAppFile(appId, "workspaces.json", list);
+    written = list;
   }
+  // What's still to type in, as the dashboards are now.
+  const stillToEnter = plan.secretsToEnter.filter((e) => {
+    if (!passwordsFilled || !e.item) return true;
+    const local = own(dashId, e.dashboardId) ? dashId[e.dashboardId] : null;
+    const w = (written || []).find((x) => x && String(x.id) === local);
+    return !w || !hasSecretValue(w, e.item, e.field);
+  });
 
   // 5. The profile: what it holds here — every dashboard, folder, theme
   //    and bot of the profile (kept ones too), and every bot this Mac has
@@ -964,7 +1009,9 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
     // Bots that use a provider this Mac doesn't have yet: added to the bot
     // once it's set up here.
     botsWaiting,
-    secretsToEnter: plan.secretsToEnter,
+    // What the unlocked keys didn't fill in.
+    secretsToEnter: stillToEnter,
+    keysFilled: { providers: keysFilled, passwords: passwordsFilled },
     providersToSetUp: plan.providers
       .filter(
         (p) =>

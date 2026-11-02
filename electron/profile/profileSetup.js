@@ -188,6 +188,7 @@ function buildManifestV3({
   revision = 1,
   createdOn = null,
   appVersion = null,
+  lockedKeys = null,
   now = new Date(),
 }) {
   return {
@@ -216,10 +217,28 @@ function buildManifestV3({
     secretsToEnter,
     leftOut,
     unpublished,
+    // "Include keys and passwords": locked with the user's phrase on this
+    // Mac (profileKeys.js); only the counts are readable.
+    ...(lockedKeys ? { lockedKeys } : {}),
   };
 }
 
 // ---- reading (untrusted) ---------------------------------------------------
+
+/** A locked blob's own fields only; its counts as small whole numbers. */
+function cleanLockedKeys(k) {
+  const n = (v) => (Number.isInteger(v) && v >= 0 && v <= 10000 ? v : 0);
+  const c = plain(k.counts) ? k.counts : {};
+  return {
+    v: k.v,
+    kdf: k.kdf,
+    salt: k.salt,
+    iv: k.iv,
+    tag: k.tag,
+    data: k.data,
+    counts: { providers: n(c.providers), widgetSecrets: n(c.widgetSecrets) },
+  };
+}
 
 function cleanSecretEntry(s) {
   if (!plain(s)) return null;
@@ -358,6 +377,10 @@ function parseProfileV3(input) {
             }
           : null,
       },
+      // Locked keys: carried as they are, opened only with the phrase.
+      ...(require("./profileKeys").isLockedKeys(m.lockedKeys)
+        ? { lockedKeys: cleanLockedKeys(m.lockedKeys) }
+        : {}),
       secretsToEnter: list(m.secretsToEnter)
         .map(cleanSecretEntry)
         .filter(Boolean)

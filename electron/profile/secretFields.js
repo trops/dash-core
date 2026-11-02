@@ -347,7 +347,43 @@ function redactArgs(args) {
   return out;
 }
 
+/**
+ * A loaded dashboard with the passwords from a profile's unlocked keys put
+ * back: only into a secret setting its widget declares, and only where it's
+ * still empty (this Mac's own values win). `entries`: [{ item, field,
+ * value }] for this dashboard.
+ */
+function fillSecrets(workspace, entries, secretFieldsFor = () => new Set()) {
+  const want = new Map();
+  for (const e of Array.isArray(entries) ? entries : []) {
+    if (!e || typeof e.value !== "string" || e.value === "") continue;
+    want.set(`${e.item}\n${e.field}`, e.value);
+  }
+  let filled = 0;
+  if (!want.size || !workspace || typeof workspace !== "object") {
+    return { workspace, filled };
+  }
+  const out = mapItems(workspace, (item, key) => {
+    if (!item.userPrefs || typeof item.userPrefs !== "object") {
+      return { ...item };
+    }
+    const declared = secretFieldsFor(item) || new Set();
+    const prefs = { ...item.userPrefs };
+    for (const field of Object.keys(prefs)) {
+      const v = want.get(`${key}\n${field}`);
+      if (v == null || !isEmpty(prefs[field])) continue;
+      if (!isSecretSetting(field, declared)) continue;
+      prefs[field] = v;
+      filled += 1;
+    }
+    return { ...item, userPrefs: prefs };
+  });
+  return { workspace: out, filled };
+}
+
 module.exports = {
+  fillSecrets,
+  itemsByKey,
   looksSecretName,
   secretFieldsOfConfig,
   secretFieldsOfPackage,

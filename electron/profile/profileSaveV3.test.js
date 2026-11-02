@@ -347,3 +347,127 @@ describe("saving", () => {
     );
   });
 });
+
+describe("include keys and passwords", () => {
+  const { unlockKeys } = require("./profileKeys");
+  const keysStore = (phrase, last = null) => {
+    const state = { phrase, last };
+    return {
+      state,
+      takePhrase: () => {
+        const p = state.phrase;
+        state.phrase = null;
+        return p;
+      },
+      lastLocked: () => state.last,
+      setLastLocked: (a, p, locked) => {
+        state.last = locked;
+      },
+      forgetTarget: (a, p, d, target) => {
+        state.forgot = target;
+      },
+    };
+  };
+  const withBundle = async () => ({
+    ...gathered(),
+    keysBundle: {
+      providers: { "Work Slack": { token: "xoxb-secret" } },
+      widgetSecrets: [
+        {
+          dashboardId: "1",
+          item: "layout/1",
+          field: "apiKey",
+          value: "HA-KEY",
+        },
+      ],
+    },
+  });
+
+  it("locks them with the phrase; only the phrase opens them; nothing readable", async () => {
+    const keys = keysStore("purple otter river");
+    const { d } = deps({ deps: { gather: withBundle, keys: () => keys } });
+    const file = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "dash-save-keys-")),
+      "p.dashprofile",
+    );
+    const res = await executeSave(
+      null,
+      appId,
+      "mm",
+      { keys: true },
+      { filePath: file },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    assert.deepEqual(res.keysLocked, { providers: 1, widgetSecrets: 1 });
+    const text = fs.readFileSync(file, "utf8");
+    assert.doesNotMatch(text, /xoxb-secret|HA-KEY|purple otter/);
+    const { manifest } = parseProfileV3(Buffer.from(text));
+    assert.equal(
+      (await unlockKeys(manifest.lockedKeys, "wrong phrase!")).ok,
+      false,
+    );
+    const open = await unlockKeys(manifest.lockedKeys, "purple otter river");
+    assert.deepEqual(open.bundle.providers, {
+      "Work Slack": { token: "xoxb-secret" },
+    });
+    // The phrase was for this save only; the locked copy is kept here.
+    assert.equal(keys.state.phrase, null);
+    assert.ok(keys.state.last);
+  });
+
+  it("no phrase (an auto-save): the keys as last locked; none ever: refused", async () => {
+    const earlier = await require("./profileKeys").lockKeys(
+      { providers: { a: { k: "old" } } },
+      "purple otter river",
+    );
+    const { d, calls } = deps({
+      deps: { gather: withBundle, keys: () => keysStore(null, earlier) },
+    });
+    const res = await executeSave(
+      null,
+      appId,
+      "mm",
+      { keys: true },
+      { target: "account" },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    const put = calls.find((c) => c[0] === "putRemote");
+    assert.deepEqual(put[2].lockedKeys, earlier);
+
+    const { d: d2 } = deps({
+      deps: { gather: withBundle, keys: () => keysStore(null, null) },
+    });
+    const none = await executeSave(
+      null,
+      appId,
+      "mm",
+      { keys: true },
+      { target: "account" },
+      d2,
+    );
+    assert.equal(none.success, false);
+    assert.equal(none.needsPhrase, true);
+  });
+
+  it("off: no keys in the profile", async () => {
+    const keysOff = keysStore("purple otter river");
+    const { d, calls } = deps({
+      deps: { gather: withBundle, keys: () => keysOff },
+    });
+    const res = await executeSave(
+      null,
+      appId,
+      "mm",
+      {},
+      { target: "account" },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    const put = calls.find((c) => c[0] === "putRemote");
+    assert.equal("lockedKeys" in put[2], false);
+    assert.equal(keysOff.state.forgot, "account");
+    assert.doesNotMatch(JSON.stringify(put[2]), /xoxb-secret|HA-KEY/);
+  });
+});

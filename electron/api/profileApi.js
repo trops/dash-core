@@ -28,6 +28,8 @@ const {
   PROFILE_PREVIEW_LOAD_ACCOUNT,
   PROFILE_DELETE_ACCOUNT,
   PROFILE_SYNC_STATUS,
+  PROFILE_SET_KEYS_PHRASE,
+  PROFILE_UNLOCK_KEYS,
   PROFILE_PLAN_BUILT_PUBLISH,
   PROFILE_PUBLISH_BUILT,
   PROFILE_SET_AUTO_SAVE,
@@ -168,6 +170,26 @@ const profileApi = {
    */
   setAutoSave: (appId, profileId, setting) =>
     ipcRenderer.invoke(PROFILE_SET_AUTO_SAVE, { appId, profileId, setting }),
+  /**
+   * The phrase that locks this profile's keys at its next save (with
+   * options.keys). remember: keep it on this Mac for auto-save. Never
+   * logged. Resolves { success, short? } or { success: false, error }.
+   */
+  setKeysPhrase: (appId, profileId, phrase, remember, target) =>
+    ipcRenderer.invoke(PROFILE_SET_KEYS_PHRASE, {
+      appId,
+      profileId,
+      phrase,
+      remember: remember === true,
+      target: target === "file" ? "file" : "account",
+    }),
+  /**
+   * Unlock the keys of the profile previewLoad opened; applyLoad then uses
+   * them. Never logged. Resolves { success, counts } or { success: false,
+   * error }.
+   */
+  unlockKeys: (appId, token, phrase) =>
+    ipcRenderer.invoke(PROFILE_UNLOCK_KEYS, { appId, token, phrase }),
 };
 
 module.exports = profileApi;

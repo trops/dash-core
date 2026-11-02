@@ -20,6 +20,7 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import { useRegistryAuthGate } from "../../../hooks/useRegistryAuthGate";
+import { ProfileKeysOption, phraseProblem } from "./ProfileKeysOption";
 
 const plural = (n, noun) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
@@ -81,7 +82,11 @@ export function savedNoticeText(res) {
   if (unpublished) {
     text += ` ${plural(unpublished, "widget")} went in at the version you last published.`;
   }
-  if (res.secretsLeftOut) {
+  if (res.keysLocked) {
+    const k = res.keysLocked;
+    const n = (k.providers || 0) + (k.widgetSecrets || 0);
+    text += ` Keys and passwords included (${n}), locked with your phrase.`;
+  } else if (res.secretsLeftOut) {
     text += ` ${plural(res.secretsLeftOut, "key")} typed into widgets ${
       res.secretsLeftOut === 1 ? "isn't" : "aren't"
     } included.`;
@@ -243,6 +248,9 @@ export const SaveProfileModal = ({
   const footerStyles = style(themeObjects.SETTINGS_MODAL_FOOTER);
   const { ensureAuthed, authGate, isAuthGateOpen } = useRegistryAuthGate();
   const [options, setOptions] = useState({ bots: true, settings: true });
+  // "Include keys and passwords": { on, phrase, again, remember }. Starts
+  // on when this profile's keys were locked before on this Mac.
+  const [keys, setKeys] = useState(null);
   const [plan, setPlan] = useState(null);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -298,7 +306,10 @@ export const SaveProfileModal = ({
     if (shownReload.current === reload) setPlan(null);
     shownReload.current = reload;
     Promise.resolve(
-      window.mainApi?.profiles?.previewSave?.(appId, profile.id, options),
+      window.mainApi?.profiles?.previewSave?.(appId, profile.id, {
+        ...options,
+        target: toAccount ? "account" : "file",
+      }),
     )
       .then((res) => {
         if (!alive) return;
@@ -360,6 +371,8 @@ export const SaveProfileModal = ({
   const needsSignIn = toAccount && plan && !plan.username;
   const blockers = (plan && plan.blockers) || [];
   const busy = saving || !!run;
+  // Until the user touches it: on when keys were locked here before.
+  const keysValue = keys || { on: !!plan?.keys?.lockedBefore };
 
   const toggle = (pkg, on) => {
     const next = new Set(selected || []);
@@ -472,13 +485,39 @@ export const SaveProfileModal = ({
   async function writeSave() {
     const api = window.mainApi?.profiles;
     try {
+      const withKeys = !!(keysValue && keysValue.on);
+      if (withKeys) {
+        // The phrase goes on its own (unlogged) channel, before the save.
+        const remembered = !!plan?.keys?.remembered;
+        const remember =
+          toAccount &&
+          (keysValue.remember === undefined
+            ? remembered
+            : !!keysValue.remember);
+        // Handed over on every try (a retry after a conflict too): the
+        // main process uses it for that save only.
+        const set = await api?.setKeysPhrase?.(
+          appId,
+          profile.id,
+          keysValue.phrase || "",
+          remember,
+          toAccount ? "account" : "file",
+        );
+        if (!set || !set.success) {
+          return {
+            success: false,
+            error: set?.error || "Couldn't use that phrase.",
+          };
+        }
+      }
+      const chosen = { ...options, keys: withKeys };
       return toAccount
         ? await api?.saveToAccount?.(appId, profile.id, {
-            ...options,
+            ...chosen,
             asNew,
             replaceRevision,
           })
-        : await api?.saveFile?.(appId, profile.id, options);
+        : await api?.saveFile?.(appId, profile.id, chosen);
     } catch (e) {
       return { success: false, error: e?.message };
     }
@@ -490,6 +529,19 @@ export const SaveProfileModal = ({
     if (savedRes && !queue.length) {
       onSaved(savedRes);
       return;
+    }
+    if (keysValue && keysValue.on) {
+      const problem = phraseProblem({
+        phrase: keysValue.phrase,
+        again: keysValue.again,
+        remembered: toAccount && !!plan?.keys?.remembered,
+        remember:
+          keysValue.remember === undefined ? undefined : !!keysValue.remember,
+      });
+      if (problem) {
+        setError(problem);
+        return;
+      }
     }
     setError(null);
     setNotSaved(false);
@@ -649,8 +701,8 @@ export const SaveProfileModal = ({
           >
             <span className={`${muted} max-w-prose`}>
               {toAccount
-                ? "Your setup — dashboards, folders, themes, bots and settings — is kept in your registry account as it is, with each widget by the version the registry has. Sign in on another computer and load it from your account to get the same setup. Keys and passwords typed into widgets are left out."
-                : "Your setup — dashboards, folders, themes, bots and settings — goes in the file as it is, with each widget by the version the registry has. Load the file on another computer to get the same setup. Keys and passwords typed into widgets are left out."}
+                ? "Your setup — dashboards, folders, themes, bots and settings — is kept in your registry account as it is, with each widget by the version the registry has. Sign in on another computer and load it from your account to get the same setup."
+                : "Your setup — dashboards, folders, themes, bots and settings — goes in the file as it is, with each widget by the version the registry has. Load the file on another computer to get the same setup."}
             </span>
 
             {needsSignIn ? (
@@ -682,6 +734,20 @@ export const SaveProfileModal = ({
               </span>
             ) : !error ? (
               <span className={muted}>Checking what goes in…</span>
+            ) : null}
+
+            {plan && plan.keys ? (
+              <ProfileKeysOption
+                value={keysValue}
+                keys={plan.keys}
+                // Only the account copy auto-saves, so only it remembers.
+                canRemember={toAccount}
+                disabled={busy}
+                onChange={(next) => {
+                  setError(null);
+                  setKeys(next);
+                }}
+              />
             ) : null}
 
             <div className="flex flex-col gap-2">
@@ -956,7 +1022,7 @@ export const SaveProfileModal = ({
               </span>
             ) : null}
 
-            {plan && plan.secretsLeftOut ? (
+            {plan && plan.secretsLeftOut && !keysValue.on ? (
               <span className={`${muted} max-w-prose`}>
                 {plan.secretsLeftOut === 1
                   ? "1 key typed into a widget isn't included"

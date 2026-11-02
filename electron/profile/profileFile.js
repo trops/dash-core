@@ -330,12 +330,28 @@ async function gatherProfile(appId, profileId, options = {}, deps = {}) {
   // Secret widget settings (keys typed into a widget) keep their name but
   // not their value: the other computer asks for them.
   const registry = d.widgetRegistry();
-  const { blankSecretsInDashboards } = require("./secretFields");
+  const { blankSecretsInDashboards, itemsByKey } = require("./secretFields");
+  const asHere = keep("dashboards", d.workspaceFile(appId), (w) => w.id);
   const { workspaces: dashboards, blanked: secretsLeftOut } =
-    blankSecretsInDashboards(
-      keep("dashboards", d.workspaceFile(appId), (w) => w.id),
-      registry,
-    );
+    blankSecretsInDashboards(asHere, registry);
+  // "Include keys and passwords": the passwords' values, for the locked
+  // blob only (profileKeys.js) — never in the profile itself.
+  const widgetSecrets = [];
+  {
+    const byId = new Map(asHere.map((w) => [String(w && w.id), w]));
+    for (const b of secretsLeftOut) {
+      const item = itemsByKey(byId.get(String(b.dashboardId))).get(b.item);
+      const value = item && item.userPrefs && item.userPrefs[b.field];
+      if (typeof value === "string" && value !== "") {
+        widgetSecrets.push({
+          dashboardId: String(b.dashboardId),
+          item: b.item,
+          field: b.field,
+          value,
+        });
+      }
+    }
+  }
 
   // Folders and themes the dashboards use come along, so nothing on the
   // other computer ends up uncategorized or unstyled.
@@ -421,6 +437,8 @@ async function gatherProfile(appId, profileId, options = {}, deps = {}) {
 
   // Providers the profile uses (by name or by type) — never their keys.
   let providers = [];
+  let providerKeyCount = 0;
+  const providerKeys = {};
   if (opts.providers) {
     const names = providerNamesIn(dashboards, new Set());
     for (const b of bots) {
@@ -450,6 +468,17 @@ async function gatherProfile(appId, profileId, options = {}, deps = {}) {
           all.filter((q) => q.type === p.type).length === 1),
     );
     providers = stripProviderCredentials([...named, ...defaults]);
+    // Which have a key here (counted for the save window); their values
+    // only with "Include keys and passwords", for the locked blob.
+    for (const p of [...named, ...defaults]) {
+      const creds = {};
+      for (const [k, v] of Object.entries(p.credentials || {})) {
+        if (typeof v === "string" && v.trim() !== "") creds[k] = v;
+      }
+      if (!Object.keys(creds).length) continue;
+      providerKeyCount += 1;
+      if (opts.keys) providerKeys[p.name] = creds;
+    }
   }
 
   return {
@@ -464,6 +493,18 @@ async function gatherProfile(appId, profileId, options = {}, deps = {}) {
     widgets,
     installedOf,
     secretsLeftOut,
+    // What "Include keys and passwords" would lock.
+    keyCounts: {
+      providers: providerKeyCount,
+      // Each password once (a page and the layout mirroring it hold the
+      // same one).
+      widgetSecrets: new Set(
+        widgetSecrets.map((w) => `${w.dashboardId}\n${w.field}\n${w.value}`),
+      ).size,
+    },
+    ...(opts.keys
+      ? { keysBundle: { providers: providerKeys, widgetSecrets } }
+      : {}),
     appVersion: d.appVersion(),
   };
 }

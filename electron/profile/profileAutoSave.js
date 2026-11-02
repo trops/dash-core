@@ -156,6 +156,7 @@ function clean(raw) {
     options: {
       bots: !(s.options && s.options.bots === false),
       settings: !(s.options && s.options.settings === false),
+      keys: !!(s.options && s.options.keys === true),
     },
     last: null,
   };
@@ -224,6 +225,9 @@ function recordManualSave(appId, owner, profileId, options, result, deps = {}) {
       options: {
         bots: !(options && options.bots === false),
         settings: !(options && options.settings === false),
+        // Saved with keys: auto-save keeps them (re-locked with a
+        // remembered phrase, else as last locked).
+        keys: !!(options && options.keys === true),
       },
       last: lastFrom(result, d),
     }),

@@ -144,6 +144,10 @@ function saveOptions(options) {
     bots: o.bots !== false,
     settings: o.settings !== false,
     providers: true,
+    // "Include keys and passwords" (the phrase comes by its own channel).
+    keys: o.keys === true,
+    // Which copy's phrase state the save window shows.
+    target: o.target === "account" ? "account" : "file",
   };
 }
 
@@ -246,6 +250,8 @@ const profileController = {
       if (res && res.success !== false) {
         profileAccount.forgetProfile(appId, profileId);
         require("../profile/profileAutoSave").forgetProfile(appId, profileId);
+        // Its phrase and locked keys on this Mac go with it.
+        require("../profile/profileKeysPhrase").forget(appId, profileId);
       }
       return res;
     } catch (e) {
@@ -648,6 +654,68 @@ const profileController = {
     }
   },
 
+  /**
+   * The phrase for this profile's next save with its keys (never logged;
+   * its own channel). remember: kept sealed on this Mac for auto-save.
+   */
+  setKeysPhrase(appId, profileId, phrase, remember = false, target) {
+    try {
+      return require("../profile/profileKeysPhrase").setPhrase(
+        appId,
+        profileId,
+        phrase,
+        {
+          remember: remember === true,
+          target: target === "file" ? "file" : "account",
+        },
+      );
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
+  /**
+   * Unlock the keys of the profile previewLoad opened. They stay here, in
+   * the main process, for applyLoad — the renderer only hears the counts.
+   */
+  async unlockKeys(appId, token, phrase) {
+    try {
+      // Opened profiles (and keys unlocked for them) last only so long.
+      const now = Date.now();
+      for (const [t, e] of openedFiles) {
+        if (now - e.at > OPENED_FILE_TTL_MS) openedFiles.delete(t);
+      }
+      const entry = openedFiles.get(token);
+      if (!entry || entry.appId !== appId) {
+        return {
+          success: false,
+          error: "Open the profile again — it was closed.",
+        };
+      }
+      const manifest = entry.read && entry.read.v3;
+      if (!manifest || !manifest.lockedKeys) {
+        return { success: false, error: "This profile has no keys in it." };
+      }
+      const res = await require("../profile/profileKeys").unlockKeys(
+        manifest.lockedKeys,
+        phrase,
+      );
+      if (!res.ok) return { success: false, error: res.error };
+      entry.unlocked = res.bundle;
+      return {
+        success: true,
+        counts: {
+          providers: Object.keys(res.bundle.providers || {}).length,
+          widgetSecrets: (res.bundle.widgetSecrets || []).length,
+        },
+        // Which providers' keys it holds (names only).
+        providers: Object.keys(res.bundle.providers || {}),
+      };
+    } catch (e) {
+      return fail(e);
+    }
+  },
+
   /** Load the file opened by previewLoad, with the user's choices. */
   async applyLoad(appId, token, choices = {}) {
     try {
@@ -677,6 +745,7 @@ const profileController = {
         const {
           linkedProfileId: _notFromRenderer,
           syncLinked: _notFromRendererEither,
+          unlockedKeys: _onlyFromUnlock,
           ...chosen
         } = picked;
         const fromAccount = entry.read.account || null;
@@ -687,6 +756,12 @@ const profileController = {
           ...chosen,
           defaultItems,
           linkedProfileId: fromAccount ? entry.read.linkedProfileId : null,
+          // Unlocked here (unlockKeys), unless the user chose to load
+          // without them.
+          unlockedKeys:
+            entry.unlocked && chosen.withoutKeys !== true
+              ? entry.unlocked
+              : null,
           // The account's copy into the profile it's linked to: keep in step.
           syncLinked: !!(fromAccount && entry.read.linkedProfileId),
         });

@@ -39,6 +39,24 @@ function reachFingerprint(cfg, cls) {
   return null;
 }
 
+/**
+ * A key that sets a provider up: every field filled — and a WebSocket
+ * knows where to connect (a profile never brings that address).
+ */
+function keyComplete(creds, entry) {
+  const values = Object.values(creds || {});
+  if (!values.length) return false;
+  if (values.some((v) => v == null || String(v).trim() === "")) return false;
+  if (
+    entry &&
+    entry.providerClass === "websocket" &&
+    !(entry.wsConfig && entry.wsConfig.url)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function holdsPath(appId) {
   return path.join(app.getPath("userData"), appName, appId, holdsFilename);
 }
@@ -331,28 +349,81 @@ const providerController = {
       if (String(p.name).startsWith("__test__")) {
         return { error: true, message: "That name is kept for Dash itself." };
       }
+      // Its key, when the profile's locked keys were unlocked here.
+      const given = Object.create(null);
+      if (opts.credentials && typeof opts.credentials === "object") {
+        for (const [k, v] of Object.entries(opts.credentials)) {
+          if (UNSAFE_KEY.has(k) || typeof v !== "string") continue;
+          given[k] = v;
+        }
+      }
+      const hasKey = Object.values(given).some((v) => v.trim() !== "");
+      const seal = (obj) =>
+        safeStorage.encryptString(JSON.stringify(obj)).toString("base64");
       if (providers[p.name]) {
+        // One this Mac has, still waiting for its key (an earlier load
+        // without keys): the unlocked key fills it. Never over a key or a
+        // sign-in this Mac has.
+        const here = providers[p.name];
+        // Same name and the same kind of provider only: a profile's key is
+        // never sent somewhere else under a borrowed name.
+        if (
+          hasKey &&
+          here.needsSetup &&
+          !here.signIn &&
+          !here.oauth &&
+          here.type === p.type &&
+          (here.providerClass || "credential") ===
+            (p.providerClass || "credential")
+        ) {
+          let current = {};
+          try {
+            current = here.credentials
+              ? JSON.parse(
+                  safeStorage.decryptString(
+                    Buffer.from(here.credentials, "base64"),
+                  ),
+                )
+              : {};
+          } catch (_e) {
+            current = {};
+          }
+          const empty = Object.values(current || {}).every(
+            (v) => v == null || String(v).trim() === "",
+          );
+          if (!empty) return { success: true, added: false };
+          const merged = { ...current, ...given };
+          here.credentials = seal(merged);
+          if (keyComplete(merged, here)) delete here.needsSetup;
+          here.dateUpdated = new Date().toISOString();
+          writeFileSync(filename, JSON.stringify(providers, null, 2), {
+            mode: 0o600,
+          });
+          return { success: true, added: false, filled: true };
+        }
         return { success: true, added: false };
       }
       const now = new Date().toISOString();
+      // Its key's fields, empty, so the form asks for each one — or its
+      // unlocked key.
+      const fields = Object.fromEntries(
+        (Array.isArray(p.credentialKeys) ? p.credentialKeys : [])
+          .filter((k) => typeof k === "string" && !UNSAFE_KEY.has(k))
+          .map((k) => [k, ""]),
+      );
+      const draft = {
+        providerClass: p.providerClass || "credential",
+        wsConfig: p.wsConfig,
+      };
+      const ready =
+        hasKey && !opts.signIn && keyComplete({ ...fields, ...given }, draft);
       const entry = {
         type: p.type,
         providerClass: p.providerClass || "credential",
-        // Its key's fields, empty, so the form asks for each one.
-        credentials: safeStorage
-          .encryptString(
-            JSON.stringify(
-              Object.fromEntries(
-                (Array.isArray(p.credentialKeys) ? p.credentialKeys : [])
-                  .filter((k) => typeof k === "string" && !UNSAFE_KEY.has(k))
-                  .map((k) => [k, ""]),
-              ),
-            ),
-          )
-          .toString("base64"),
+        credentials: seal({ ...fields, ...given }),
         dateCreated: now,
         dateUpdated: now,
-        needsSetup: true,
+        ...(ready ? {} : { needsSetup: true }),
         ...(opts.profileName ? { fromProfile: String(opts.profileName) } : {}),
         ...(opts.needsRunApproval ? { needsRunApproval: true } : {}),
         // Set up by signing in here, not by pasting a key.
@@ -380,7 +451,11 @@ const providerController = {
         );
         if (fp) writeHolds(appId, [...readHolds(appId), fp]);
       }
-      return { success: true, added: true };
+      return {
+        success: true,
+        added: true,
+        ...(ready ? { withKey: true } : {}),
+      };
     } catch (error) {
       return { error: true, message: error.message };
     }

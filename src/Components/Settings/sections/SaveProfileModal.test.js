@@ -195,7 +195,7 @@ describe("SaveProfileModal (v3)", () => {
     expect(window.mainApi.profiles.saveFile).toHaveBeenCalledWith(
       appId,
       "p-mini",
-      { bots: true, settings: true },
+      { bots: true, settings: true, keys: false },
     );
     expect(window.mainApi.profiles.publishWidget).not.toHaveBeenCalled();
   });
@@ -611,7 +611,7 @@ describe("SaveProfileModal (v3)", () => {
       expect(window.mainApi.profiles.previewSave).toHaveBeenLastCalledWith(
         appId,
         "p-mini",
-        { bots: false, settings: true },
+        { bots: false, settings: true, target: "file" },
       ),
     );
   });
@@ -707,6 +707,93 @@ describe("texts", () => {
     }));
     expect(publishedText(many)).toBe(
       "Published: @me/w0 1.0.0 public, @me/w1 1.0.0 private, @me/w2 1.0.0 private, @me/w3 1.0.0 private, @me/w4 1.0.0 private and 2 more.",
+    );
+  });
+});
+
+describe("SaveProfileModal — include keys and passwords", () => {
+  const withKeys = {
+    ...plan,
+    widgets: [],
+    keys: {
+      providers: 8,
+      widgetSecrets: 3,
+      remembered: false,
+      lockedBefore: false,
+    },
+  };
+
+  test("off by default; on asks for the phrase twice, sent on its own before the save", async () => {
+    const setKeysPhrase = jest.fn().mockResolvedValue({ success: true });
+    const { onSaved } = mount({
+      previewSave: jest.fn().mockResolvedValue(withKeys),
+      setKeysPhrase,
+    });
+    const sw = await screen.findByRole("switch", {
+      name: "Include keys and passwords",
+    });
+    expect(sw).not.toBeChecked();
+    expect(screen.queryByLabelText("Phrase to lock them")).toBeNull();
+    fireEvent.click(sw);
+    expect(
+      screen.getByText("8 provider keys · 3 passwords typed into widgets"),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Phrase to lock them"), {
+      target: { value: "purple otter river" },
+    });
+    fireEvent.change(screen.getByLabelText("Type it again"), {
+      target: { value: "purple otter rivet" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save…" }));
+    expect(
+      await screen.findByText("The two phrases don't match."),
+    ).toBeInTheDocument();
+    expect(setKeysPhrase).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Type it again"), {
+      target: { value: "purple otter river" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save…" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(setKeysPhrase).toHaveBeenCalledWith(
+      appId,
+      "p-mini",
+      "purple otter river",
+      false,
+      "file",
+    );
+    // The phrase never rides with the save's options.
+    const opts = window.mainApi.profiles.saveFile.mock.calls[0][2];
+    expect(opts).toEqual({ bots: true, settings: true, keys: true });
+    expect(JSON.stringify(opts)).not.toMatch(/otter/);
+  });
+
+  test("locked before here, with a remembered phrase: on, and the phrase may stay empty", async () => {
+    const setKeysPhrase = jest.fn().mockResolvedValue({ success: true });
+    const { onSaved } = mount(
+      {
+        previewSave: jest.fn().mockResolvedValue({
+          ...withKeys,
+          keys: { ...withKeys.keys, remembered: true, lockedBefore: true },
+        }),
+        setKeysPhrase,
+      },
+      { to: "account" },
+    );
+    const sw = await screen.findByRole("switch", {
+      name: "Include keys and passwords",
+    });
+    expect(sw).toBeChecked();
+    expect(
+      screen.getByText(/A phrase is remembered on this Mac/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(setKeysPhrase).toHaveBeenCalledWith(
+      appId,
+      "p-mini",
+      "",
+      true,
+      "account",
     );
   });
 });
