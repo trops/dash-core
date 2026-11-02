@@ -28,6 +28,7 @@ function rowOf(spend, budgets, key) {
     usd,
     tokens: (b.inputTokens || 0) + (b.outputTokens || 0) + (b.cacheTokens || 0),
     planTokens: b.planTokens || 0,
+    planUsd: b.planUsd || 0,
     budget,
     state: stateOf(usd, budget),
   };

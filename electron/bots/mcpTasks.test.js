@@ -130,6 +130,13 @@ describe("tasks", () => {
     assert.equal(tasks.running(a.id).status, "running");
     assert.equal(tasks.done(a.id, { summary: "Done." }).summary, "Done.");
     assert.equal(tasks.failed(b.id, "Busy").error, "Busy");
+    // A run that ran and failed keeps which run it was.
+    const d = tasks.create({ task: "d", team });
+    assert.equal(
+      tasks.failed(d.id, "Stopped", { runAt: "2026-11-01T09:00:00.000Z" })
+        .runAt,
+      "2026-11-01T09:00:00.000Z",
+    );
     assert.equal(tasks.get(a.id).needsYou, undefined);
     const c = tasks.create({ task: "c", team });
     assert.equal(
@@ -139,7 +146,7 @@ describe("tasks", () => {
     );
     assert.deepEqual(
       tasks.list().map((t) => t.id),
-      [c.id, b.id, a.id],
+      [c.id, d.id, b.id, a.id],
     );
   });
 

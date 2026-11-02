@@ -190,6 +190,7 @@ describe("botController — tasks via MCP for the screens (TEAM-016)", () => {
       "listMcpRoutes",
       "listMcpTaskTeams",
       "setTakesMcpTasks",
+      "setAsksTaskPassphrase",
       "getTaskPassphraseState",
       "revealTaskPassphrase",
       "setTaskPassphrase",

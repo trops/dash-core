@@ -66,7 +66,7 @@ const same = (a, b) => {
   return crypto.timingSafeEqual(ha, hb);
 };
 
-/** An agent's name for itself, kept short and plain ("ha-bridge"). */
+/** An agent's name for itself, kept short and plain ("voice-assistant"). */
 function cleanFrom(from) {
   const s = String(from == null ? "" : from)
     .replace(/[^\p{L}\p{N} ._-]+/gu, "")
@@ -141,8 +141,17 @@ function createMcpTasks({
   };
 
   return {
-    /** A new task, waiting for the passphrase. */
-    create({ task, team, from = null, routedBy = null }) {
+    /**
+     * A new task, waiting. `needsPassphrase`: the team asks for the
+     * passphrase first (its setting); one that doesn't starts it right away.
+     */
+    create({
+      task,
+      team,
+      from = null,
+      routedBy = null,
+      needsPassphrase = true,
+    }) {
       const t = now();
       const record = {
         id: newId(),
@@ -152,6 +161,7 @@ function createMcpTasks({
         leadId: team.leadId || null,
         from: cleanFrom(from),
         routedBy: routedBy || null,
+        needsPassphrase: needsPassphrase !== false,
         status: "waiting",
         createdAt: iso(t),
         expiresAt: iso(t + TASK_EXPIRES_MS),
@@ -170,6 +180,11 @@ function createMcpTasks({
         .filter((t) => teamId === null || t.teamId === String(teamId))
         .reverse()
         .slice(0, limit);
+    },
+
+    /** Is a passphrase set? (Never the phrase.) */
+    passphraseSet() {
+      return !!store.getPassphrase();
     },
 
     /** Locked until (ISO), or null. */
@@ -240,11 +255,13 @@ function createMcpTasks({
       });
     },
 
-    failed(id, error) {
+    /** It didn't finish. `runAt`: the start of the lead's run, if one ran. */
+    failed(id, error, { runAt = null } = {}) {
       return update(id, {
         status: "failed",
         error: String(error || "Something went wrong."),
         endedAt: iso(now()),
+        ...(runAt ? { runAt } : {}),
       });
     },
 

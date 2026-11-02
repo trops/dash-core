@@ -17,7 +17,7 @@ import { approvalText } from "../AppPages/botSummary";
 import { BotAvatar } from "./BotAvatar";
 import { BotRunHistory } from "./BotRunHistory";
 import { BotSpending } from "./BotSpending";
-import { McpTasksPanel } from "./McpTasksPanel";
+import { LeadActivity, McpTaskSettings } from "./McpTasksPanel";
 import { botStatus } from "./botConversation";
 import { STATUS_DOT } from "./teamUtils";
 import { useBotContacts } from "./useBotContacts";
@@ -409,24 +409,28 @@ export const BotPage = ({
       >
         {tab === "activity" ? (
           <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-6">
-            {/* A team's tasks via MCP (TEAM-016): its switch and tasks. */}
+            {/* A team lead: one list of its runs and its tasks via MCP
+                (TEAM-016). Other bots: their runs. */}
             {isLead && hasDashboard ? (
-              <McpTasksPanel
+              <LeadActivity
                 lead={bot}
-                workspaceId={bot.workspaceId}
                 bots={bots}
                 approvals={c.approvals || EMPTY}
+                nameOf={nameOf}
                 onApprove={(id, allow) => c.approve(id, { allow })}
-                onTalk={talk}
+                onOpenTaskSettings={toSettings}
+                onOpenSettings={onOpenSettings}
+                onChangeModel={toSettings}
               />
-            ) : null}
-            <BotRunHistory
-              bot={bot}
-              isLead={isLead}
-              nameOf={nameOf}
-              onOpenSettings={onOpenSettings}
-              onChangeModel={toSettings}
-            />
+            ) : (
+              <BotRunHistory
+                bot={bot}
+                isLead={isLead}
+                nameOf={nameOf}
+                onOpenSettings={onOpenSettings}
+                onChangeModel={toSettings}
+              />
+            )}
           </div>
         ) : null}
         {tab === "log" ? (
@@ -441,6 +445,17 @@ export const BotPage = ({
         ) : null}
         {tab === "settings" ? (
           <div className="flex flex-col flex-1 min-h-0 px-5 pb-4">
+            {/* The team's task settings: apply right away, apart from Save. */}
+            {isLead && hasDashboard ? (
+              <div className="flex-shrink-0 pb-4">
+                <McpTaskSettings
+                  workspaceId={bot.workspaceId}
+                  onOpenMcpSettings={
+                    onOpenSettings ? () => onOpenSettings("mcp-server") : null
+                  }
+                />
+              </div>
+            ) : null}
             <BotDetail
               key={`${bot.id}-${formKey}`}
               bot={bot}

@@ -1303,10 +1303,31 @@ const botController = {
     return saved;
   },
 
-  /** Ids of the dashboards whose teams take tasks via MCP. */
+  /** Does this team ask for the task passphrase first? Off unless turned on. */
+  asksTaskPassphrase(workspaceId) {
+    return this._store.getTeamSettings(workspaceId).asksTaskPassphrase === true;
+  },
+
+  setAsksTaskPassphrase(workspaceId, on) {
+    const saved = this._store.setTeamSettings(workspaceId, {
+      asksTaskPassphrase: !!on,
+    });
+    this._notifyTasksChanged();
+    return saved;
+  },
+
+  /**
+   * The dashboards whose teams take tasks via MCP, and whether each asks
+   * for the passphrase first: [{ id, asksPassphrase }].
+   */
   listMcpTaskTeams() {
     const all = this._store.listTeamSettings();
-    return Object.keys(all).filter((id) => all[id].takesMcpTasks === true);
+    return Object.keys(all)
+      .filter((id) => all[id].takesMcpTasks === true)
+      .map((id) => ({
+        id,
+        asksPassphrase: all[id].asksTaskPassphrase === true,
+      }));
   },
 
   /** The task store (mcpTasks.js), for the MCP tools. */

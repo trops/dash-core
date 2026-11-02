@@ -46,6 +46,8 @@ function setup(over = {}) {
   const calls = [];
   const routed = [];
   const takes = new Set(over.takes || ["7", "8"]);
+  // Teams that ask for the passphrase first (the rest start right away).
+  const asks = new Set(over.asks || ["7", "8"]);
   const handlers = makeTeamToolHandlers({
     getWorkspaces: () => workspaces,
     taskWaitMs: over.taskWaitMs || 1000,
@@ -63,6 +65,7 @@ function setup(over = {}) {
           };
         }),
       takesMcpTasks: (id) => takes.has(String(id)),
+      asksTaskPassphrase: (id) => asks.has(String(id)),
       tasks: () => tasks,
       takeTaskNotes: over.takeTaskNotes,
       routeTask: async (task, teams, opts) => {
@@ -222,6 +225,54 @@ describe("give_task", () => {
     assert.equal((await handlers.give_task({})).isError, true);
   });
 
+  it("a team that doesn't ask for a passphrase starts right away", async () => {
+    const { handlers, calls, tasks } = setup({ asks: [] });
+    const r = body(
+      await handlers.give_task({
+        task: "Design the guest bedroom",
+        team: "7",
+        from: "voice-assistant",
+      }),
+    );
+    assert.equal(r.status, "done");
+    assert.match(r.message, /Room Design finished/);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].opts.via, "mcp-task:voice-assistant");
+    // The lead isn't told the user confirmed it with a passphrase.
+    assert.doesNotMatch(calls[0].q, /passphrase/);
+    assert.equal(tasks.get(r.taskId).needsPassphrase, false);
+  });
+
+  it("routed to a team that doesn't ask: says which, and starts", async () => {
+    const { handlers, calls } = setup({
+      asks: [],
+      route: (teams) => ({ team: teams[1] }),
+    });
+    const r = body(await handlers.give_task({ task: "Fix the squeaky door" }));
+    assert.match(r.message, /^The Dash team picked Home Projects\. /);
+    assert.equal(r.status, "done");
+    assert.equal(calls[0].id, "lead_8");
+  });
+
+  it("the lock after wrong passphrases doesn't stop a team that doesn't ask", async () => {
+    const { handlers, tasks } = setup({ asks: ["7"] });
+    for (let i = 0; i < 5; i++) tasks.verify("wrong");
+    assert.ok(tasks.lockedUntil());
+    const r8 = body(await handlers.give_task({ task: "Fix it", team: "8" }));
+    assert.equal(r8.status, "done");
+    const r7 = body(await handlers.give_task({ task: "Design it", team: "7" }));
+    assert.equal(r7.status, "locked");
+  });
+
+  it("list_teams says which teams ask for a passphrase", async () => {
+    const { handlers } = setup({ asks: ["7"] });
+    const r = JSON.parse((await handlers.list_teams()).content[0].text);
+    const byName = Object.fromEntries(r.teams.map((t) => [t.name, t]));
+    assert.equal(byName["Room Design"].asksPassphrase, true);
+    assert.equal(byName["Home Projects"].asksPassphrase, false);
+    assert.equal("asksPassphrase" in byName.Inbox, false);
+  });
+
   it("a task with the passphrase in it is refused — never kept or routed", async () => {
     const { handlers, tasks, routed } = setup();
     const r = body(
@@ -305,9 +356,25 @@ describe("confirm_task", () => {
     assert.equal(calls.length, 0);
   });
 
-  it("no passphrase set: says where to set it", async () => {
-    const { handlers } = setup({ passphrase: null });
+  it("a team that asks for a passphrase, with none set: says where to set it, makes no task", async () => {
+    const { handlers, tasks, calls } = setup({ passphrase: null });
+    const r = body(await handlers.give_task({ task: "Design it", team: "7" }));
+    assert.equal(r.status, "blocked");
+    assert.match(r.message, /asks for a passphrase first, and none is set/);
+    assert.match(r.message, /Settings › MCP Server/);
+    assert.equal(tasks.list().length, 0);
+    assert.equal(calls.length, 0);
+  });
+
+  it("removed after the task was given: confirm says where to set it", async () => {
+    const state = { phrase: "purple otter" };
+    const { handlers } = setup({
+      get passphrase() {
+        return state.phrase;
+      },
+    });
     const id = await give(handlers);
+    state.phrase = null;
     const r = body(
       await handlers.confirm_task({ taskId: id, passphrase: "x" }),
     );

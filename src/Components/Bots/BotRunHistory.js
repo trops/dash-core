@@ -87,6 +87,141 @@ function firstLine(run) {
   return toPlainText(run.output || "").split("\n")[0];
 }
 
+/**
+ * An opened run: its cost, attempts, the conversation it came from, what
+ * started it, the prompt, tool calls, approvals, an error with next steps,
+ * and the answer. Shared by BotRunHistory and a lead's Activity list.
+ */
+export const RunDetails = ({
+  run,
+  bot,
+  isLead = false,
+  nameOf = undefined,
+  onOpenSettings = null,
+  onChangeModel = null,
+  compact = false,
+}) => {
+  const { currentTheme = {} } = useContext(ThemeContext) || {};
+  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
+  const convo = runConversation(run, bot, nameOf);
+  const runAgain = (prompt) => {
+    const bots = api();
+    if (!bots || !bot) return;
+    if (isLead) bots.askLead(bot.id, prompt || "", false);
+    else bots.run(bot.id, prompt || "", false);
+  };
+  return (
+    <div className="flex flex-col gap-2 pb-3 text-sm">
+      {runCostLabel(run) ? (
+        <div className={`text-xs ${muted}`} data-testid="run-cost">
+          {runCostLabel(run)}
+        </div>
+      ) : null}
+      {run.attempts > 1 ? (
+        <div className={`text-xs ${muted}`} data-testid="run-attempts">
+          {`Took ${run.attempts} attempts — tried again after temporary trouble`}
+        </div>
+      ) : null}
+      {convo ? (
+        <div
+          className={`flex flex-row items-center gap-2 text-xs ${muted}`}
+          data-testid="run-conversation"
+        >
+          {convo.label}
+          {compact ? (
+            <Button3
+              title="Open conversation"
+              size="xs"
+              onClick={() => openRunConversation(convo.open)}
+            />
+          ) : null}
+        </div>
+      ) : null}
+      {triggerLabel(run, nameOf) ? (
+        <div className={`text-xs ${muted}`}>{triggerLabel(run, nameOf)}</div>
+      ) : null}
+      {mcpViaLabel(run.via) ? (
+        <div className={`text-xs ${muted}`}>{mcpViaLabel(run.via)}</div>
+      ) : null}
+      {run.prompt ? (
+        <div>
+          <div className={`text-xs ${muted}`}>Asked</div>
+          <div className="whitespace-pre-wrap">{askedText(run)}</div>
+        </div>
+      ) : null}
+      {Array.isArray(run.toolCalls) && run.toolCalls.length ? (
+        <div className={`text-xs ${muted} flex flex-col gap-0.5`}>
+          {run.toolCalls.map((c, j) => (
+            <span key={j} className="font-mono">
+              {[
+                c.tool,
+                c.provider,
+                c.ok === false ? "failed" : c.ok ? "ok" : "no result",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {Array.isArray(run.approvals) && run.approvals.length ? (
+        <div className={`text-xs ${muted} flex flex-col gap-0.5`}>
+          {run.approvals.map((a, j) => (
+            <span key={j}>
+              {`${a.tool}${a.provider ? ` on ${a.provider}` : " (built-in)"} · ${DECISION_TEXT[a.decision] || a.decision}`}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {run.error ? (
+        <div className="text-red-300">{readableError(run.error)}</div>
+      ) : null}
+      {run.status === "failed" ? (
+        <div className="flex flex-row flex-wrap gap-2">
+          {errorNextSteps(readableError(run.error) || "failed", {
+            isLead,
+          }).map((step) =>
+            step.action === "run-again" ? (
+              <Button3
+                key={step.action}
+                title={step.label}
+                size="xs"
+                onClick={() => runAgain(run.prompt)}
+              />
+            ) : step.action === "change-model" ? (
+              onChangeModel ? (
+                <Button3
+                  key={step.action}
+                  title={step.label}
+                  size="xs"
+                  onClick={() => onChangeModel()}
+                />
+              ) : null
+            ) : onOpenSettings ? (
+              <Button3
+                key={step.action}
+                title={step.label}
+                size="xs"
+                onClick={() => onOpenSettings(step.section)}
+              />
+            ) : null,
+          )}
+        </div>
+      ) : null}
+      {run.outputUnavailable ? (
+        <div className={muted}>
+          Answer unavailable — it was stored encrypted with a key this app
+          can&apos;t read.
+        </div>
+      ) : run.output ? (
+        <div className="whitespace-pre-wrap leading-relaxed">
+          {toPlainText(run.output)}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 export const BotRunHistory = ({
   bot,
   isLead = false,
@@ -230,119 +365,15 @@ export const BotRunHistory = ({
               ) : null}
             </div>
             {open === i ? (
-              <div className="flex flex-col gap-2 pb-3 text-sm">
-                {runCostLabel(r) ? (
-                  <div className={`text-xs ${muted}`} data-testid="run-cost">
-                    {runCostLabel(r)}
-                  </div>
-                ) : null}
-                {r.attempts > 1 ? (
-                  <div
-                    className={`text-xs ${muted}`}
-                    data-testid="run-attempts"
-                  >
-                    {`Took ${r.attempts} attempts — tried again after temporary trouble`}
-                  </div>
-                ) : null}
-                {convo ? (
-                  <div
-                    className={`flex flex-row items-center gap-2 text-xs ${muted}`}
-                    data-testid="run-conversation"
-                  >
-                    {convo.label}
-                    {compact ? (
-                      <Button3
-                        title="Open conversation"
-                        size="xs"
-                        onClick={() => openRunConversation(convo.open)}
-                      />
-                    ) : null}
-                  </div>
-                ) : null}
-                {triggerLabel(r, nameOf) ? (
-                  <div className={`text-xs ${muted}`}>
-                    {triggerLabel(r, nameOf)}
-                  </div>
-                ) : null}
-                {mcpViaLabel(r.via) ? (
-                  <div className={`text-xs ${muted}`}>{mcpViaLabel(r.via)}</div>
-                ) : null}
-                {r.prompt ? (
-                  <div>
-                    <div className={`text-xs ${muted}`}>Asked</div>
-                    <div className="whitespace-pre-wrap">{askedText(r)}</div>
-                  </div>
-                ) : null}
-                {Array.isArray(r.toolCalls) && r.toolCalls.length ? (
-                  <div className={`text-xs ${muted} flex flex-col gap-0.5`}>
-                    {r.toolCalls.map((c, j) => (
-                      <span key={j} className="font-mono">
-                        {[
-                          c.tool,
-                          c.provider,
-                          c.ok === false ? "failed" : c.ok ? "ok" : "no result",
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-                {Array.isArray(r.approvals) && r.approvals.length ? (
-                  <div className={`text-xs ${muted} flex flex-col gap-0.5`}>
-                    {r.approvals.map((a, j) => (
-                      <span key={j}>
-                        {`${a.tool}${a.provider ? ` on ${a.provider}` : " (built-in)"} · ${DECISION_TEXT[a.decision] || a.decision}`}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-                {r.error ? (
-                  <div className="text-red-300">{readableError(r.error)}</div>
-                ) : null}
-                {r.status === "failed" ? (
-                  <div className="flex flex-row flex-wrap gap-2">
-                    {errorNextSteps(readableError(r.error) || "failed", {
-                      isLead,
-                    }).map((step) =>
-                      step.action === "run-again" ? (
-                        <Button3
-                          key={step.action}
-                          title={step.label}
-                          size="xs"
-                          onClick={() => runAgain(r.prompt)}
-                        />
-                      ) : step.action === "change-model" ? (
-                        onChangeModel ? (
-                          <Button3
-                            key={step.action}
-                            title={step.label}
-                            size="xs"
-                            onClick={() => onChangeModel()}
-                          />
-                        ) : null
-                      ) : onOpenSettings ? (
-                        <Button3
-                          key={step.action}
-                          title={step.label}
-                          size="xs"
-                          onClick={() => onOpenSettings(step.section)}
-                        />
-                      ) : null,
-                    )}
-                  </div>
-                ) : null}
-                {r.outputUnavailable ? (
-                  <div className={muted}>
-                    Answer unavailable — it was stored encrypted with a key this
-                    app can&apos;t read.
-                  </div>
-                ) : r.output ? (
-                  <div className="whitespace-pre-wrap leading-relaxed">
-                    {toPlainText(r.output)}
-                  </div>
-                ) : null}
-              </div>
+              <RunDetails
+                run={r}
+                bot={bot}
+                isLead={isLead}
+                nameOf={nameOf}
+                onOpenSettings={onOpenSettings}
+                onChangeModel={onChangeModel}
+                compact={compact}
+              />
             ) : null}
           </div>
         );

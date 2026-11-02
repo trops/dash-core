@@ -38,6 +38,17 @@ export function usageTokens(usage) {
   );
 }
 
+/**
+ * An API price for comparison: plan runs are often a fraction of a cent, so
+ * below a cent it keeps a third decimal ("$0.004").
+ */
+export function apiPrice(usd) {
+  const v = Number(usd) || 0;
+  if (v >= 0.01) return `$${v.toFixed(2)}`;
+  if (v >= 0.001) return `$${v.toFixed(3)}`;
+  return "<$0.001";
+}
+
 function dollars(usd) {
   return usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`;
 }
@@ -51,8 +62,13 @@ export function runCostLabel(run) {
   const tokens = usageTokens(run.usage);
   if (tokens > 0) parts.push(`${formatTokens(tokens)} tokens`);
   const c = run.cost;
-  if (c && c.includedInPlan) parts.push("included in your plan");
-  else if (c && !c.estimated && typeof c.usd === "number") {
+  if (c && c.includedInPlan) {
+    // What it would have cost on the API, at that day's price.
+    if (typeof c.equivalentUsd === "number" && c.equivalentUsd > 0) {
+      parts.push(`≈ ${apiPrice(c.equivalentUsd)} at API prices`);
+    }
+    parts.push("included in your plan");
+  } else if (c && !c.estimated && typeof c.usd === "number") {
     parts.push(dollars(c.usd));
   }
   return parts.join(" · ");
@@ -84,7 +100,10 @@ export function formatMonthCost(spend, botId) {
   }
   if (usd > 0) return `${dollars(usd)} this month`;
   if (planTokens > 0) {
-    return `${formatTokens(planTokens)} tokens · included in your plan`;
+    const atApi = Number(b.planUsd) || 0;
+    return `${formatTokens(planTokens)} tokens · ${
+      atApi > 0 ? `≈ ${apiPrice(atApi)} at API prices · ` : ""
+    }included in your plan`;
   }
   const tokens =
     (Number(b.inputTokens) || 0) +

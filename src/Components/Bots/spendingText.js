@@ -3,7 +3,7 @@
  * "$1.20 · 14.2k tokens", "15.7k tokens · covered by your Claude plan",
  * "80% of budget". Pure.
  */
-import { formatTokens } from "../../utils/runCostLabel";
+import { apiPrice, formatTokens } from "../../utils/runCostLabel";
 
 export const money = (n) => "$" + (Number(n) || 0).toFixed(2);
 
@@ -22,7 +22,8 @@ export function providerName(id) {
 /**
  * A row's spending this month. Runs a Claude plan covers cost nothing, so
  * they show as tokens.
- * @param {{ usd, tokens, planTokens }} row  spendingSummary row
+ * @param {{ usd, tokens, planTokens, planUsd? }} row  spendingSummary row;
+ *   planUsd: those plan runs at API prices (kept since 2026-11)
  */
 export function spentLine(row) {
   const r = row || {};
@@ -31,7 +32,10 @@ export function spentLine(row) {
   const plan = Number(r.planTokens) || 0;
   if (!usd && !tokens) return "Nothing yet this month";
   if (!usd && plan) {
-    return `${formatTokens(tokens)} tokens · covered by your Claude plan`;
+    const atApi = Number(r.planUsd) || 0;
+    return `${formatTokens(tokens)} tokens · ${
+      atApi > 0 ? `≈ ${apiPrice(atApi)} at API prices · ` : ""
+    }covered by your Claude plan`;
   }
   return `${money(usd)} · ${formatTokens(tokens)} tokens`;
 }

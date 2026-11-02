@@ -59,6 +59,7 @@ const {
   BOTS_LIST_MCP_ROUTES,
   BOTS_LIST_MCP_TASK_TEAMS,
   BOTS_SET_TAKES_MCP_TASKS,
+  BOTS_SET_ASKS_TASK_PASSPHRASE,
   BOTS_TASK_PASSPHRASE_STATE,
   BOTS_TASK_PASSPHRASE_REVEAL,
   BOTS_TASK_PASSPHRASE_SET,
@@ -301,11 +302,14 @@ const botApi = {
   /** The Dash Lead's routing log, newest first. */
   listMcpRoutes: (limit = 20) =>
     ipcRenderer.invoke(BOTS_LIST_MCP_ROUTES, { limit }),
-  /** Ids of the dashboards whose teams take tasks via MCP. */
+  /** The teams that take tasks via MCP: [{ id, asksPassphrase }]. */
   listMcpTaskTeams: () => ipcRenderer.invoke(BOTS_LIST_MCP_TASK_TEAMS),
   /** The team's "Takes tasks via MCP" switch. */
   setTakesMcpTasks: (workspaceId, on) =>
     ipcRenderer.invoke(BOTS_SET_TAKES_MCP_TASKS, { workspaceId, on }),
+  /** The team's "Ask for a passphrase first" switch. */
+  setAsksTaskPassphrase: (workspaceId, on) =>
+    ipcRenderer.invoke(BOTS_SET_ASKS_TASK_PASSPHRASE, { workspaceId, on }),
   /** { set, short, setAt, lockedUntil } — never the phrase. */
   getTaskPassphraseState: () => ipcRenderer.invoke(BOTS_TASK_PASSPHRASE_STATE),
   /** The phrase itself, for Settings' Show button. */

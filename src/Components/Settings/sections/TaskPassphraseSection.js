@@ -49,7 +49,8 @@ export const TaskPassphraseSection = ({ workspaces = [] }) => {
   const [state, setState] = useState(null);
   // A Show / Remove / Unlock that didn't work says so.
   const [notice, setNotice] = useState(null);
-  const [teamIds, setTeamIds] = useState([]);
+  // Teams that take tasks: [{ id, asksPassphrase }].
+  const [taskTeams, setTaskTeams] = useState([]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [shown, setShown] = useState(null);
@@ -64,7 +65,18 @@ export const TaskPassphraseSection = ({ workspaces = [] }) => {
       .then((s) => setState(s || { set: false }))
       .catch(() => setState({ set: false }));
     Promise.resolve(api.listMcpTaskTeams && api.listMcpTaskTeams())
-      .then((ids) => setTeamIds(Array.isArray(ids) ? ids.map(String) : []))
+      .then((list) =>
+        setTaskTeams(
+          Array.isArray(list)
+            ? list.map((t) =>
+                // Older shape: plain ids.
+                t && typeof t === "object"
+                  ? { id: String(t.id), asks: !!t.asksPassphrase }
+                  : { id: String(t), asks: false },
+              )
+            : [],
+        ),
+      )
       .catch(() => {});
   }, []);
 
@@ -171,9 +183,13 @@ export const TaskPassphraseSection = ({ workspaces = [] }) => {
     load();
   };
 
-  const teams = teamIds
-    .map((id) => workspaces.find((w) => String(w.id) === id))
-    .filter(Boolean);
+  const named = (asks) =>
+    taskTeams
+      .filter((t) => t.asks === asks)
+      .map((t) => workspaces.find((w) => String(w.id) === t.id))
+      .filter(Boolean);
+  const asking = named(true);
+  const notAsking = named(false);
 
   return (
     <section
@@ -185,8 +201,11 @@ export const TaskPassphraseSection = ({ workspaces = [] }) => {
         Task passphrase
       </h4>
       <p className={`text-sm leading-relaxed ${strong}`}>
-        Agents connected via MCP need this phrase before a team starts a task.
-        Use words, not numbers — it&apos;s easier to say.
+        Teams that ask for a passphrase start a task only after the app gives
+        this phrase — useful when a person gives tasks by voice. It shows a
+        person asked. It isn&apos;t secret from the app: once said, it&apos;s in
+        that app&apos;s chat history. Use words, not numbers — they&apos;re
+        easier to say.
       </p>
 
       {state.lockedUntil ? (
@@ -254,7 +273,8 @@ export const TaskPassphraseSection = ({ workspaces = [] }) => {
           ) : null}
           {!state.set && !error && !shortDraft ? (
             <span className={`text-xs ${muted}`} data-testid="passphrase-none">
-              No passphrase yet, so teams won&apos;t take tasks via MCP.
+              No passphrase yet, so teams that ask for one can&apos;t start
+              tasks.
             </span>
           ) : null}
         </div>
@@ -288,10 +308,7 @@ export const TaskPassphraseSection = ({ workspaces = [] }) => {
             <span className={`text-xs ${warnText || muted}`}>{SHORT_HINT}</span>
           ) : null}
           <span className={`text-xs ${muted}`}>
-            {[
-              setOnText(state.setAt),
-              "Agents never see it, and it isn't kept in replies or logs.",
-            ]
+            {[setOnText(state.setAt), "It's never kept in replies or logs."]
               .filter(Boolean)
               .join(". ")}
           </span>
@@ -309,22 +326,35 @@ export const TaskPassphraseSection = ({ workspaces = [] }) => {
         data-testid="passphrase-teams"
       >
         <span>
-          {teams.length
-            ? "Teams that take tasks via MCP · turn it on in each team's Bots view"
-            : "No team takes tasks via MCP yet · turn it on in a team's Bots view"}
+          {asking.length
+            ? "Teams that ask for a passphrase · change it in each team lead's Settings"
+            : "No team asks for a passphrase · turn it on in a team lead's Settings"}
         </span>
-        {teams.map((w) => (
+        {asking.map((w) => (
           <span key={w.id} className={`font-semibold ${strong}`}>
             {w.name || "Untitled"}
           </span>
         ))}
       </div>
+      {notAsking.length ? (
+        <div
+          className={`flex flex-col gap-1 text-sm ${muted}`}
+          data-testid="passphrase-teams-without"
+        >
+          <span>Teams that start tasks without one</span>
+          {notAsking.map((w) => (
+            <span key={w.id} className={`font-semibold ${strong}`}>
+              {w.name || "Untitled"}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       <ConfirmationModal
         isOpen={confirmRemove}
         setIsOpen={setConfirmRemove}
         title="Remove the task passphrase?"
-        message="Teams won't take tasks via MCP until you set a new one."
+        message="Teams that ask for a passphrase can't start tasks until you set a new one."
         confirmLabel="Remove"
         cancelLabel="Keep it"
         variant="danger"

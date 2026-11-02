@@ -52,7 +52,8 @@ export const BotBudgetSection = ({ bot }) => {
       />
       <span className={`text-xs ${muted}`}>
         Runs on Claude Code are covered by your Claude plan, so they count as
-        tokens, not dollars.
+        tokens, not dollars. &ldquo;At API prices&rdquo; is what the same run
+        would have cost with an API key, at that day&apos;s price.
       </span>
     </div>
   );

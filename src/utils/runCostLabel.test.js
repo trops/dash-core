@@ -24,7 +24,7 @@ describe("runCostLabel — a run's model, tokens and cost (CRE-012)", () => {
     expect(runCostShort(run)).toBe("$0.06");
   });
 
-  test("Claude Code run: included in your plan, no dollars", () => {
+  test("Claude Code run: its API price at the time, and included in your plan", () => {
     const run = {
       model: "claude-opus-4-8",
       usage,
@@ -36,9 +36,18 @@ describe("runCostLabel — a run's model, tokens and cost (CRE-012)", () => {
       },
     };
     expect(runCostLabel(run)).toBe(
-      "Opus · 14.2k tokens · included in your plan",
+      "Opus · 14.2k tokens · ≈ $0.30 at API prices · included in your plan",
     );
     expect(runCostShort(run)).toBe("14.2k tok");
+    // A run kept before its API price was known: no price.
+    expect(
+      runCostLabel({ ...run, cost: { ...run.cost, equivalentUsd: null } }),
+    ).toBe("Opus · 14.2k tokens · included in your plan");
+    expect(
+      runCostLabel({ ...run, cost: { ...run.cost, equivalentUsd: 0.004 } }),
+    ).toBe(
+      "Opus · 14.2k tokens · ≈ $0.004 at API prices · included in your plan",
+    );
   });
 
   test("unknown price: tokens only", () => {
@@ -82,6 +91,12 @@ describe("formatMonthCost", () => {
     expect(
       formatMonthCost({ "bot:b": { usd: 0, planTokens: 48000 } }, "b"),
     ).toBe("48.0k tokens · included in your plan");
+    expect(
+      formatMonthCost(
+        { "bot:b": { usd: 0, planTokens: 48000, planUsd: 1.2 } },
+        "b",
+      ),
+    ).toBe("48.0k tokens · ≈ $1.20 at API prices · included in your plan");
     expect(
       formatMonthCost({ "bot:b": { usd: 1.2, planTokens: 48000 } }, "b"),
     ).toBe("$1.20 + 48.0k plan tokens this month");

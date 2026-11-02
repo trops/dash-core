@@ -60,7 +60,7 @@ const TEAM_TOOLS = [
   {
     name: "give_task",
     description:
-      "Give one of the user's teams a task to do (not a question — use ask_team_lead for those). The team starts only after the user's task passphrase checks out: if the user said it along with the task, pass it as 'passphrase'; otherwise give_task returns a taskId — ask the user for their task passphrase and call confirm_task. Never guess or reuse a passphrase the user didn't just say. 'team' is a dashboard name or id from list_teams (only teams with takesTasks); leave it out when the user didn't name one, and the Dash team picks the team that fits — or asks back which.",
+      "Give one of the user's teams a task to do (not a question — use ask_team_lead for those). Most teams start right away. A team the user set to ask for a passphrase starts only after the user's task passphrase checks out: if the user said it along with the task, pass it as 'passphrase'; otherwise give_task returns status 'waiting' and a taskId — ask the user for their task passphrase and call confirm_task. Never guess or reuse a passphrase the user didn't just say. 'team' is a dashboard name or id from list_teams (only teams with takesTasks); leave it out when the user didn't name one, and the Dash team picks the team that fits — or asks back which.",
     inputSchema: {
       type: "object",
       properties: {
@@ -75,12 +75,12 @@ const TEAM_TOOLS = [
         passphrase: {
           type: "string",
           description:
-            "The user's task passphrase, only if they said it with this task.",
+            "The user's task passphrase, only if they said it with this task (only teams that ask for one need it).",
         },
         from: {
           type: "string",
           description:
-            "Your app's short name (e.g. 'ha-bridge'), shown next to the task in Dash.",
+            "Your app's short name (e.g. 'voice-assistant'), shown next to the task in Dash.",
         },
       },
       required: ["task"],
@@ -168,7 +168,7 @@ const STATUS_MESSAGE = {
 
 /** What the lead is asked: the task, and that the user stands behind it. */
 function taskPrompt(t) {
-  return `${t.task}\n\n(A task given via MCP${t.from ? ` by ${t.from}` : ""}; the user confirmed it with their task passphrase. Do it with your team's bots, then sum up in a few sentences what was done and anything still waiting on the user.)`;
+  return `${t.task}\n\n(A task given via MCP${t.from ? ` by ${t.from}` : ""}${t.needsPassphrase === false ? "" : "; the user confirmed it with their task passphrase"}. Do it with your team's bots, then sum up in a few sentences what was done and anything still waiting on the user.)`;
 }
 
 const reply = (text, isError = false) => ({
@@ -212,6 +212,16 @@ function makeTeamToolHandlers({
     }
   };
 
+  // Does this team ask for the passphrase before a task starts? Its setting
+  // (off unless turned on).
+  const asksPassphrase = (id) => {
+    try {
+      return !!(bots.asksTaskPassphrase && bots.asksTaskPassphrase(id));
+    } catch (_e) {
+      return false;
+    }
+  };
+
   // A task's run, from the passphrase on: the lead does it with its bots
   // (allowed — the user confirmed it), and the task follows the run.
   const startTask = (task) => {
@@ -234,17 +244,23 @@ function makeTeamToolHandlers({
           );
         }
         // Only a finished run is done: one stopped in Dash, or cut off when
-        // Dash closed, has at most part of an answer.
+        // Dash closed, has at most part of an answer. Each keeps its run.
+        const ran = { runAt: (result && result.startedAt) || null };
         if (result && result.status === "stopped") {
-          return tasks.failed(task.id, "It was stopped in Dash.");
+          return tasks.failed(task.id, "It was stopped in Dash.", ran);
         }
         if (result && result.status === "interrupted") {
-          return tasks.failed(task.id, "Dash closed before the team finished.");
+          return tasks.failed(
+            task.id,
+            "Dash closed before the team finished.",
+            ran,
+          );
         }
         if (!result || result.status !== "completed" || result.error) {
           return tasks.failed(
             task.id,
             (result && result.error) || "unknown error",
+            ran,
           );
         }
         const notes = takeNotes();
@@ -292,6 +308,12 @@ function makeTeamToolHandlers({
         } left before tasks lock for 15 minutes. Ask the user to say it again.`,
       });
     }
+    return start(task);
+  };
+
+  /** Start a task now and wait a while for the team's answer. */
+  const start = async (task, prefix = "") => {
+    const tasks = bots.tasks();
     // Still allowed? The team could have been turned off or paused since.
     const blocked = teamBlocked(task.teamId, task.leadId, task.teamName);
     if (blocked) {
@@ -312,9 +334,11 @@ function makeTeamToolHandlers({
     const now = done || tasks.get(task.id) || task;
     return json({
       ...taskView(now),
-      message: done
-        ? STATUS_MESSAGE[now.status](now)
-        : `${task.teamName} has started. It's still working — check with get_task_status(taskId).`,
+      message: `${prefix}${
+        done
+          ? STATUS_MESSAGE[now.status](now)
+          : `${task.teamName} has started. It's still working — check with get_task_status(taskId).`
+      }`,
     });
   };
 
@@ -340,6 +364,14 @@ function makeTeamToolHandlers({
     if (avail.overBudget) {
       return `${name}'s team is over its budget. The user can raise it in Settings › Bots.`;
     }
+    const tasks = bots.tasks();
+    if (
+      asksPassphrase(teamId) &&
+      tasks.passphraseSet &&
+      !tasks.passphraseSet()
+    ) {
+      return `${name} asks for a passphrase first, and none is set. The user can set one in Dash: Settings › MCP Server.`;
+    }
     return null;
   };
 
@@ -354,15 +386,6 @@ function makeTeamToolHandlers({
           status: "invalid",
           message:
             "The task text has the passphrase in it. Give the task without it, and the passphrase separately as 'passphrase'.",
-        });
-      }
-      const locked = tasks.lockedUntil();
-      if (locked) {
-        return json({
-          status: "locked",
-          message: `Tasks are locked after 5 wrong passphrases until ${timeOf(
-            locked,
-          )}. The user can unlock them in Dash: Settings › MCP Server.`,
         });
       }
       const workspaces = getWorkspaces();
@@ -438,19 +461,31 @@ function makeTeamToolHandlers({
         .find((b) => b.role === "lead" && sameId(b.workspaceId, ws.id));
       const blocked = teamBlocked(ws.id, lead && lead.id, name);
       if (blocked) return json({ status: "blocked", message: blocked });
+      const needsPassphrase = asksPassphrase(ws.id);
+      const locked = needsPassphrase && tasks.lockedUntil();
+      if (locked) {
+        return json({
+          status: "locked",
+          message: `Tasks are locked after 5 wrong passphrases until ${timeOf(
+            locked,
+          )}. The user can unlock them in Dash: Settings › MCP Server.`,
+        });
+      }
 
       const task = tasks.create({
         task: text,
         team: { id: ws.id, name, leadId: lead.id },
         from: args.from,
         routedBy,
+        needsPassphrase,
       });
+      const picked = routedBy ? `The Dash team picked ${name}. ` : "";
+      // No passphrase asked for: it starts now.
+      if (!needsPassphrase) return start(task, picked);
       if (args.passphrase) return confirm(task, args.passphrase);
       return json({
         ...taskView(task),
-        message: `${
-          routedBy ? `The Dash team picked ${name}. ` : ""
-        }${name} will do: "${text}". Ask the user for their task passphrase, then call confirm_task(taskId, passphrase). It expires at ${timeOf(
+        message: `${picked}${name} will do: "${text}". Ask the user for their task passphrase, then call confirm_task(taskId, passphrase). It expires at ${timeOf(
           task.expiresAt,
         )}.`,
       });
@@ -490,7 +525,11 @@ function makeTeamToolHandlers({
         workspaces: getWorkspaces(),
         bots: bots.list(),
         lastRunAt,
-      }).map((t) => ({ ...t, takesTasks: takesTasks(t.id) }));
+      }).map((t) => ({
+        ...t,
+        takesTasks: takesTasks(t.id),
+        ...(takesTasks(t.id) ? { asksPassphrase: asksPassphrase(t.id) } : {}),
+      }));
       return reply(
         JSON.stringify({
           teams,
@@ -611,6 +650,7 @@ function registerTeamTools() {
       leadAvailability: (id) => botController.leadAvailability(id),
       askLead: (id, q, opts) => botController.askLead(id, q, opts),
       takesMcpTasks: (id) => botController.takesMcpTasks(id),
+      asksTaskPassphrase: (id) => botController.asksTaskPassphrase(id),
       tasks: () => botController.mcpTasks(),
       routeTask: (task, teams, opts) =>
         botController.routeMcpTask(task, teams, opts),

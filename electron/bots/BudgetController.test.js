@@ -229,6 +229,9 @@ describe("BudgetController — the run cost rule (CRE-012)", () => {
     assert.equal(bot.usd, 0);
     assert.equal(bot.planTokens, 1700);
     assert.equal(bot.cacheTokens, 200);
+    // Their API price at the time, shown but never counted against budgets.
+    assert.ok(bot.planUsd > 0);
+    assert.ok(bc.botStatus("b1").spent.planUsd > 0);
   });
 
   it("API runs price cache reads at 0.1× input", () => {
