@@ -691,7 +691,11 @@ export const SaveProfileModal = ({
         setIsOpen={close}
         // Wide enough for a row per widget with its switch (bulk publish).
         width="w-full max-w-2xl"
-        height={toCheck.length || needsLook.length ? "h-5/6" : "h-auto"}
+        height={
+          !signInFirst && (toCheck.length || needsLook.length)
+            ? "h-5/6"
+            : "h-auto"
+        }
       >
         <div
           // Raised above the dimmed page, like dash-react's dialogs.
