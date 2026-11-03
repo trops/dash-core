@@ -155,6 +155,10 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
     }
     return out;
   });
+  // Unticked providers (a map row unticks by picking one of this Mac's).
+  const [skipped, setSkipped] = useState(() => new Set());
+  // A map row's pick before it was ticked, so unticking brings it back.
+  const [mapBack, setMapBack] = useState({});
   const [applySettings, setApplySettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -225,6 +229,7 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
         keep: [...keep],
         take: [...take],
         providerMap,
+        skipProviders: [...skipped],
         applySettings,
         // Locked keys not unlocked: loaded without them.
         withoutKeys: locked && !unlocked,
@@ -354,6 +359,74 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
       if (!unlocked) return `${p.name} (${p.type}) · added — its key is locked`;
     }
     return `${p.name} (${p.type}) · ${NEED_TEXT[need] || NEED_TEXT.key}`;
+  };
+  // Each provider has a checkbox, but one already here with its key
+  // (nothing to add or fill in). Ticked: added (or its key filled in);
+  // a map row unticked uses one of this Mac's instead.
+  const hasKey = (p) => !!(unlocked && unlocked.providers.includes(p.name));
+  // One here waiting for its key: a choice only when the profile has keys.
+  const isPlainReady = (p) => p.status === "ready" && !(p.waiting && locked);
+  const pickable = providers.filter((p) => !isPlainReady(p));
+  const ticked = (p) =>
+    p.status === "map" ? !providerMap[p.name] : !skipped.has(p.name);
+  const nextMap = (map, p, on) => ({
+    ...map,
+    [p.name]: on ? null : mapBack[p.name] || p.mapTo || p.options[0],
+  });
+  const setTicked = (p, on) => {
+    if (p.status === "map") {
+      if (!on) setProviderMap(nextMap(providerMap, p, false));
+      else {
+        setMapBack({ ...mapBack, [p.name]: providerMap[p.name] });
+        setProviderMap(nextMap(providerMap, p, true));
+      }
+      return;
+    }
+    toggle(skipped, setSkipped, p.name, !on);
+  };
+  const setAll = (on) => {
+    let map = { ...providerMap };
+    const back = { ...mapBack };
+    for (const p of pickable) {
+      if (p.status !== "map") continue;
+      if (on && providerMap[p.name]) back[p.name] = providerMap[p.name];
+      map = nextMap(map, p, on);
+    }
+    // Unticking all brings back each row's own pick.
+    if (!on) {
+      for (const p of pickable) {
+        if (p.status === "map") map[p.name] = back[p.name] || map[p.name];
+      }
+    }
+    setMapBack(back);
+    setProviderMap(map);
+    setSkipped(
+      on
+        ? new Set()
+        : new Set(
+            pickable.filter((p) => p.status !== "map").map((p) => p.name),
+          ),
+    );
+  };
+  const pickLine = (p) => {
+    const kind = `${p.name} (${p.type})`;
+    if (!ticked(p)) {
+      if (p.status === "map") return `${kind} · not added`;
+      if (p.status === "ready")
+        return `${p.name} · on this Mac, its key isn't added`;
+      return `${kind} · not added — widgets that use it say "Needs a provider" until you pick one`;
+    }
+    if (p.status === "ready") {
+      return hasKey(p)
+        ? `${p.name} · on this Mac, its key will be added`
+        : `${p.name} · on this Mac, still needs its key`;
+    }
+    if (p.status === "map") {
+      return hasKey(p)
+        ? `${kind} · added with its key`
+        : `${kind} · added without its key`;
+    }
+    return providerLine(p);
   };
 
   return (
@@ -507,6 +580,12 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
                 without their keys. You add each key after loading.
               </span>
             ) : null}
+            {pickable.length ? (
+              <span className={`${muted} max-w-prose`}>
+                Untick any you don&apos;t want on this Mac — it isn&apos;t
+                added, and its key isn&apos;t used.
+              </span>
+            ) : null}
             {locked && !unlocked ? (
               <div className="flex flex-col gap-2" data-testid="load-unlock">
                 <div className="flex flex-row items-end gap-2">
@@ -546,38 +625,47 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
                 </span>
               </div>
             ) : null}
+            {pickable.length ? (
+              <Checkbox
+                label="Select all"
+                checked={pickable.every(ticked)}
+                onChange={(on) => setAll(on)}
+              />
+            ) : null}
             {providers.map((p) => (
               <div key={p.name} className="flex flex-col gap-1">
-                {p.status === "ready" ? (
-                  <span>{`${p.name} · ready on this Mac`}</span>
-                ) : p.status === "map" ? (
-                  <>
-                    <SelectInput
-                      label={`Use for "${p.name}"`}
-                      value={providerMap[p.name] || ""}
-                      onChange={(v) =>
-                        setProviderMap({ ...providerMap, [p.name]: v || null })
-                      }
-                      options={[
-                        ...p.options.map((o) => ({ value: o, label: o })),
-                        {
-                          value: "",
-                          label:
-                            unlocked && unlocked.providers.includes(p.name)
-                              ? `Add "${p.name}" with its key`
-                              : `None — add "${p.name}" without its key`,
-                        },
-                      ]}
-                    />
-                    {locked && providerMap[p.name] ? (
-                      <span className={`text-xs ${muted}`}>
-                        {`Uses your "${providerMap[p.name]}" with its own key — the profile's key for "${p.name}" isn't used.`}
-                      </span>
-                    ) : null}
-                  </>
+                {isPlainReady(p) ? (
+                  <span>
+                    {p.waiting
+                      ? `${p.name} · on this Mac, still needs its key`
+                      : `${p.name} · ready on this Mac`}
+                  </span>
                 ) : (
-                  <span>{providerLine(p)}</span>
+                  <Checkbox
+                    label={pickLine(p)}
+                    checked={ticked(p)}
+                    onChange={(on) => setTicked(p, on)}
+                  />
                 )}
+                {p.status === "map" && ticked(p) ? (
+                  <span className={`text-xs ${muted} pl-6`}>
+                    {p.options.length === 1
+                      ? `This Mac also has "${p.options[0]}" — untick to use that one instead.`
+                      : "This Mac has others of its kind — untick to use one of them instead."}
+                  </span>
+                ) : null}
+                {p.status === "map" && !ticked(p) ? (
+                  <div className="pl-6">
+                    <SelectInput
+                      label="Its widgets use instead"
+                      value={providerMap[p.name] || p.options[0]}
+                      onChange={(v) =>
+                        setProviderMap({ ...providerMap, [p.name]: v })
+                      }
+                      options={p.options.map((o) => ({ value: o, label: o }))}
+                    />
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

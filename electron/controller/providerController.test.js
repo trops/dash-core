@@ -1068,5 +1068,49 @@ describe("providerController", () => {
         .providers.find((x) => x.name === "Drive");
       assert.equal(p.needsSetup, undefined);
     });
+
+    it("a profile's default becomes the default here, only when there's none", () => {
+      const add = (name) =>
+        controller.addFromProfile(
+          null,
+          "test-app",
+          { name, type: "home-assistant-mcp", providerClass: "mcp" },
+          {},
+        );
+      add("HA One");
+      add("HA Two");
+      const isDefault = (name) =>
+        controller
+          .listProviders(null, "test-app")
+          .providers.find((x) => x.name === name).isDefaultForType;
+      assert.equal(
+        controller.defaultIfNone(null, "test-app", "HA One").changed,
+        true,
+      );
+      assert.equal(isDefault("HA One"), true);
+      // One is the default already: the other isn't made one.
+      assert.equal(
+        controller.defaultIfNone(null, "test-app", "HA Two").changed,
+        false,
+      );
+      assert.equal(isDefault("HA Two"), false);
+      assert.equal(
+        controller.defaultIfNone(null, "test-app", "Nope").changed,
+        false,
+      );
+      // Same name, another kind: not made the default.
+      controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Chat", type: "slack", providerClass: "mcp" },
+        {},
+      );
+      assert.equal(
+        controller.defaultIfNone(null, "test-app", "Chat", "home-assistant-mcp")
+          .changed,
+        false,
+      );
+      assert.equal(isDefault("Chat"), false);
+    });
   });
 });

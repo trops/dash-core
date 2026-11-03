@@ -130,6 +130,13 @@ function defaultDeps() {
         p,
         opts,
       ),
+    defaultProviderIfNone: (appId, name, type) =>
+      require("../controller/providerController").defaultIfNone(
+        null,
+        appId,
+        name,
+        type,
+      ),
     mcpCatalog: () => {
       try {
         return require("../mcp/mcpServerCatalog.json").servers || [];
@@ -264,8 +271,24 @@ async function planLoadV3(
     return n.signIn ? "signIn" : "key";
   };
   const providers = manifest.providers.map((p) => {
-    if (mine.some((m) => m.name === p.name)) {
-      return { name: p.name, type: p.type, status: "ready" };
+    const same = mine.find((m) => m.name === p.name);
+    if (same) {
+      // Still waiting for its key (an earlier load without keys): the
+      // profile's unlocked key fills it in, so the dialog says so.
+      // As the fill step checks it (providerController.addFromProfile).
+      const waiting =
+        !!same.needsSetup &&
+        !same.needsSignIn &&
+        !same.oauth &&
+        same.type === p.type &&
+        (same.providerClass || "credential") ===
+          (p.providerClass || "credential");
+      return {
+        name: p.name,
+        type: p.type,
+        status: "ready",
+        ...(waiting ? { waiting: true } : {}),
+      };
     }
     const options = mine.filter((m) => m.type === p.type).map((m) => m.name);
     return options.length
@@ -593,6 +616,7 @@ function mapBotProviders(bot, nameProvider) {
  *   choices — `keep`: "<kind>:<id>" updates to skip (keep this Mac's);
  *   `take`: kept rows to replace with the profile's; `providerMap`: the
  *   profile's provider name → this computer's (null: none).
+ *   `skipProviders`: names unticked — not added, their keys not used.
  *   `linkedProfileId` and `syncLinked` come from the main process only.
  */
 async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
@@ -672,8 +696,15 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
     unlocked && unlocked.providers && own(unlocked.providers, name)
       ? unlocked.providers[name]
       : null;
+  // Unticked in the dialog: not added here, and its key isn't used.
+  const skip = new Set(
+    Array.isArray(choices.skipProviders)
+      ? choices.skipProviders.filter((s) => typeof s === "string")
+      : [],
+  );
   let keysFilled = 0;
   for (const p of plan.providers) {
+    if (skip.has(p.name)) continue;
     const unmatched =
       p.status === "setup" || (p.status === "map" && !providerMap[p.name]);
     const src = byName.get(p.name);
@@ -708,6 +739,18 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
         ...(res.withKey ? { withKey: true } : {}),
       });
       if (res.withKey) keysFilled += 1;
+    }
+  }
+  // The profile's default for a type stays the default here (widgets that
+  // pick no provider use it), unless this Mac already has one.
+  if (d.defaultProviderIfNone) {
+    for (const p of plan.providers) {
+      const src = byName.get(p.name);
+      if (!src || src.isDefaultForType !== true) continue;
+      // Unticked and not here: there is nothing to make the default. (One
+      // already here unticked only keeps its key out.)
+      if (skip.has(p.name) && p.status !== "ready") continue;
+      d.defaultProviderIfNone(appId, providerMap[p.name] || p.name, src.type);
     }
   }
 
@@ -1015,7 +1058,9 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
     providersToSetUp: plan.providers
       .filter(
         (p) =>
-          p.status === "setup" || (p.status === "map" && !providerMap[p.name]),
+          !skip.has(p.name) &&
+          (p.status === "setup" ||
+            (p.status === "map" && !providerMap[p.name])),
       )
       .map((p) => p.name),
     providersMapped: { ...providerMap },

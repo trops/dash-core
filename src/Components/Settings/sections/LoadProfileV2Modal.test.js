@@ -163,6 +163,8 @@ describe("LoadProfileV2Modal", () => {
     fireEvent.click(
       screen.getByLabelText("Also use its app theme and update setting"),
     );
+    // Unticked: not added here.
+    fireEvent.click(screen.getByLabelText(/^Home \(home-assistant\)/));
     fireEvent.click(screen.getByRole("button", { name: "Load" }));
     await waitFor(() => expect(onLoaded).toHaveBeenCalled());
     expect(window.mainApi.profiles.applyLoad).toHaveBeenCalledWith(
@@ -174,6 +176,7 @@ describe("LoadProfileV2Modal", () => {
         keep: ["dashboard:@trops/home-lab"],
         take: ["dashboard:@trops/kitchen"],
         providerMap: { "Work Slack": "Slack" },
+        skipProviders: ["Home"],
         applySettings: true,
         withoutKeys: false,
       },
@@ -412,17 +415,62 @@ describe("leavingText", () => {
       target: { value: "purple otter river" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    // Came with its key: ticked (added as itself). Work Slack has no key
+    // in the profile: unticked, its widgets use this Mac's Slack.
     expect(
-      await screen.findByRole("option", {
-        name: 'Add "Algolia Flagship" with its key',
-      }),
-    ).toBeInTheDocument();
+      await screen.findByLabelText(
+        "Algolia Flagship (algolia) · added with its key",
+      ),
+    ).toBeChecked();
+    expect(
+      screen.getByLabelText("Work Slack (slack) · not added"),
+    ).not.toBeChecked();
+    expect(screen.getByLabelText("Its widgets use instead")).toHaveValue(
+      "Slack",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Load" }));
     await waitFor(() => expect(onLoaded).toHaveBeenCalled());
     const { providerMap } = window.mainApi.profiles.applyLoad.mock.calls[0][2];
     expect(providerMap["Algolia Flagship"]).toBeNull();
     // No key for it in the profile: still uses the one here.
     expect(providerMap["Work Slack"]).toBe("Slack");
+  });
+
+  test("a provider here waiting for its key: needs it, then gets it on unlock", async () => {
+    const unlockKeys = jest.fn().mockResolvedValue({
+      success: true,
+      counts: { providers: 1, widgetSecrets: 0 },
+      providers: ["Algolia Flagship"],
+    });
+    mount(
+      {
+        lockedKeys: { providers: 1, widgetSecrets: 0 },
+        providers: [
+          {
+            name: "Algolia Flagship",
+            type: "algolia",
+            status: "ready",
+            waiting: true,
+          },
+          { name: "Notion", type: "notion", status: "ready" },
+        ],
+      },
+      { unlockKeys },
+    );
+    const list = screen.getByTestId("load-v2-providers");
+    expect(list).toHaveTextContent(
+      "Algolia Flagship · on this Mac, still needs its key",
+    );
+    expect(list).toHaveTextContent("Notion · ready on this Mac");
+    fireEvent.change(screen.getByLabelText("Phrase to unlock the keys"), {
+      target: { value: "purple otter river" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(
+      await screen.findByText(
+        "Algolia Flagship · on this Mac, its key will be added",
+      ),
+    ).toBeInTheDocument();
   });
 
   test("loaded without unlocking: says so", async () => {

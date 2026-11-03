@@ -239,6 +239,30 @@ describe("publish", () => {
     });
     setInstallGate(null);
   });
+  it("a widget config the app can't read isn't published", async () => {
+    const { checkPackage } = require("./widgetRegistry");
+    setInstallGate(async () => ({ ok: true, problems: [] }));
+    const dir = makePackage("p3");
+    fs.writeFileSync(
+      path.join(dir, "widgets", "Hello.dash.js"),
+      'import Hello from "./Hello";\nexport default { component: Hello, type: "widget", name: run() };\n',
+    );
+    await assert.rejects(checkPackage("@zz/gated", dir, "published"), (err) => {
+      assert.equal(err.code, "WIDGET_CHECKS_FAILED");
+      assert.match(
+        err.message,
+        /Hello\.dash\.js isn't a config the app can read/,
+      );
+      return true;
+    });
+    // A good one passes.
+    fs.writeFileSync(
+      path.join(dir, "widgets", "Hello.dash.js"),
+      'import Hello from "./Hello";\nexport default { component: Hello, type: "widget" };\n',
+    );
+    await checkPackage("@zz/gated", dir, "published");
+    setInstallGate(null);
+  });
   it("what doesn't block (hard-coded colors) comes back as warnings", async () => {
     const { checkPackage } = require("./widgetRegistry");
     const colors = ["Hello: line 3: text-gray-600 is a hard-coded color"];
