@@ -378,6 +378,53 @@ describe("leavingText", () => {
     expect(JSON.stringify(choices)).not.toMatch(/otter|unlocked/);
   });
 
+  test("unlocked: a provider with its key is added as itself, not swapped for one of the same kind here", async () => {
+    const unlockKeys = jest.fn().mockResolvedValue({
+      success: true,
+      counts: { providers: 1, widgetSecrets: 0 },
+      providers: ["Algolia Flagship"],
+    });
+    const { onLoaded } = mount(
+      {
+        lockedKeys: { providers: 1, widgetSecrets: 0 },
+        providers: [
+          {
+            name: "Algolia Flagship",
+            type: "algolia",
+            status: "map",
+            options: ["Algolia Demos"],
+            mapTo: "Algolia Demos",
+            need: "key",
+          },
+          {
+            name: "Work Slack",
+            type: "slack",
+            status: "map",
+            options: ["Slack"],
+            mapTo: "Slack",
+            need: "key",
+          },
+        ],
+      },
+      { unlockKeys },
+    );
+    fireEvent.change(screen.getByLabelText("Phrase to unlock the keys"), {
+      target: { value: "purple otter river" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(
+      await screen.findByRole("option", {
+        name: 'Add "Algolia Flagship" with its key',
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Load" }));
+    await waitFor(() => expect(onLoaded).toHaveBeenCalled());
+    const { providerMap } = window.mainApi.profiles.applyLoad.mock.calls[0][2];
+    expect(providerMap["Algolia Flagship"]).toBeNull();
+    // No key for it in the profile: still uses the one here.
+    expect(providerMap["Work Slack"]).toBe("Slack");
+  });
+
   test("loaded without unlocking: says so", async () => {
     const { onLoaded } = mount({
       lockedKeys: { providers: 2, widgetSecrets: 1 },

@@ -40,8 +40,11 @@ function reachFingerprint(cfg, cls) {
 }
 
 /**
- * A key that sets a provider up: every field filled — and a WebSocket
- * knows where to connect (a profile never brings that address).
+ * A key that sets a provider up: the profile's key as the other computer
+ * had it, every field in it filled — and a WebSocket knows where to
+ * connect (a profile never brings that address). Pass the profile's key
+ * alone: a field it leaves out was empty there too (an optional one), so
+ * it stays empty here and doesn't hold the provider back.
  */
 function keyComplete(creds, entry) {
   const values = Object.values(creds || {});
@@ -388,13 +391,17 @@ const providerController = {
           } catch (_e) {
             current = {};
           }
-          const empty = Object.values(current || {}).every(
-            (v) => v == null || String(v).trim() === "",
+          const blank = (v) => v == null || String(v).trim() === "";
+          // Empty, or already this key (an earlier load stored it but left
+          // the provider waiting): filled and set up. Any other key here
+          // is kept.
+          const sameKey = Object.entries(current || {}).every(
+            ([k, v]) => blank(v) || given[k] === v,
           );
-          if (!empty) return { success: true, added: false };
+          if (!sameKey) return { success: true, added: false };
           const merged = { ...current, ...given };
           here.credentials = seal(merged);
-          if (keyComplete(merged, here)) delete here.needsSetup;
+          if (keyComplete(given, here)) delete here.needsSetup;
           here.dateUpdated = new Date().toISOString();
           writeFileSync(filename, JSON.stringify(providers, null, 2), {
             mode: 0o600,
@@ -415,8 +422,7 @@ const providerController = {
         providerClass: p.providerClass || "credential",
         wsConfig: p.wsConfig,
       };
-      const ready =
-        hasKey && !opts.signIn && keyComplete({ ...fields, ...given }, draft);
+      const ready = hasKey && !opts.signIn && keyComplete(given, draft);
       const entry = {
         type: p.type,
         providerClass: p.providerClass || "credential",
