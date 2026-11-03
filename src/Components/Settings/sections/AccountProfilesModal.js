@@ -82,7 +82,13 @@ export const AccountProfilesModal = ({ appId, onClose, onPreview }) => {
   const selected = (list || []).find((p) => p.id === selectedId) || null;
 
   async function load() {
-    if (busy || !selected) return;
+    if (busy) return;
+    // Not signed in: the button signs in.
+    if (signInRequired) {
+      signIn();
+      return;
+    }
+    if (!selected) return;
     setBusy(true);
     setError(null);
     let res;
@@ -137,7 +143,7 @@ export const AccountProfilesModal = ({ appId, onClose, onPreview }) => {
     : list === null
       ? "Checking…"
       : signInRequired
-        ? "Sign in first"
+        ? "Sign in"
         : !selected
           ? "Choose a profile"
           : "Load…";
@@ -161,12 +167,7 @@ export const AccountProfilesModal = ({ appId, onClose, onPreview }) => {
             shows what it adds or changes here first.
           </span>
           {signInRequired ? (
-            <div className="flex flex-col gap-2">
-              <span>Sign in to the registry to see your profiles.</span>
-              <div className="self-start">
-                <Button2 title="Sign in" size="sm" onClick={signIn} />
-              </div>
-            </div>
+            <span>Sign in to the registry to see your profiles.</span>
           ) : null}
           {list && list.length === 0 && !signInRequired && !error ? (
             <span className={muted} data-testid="account-profiles-empty">

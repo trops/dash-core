@@ -369,6 +369,11 @@ export const SaveProfileModal = ({
   const publicCount = queue.filter((w) => visOf(w) === "public").length;
 
   const needsSignIn = toAccount && plan && !plan.username;
+  // Saving to the account starts with signing in: nothing else shows until
+  // the first check finds who's signed in.
+  const signedInSeen = useRef(false);
+  if (plan && plan.username) signedInSeen.current = true;
+  const signInFirst = toAccount && (needsSignIn || !signedInSeen.current);
   const blockers = (plan && plan.blockers) || [];
   const busy = saving || !!run;
   // Until the user touches it: on when keys were locked here before.
@@ -524,7 +529,13 @@ export const SaveProfileModal = ({
   }
 
   async function go() {
-    if (busy || !plan || needsSignIn || blockers.length) return;
+    if (busy || !plan) return;
+    // Not signed in: the button signs in.
+    if (needsSignIn) {
+      signIn();
+      return;
+    }
+    if (blockers.length) return;
     // Saved already and nothing checked: done.
     if (savedRes && !queue.length) {
       onSaved(savedRes);
@@ -610,7 +621,7 @@ export const SaveProfileModal = ({
       : !plan
         ? "Checking…"
         : needsSignIn
-          ? "Sign in first"
+          ? "Sign in"
           : blockers.length
             ? "Fix the items above first"
             : queue.length
@@ -680,7 +691,11 @@ export const SaveProfileModal = ({
         setIsOpen={close}
         // Wide enough for a row per widget with its switch (bulk publish).
         width="w-full max-w-2xl"
-        height={toCheck.length || needsLook.length ? "h-5/6" : "h-auto"}
+        height={
+          !signInFirst && (toCheck.length || needsLook.length)
+            ? "h-5/6"
+            : "h-auto"
+        }
       >
         <div
           // Raised above the dimmed page, like dash-react's dialogs.
@@ -706,346 +721,357 @@ export const SaveProfileModal = ({
             </span>
 
             {needsSignIn ? (
-              <div className="flex flex-col gap-2" data-testid="save-sign-in">
-                <span>
-                  Sign in to the registry to keep this profile in your account.
-                </span>
-                <div className="self-start">
-                  <Button2 title="Sign in" size="sm" onClick={signIn} />
-                </div>
-              </div>
-            ) : null}
-
-            {savedRes ? (
-              <AlertBanner
-                variant="success"
-                size="compact"
-                message={`${toAccount ? "Saved to your account" : "Saved"}${
-                  publishedList.length
-                    ? `, with the ${plural(publishedList.length, "widget")} just published`
-                    : ""
-                }.`}
-              />
-            ) : null}
-
-            {plan ? (
-              <span data-testid="save-profile-counts">
-                {countsText(plan.counts)}
+              <span data-testid="save-sign-in">
+                First, sign in to the registry. Then choose what to save.
               </span>
-            ) : !error ? (
-              <span className={muted}>Checking what goes in…</span>
             ) : null}
 
-            {plan && plan.keys ? (
-              <ProfileKeysOption
-                value={keysValue}
-                keys={plan.keys}
-                // Only the account copy auto-saves, so only it remembers.
-                canRemember={toAccount}
-                disabled={busy}
-                onChange={(next) => {
-                  setError(null);
-                  setKeys(next);
-                }}
-              />
-            ) : null}
+            {signInFirst ? null : (
+              <>
+                {savedRes ? (
+                  <AlertBanner
+                    variant="success"
+                    size="compact"
+                    message={`${toAccount ? "Saved to your account" : "Saved"}${
+                      publishedList.length
+                        ? `, with the ${plural(publishedList.length, "widget")} just published`
+                        : ""
+                    }.`}
+                  />
+                ) : null}
 
-            <div className="flex flex-col gap-2">
-              {option("bots", "Bots")}
-              {option("settings", "App settings (theme, update check)")}
-            </div>
-
-            {blockers.length ? (
-              <div className="flex flex-col gap-1" data-testid="save-blockers">
-                <AlertBanner
-                  variant="error"
-                  size="compact"
-                  message="Fix these before saving:"
-                />
-                {blockers.map((b) => (
-                  <span key={b.key}>{`${b.name}: ${b.reason}`}</span>
-                ))}
-              </div>
-            ) : null}
-
-            {toCheck.length || needsLook.length || warned.length ? (
-              <div
-                className={`flex flex-col gap-3 rounded-lg border p-3 ${hairline}`}
-                data-testid="save-widgets"
-              >
-                <span className="font-medium">Widgets to publish</span>
-                {run ? (
-                  <div className="flex flex-col gap-2" data-testid="save-run">
-                    <span>
-                      {`Publishing ${run.index + 1} of ${run.total} — ${run.current} · then saving`}
-                    </span>
-                    <ProgressBar
-                      size="sm"
-                      value={(run.index / Math.max(1, run.total)) * 100}
-                    />
-                  </div>
-                ) : savedRes ? (
-                  <span data-testid="save-summary">
-                    {savedSummaryText({
-                      published: publishedList.length,
-                      failed: failedCount,
-                      notYet,
-                      needsLook: needsLook.length,
-                    })}
+                {plan ? (
+                  <span data-testid="save-profile-counts">
+                    {countsText(plan.counts)}
                   </span>
-                ) : (
-                  <span className={`${muted} max-w-prose`}>
-                    {`${plural(toCheck.length, "widget")} ${
-                      toCheck.length === 1 ? "isn't" : "aren't"
-                    } in the registry as ${
-                      toCheck.length === 1 ? "it is" : "they are"
-                    } here — the other computer shows ${
-                      toCheck.length === 1 ? "it" : "them"
-                    } as missing until ${
-                      toCheck.length === 1 ? "it's" : "they're"
-                    } published.`}
-                  </span>
-                )}
-                {publishable.length > 1 && !run && toCheck.length ? (
+                ) : !error ? (
+                  <span className={muted}>Checking what goes in…</span>
+                ) : null}
+
+                {plan && plan.keys ? (
+                  <ProfileKeysOption
+                    value={keysValue}
+                    keys={plan.keys}
+                    // Only the account copy auto-saves, so only it remembers.
+                    canRemember={toAccount}
+                    disabled={busy}
+                    onChange={(next) => {
+                      setError(null);
+                      setKeys(next);
+                    }}
+                  />
+                ) : null}
+
+                <div className="flex flex-col gap-2">
+                  {option("bots", "Bots")}
+                  {option("settings", "App settings (theme, update check)")}
+                </div>
+
+                {blockers.length ? (
                   <div
-                    className="flex flex-row flex-wrap items-center gap-2"
-                    data-testid="save-bulk-tools"
+                    className="flex flex-col gap-1"
+                    data-testid="save-blockers"
                   >
-                    <Button3
-                      title="Select all"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        !busy &&
-                        setSelected(new Set(publishable.map((w) => w.package)))
-                      }
+                    <AlertBanner
+                      variant="error"
+                      size="compact"
+                      message="Fix these before saving:"
                     />
-                    <Button3
-                      title="Clear"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => !busy && setSelected(new Set())}
-                    />
-                    <span className={muted}>
-                      {`${publishable.filter((w) => isSelected(w.package)).length} of ${publishable.length} selected`}
-                    </span>
-                    <span className="flex-1" />
-                    <span className={muted}>Set all:</span>
-                    <Button3
-                      title="Private"
-                      size="sm"
-                      ariaLabel="Set all private"
-                      disabled={busy}
-                      onClick={() => setAll("private")}
-                    />
-                    <Button3
-                      title="Public"
-                      size="sm"
-                      ariaLabel="Set all public"
-                      disabled={busy}
-                      onClick={() => setAll("public")}
-                    />
+                    {blockers.map((b) => (
+                      <span key={b.key}>{`${b.name}: ${b.reason}`}</span>
+                    ))}
                   </div>
                 ) : null}
-                {publishable.length && !run && !savedRes && toCheck.length ? (
-                  <span className={`${muted} max-w-prose`}>
-                    New widgets start private. Ones already published start as
-                    they are — change any of them here.
+
+                {toCheck.length || needsLook.length || warned.length ? (
+                  <div
+                    className={`flex flex-col gap-3 rounded-lg border p-3 ${hairline}`}
+                    data-testid="save-widgets"
+                  >
+                    <span className="font-medium">Widgets to publish</span>
+                    {run ? (
+                      <div
+                        className="flex flex-col gap-2"
+                        data-testid="save-run"
+                      >
+                        <span>
+                          {`Publishing ${run.index + 1} of ${run.total} — ${run.current} · then saving`}
+                        </span>
+                        <ProgressBar
+                          size="sm"
+                          value={(run.index / Math.max(1, run.total)) * 100}
+                        />
+                      </div>
+                    ) : savedRes ? (
+                      <span data-testid="save-summary">
+                        {savedSummaryText({
+                          published: publishedList.length,
+                          failed: failedCount,
+                          notYet,
+                          needsLook: needsLook.length,
+                        })}
+                      </span>
+                    ) : (
+                      <span className={`${muted} max-w-prose`}>
+                        {`${plural(toCheck.length, "widget")} ${
+                          toCheck.length === 1 ? "isn't" : "aren't"
+                        } in the registry as ${
+                          toCheck.length === 1 ? "it is" : "they are"
+                        } here — the other computer shows ${
+                          toCheck.length === 1 ? "it" : "them"
+                        } as missing until ${
+                          toCheck.length === 1 ? "it's" : "they're"
+                        } published.`}
+                      </span>
+                    )}
+                    {publishable.length > 1 && !run && toCheck.length ? (
+                      <div
+                        className="flex flex-row flex-wrap items-center gap-2"
+                        data-testid="save-bulk-tools"
+                      >
+                        <Button3
+                          title="Select all"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() =>
+                            !busy &&
+                            setSelected(
+                              new Set(publishable.map((w) => w.package)),
+                            )
+                          }
+                        />
+                        <Button3
+                          title="Clear"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => !busy && setSelected(new Set())}
+                        />
+                        <span className={muted}>
+                          {`${publishable.filter((w) => isSelected(w.package)).length} of ${publishable.length} selected`}
+                        </span>
+                        <span className="flex-1" />
+                        <span className={muted}>Set all:</span>
+                        <Button3
+                          title="Private"
+                          size="sm"
+                          ariaLabel="Set all private"
+                          disabled={busy}
+                          onClick={() => setAll("private")}
+                        />
+                        <Button3
+                          title="Public"
+                          size="sm"
+                          ariaLabel="Set all public"
+                          disabled={busy}
+                          onClick={() => setAll("public")}
+                        />
+                      </div>
+                    ) : null}
+                    {publishable.length &&
+                    !run &&
+                    !savedRes &&
+                    toCheck.length ? (
+                      <span className={`${muted} max-w-prose`}>
+                        New widgets start private. Ones already published start
+                        as they are — change any of them here.
+                      </span>
+                    ) : null}
+                    <div className="flex flex-col">
+                      {warned.map((o) => (
+                        <div
+                          key={o.package}
+                          className={`flex flex-col gap-1 py-2 border-b ${hairline}`}
+                          data-testid={`save-widget-${o.package}`}
+                        >
+                          <span>{`✓ ${o.package}`}</span>
+                          <span className={`${muted} max-w-prose`}>
+                            {[
+                              `Published as ${o.publishedAs || o.package}`,
+                              o.version,
+                              o.visibility ? `· ${o.visibility}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                          </span>
+                          <span
+                            className="text-amber-400 max-w-prose"
+                            data-testid={`save-notes-${o.package}`}
+                          >
+                            {warningsText(o.warnings)}
+                          </span>
+                        </div>
+                      ))}
+                      {toCheck.map((w) => {
+                        const out = outcomes[w.package];
+                        const running = run && run.current === w.package;
+                        const failed = out && out.status === "failed";
+                        const problems = (failed && out.problems) || [];
+                        const open = expanded.has(w.package);
+                        const notes =
+                          out && out.status === "published"
+                            ? warningsText(out.warnings)
+                            : null;
+                        return (
+                          <div
+                            key={w.package}
+                            className={`flex flex-row items-start gap-3 py-2 border-b ${hairline}`}
+                            data-testid={`save-widget-${w.package}`}
+                          >
+                            <div className="flex flex-col gap-1 flex-1 min-w-0">
+                              {w.publishable ? (
+                                <Checkbox
+                                  label={w.package}
+                                  checked={isSelected(w.package)}
+                                  disabled={busy}
+                                  onChange={(on) => toggle(w.package, on)}
+                                />
+                              ) : (
+                                <span>{w.package}</span>
+                              )}
+                              <span
+                                className={`${failed ? "text-red-400" : muted} max-w-prose`}
+                              >
+                                {running
+                                  ? "Publishing…"
+                                  : failed
+                                    ? failureText(out, open)
+                                    : out && out.status === "published"
+                                      ? out.warning
+                                        ? `Published as ${out.publishedAs || w.package} ${out.version || ""} — ${out.warning}`
+                                        : `Published as ${out.publishedAs || w.package} ${out.version || ""}`
+                                      : widgetStatusText(w)}
+                              </span>
+                              {!running && failed && open
+                                ? problems.map((p, i) => (
+                                    <span
+                                      key={i}
+                                      className="text-red-400 max-w-prose"
+                                    >
+                                      {`• ${p}`}
+                                    </span>
+                                  ))
+                                : null}
+                              {!running && failed && problems.length > 1 ? (
+                                <div className="flex flex-row">
+                                  <Button3
+                                    title={
+                                      open
+                                        ? "Hide"
+                                        : `Show all ${problems.length} problems`
+                                    }
+                                    size="sm"
+                                    onClick={() => toggleExpanded(w.package)}
+                                  />
+                                </div>
+                              ) : null}
+                              {!running && notes ? (
+                                <span
+                                  className="text-amber-400 max-w-prose"
+                                  data-testid={`save-notes-${w.package}`}
+                                >
+                                  {notes}
+                                </span>
+                              ) : null}
+                            </div>
+                            {w.publishable ? visSwitch(w) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : plan && !blockers.length ? (
+                  <span data-testid="save-all-listed">
+                    ✓ Every widget is in the registry as it is here — the other
+                    computer gets them all.
                   </span>
                 ) : null}
-                <div className="flex flex-col">
-                  {warned.map((o) => (
-                    <div
-                      key={o.package}
-                      className={`flex flex-col gap-1 py-2 border-b ${hairline}`}
-                      data-testid={`save-widget-${o.package}`}
-                    >
-                      <span>{`✓ ${o.package}`}</span>
-                      <span className={`${muted} max-w-prose`}>
-                        {[
-                          `Published as ${o.publishedAs || o.package}`,
-                          o.version,
-                          o.visibility ? `· ${o.visibility}` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                      </span>
-                      <span
-                        className="text-amber-400 max-w-prose"
-                        data-testid={`save-notes-${o.package}`}
-                      >
-                        {warningsText(o.warnings)}
-                      </span>
-                    </div>
-                  ))}
-                  {toCheck.map((w) => {
-                    const out = outcomes[w.package];
-                    const running = run && run.current === w.package;
-                    const failed = out && out.status === "failed";
-                    const problems = (failed && out.problems) || [];
-                    const open = expanded.has(w.package);
-                    const notes =
-                      out && out.status === "published"
-                        ? warningsText(out.warnings)
-                        : null;
-                    return (
+
+                {needsLook.length ? (
+                  <div
+                    className={`flex flex-col gap-3 rounded-lg border p-3 ${hairline}`}
+                    data-testid="save-confirm-paths"
+                  >
+                    <span className="font-medium">
+                      {`${plural(needsLook.length, "widget")} ${
+                        needsLook.length === 1 ? "mentions" : "mention"
+                      } folders on this computer`}
+                    </span>
+                    {needsLook.map((w) => (
                       <div
                         key={w.package}
-                        className={`flex flex-row items-start gap-3 py-2 border-b ${hairline}`}
-                        data-testid={`save-widget-${w.package}`}
+                        className="flex flex-row items-start gap-3"
+                        data-testid={`save-look-${w.package}`}
                       >
                         <div className="flex flex-col gap-1 flex-1 min-w-0">
-                          {w.publishable ? (
-                            <Checkbox
-                              label={w.package}
-                              checked={isSelected(w.package)}
-                              disabled={busy}
-                              onChange={(on) => toggle(w.package, on)}
-                            />
-                          ) : (
-                            <span>{w.package}</span>
-                          )}
-                          <span
-                            className={`${failed ? "text-red-400" : muted} max-w-prose`}
-                          >
-                            {running
-                              ? "Publishing…"
-                              : failed
-                                ? failureText(out, open)
-                                : out && out.status === "published"
-                                  ? out.warning
-                                    ? `Published as ${out.publishedAs || w.package} ${out.version || ""} — ${out.warning}`
-                                    : `Published as ${out.publishedAs || w.package} ${out.version || ""}`
-                                  : widgetStatusText(w)}
-                          </span>
-                          {!running && failed && open
-                            ? problems.map((p, i) => (
-                                <span
-                                  key={i}
-                                  className="text-red-400 max-w-prose"
-                                >
-                                  {`• ${p}`}
-                                </span>
-                              ))
-                            : null}
-                          {!running && failed && problems.length > 1 ? (
-                            <div className="flex flex-row">
-                              <Button3
-                                title={
-                                  open
-                                    ? "Hide"
-                                    : `Show all ${problems.length} problems`
-                                }
-                                size="sm"
-                                onClick={() => toggleExpanded(w.package)}
-                              />
-                            </div>
-                          ) : null}
-                          {!running && notes ? (
-                            <span
-                              className="text-amber-400 max-w-prose"
-                              data-testid={`save-notes-${w.package}`}
-                            >
-                              {notes}
-                            </span>
-                          ) : null}
+                          <span>{w.package}</span>
+                          {(outcomes[w.package].findings || [])
+                            .slice(0, 3)
+                            .map((f, n) => (
+                              <span key={n} className={muted}>
+                                {f.file || f.path}
+                                {f.match ? `: ${f.match}` : ""}
+                              </span>
+                            ))}
+                          <Checkbox
+                            label="Publish anyway"
+                            checked={confirmed.has(w.package)}
+                            disabled={busy}
+                            onChange={(on) => {
+                              const next = new Set(confirmed);
+                              if (on) next.add(w.package);
+                              else next.delete(w.package);
+                              setConfirmed(next);
+                            }}
+                          />
                         </div>
-                        {w.publishable ? visSwitch(w) : null}
+                        {visSwitch(w)}
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : plan && !blockers.length ? (
-              <span data-testid="save-all-listed">
-                ✓ Every widget is in the registry as it is here — the other
-                computer gets them all.
-              </span>
-            ) : null}
-
-            {needsLook.length ? (
-              <div
-                className={`flex flex-col gap-3 rounded-lg border p-3 ${hairline}`}
-                data-testid="save-confirm-paths"
-              >
-                <span className="font-medium">
-                  {`${plural(needsLook.length, "widget")} ${
-                    needsLook.length === 1 ? "mentions" : "mention"
-                  } folders on this computer`}
-                </span>
-                {needsLook.map((w) => (
-                  <div
-                    key={w.package}
-                    className="flex flex-row items-start gap-3"
-                    data-testid={`save-look-${w.package}`}
-                  >
-                    <div className="flex flex-col gap-1 flex-1 min-w-0">
-                      <span>{w.package}</span>
-                      {(outcomes[w.package].findings || [])
-                        .slice(0, 3)
-                        .map((f, n) => (
-                          <span key={n} className={muted}>
-                            {f.file || f.path}
-                            {f.match ? `: ${f.match}` : ""}
-                          </span>
-                        ))}
-                      <Checkbox
-                        label="Publish anyway"
-                        checked={confirmed.has(w.package)}
-                        disabled={busy}
-                        onChange={(on) => {
-                          const next = new Set(confirmed);
-                          if (on) next.add(w.package);
-                          else next.delete(w.package);
-                          setConfirmed(next);
-                        }}
-                      />
-                    </div>
-                    {visSwitch(w)}
+                    ))}
+                    <span className={muted}>
+                      Check each one — tick “Publish anyway” to publish it as it
+                      is.
+                    </span>
                   </div>
-                ))}
-                <span className={muted}>
-                  Check each one — tick “Publish anyway” to publish it as it is.
-                </span>
-              </div>
-            ) : null}
+                ) : null}
 
-            {listed.length ? (
-              <span className={muted} data-testid="save-listed">
-                {`In the registry already: ${plural(listed.length, "widget")}.`}
-              </span>
-            ) : null}
+                {listed.length ? (
+                  <span className={muted} data-testid="save-listed">
+                    {`In the registry already: ${plural(listed.length, "widget")}.`}
+                  </span>
+                ) : null}
 
-            {publishedList.length ? (
-              <span data-testid="save-published">
-                {publishedText(publishedList)}
-              </span>
-            ) : null}
+                {publishedList.length ? (
+                  <span data-testid="save-published">
+                    {publishedText(publishedList)}
+                  </span>
+                ) : null}
 
-            {plan && plan.secretsLeftOut && !keysValue.on ? (
-              <span className={`${muted} max-w-prose`}>
-                {plan.secretsLeftOut === 1
-                  ? "1 key typed into a widget isn't included"
-                  : `${plan.secretsLeftOut} keys typed into widgets aren't included`}{" "}
-                — the other computer asks for{" "}
-                {plan.secretsLeftOut === 1 ? "it" : "them"}.
-              </span>
-            ) : null}
+                {plan && plan.secretsLeftOut && !keysValue.on ? (
+                  <span className={`${muted} max-w-prose`}>
+                    {plan.secretsLeftOut === 1
+                      ? "1 key typed into a widget isn't included"
+                      : `${plan.secretsLeftOut} keys typed into widgets aren't included`}{" "}
+                    — the other computer asks for{" "}
+                    {plan.secretsLeftOut === 1 ? "it" : "them"}.
+                  </span>
+                ) : null}
 
-            {notSaved ? (
-              <AlertBanner
-                variant="warning"
-                size="compact"
-                message={`Published ${plural(publishedList.length, "widget")} — the profile isn't saved yet.`}
-              />
-            ) : null}
-            {!error && replaceRevision != null ? (
-              <AlertBanner
-                variant="warning"
-                size="compact"
-                message="Your account has a newer copy of this profile. Saving replaces it with this computer's."
-              />
-            ) : null}
+                {notSaved ? (
+                  <AlertBanner
+                    variant="warning"
+                    size="compact"
+                    message={`Published ${plural(publishedList.length, "widget")} — the profile isn't saved yet.`}
+                  />
+                ) : null}
+                {!error && replaceRevision != null ? (
+                  <AlertBanner
+                    variant="warning"
+                    size="compact"
+                    message="Your account has a newer copy of this profile. Saving replaces it with this computer's."
+                  />
+                ) : null}
+              </>
+            )}
             {error ? (
               <AlertBanner variant="error" size="compact" message={error} />
             ) : null}

@@ -27,6 +27,15 @@ import {
   failureText,
 } from "./SaveProfileModal";
 
+const mockEnsureAuthed = jest.fn(async () => false);
+jest.mock("../../../hooks/useRegistryAuthGate", () => ({
+  useRegistryAuthGate: () => ({
+    ensureAuthed: (...a) => mockEnsureAuthed(...a),
+    authGate: null,
+    isAuthGateOpen: false,
+  }),
+}));
+
 const appId = "@test/app";
 const profile = { id: "p-mini", name: "Mac Mini" };
 
@@ -576,10 +585,22 @@ describe("SaveProfileModal (v3)", () => {
       { to: "account" },
     );
     expect(await screen.findByTestId("save-sign-in")).toHaveTextContent(
-      "Sign in to the registry to keep this profile in your account.",
+      "First, sign in to the registry. Then choose what to save.",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Sign in first" }));
+    // Signing in comes first: none of the choices show yet.
+    expect(screen.queryByTestId("save-profile-counts")).toBeNull();
+    expect(screen.queryByLabelText("Bots")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(mockEnsureAuthed).toHaveBeenCalled());
     expect(window.mainApi.profiles.saveToAccount).not.toHaveBeenCalled();
+  });
+
+  test("signed in: the choices show once the account is checked", async () => {
+    mount({}, { to: "account" });
+    expect(
+      await screen.findByTestId("save-profile-counts"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("save-sign-in")).toBeNull();
   });
 
   test("a newer copy in the account: offers to replace it", async () => {

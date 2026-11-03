@@ -14,9 +14,10 @@ import {
 import { AccountProfilesModal, accountRowMeta } from "./AccountProfilesModal";
 import { conflictText, savedNoticeText } from "./SaveProfileModal";
 
+const mockEnsureAuthed = jest.fn(async () => true);
 jest.mock("../../../hooks/useRegistryAuthGate", () => ({
   useRegistryAuthGate: () => ({
-    ensureAuthed: jest.fn(async () => true),
+    ensureAuthed: (...a) => mockEnsureAuthed(...a),
     authGate: null,
     isAuthGateOpen: false,
   }),
@@ -122,6 +123,12 @@ describe("AccountProfilesModal", () => {
     expect(
       await screen.findByText(/Sign in to the registry to see your profiles/),
     ).toBeInTheDocument();
+    // The dialog's button signs in, then the list is read again.
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(mockEnsureAuthed).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(window.mainApi.profiles.listAccount).toHaveBeenCalledTimes(2),
+    );
   });
 });
 
