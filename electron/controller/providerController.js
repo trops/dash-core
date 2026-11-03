@@ -535,6 +535,40 @@ const providerController = {
     }
   },
 
+  /**
+   * A loaded profile's default for a type, matched to one here: it becomes
+   * this Mac's default too — only when no provider of that type is the
+   * default here (widgets that pick none use it, as on the saving Mac).
+   */
+  defaultIfNone: (win, appId, providerName, type) => {
+    try {
+      const filename = path.join(
+        app.getPath("userData"),
+        appName,
+        appId,
+        configFilename,
+      );
+      const providers = getFileContents(filename, {});
+      const entry = providers[providerName];
+      // Same name, another kind of provider: not the one the profile meant.
+      if (!entry || !entry.type || (type && entry.type !== type)) {
+        return { success: true, changed: false };
+      }
+      const taken = Object.values(providers).some(
+        (p) => p && p.type === entry.type && p.isDefaultForType,
+      );
+      if (taken) return { success: true, changed: false };
+      entry.isDefaultForType = true;
+      entry.dateUpdated = new Date().toISOString();
+      writeFileSync(filename, JSON.stringify(providers, null, 2), {
+        mode: 0o600,
+      });
+      return { success: true, changed: true };
+    } catch (error) {
+      return { error: true, message: error.message };
+    }
+  },
+
   /** Is this provider's program still waiting for the user's OK? */
   needsRunApproval: (appId, providerName) => {
     try {

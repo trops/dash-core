@@ -561,6 +561,20 @@ export const SaveProfileModal = ({
     if (queue.length) {
       const { record, stopped, pkgs, failed } = await publishAll(queue);
       if (failed) return;
+      // One didn't publish: nothing is saved, so the profile never names a
+      // widget the other computer can't get. It stays ticked to try again.
+      const didnt = pkgs.filter((p) => record[p]?.status === "failed");
+      if (didnt.length) {
+        setError(
+          `${didnt.length === 1 ? "1 widget" : `${didnt.length} widgets`} didn't publish, so the profile wasn't saved — ${
+            didnt.length === 1 ? "it" : "they"
+          } wouldn't reach your other computer. Try again, or untick ${
+            didnt.length === 1 ? "it" : "them"
+          } to save without ${didnt.length === 1 ? "it" : "them"}.`,
+        );
+        setReload((n) => n + 1);
+        return;
+      }
       fresh = record;
       left =
         stopped ||

@@ -198,6 +198,37 @@ function checksFailed(widgetName, problems, done = "installed") {
 }
 
 /**
+ * Every widget config (.dash.js) reads as the app reads it — checked before
+ * publishing, so another computer never gets one it can't load. A package
+ * with no widgets folder has nothing to read here.
+ */
+function configProblems(dir) {
+  const { parseDashConfig } = require("./utils/dashConfigParser");
+  const widgetsDir = findWidgetsDir(dir);
+  if (!widgetsDir) return null;
+  const problems = [];
+  let files = [];
+  try {
+    files = fs.readdirSync(widgetsDir).filter((f) => f.endsWith(".dash.js"));
+  } catch (_e) {
+    return null;
+  }
+  for (const file of files.sort()) {
+    let source = "";
+    try {
+      source = fs.readFileSync(path.join(widgetsDir, file), "utf8");
+    } catch (e) {
+      problems.push(`${file} can't be read: ${(e && e.message) || e}`);
+      continue;
+    }
+    const res = parseDashConfig(source);
+    if (!res.ok)
+      problems.push(`${file} isn't a config the app can read: ${res.error}`);
+  }
+  return problems.length ? problems : null;
+}
+
+/**
  * Widgets may not start bots directly — only by events the user wires a
  * bot to (TD-005). The whole package is scanned, bundle included.
  * → [problem] or null.
@@ -360,6 +391,10 @@ async function checkPackage(
 ) {
   const botCalls = botCallProblems(dir);
   if (botCalls) throw checksFailed(widgetName, botCalls, done);
+  if (done === "published") {
+    const configs = configProblems(dir);
+    if (configs) throw checksFailed(widgetName, configs, done);
+  }
 
   // A package that ships no build is built here, and so is one whose
   // build Dash made (a folder loaded again after its source changed) — a

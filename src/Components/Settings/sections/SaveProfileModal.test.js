@@ -265,7 +265,9 @@ describe("SaveProfileModal (v3)", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Publish 2 widgets and save" }),
     );
-    await screen.findByText(/Saved to your account/);
+    // One didn't publish: nothing saved.
+    await screen.findByText(/didn't publish, so the profile wasn't saved/);
+    expect(window.mainApi.profiles.saveToAccount).not.toHaveBeenCalled();
     expect(screen.getByTestId(`save-notes-${TICKER}`)).toHaveTextContent(
       "2 hard-coded colors — it may look off in light mode. Fix them in the Widget Builder.",
     );
@@ -338,7 +340,7 @@ describe("SaveProfileModal (v3)", () => {
     expect(screen.getByLabelText(TICKER)).toBeChecked();
   });
 
-  test("what didn't publish stays checked; saved, the dialog stays open to try again", async () => {
+  test("what didn't publish stays checked and nothing is saved; try again", async () => {
     const publishWidget = answer({
       [TICKER]: { status: "failed", error: "the registry refused it: taken" },
     });
@@ -349,13 +351,11 @@ describe("SaveProfileModal (v3)", () => {
     );
     expect(
       await screen.findByText(
-        "Saved to your account, with the 1 widget just published.",
+        "1 widget didn't publish, so the profile wasn't saved — it wouldn't reach your other computer. Try again, or untick it to save without it.",
       ),
     ).toBeInTheDocument();
     expect(onSaved).not.toHaveBeenCalled();
-    expect(screen.getByTestId("save-widgets")).toHaveTextContent(
-      "1 published · 1 didn't — it still shows as missing on the other computer.",
-    );
+    expect(window.mainApi.profiles.saveToAccount).not.toHaveBeenCalled();
     expect(screen.getByTestId(`save-widget-${TICKER}`)).toHaveTextContent(
       "Didn't publish — the registry refused it: taken",
     );
@@ -369,12 +369,17 @@ describe("SaveProfileModal (v3)", () => {
     );
     await waitFor(() => expect(publishWidget).toHaveBeenCalledTimes(2));
     expect(publishWidget.mock.calls[1][2]).toEqual([TICKER]);
-    // Close hands over the save.
+    // Still refused: still not saved.
     await waitFor(() =>
-      expect(window.mainApi.profiles.saveToAccount).toHaveBeenCalledTimes(2),
+      expect(screen.getByText(/wasn't saved/)).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(onSaved).toHaveBeenCalled();
+    expect(window.mainApi.profiles.saveToAccount).not.toHaveBeenCalled();
+    // Unticked: saved without it.
+    fireEvent.click(screen.getByLabelText(TICKER));
+    fireEvent.click(screen.getByRole("button", { name: "Save to my account" }));
+    await waitFor(() =>
+      expect(window.mainApi.profiles.saveToAccount).toHaveBeenCalledTimes(1),
+    );
   });
 
   test("files that mention this computer's folders: gathered, then Publish anyway", async () => {
@@ -523,9 +528,7 @@ describe("SaveProfileModal (v3)", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Publish 2 widgets and save" }),
     );
-    expect(await screen.findByTestId("save-summary")).toHaveTextContent(
-      "1 published · 1 didn't",
-    );
+    await screen.findByText(/1 widget didn't publish/);
     expect(screen.getByLabelText(PIPE)).not.toBeChecked();
     expect(screen.getByTestId(`save-widget-${PIPE}`)).toHaveTextContent(
       "Published as @trops/pipeline 1.0.0 — Published, but installing it here failed",

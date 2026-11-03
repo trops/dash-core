@@ -270,6 +270,79 @@ describe("planning", () => {
     assert.equal(rowOf(plan, "dashboard", 1).action, "here");
   });
 
+  it("a provider here still waiting for its key says so", async () => {
+    const { d } = computer({
+      providers: [
+        { name: "Work Slack", type: "slack", needsSetup: true },
+        { name: "Home", type: "home-assistant" },
+      ],
+    });
+    const plan = await planLoadV3(appId, manifest(), d);
+    const by = Object.fromEntries(plan.providers.map((p) => [p.name, p]));
+    assert.equal(by["Work Slack"].status, "ready");
+    assert.equal(by["Work Slack"].waiting, true);
+    assert.equal(by.Home.waiting, undefined);
+  });
+
+  it("an unticked provider isn't added and its key isn't used", async () => {
+    const { d, calls } = computer({ providers: [] });
+    const res = await applyLoadV3(
+      null,
+      appId,
+      manifest(),
+      {
+        skipProviders: ["Home"],
+        unlockedKeys: { providers: { Home: { token: "HA-KEY" } } },
+      },
+      d,
+    );
+    assert.equal(res.success, true, res.error);
+    const added = calls.filter((c) => c[0] === "addProvider");
+    assert.deepEqual(
+      added.map((c) => c[1].name),
+      ["Work Slack"],
+    );
+    assert.deepEqual(res.providersToSetUp, ["Work Slack"]);
+  });
+
+  it("the profile's default for a type stays the default (same name, or the one used instead)", async () => {
+    const withDefault = () =>
+      manifest({
+        providers: [
+          { name: "Work Slack", type: "slack" },
+          { name: "Home", type: "home-assistant", isDefaultForType: true },
+        ],
+      });
+    const run = async (providers, choices = {}) => {
+      const { d } = computer({ providers });
+      const made = [];
+      d.defaultProviderIfNone = (appId_, name, type) => {
+        assert.equal(type, "home-assistant");
+        made.push(name);
+      };
+      const res = await applyLoadV3(null, appId, withDefault(), choices, d);
+      assert.equal(res.success, true, res.error);
+      return made;
+    };
+    // Same name here.
+    assert.deepEqual(await run([{ name: "Home", type: "home-assistant" }]), [
+      "Home",
+    ]);
+    // Another of its kind here, used instead.
+    assert.deepEqual(await run([{ name: "HA", type: "home-assistant" }]), [
+      "HA",
+    ]);
+    // Unticked but here already: only its key stays out.
+    assert.deepEqual(
+      await run([{ name: "Home", type: "home-assistant" }], {
+        skipProviders: ["Home"],
+      }),
+      ["Home"],
+    );
+    // Unticked and not here: not added, nothing made the default.
+    assert.deepEqual(await run([], { skipProviders: ["Home"] }), []);
+  });
+
   it("a profile's bot never lands on this Mac's Dash team", async () => {
     const s = laptopSetup();
     s.bots[1].id = "dashteam";
