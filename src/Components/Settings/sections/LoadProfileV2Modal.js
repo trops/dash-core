@@ -187,7 +187,20 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
     }
     if (res && res.success) {
       setPhrase("");
-      setUnlocked({ providers: res.providers || [], counts: res.counts });
+      const withKeys = res.providers || [];
+      setUnlocked({ providers: withKeys, counts: res.counts });
+      // A provider that came with its key is added as itself, with it —
+      // not swapped for another of the same kind here (a different
+      // account). The user can still choose one of theirs.
+      setProviderMap((prev) => {
+        const next = { ...prev };
+        for (const p of preview.providers || []) {
+          if (p.status === "map" && withKeys.includes(p.name)) {
+            next[p.name] = null;
+          }
+        }
+        return next;
+      });
       return;
     }
     setUnlockError(res?.error || "Couldn't unlock the keys.");
@@ -549,7 +562,10 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
                         ...p.options.map((o) => ({ value: o, label: o })),
                         {
                           value: "",
-                          label: `None — add "${p.name}" without its key`,
+                          label:
+                            unlocked && unlocked.providers.includes(p.name)
+                              ? `Add "${p.name}" with its key`
+                              : `None — add "${p.name}" without its key`,
                         },
                       ]}
                     />

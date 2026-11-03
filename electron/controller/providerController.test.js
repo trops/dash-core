@@ -913,17 +913,18 @@ describe("providerController", () => {
         .listProviders(null, "test-app")
         .providers.find((x) => x.name === "Shared");
       assert.equal(p.credentials.token, "");
-      // Half a key: added with it, still needs the rest.
-      const half = controller.addFromProfile(
+      // A field empty in the profile's key (an empty one there): no key
+      // to set it up with.
+      const blank = controller.addFromProfile(
         null,
         "test-app",
-        { name: "Half", type: "algolia", credentialKeys: ["appId", "apiKey"] },
-        { credentials: { appId: "A" } },
+        { name: "Blank", type: "algolia", credentialKeys: ["appId"] },
+        { credentials: { appId: "  " } },
       );
-      assert.equal(half.withKey, undefined);
+      assert.equal(blank.withKey, undefined);
       p = controller
         .listProviders(null, "test-app")
-        .providers.find((x) => x.name === "Half");
+        .providers.find((x) => x.name === "Blank");
       assert.equal(p.needsSetup, true);
       // A WebSocket arrives without its address: its key alone doesn't set it up.
       controller.addFromProfile(
@@ -936,6 +937,85 @@ describe("providerController", () => {
         .listProviders(null, "test-app")
         .providers.find((x) => x.name === "Feed");
       assert.equal(p.needsSetup, true);
+    });
+
+    it("a key with an optional field left empty on the other computer sets the provider up", () => {
+      // Algolia's MCP entry: the address, and an API key only some need.
+      const r = controller.addFromProfile(
+        null,
+        "test-app",
+        {
+          name: "Algolia HR",
+          type: "algolia",
+          providerClass: "mcp",
+          mcpConfig: { transport: "streamable_http" },
+          credentialKeys: ["url", "apiKey"],
+        },
+        { credentials: { url: "https://mcp.example/1/abc/mcp" } },
+      );
+      assert.deepEqual(r, { success: true, added: true, withKey: true });
+      const p = controller
+        .listProviders(null, "test-app")
+        .providers.find((x) => x.name === "Algolia HR");
+      assert.equal(p.needsSetup, undefined);
+      assert.equal(p.credentials.url, "https://mcp.example/1/abc/mcp");
+      assert.equal(p.credentials.apiKey, "");
+    });
+
+    it("loaded again: a provider left waiting with the profile's own key is set up; another key here is kept", () => {
+      const filepath = path.join(
+        "/mock/userData",
+        "Dashboard",
+        "test-app",
+        "providers.json",
+      );
+      const seal = (o) =>
+        Buffer.from(`enc:${JSON.stringify(o)}`).toString("base64");
+      controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Seed", type: "seed", credentialKeys: ["k"] },
+        {},
+      );
+      const key = Object.keys(fileStore).find((k) =>
+        k.endsWith("providers.json"),
+      );
+      const current = JSON.parse(fileStore[key || filepath]);
+      // An earlier load stored the key but left them waiting.
+      current.Flagship = {
+        type: "algolia",
+        providerClass: "credential",
+        credentials: seal({ appId: "A1", apiKey: "K1", indexName: "" }),
+        needsSetup: true,
+      };
+      current.Other = {
+        type: "algolia",
+        providerClass: "credential",
+        credentials: seal({ appId: "MINE", apiKey: "" }),
+        needsSetup: true,
+      };
+      fileStore[key || filepath] = JSON.stringify(current);
+      const r = controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Flagship", type: "algolia" },
+        { credentials: { appId: "A1", apiKey: "K1" } },
+      );
+      assert.equal(r.filled, true);
+      const r2 = controller.addFromProfile(
+        null,
+        "test-app",
+        { name: "Other", type: "algolia" },
+        { credentials: { appId: "THEIRS", apiKey: "K2" } },
+      );
+      assert.deepEqual(r2, { success: true, added: false });
+      const list = controller.listProviders(null, "test-app").providers;
+      const flagship = list.find((x) => x.name === "Flagship");
+      assert.equal(flagship.needsSetup, undefined);
+      assert.equal(flagship.credentials.apiKey, "K1");
+      const other = list.find((x) => x.name === "Other");
+      assert.equal(other.needsSetup, true);
+      assert.equal(other.credentials.appId, "MINE");
     });
 
     it("never a name Dash keeps, never over a sign-in this Mac has", () => {

@@ -1120,9 +1120,11 @@ export const SaveProfileModal = ({
             <Button title={confirmLabel} onClick={go} />
           </div>
         </div>
+        {/* Inside the Modal, so a click on it isn't a click outside this
+            dialog (which closed both). Mounted only while open: a nested
+            dialog opens beneath its Modal. */}
+        {isAuthGateOpen ? authGate : null}
       </Modal>
-      {/* Mounted only while open: a nested dialog opens beneath its Modal. */}
-      {isAuthGateOpen ? authGate : null}
     </>
   );
 };

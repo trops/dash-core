@@ -231,8 +231,10 @@ export const AccountProfilesModal = ({ appId, onClose, onPreview }) => {
             <AlertBanner variant="error" size="compact" message={error} />
           ) : null}
         </div>
+        {/* Inside the dialog, so a click on it isn't a click outside this
+            one (which closed both). Mounted only while open. */}
+        {isAuthGateOpen ? authGate : null}
       </ConfirmationModal>
-      {isAuthGateOpen ? authGate : null}
     </>
   );
 };

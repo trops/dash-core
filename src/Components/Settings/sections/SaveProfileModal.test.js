@@ -263,7 +263,7 @@ describe("SaveProfileModal (v3)", () => {
     );
     await screen.findByLabelText(PIPE);
     fireEvent.click(
-      screen.getByRole("button", { name: "Publish 2 widgets and save" }),
+      await screen.findByRole("button", { name: "Publish 2 widgets and save" }),
     );
     await screen.findByText(/Saved to your account/);
     expect(screen.getByTestId(`save-notes-${TICKER}`)).toHaveTextContent(
@@ -345,7 +345,7 @@ describe("SaveProfileModal (v3)", () => {
     const { onSaved } = mount({ publishWidget }, { to: "account" });
     await screen.findByLabelText(PIPE);
     fireEvent.click(
-      screen.getByRole("button", { name: "Publish 2 widgets and save" }),
+      await screen.findByRole("button", { name: "Publish 2 widgets and save" }),
     );
     expect(
       await screen.findByText(
@@ -388,7 +388,7 @@ describe("SaveProfileModal (v3)", () => {
     await screen.findByLabelText(PIPE);
     fireEvent.click(screen.getByLabelText(TICKER));
     fireEvent.click(
-      screen.getByRole("button", { name: "Publish 1 widget and save" }),
+      await screen.findByRole("button", { name: "Publish 1 widget and save" }),
     );
     const look = await screen.findByTestId("save-confirm-paths");
     expect(look).toHaveTextContent(
@@ -420,7 +420,9 @@ describe("SaveProfileModal (v3)", () => {
     });
     await screen.findByLabelText(PIPE);
     fireEvent.click(
-      screen.getByRole("button", { name: "Publish 2 widgets and save…" }),
+      await screen.findByRole("button", {
+        name: "Publish 2 widgets and save…",
+      }),
     );
     await waitFor(() => expect(progress).toBeDefined());
     act(() =>
@@ -471,7 +473,9 @@ describe("SaveProfileModal (v3)", () => {
     mount({ publishWidget });
     await screen.findByLabelText(PIPE);
     fireEvent.click(
-      screen.getByRole("button", { name: "Publish 2 widgets and save…" }),
+      await screen.findByRole("button", {
+        name: "Publish 2 widgets and save…",
+      }),
     );
     expect(await screen.findByTestId(`save-widget-${PIPE}`)).toHaveTextContent(
       "Didn't publish — Sign in to publish to your account.",
@@ -494,7 +498,7 @@ describe("SaveProfileModal (v3)", () => {
     );
     await screen.findByLabelText(PIPE);
     fireEvent.click(
-      screen.getByRole("button", { name: "Publish 1 widget and save" }),
+      await screen.findByRole("button", { name: "Publish 1 widget and save" }),
     );
     await screen.findByTestId("save-confirm-paths");
     expect(screen.queryByTestId("save-all-listed")).toBeNull();
@@ -517,7 +521,7 @@ describe("SaveProfileModal (v3)", () => {
     mount({ publishWidget }, { to: "account" });
     await screen.findByLabelText(PIPE);
     fireEvent.click(
-      screen.getByRole("button", { name: "Publish 2 widgets and save" }),
+      await screen.findByRole("button", { name: "Publish 2 widgets and save" }),
     );
     expect(await screen.findByTestId("save-summary")).toHaveTextContent(
       "1 published · 1 didn't",
