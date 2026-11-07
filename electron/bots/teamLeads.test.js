@@ -34,17 +34,17 @@ describe("lead lookup", () => {
 });
 
 describe("defaultLeadProvider", () => {
-  it("is Claude Code (CLI) — an API key marked default doesn't take over", () => {
+  it("is none of its own (follows Settings › AI) — an API key marked default doesn't take over", () => {
     assert.equal(
       defaultLeadProvider([
         { type: "openai" },
         { type: "anthropic", isDefaultForType: true },
         { type: "gmail" },
       ]),
-      "claude-code",
+      null,
     );
-    assert.equal(defaultLeadProvider([{ type: "xai" }]), "claude-code");
-    assert.equal(defaultLeadProvider(null), "claude-code");
+    assert.equal(defaultLeadProvider([{ type: "xai" }]), null);
+    assert.equal(defaultLeadProvider(null), null);
   });
 });
 
@@ -103,8 +103,8 @@ describe("planEnsureLead", () => {
     });
     assert.equal(plan.action, "create");
     assert.equal(plan.definition.name, "Sales Lead");
-    // Claude Code (CLI), the default — not the API key marked default.
-    assert.equal(plan.definition.provider, "claude-code");
+    // Follows Settings › AI — not the API key marked default.
+    assert.equal(plan.definition.provider, null);
   });
 
   it("does nothing when the dashboard already has a lead (idempotent)", () => {

@@ -12,7 +12,6 @@
 "use strict";
 
 const { normalizeWorkspaceId, isOnTeam } = require("./teams");
-const { DEFAULT_BOT_PROVIDER } = require("./runProvider");
 
 function isLead(bot) {
   return !!bot && bot.role === "lead";
@@ -28,11 +27,11 @@ function leadOf(bots, workspaceId) {
 }
 
 /**
- * A new lead's model source: Claude Code (CLI), the default — an API key
- * marked default doesn't take it over (runProvider.js).
+ * A new lead's model source: none of its own, so it follows Settings › AI
+ * (runProvider.js) — an API key marked default doesn't take it over.
  */
 function defaultLeadProvider(_providers) {
-  return DEFAULT_BOT_PROVIDER;
+  return null;
 }
 
 // What the lead says about adding or changing bots. Earlier generated

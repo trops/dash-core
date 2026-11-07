@@ -104,6 +104,23 @@ async function runLoop(ctx, stream, state) {
     messages.push(result.assistantMessage);
     usage = addUsage(usage, result.usage);
 
+    // The cost limit for one run (Settings › AI, API keys only): checked
+    // after each step from what the run has used so far.
+    if (
+      ctx.maxCostUsd &&
+      typeof ctx.costSoFar === "function" &&
+      ctx.costSoFar(usage) > ctx.maxCostUsd
+    ) {
+      pushSession();
+      stream.push({
+        type: "error",
+        message: `Stopped at $${Number(ctx.maxCostUsd).toFixed(2)} — its cost limit for one run. Raise it in Settings › AI › Run limits, or on this bot.`,
+        code: "RUN_LIMIT",
+        usage,
+      });
+      return;
+    }
+
     const toolCalls = result.toolCalls || [];
     if (!toolCalls.length || result.stopReason === "end_turn") {
       pushSession();
@@ -176,8 +193,8 @@ async function runLoop(ctx, stream, state) {
 
   stream.push({
     type: "error",
-    message: `Exceeded maximum tool-use rounds (${maxTurns}).`,
-    code: "MAX_TURNS",
+    message: `Stopped after ${maxTurns} step${maxTurns === 1 ? "" : "s"} — its step limit. Raise it in Settings › AI › Run limits, or on this bot.`,
+    code: "RUN_LIMIT",
     usage,
   });
 }

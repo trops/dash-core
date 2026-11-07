@@ -20,7 +20,10 @@ const api = fs.readFileSync(
 
 describe("botController — Dash team (CRE-011)", () => {
   it("creates the team at startup, before it's ready", () => {
-    assert.match(ctrl, /this\.ensureDashTeam\(\);\s*this\._ready = true;/);
+    assert.match(
+      ctrl,
+      /this\.ensureDashTeam\(\);\s*this\.followDefaultOnce\(\);\s*this\._ready = true;/,
+    );
   });
 
   it("refuses to delete a team bot", () => {
@@ -52,9 +55,10 @@ describe("botController — Dash team (CRE-011)", () => {
   });
 
   it("team bots run on their role's model; leads default to the fast tier", () => {
+    // Settings › AI's default for the job comes first.
     assert.match(
       ctrl,
-      /modelForRole\(bot, providerId, this\._store\.getSettings\(\)\)/,
+      /\} else if \(jobModel\) \{[\s\S]{0,120}\} else if \(isDashTeam\(bot\)\) \{\s*model = migrateModelId\(\s*providerId,\s*modelForRole\(bot, providerId, settings\),/,
     );
     assert.match(
       ctrl,

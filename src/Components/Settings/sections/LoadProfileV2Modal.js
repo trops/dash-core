@@ -1,11 +1,15 @@
 import React, { useContext, useState } from "react";
 import {
   AlertBanner,
+  Button,
   Button2,
   Checkbox,
-  ConfirmationModal,
   InputText,
+  Modal,
   SelectInput,
+  ThemeContext,
+  getStylesForItem,
+  themeObjects,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
@@ -125,6 +129,57 @@ export function choiceLabel(row, fromAccount = false) {
       : `${row.name} — use ${whose} copy`;
   }
   return `${row.name} — use ${whose} ${row.version || "copy"}`;
+}
+
+/**
+ * The load window: dash-react's ConfirmationModal is too narrow for a row
+ * per provider and dashboard, so this is the same dialog, wide like Save.
+ * Tall (most of the window) for the preview, which can be long; the list
+ * after loading sizes to fit.
+ */
+function LoadDialog({
+  title,
+  confirmLabel,
+  cancelLabel = "Cancel",
+  onConfirm,
+  onCancel,
+  setIsOpen,
+  tall = false,
+  children,
+}) {
+  const { currentTheme } = useContext(ThemeContext) || {};
+  const style = (key) =>
+    getStylesForItem(key, currentTheme, { scrollable: false, grow: false }) ||
+    {};
+  const panelStyles = style(themeObjects.PANEL);
+  const headerStyles = style(themeObjects.PANEL_HEADER);
+  const footerStyles = style(themeObjects.SETTINGS_MODAL_FOOTER);
+  return (
+    <Modal
+      isOpen
+      setIsOpen={setIsOpen}
+      width="w-full max-w-3xl"
+      height={tall ? "h-5/6" : "h-auto"}
+    >
+      <div
+        // Raised above the dimmed page, like dash-react's dialogs.
+        className={`dr-modal-surface flex flex-col h-full rounded-lg overflow-clip border ${panelStyles.backgroundColor || ""} ${panelStyles.borderColor || ""}`}
+      >
+        <div
+          className={`flex flex-row items-center p-4 border-b ${headerStyles.borderColor || ""} ${headerStyles.textColor || ""}`}
+        >
+          <span className="text-lg font-semibold">{title}</span>
+        </div>
+        <div className="flex-1 min-h-0 flex flex-col p-4">{children}</div>
+        <div
+          className={`flex flex-row justify-end items-center gap-2 px-4 py-3 border-t ${footerStyles.borderColor || ""}`}
+        >
+          <Button2 title={cancelLabel} onClick={onCancel} />
+          <Button title={confirmLabel} onClick={onConfirm} />
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 /**
@@ -259,8 +314,7 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
     const added = stillToSetUp(done);
     const finish = () => onLoaded(done);
     return (
-      <ConfirmationModal
-        isOpen
+      <LoadDialog
         // Only Done or Later close it: a provider's setup opening in front
         // takes the focus, and that mustn't close the list underneath.
         setIsOpen={() => {}}
@@ -313,7 +367,7 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
             Providers page and on its widgets.
           </span>
         </div>
-      </ConfirmationModal>
+      </LoadDialog>
     );
   }
 
@@ -430,8 +484,8 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
   };
 
   return (
-    <ConfirmationModal
-      isOpen
+    <LoadDialog
+      tall
       setIsOpen={close}
       title={title}
       confirmLabel={confirmLabel}
@@ -439,7 +493,7 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
       onCancel={close}
     >
       <div
-        className={`flex flex-col gap-4 text-sm max-h-96 overflow-y-auto pr-1 ${strong}`}
+        className={`flex-1 min-h-0 flex flex-col gap-4 text-sm overflow-y-auto pr-1 ${strong}`}
         data-testid="load-profile-v2"
       >
         {savedText(preview.file) ? (
@@ -720,6 +774,6 @@ export const LoadProfileV2Modal = ({ appId, preview, onClose, onLoaded }) => {
           <AlertBanner variant="error" size="compact" message={error} />
         ) : null}
       </div>
-    </ConfirmationModal>
+    </LoadDialog>
   );
 };

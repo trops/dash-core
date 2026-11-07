@@ -198,7 +198,7 @@ describe("toolLoopEngine (engine contract)", () => {
     assert.equal(session2.messages[2].content, "question two");
   });
 
-  it("enforces maxTurns: an adapter that always calls a tool ends in MAX_TURNS", async () => {
+  it("enforces maxTurns: an adapter that always calls a tool ends in RUN_LIMIT", async () => {
     const ctx = baseCtx({
       adapter: mockAdapter([
         { toolCalls: [{ id: "loop", name: "spin", input: {} }] },
@@ -208,7 +208,7 @@ describe("toolLoopEngine (engine contract)", () => {
     const events = await drain(toolLoopEngine.run(ctx));
     const last = events[events.length - 1];
     assert.equal(last.type, "error");
-    assert.equal(last.code, "MAX_TURNS");
+    assert.equal(last.code, "RUN_LIMIT");
   });
 
   it("a thrown adapter error surfaces as an error event, stream still ends", async () => {
@@ -400,7 +400,7 @@ describe("toolLoopEngine — usage across turns (CRE-012)", () => {
     });
     const events = await drain(toolLoopEngine.run(ctx));
     const err = events.find((e) => e.type === "error");
-    assert.equal(err.code, "MAX_TURNS");
+    assert.equal(err.code, "RUN_LIMIT");
     assert.equal(err.usage.inputTokens, 2);
   });
 
@@ -420,5 +420,25 @@ describe("toolLoopEngine — usage across turns (CRE-012)", () => {
     const done = events.find((e) => e.type === "done");
     assert.equal(done.stopReason, "aborted");
     assert.equal(done.usage.inputTokens, 1);
+  });
+});
+
+describe("toolLoopEngine — the cost limit (Settings › AI)", () => {
+  it("stops after the step that passes it, with its note", async () => {
+    const ctx = baseCtx({
+      maxCostUsd: 1,
+      costSoFar: (u) => (u ? u.inputTokens : 0),
+      adapter: mockAdapter([
+        { toolCalls: [{ id: "c", name: "t", input: {} }] },
+        { toolCalls: [{ id: "d", name: "t", input: {} }] },
+      ]),
+    });
+    const events = await drain(toolLoopEngine.run(ctx));
+    const err = events.find((e) => e.type === "error");
+    assert.equal(err.code, "RUN_LIMIT");
+    assert.match(
+      err.message,
+      /^Stopped at \$1\.00 — its cost limit for one run\./,
+    );
   });
 });
