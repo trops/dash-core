@@ -36,29 +36,33 @@ describe("defaultAiProviderType", () => {
 });
 
 describe("resolveBotProviderId", () => {
-  const providers = [
-    { type: "openai" },
-    { type: "xai", isDefaultForType: true },
-  ];
-
   it("uses the bot's own provider when it has one", () => {
     assert.equal(
-      resolveBotProviderId({ provider: "claude-code" }, providers),
+      resolveBotProviderId({ provider: "claude-code" }, "anthropic"),
       "claude-code",
     );
   });
 
-  it("runs a bot with no provider on Claude Code (CLI) — the default", () => {
-    // An API key marked default for its type doesn't take bots over.
+  it("runs a bot with no provider on Settings › AI's choice, else Claude Code (CLI)", () => {
     assert.equal(
-      resolveBotProviderId({ provider: null }, providers),
+      resolveBotProviderId({ provider: null }, "anthropic"),
+      "anthropic",
+    );
+    assert.equal(
+      resolveBotProviderId({ provider: null }, "claude-code"),
+      "claude-code",
+    );
+    // Nothing chosen: Claude Code (CLI), the default.
+    assert.equal(
+      resolveBotProviderId({ provider: null }, undefined),
       DEFAULT_BOT_PROVIDER,
     );
     assert.equal(DEFAULT_BOT_PROVIDER, "claude-code");
-    assert.equal(
-      resolveBotProviderId({ provider: null }, [{ type: "openai" }]),
-      "claude-code",
-    );
     assert.equal(resolveBotProviderId(null, null), "claude-code");
+    // Its own provider still wins.
+    assert.equal(
+      resolveBotProviderId({ provider: "openai" }, "anthropic"),
+      "openai",
+    );
   });
 });

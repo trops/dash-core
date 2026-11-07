@@ -34,6 +34,9 @@ function make(overrides = {}) {
       overrides.getPricing || ((p, m) => (m === "opus" ? OPUS : null)),
     clock: () => nowMs,
     audit: (e) => audits.push(e),
+    ...(overrides.defaultBudget
+      ? { defaultBudget: overrides.defaultBudget }
+      : {}),
   });
   return {
     bc,
@@ -320,5 +323,37 @@ describe("BudgetController — spending by AI provider (US-019 AC5)", () => {
     const sp = bc.getSpend();
     assert.equal(sp["provider:anthropic"].usd, 10);
     assert.equal(bc.currentMonth(), "2026-09");
+  });
+});
+
+describe("BudgetController — the default limit per bot (Settings › AI)", () => {
+  const run = (botId) => ({
+    botId,
+    providerId: "anthropic",
+    model: "opus",
+    usage: usage(2_000_000, 0), // $10
+  });
+
+  it("a bot without its own limit gets the default and stops at it", () => {
+    const { bc } = make({ defaultBudget: (id) => (id === "b1" ? 10 : null) });
+    bc.recordUsage(run("b1"));
+    const st = bc.status("b1");
+    assert.equal(st.overall, "exceeded");
+    assert.equal(st.scopes[0].budget, 10);
+    assert.equal(st.scopes[0].fromDefault, true);
+    assert.equal(bc.isOverBudget("b1"), true);
+    // One the default doesn't cover (a lead): no limit.
+    bc.recordUsage(run("lead"));
+    assert.equal(bc.status("lead").overall, "ok");
+  });
+
+  it("the bot's own limit wins over the default", () => {
+    const { bc } = make({ defaultBudget: () => 10 });
+    bc.setBudget("bot", "b1", 50);
+    bc.recordUsage(run("b1"));
+    const st = bc.status("b1");
+    assert.equal(st.overall, "ok");
+    assert.equal(st.scopes[0].budget, 50);
+    assert.equal(st.scopes[0].fromDefault, undefined);
   });
 });

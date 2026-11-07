@@ -17,6 +17,7 @@
  *     getPricing:  (providerId, model) => { input, output } | null   // USD per 1M tokens
  *     clock:       () => number (epoch ms)
  *     audit:       (entry) => void
+ *     defaultBudget: (botId) => number|null   // a bot's limit when it has none
  */
 "use strict";
 
@@ -48,7 +49,7 @@ function stateFor(spent, budget) {
 const RANK = { ok: 0, warn: 1, exceeded: 2 };
 
 class BudgetController {
-  constructor({ persistence, getPricing, clock, audit } = {}) {
+  constructor({ persistence, getPricing, clock, audit, defaultBudget } = {}) {
     if (!persistence || typeof persistence.read !== "function") {
       throw new Error(
         "BudgetController: persistence with read()/write() is required",
@@ -58,6 +59,7 @@ class BudgetController {
     this._getPricing = getPricing || (() => null);
     this._now = clock || (() => Date.now());
     this._audit = audit || (() => {});
+    this._defaultBudget = defaultBudget || (() => null);
   }
 
   _load() {
@@ -172,11 +174,24 @@ class BudgetController {
     const scopes = [];
     let overall = "ok";
     for (const key of applicable) {
-      const budget = d.budgets[key];
+      let budget = d.budgets[key];
+      // A bot without its own limit gets the default (Settings › AI).
+      let fromDefault = false;
+      if (budget == null && key === scopeKey("bot", botId)) {
+        budget = this._defaultBudget(botId);
+        fromDefault = budget != null;
+      }
       if (budget == null) continue; // no limit for this scope
       const spent = this._spent(mk, key);
       const state = stateFor(spent, budget);
-      scopes.push({ scope: key, spent, budget, pct: spent / budget, state });
+      scopes.push({
+        scope: key,
+        spent,
+        budget,
+        pct: spent / budget,
+        state,
+        ...(fromDefault ? { fromDefault: true } : {}),
+      });
       if (RANK[state] > RANK[overall]) overall = state;
     }
     return { scopes, overall };

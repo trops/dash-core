@@ -617,3 +617,57 @@ describe("claudeAgentEngine — a turn that ends on an API error (US-023)", () =
     assert.equal(events[events.length - 1].type, "done");
   });
 });
+
+describe("claudeAgentEngine — Settings › AI (style, limits, cache)", () => {
+  const done = { type: "result", subtype: "success", result: "ok", usage: {} };
+
+  it("passes effort, the step and cost limits, and the hour-long cache", async () => {
+    stubQuery([done]);
+    await collect(
+      claudeAgentEngine.run(
+        ctx({ effort: "low", maxTurns: 25, maxCostUsd: 1, longCache: true }),
+      ),
+    );
+    assert.equal(captured.options.effort, "low");
+    assert.equal(captured.options.maxTurns, 25);
+    assert.equal(captured.options.maxBudgetUsd, 1);
+    assert.equal(captured.options.env.ENABLE_PROMPT_CACHING_1H, "1");
+  });
+
+  it("leaves them out when they aren't set", async () => {
+    stubQuery([done]);
+    await collect(claudeAgentEngine.run(ctx()));
+    assert.equal(captured.options.effort, undefined);
+    assert.equal(captured.options.maxBudgetUsd, undefined);
+    assert.equal(captured.options.env.ENABLE_PROMPT_CACHING_1H, undefined);
+  });
+
+  it("a run stopped by its step limit says so (RUN_LIMIT)", async () => {
+    stubQuery([
+      { type: "result", subtype: "error_max_turns", is_error: true, usage: {} },
+    ]);
+    const events = await collect(claudeAgentEngine.run(ctx({ maxTurns: 25 })));
+    const err = events.find((e) => e.type === "error");
+    assert.equal(err.code, "RUN_LIMIT");
+    assert.match(err.message, /^Stopped after 25 steps — its step limit\./);
+  });
+
+  it("a run stopped by its cost limit says so (RUN_LIMIT)", async () => {
+    stubQuery([
+      {
+        type: "result",
+        subtype: "error_max_budget_usd",
+        is_error: true,
+        usage: { input_tokens: 5 },
+      },
+    ]);
+    const events = await collect(claudeAgentEngine.run(ctx({ maxCostUsd: 1 })));
+    const err = events.find((e) => e.type === "error");
+    assert.equal(err.code, "RUN_LIMIT");
+    assert.match(
+      err.message,
+      /^Stopped at \$1\.00 — its cost limit for one run\./,
+    );
+    assert.equal(err.usage.inputTokens, 5);
+  });
+});

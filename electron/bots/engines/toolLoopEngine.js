@@ -176,8 +176,8 @@ async function runLoop(ctx, stream, state) {
 
   stream.push({
     type: "error",
-    message: `Exceeded maximum tool-use rounds (${maxTurns}).`,
-    code: "MAX_TURNS",
+    message: `Stopped after ${maxTurns} steps — its step limit. Raise it in Settings › AI › Run limits, or on this bot.`,
+    code: "RUN_LIMIT",
     usage,
   });
 }

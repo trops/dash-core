@@ -22,7 +22,6 @@
 "use strict";
 
 const { getCuratedModels, getDefaultModel } = require("../llm/modelProviders");
-const { DEFAULT_BOT_PROVIDER } = require("./runProvider");
 
 const SYSTEM = "dash-team";
 
@@ -359,7 +358,8 @@ function dashTeamDefinition(role) {
     role: spec.role,
     workspaceId: null,
     instructions: spec.instructions,
-    provider: DEFAULT_BOT_PROVIDER,
+    // Follows Settings › AI (runProvider.js).
+    provider: null,
     model: null,
     engine: null,
     approvalPolicy: "ask",

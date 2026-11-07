@@ -39,13 +39,13 @@ describe("Dash team roles", () => {
     }
   });
 
-  it("a definition is off every dashboard, idle, on Claude Code", () => {
+  it("a definition is off every dashboard, idle, following Settings › AI", () => {
     const def = dashTeamDefinition("scout");
     assert.equal(def.system, "dash-team");
     assert.equal(def.role, "scout");
     assert.equal(def.ref, "dash/scout");
     assert.equal(def.workspaceId, null);
-    assert.equal(def.provider, "claude-code");
+    assert.equal(def.provider, null);
     assert.equal(def.model, null);
     assert.deepEqual(def.schedules, []);
     assert.deepEqual(def.subscriptions, []);

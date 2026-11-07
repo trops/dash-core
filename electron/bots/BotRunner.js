@@ -34,6 +34,11 @@ const { MAX_ATTEMPTS, classifyError, retryDelay } = require("./retryPolicy");
 const QUIT = Symbol("quit");
 
 /** Wait `ms`, or less if the run is stopped meanwhile. */
+/** What a run stopped by its time limit says. */
+function timeLimitNote(minutes) {
+  return `Stopped after ${minutes} minute${minutes === 1 ? "" : "s"} — its time limit. Raise it in Settings › AI › Run limits, or on this bot.`;
+}
+
 function abortableSleep(ms, signal) {
   return new Promise((resolve) => {
     if (signal && signal.aborted) return resolve();
@@ -268,6 +273,8 @@ class BotRunner {
     const callIndex = new Map();
     let providerOf = () => null;
     let attempts = 0;
+    let timeLimit = null;
+    let timeLimitMinutes = null;
 
     try {
       const profile = await this._resolveRunProfile(bot);
@@ -369,10 +376,18 @@ class BotRunner {
         credentials: profile.credentials,
         adapterId: profile.adapterId,
         baseURL: profile.baseURL,
-        systemPrompt: bot.instructions,
+        // The style's line on answer length goes after the instructions.
+        systemPrompt: profile.styleLine
+          ? `${bot.instructions}\n\n${profile.styleLine}`
+          : bot.instructions,
         tools,
         session,
-        maxTurns: bot.maxTurns,
+        // Run limits (Settings › AI, or the bot's own): steps and, on an API
+        // key, cost. The time limit is kept below.
+        maxTurns: profile.maxTurns != null ? profile.maxTurns : bot.maxTurns,
+        maxCostUsd: profile.maxCostUsd || null,
+        effort: profile.effort || null,
+        longCache: !!profile.longCache,
         signal: controller.signal,
         requestPermission,
         executeTool,
@@ -390,6 +405,18 @@ class BotRunner {
       // Lead routing a task via MCP, TEAM-016) gets none either.
       if (bot.role === "lead" || opts.noTools) ctx.builtinTools = "none";
       else if (profile.builtinTools) ctx.builtinTools = profile.builtinTools;
+
+      // The time limit: stop the run (and any retry) when it's up.
+      if (profile.maxMinutes > 0) {
+        timeLimit = setTimeout(
+          () => controller.abort("time-limit"),
+          profile.maxMinutes * 60 * 1000,
+        );
+        if (timeLimit && typeof timeLimit.unref === "function") {
+          timeLimit.unref();
+        }
+        timeLimitMinutes = profile.maxMinutes;
+      }
 
       // Attempts (US-023 AC1): a run that fails on temporary trouble — before
       // it used any tool — is tried again after a growing wait. An attempt's
@@ -441,6 +468,13 @@ class BotRunner {
         }
         if (!failure || controller.signal.aborted) break;
 
+        // A run limit (steps, cost) ended it: say which, never retry.
+        if (failure.code === "RUN_LIMIT") {
+          status = "failed";
+          errorMessage = failure.message;
+          emit(failure);
+          break;
+        }
         const { transient, label } = classifyError(failure);
         const blocked = transient ? this._startBlocker(botId) : null;
         const retry =
@@ -489,13 +523,22 @@ class BotRunner {
         code: err.code || "RUNNER_ERROR",
       });
     } finally {
+      if (timeLimit) clearTimeout(timeLimit);
       this._active.delete(botId);
       this._startedAt.delete(botId);
     }
     // Stopped by the user (abort): neither completed nor failed — even when
     // the engine threw on its way out. Stopped because Dash quit:
     // "interrupted" (US-018 AC6).
-    if (controller.signal.aborted) {
+    // Stopped by its time limit: a failure that says which limit it hit.
+    if (
+      controller.signal.aborted &&
+      controller.signal.reason === "time-limit"
+    ) {
+      status = "failed";
+      errorMessage = timeLimitNote(timeLimitMinutes);
+      emit({ type: "error", message: errorMessage, code: "RUN_LIMIT" });
+    } else if (controller.signal.aborted) {
       status = controller.signal.reason === "quit" ? "interrupted" : "stopped";
       errorMessage = null;
     }

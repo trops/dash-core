@@ -250,6 +250,17 @@ const {
   DEFAULT_BOT_PROVIDER,
 } = require("../bots/runProvider");
 const {
+  readAi,
+  mergeAiSettings,
+  backendProvider,
+  defaultModelFor,
+  styleFor,
+  runLimitsFor,
+  defaultMonthlyLimitFor,
+  planFollowDefault,
+  runsAgainWithinHour,
+} = require("../bots/aiDefaults");
+const {
   BOT_STREAM,
   BOT_APPROVAL_PENDING,
   BOT_APPROVALS_CHANGED,
@@ -443,6 +454,12 @@ const botController = {
       // Limit changes and "Keep running this month" (US-019 AC6); per-run
       // usage isn't logged — it's in Spending.
       audit: (entry) => this._logBudgetAudit(entry),
+      // Settings › AI: the monthly limit a bot without its own gets.
+      defaultBudget: (botId) =>
+        defaultMonthlyLimitFor(
+          this._store.get(botId),
+          readAi(this._store.getSettings()),
+        ),
     });
 
     // Scoped, durable bot memory (P1: FR-010), served as in-process memory_*
@@ -605,6 +622,7 @@ const botController = {
     );
 
     this.ensureDashTeam();
+    this.followDefaultOnce();
 
     this._ready = true;
     // Events kept for bots that are no longer held (resumed before Dash
@@ -631,6 +649,27 @@ const botController = {
       }
     }
     return created;
+  },
+
+  /**
+   * Once (Settings › AI): bots that saved Claude Code (CLI) only because it
+   * was the default — no model or engine of their own — follow Settings › AI
+   * instead, so choosing the API key there moves them too.
+   */
+  followDefaultOnce() {
+    try {
+      const settings = this._store.getSettings();
+      if (readAi(settings).migrated) return [];
+      const ids = planFollowDefault(this._store.list());
+      for (const id of ids) this._store.update(id, { provider: null });
+      this._store.setSettings({
+        ai: mergeAiSettings(settings.ai, { migrated: true }),
+      });
+      return ids;
+    } catch (_e) {
+      // Retried on the next launch.
+      return [];
+    }
   },
 
   /** Re-evaluate missed schedules on system resume (powerMonitor). */
@@ -824,14 +863,20 @@ const botController = {
     return ROLES.map((spec) => {
       const bot = dashTeamBot(bots, spec.role);
       if (!bot) return null;
-      const providerId = bot.provider || DEFAULT_BOT_PROVIDER;
+      const providerId = resolveBotProviderId(
+        bot,
+        backendProvider(readAi(settings)),
+      );
       return {
         ...bot,
         summary: spec.summary,
         tier: spec.tier,
         providerId,
         model: bot.model || null,
-        runsOn: modelForRole(bot, providerId, settings),
+        runsOn:
+          bot.model ||
+          defaultModelFor(bot, readAi(settings)) ||
+          modelForRole(bot, providerId, settings),
         recommendedModel: tierModel(providerId, spec.tier),
         paused: this._pause.isPaused(bot.id),
       };
@@ -1469,14 +1514,15 @@ const botController = {
 
   /**
    * Global bot settings: { autoLeads, dashTeam: { models }, background,
-   * startAtLogin, keepAwake } (background mode — US-018 AC1-AC4).
+   * startAtLogin, keepAwake } (background mode — US-018 AC1-AC4), and `ai`
+   * (Settings › AI — aiDefaults.js).
    */
   getBotSettings() {
     return this._store.getSettings();
   },
 
   setBotSettings(patch) {
-    const { autoLeads, dashTeam, background, startAtLogin, keepAwake } =
+    const { autoLeads, dashTeam, background, startAtLogin, keepAwake, ai } =
       patch || {};
     const next = {};
     if (autoLeads !== undefined) next.autoLeads = !!autoLeads;
@@ -1488,6 +1534,10 @@ const botController = {
         this._store.getSettings().dashTeam,
         dashTeam,
       );
+    }
+    // Settings › AI: backend, default model and style per job, run limits.
+    if (ai !== undefined) {
+      next.ai = mergeAiSettings(this._store.getSettings().ai, ai);
     }
     return this._store.setSettings(next);
   },
@@ -2901,19 +2951,28 @@ const botController = {
       // No provider list — the bot's own provider still works; with none it
       // fails below with a clear message.
     }
-    // The bot's own provider, else Claude Code (CLI) — the default.
-    const providerId = resolveBotProviderId(bot, providers);
+    // Settings › AI: what a bot without its own provider runs on, each job's
+    // default model and style, and the limits on one run.
+    const settings = this._store.getSettings();
+    const ai = readAi(settings);
+    // The bot's own provider, else Settings › AI's, else Claude Code (CLI).
+    const followsDefault = !bot.provider;
+    const providerId = resolveBotProviderId(bot, backendProvider(ai));
     const provider = getProvider(providerId);
-    // Dash team bots run on their role's model for this provider; leads with
-    // no model of their own on the fast tier (they only read team data).
+    // A model of its own wins, then its job's default in Settings › AI. Without
+    // either: Dash team bots run on their role's model for this provider;
+    // leads on the fast tier (they only read team data).
+    const jobModel = defaultModelFor(bot, ai);
     let model;
-    if (isDashTeam(bot)) {
+    if (bot.model) {
+      model = migrateModelId(providerId, bot.model);
+    } else if (jobModel) {
+      model = migrateModelId(providerId, jobModel);
+    } else if (isDashTeam(bot)) {
       model = migrateModelId(
         providerId,
-        modelForRole(bot, providerId, this._store.getSettings()),
+        modelForRole(bot, providerId, settings),
       );
-    } else if (bot.model) {
-      model = migrateModelId(providerId, bot.model);
     } else if (isLead(bot)) {
       model = tierModel(providerId, "fast") || getDefaultModel(providerId);
     } else {
@@ -2930,11 +2989,36 @@ const botController = {
       // Leave credentials empty — the engine will surface a clear auth error.
     }
 
+    // The style's effort, when the model takes one (Haiku 4.5 doesn't).
+    const style = styleFor(bot, ai);
+    const takesEffort = getCuratedModels(providerId).some(
+      (m) =>
+        m.value === model && m.reasoning && m.reasoning.control === "effort",
+    );
+    // An API key pays per run: the cost cap applies (Claude Code is the plan).
+    const limits = runLimitsFor(bot, ai, {
+      paid: providerId !== DEFAULT_BOT_PROVIDER,
+    });
+
     return {
       providerId,
-      // A bot may pin an engine (e.g. "claude-agent"); otherwise derive it from
-      // the provider (tool-loop for anthropic/openai/xai).
-      engineId: bot.engine || provider.engine,
+      // A bot may pin an engine (e.g. "claude-agent"). A bot following
+      // Settings › AI onto the API key runs on the Claude Agent engine too —
+      // tools, cache and effort, like the CLI. Otherwise derive it from the
+      // provider (tool-loop for anthropic/openai/xai).
+      engineId:
+        bot.engine ||
+        (followsDefault && providerId === "anthropic"
+          ? "claude-agent"
+          : provider.engine),
+      effort: style && takesEffort ? style.effort : null,
+      styleLine: style ? style.line : null,
+      maxTurns: limits.maxTurns,
+      maxMinutes: limits.minutes,
+      maxCostUsd: limits.costPerRun,
+      // Keep the cache an hour for runs that come back within one: Create,
+      // leads (conversations) and bots scheduled at least hourly.
+      longCache: runsAgainWithinHour(bot),
       adapterId: provider.adapter,
       baseURL: provider.baseURL,
       model,
