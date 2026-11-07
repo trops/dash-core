@@ -499,13 +499,30 @@ function LimitField({ label, hint, value, decimal = false, onSave }) {
   );
 }
 
-/** The Anthropic API key: add one, or replace the saved one. */
+/**
+ * The last characters of a saved key, never the key: "sk-ant-…3f2a".
+ * Exported for tests.
+ */
+export function maskedKey(apiKey) {
+  if (typeof apiKey !== "string" || apiKey.length < 12) return null;
+  return `${apiKey.slice(0, 7)}…${apiKey.slice(-4)}`;
+}
+
+/**
+ * The Anthropic API key: says plainly when one is saved (its last
+ * characters), with Replace key; with none, a field to add one.
+ */
 function ApiKeyField({ anthropic, appContext }) {
-  const { muted } = useConfigTokens();
+  const { muted, strong } = useConfigTokens();
   const [key, setKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState(null);
+  const [replacing, setReplacing] = useState(false);
   const name = anthropic ? anthropic[0] : "Anthropic (AI Assistant)";
+  const saved =
+    anthropic && anthropic[1] && anthropic[1].credentials
+      ? maskedKey(anthropic[1].credentials.apiKey)
+      : null;
   const saveKey = () => {
     const { dashApi, credentials, refreshProviders } = appContext;
     if (!key.trim() || !dashApi || !credentials) return;
@@ -518,6 +535,7 @@ function ApiKeyField({ anthropic, appContext }) {
       () => {
         setSaving(false);
         setKey("");
+        setReplacing(false);
         setNote(anthropic ? "Key replaced." : "Key saved.");
         if (refreshProviders) refreshProviders();
       },
@@ -527,21 +545,45 @@ function ApiKeyField({ anthropic, appContext }) {
       },
     );
   };
+
+  if (anthropic && !replacing) {
+    return (
+      <div className="flex flex-col gap-1 pl-6" data-testid="ai-api-key">
+        <div className="flex flex-row flex-wrap items-center gap-3">
+          <StatusBadge state="success" label="Key saved" />
+          <span className={`text-sm font-mono ${strong}`}>
+            {saved || "sk-ant-…"}
+          </span>
+          <Button3
+            title="Replace key"
+            size="sm"
+            onClick={() => {
+              setReplacing(true);
+              setNote(null);
+            }}
+          />
+        </div>
+        <span className={`text-xs ${muted}`} role="status">
+          {note ||
+            `Saved as the "${name}" provider, encrypted on this computer. Manage it on the Providers page too.`}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-1 pl-6" data-testid="ai-api-key">
       <div className="flex flex-row flex-wrap items-end gap-2">
         <div className="w-80">
           <InputText
-            label={
-              anthropic ? `Replace the key (${name})` : "Anthropic API key"
-            }
+            label={anthropic ? "New key" : "Anthropic API key"}
             type="password"
             value={key}
             onChange={(v) => {
               setKey(v);
               setNote(null);
             }}
-            placeholder={anthropic ? "Paste a new key" : "sk-ant-…"}
+            placeholder="sk-ant-…"
           />
         </div>
         <Button
@@ -550,9 +592,23 @@ function ApiKeyField({ anthropic, appContext }) {
           disabled={!key.trim() || saving}
           onClick={saveKey}
         />
+        {anthropic ? (
+          <Button3
+            title="Cancel"
+            size="sm"
+            disabled={saving}
+            onClick={() => {
+              setReplacing(false);
+              setKey("");
+            }}
+          />
+        ) : null}
       </div>
       <span className={`text-xs ${muted}`} role="status">
-        {note || "Stored encrypted on this computer, never shown again."}
+        {note ||
+          (anthropic
+            ? `Replaces the saved key (${saved || "sk-ant-…"}). Stored encrypted on this computer.`
+            : "No key saved yet. Paste one from the Anthropic Console (API keys). Stored encrypted on this computer.")}
       </span>
     </div>
   );

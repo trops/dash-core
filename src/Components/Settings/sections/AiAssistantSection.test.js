@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { AiAssistantSection } from "./AiAssistantSection";
+import { AiAssistantSection, maskedKey } from "./AiAssistantSection";
 import { AppContext } from "../../../Context/App/AppContext";
 
 const MODELS = [
@@ -290,4 +290,38 @@ test("cheaper defaults keep what the user already chose", async () => {
     model: "claude-haiku-5-5",
     style: "brief",
   });
+});
+
+test("a saved key says so, by its last characters, and Replace key opens the field", async () => {
+  setup({
+    providers: {
+      anthropic: {
+        type: "anthropic",
+        credentials: { apiKey: "sk-ant-api03-abcdefghij3f2a" },
+      },
+    },
+  });
+  const field = await screen.findByTestId("ai-api-key");
+  expect(field).toHaveTextContent("Key saved");
+  expect(field).toHaveTextContent("sk-ant-…3f2a");
+  expect(field).not.toHaveTextContent("abcdefghij");
+  expect(screen.queryByLabelText("New key")).toBeNull();
+  fireEvent.click(screen.getByText("Replace key"));
+  expect(screen.getByLabelText("New key")).toBeInTheDocument();
+  expect(field).toHaveTextContent("Replaces the saved key (sk-ant-…3f2a)");
+  fireEvent.click(screen.getByText("Cancel"));
+  expect(screen.queryByLabelText("New key")).toBeNull();
+});
+
+test("no key: says none is saved yet", async () => {
+  setup();
+  expect(await screen.findByTestId("ai-api-key")).toHaveTextContent(
+    "No key saved yet.",
+  );
+});
+
+test("maskedKey never gives the key", () => {
+  expect(maskedKey("sk-ant-api03-abcdefghij3f2a")).toBe("sk-ant-…3f2a");
+  expect(maskedKey("short")).toBeNull();
+  expect(maskedKey(undefined)).toBeNull();
 });
