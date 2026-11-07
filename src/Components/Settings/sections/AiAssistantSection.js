@@ -1,402 +1,556 @@
-import React, { useContext, useEffect, useState, useCallback } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
-  Switch,
-  SubHeading3,
+  AlertBanner,
   Button,
-  FontAwesomeIcon,
+  Button2,
+  Button3,
+  Checkbox,
+  ConfirmationModal,
+  InputText,
+  ProgressBar,
+  RadioGroup,
+  SelectInput,
+  StatusBadge,
+  SubHeading3,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
+import { useConfigTokens } from "../../Dashboard/ConfigListRow";
+import { BudgetField } from "../../Bots/BudgetField";
+import { useSpending } from "../../Bots/useSpending";
+import { money } from "../../Bots/spendingText";
+import { BotModelsList } from "./BotModelsList";
+import { useAiSettings } from "./useAiSettings";
 import {
-  DEFAULT_MODEL,
-  isRetiredModel,
-  migrateModelId,
-} from "../../../utils/modelMigration";
-import { effectiveAiBackend } from "../../Create/aiBackend";
+  JOB_ROWS,
+  STYLE_OPTIONS,
+  anyOnMostExpensive,
+  cheaperDefaults,
+  effectiveJobModel,
+  isMostExpensive,
+  perRunText,
+  shortModel,
+} from "./aiSettingsText";
 
-const BACKENDS = [
-  { value: "claude-code", label: "Claude Code CLI" },
-  { value: "anthropic", label: "Anthropic API" },
-];
+const COST_SUFFIX = {
+  planner: " a step",
+  builder: " a step",
+  checker: " a check",
+};
 
+/**
+ * Settings › AI: what Dash's AI runs on (your Claude subscription through
+ * Claude Code, or an Anthropic API key), each job's default model and style,
+ * spending limits, run limits, and every bot's model in one list (Bot
+ * models). The main process applies it: electron/bots/aiDefaults.js.
+ */
 export const AiAssistantSection = () => {
-  const appContext = useContext(AppContext);
-  const settings = appContext?.settings || {};
-  const providers = appContext?.providers || {};
-  const refreshProviders = appContext?.refreshProviders;
-  const dashApi = appContext?.dashApi;
-  const credentials = appContext?.credentials;
+  const appContext = useContext(AppContext) || {};
+  const { muted, strong, hairline } = useConfigTokens();
+  const { ai, models, bots, leads, team, save, saveBot, reload } =
+    useAiSettings();
+  const { summary, setBudget } = useSpending();
+  const [view, setView] = useState("settings");
+  const [cliStatus, setCliStatus] = useState(null);
+  const [confirmApi, setConfirmApi] = useState(false);
+  const [useCheaper, setUseCheaper] = useState(true);
+  const [error, setError] = useState(null);
 
-  // AI Assistant settings from app settings
-  const aiSettings = settings.aiAssistant || {};
-
-  const [cliStatus, setCliStatus] = useState(null); // null=checking, {available,path}
-  const [preferredBackend, setPreferredBackend] = useState(
-    aiSettings.preferredBackend || "claude-code",
-  );
-  const [selectedModel, setSelectedModel] = useState(
-    aiSettings.model || DEFAULT_MODEL,
-  );
-  const [apiKey, setApiKey] = useState("");
-  const [isSavingKey, setIsSavingKey] = useState(false);
-  const [saveKeyStatus, setSaveKeyStatus] = useState(null);
-
-  // Provider-pluggable model discovery (live fetch + curated fallback)
-  const [availableModels, setAvailableModels] = useState([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  // One-time notice when a retired saved model was auto-migrated
-  const [migrationNotice, setMigrationNotice] = useState(null);
-
-  // Find existing Anthropic provider
-  const anthropicProvider = Object.entries(providers).find(
+  // The Anthropic API key: the Anthropic provider (Settings › Providers).
+  const providers = appContext.providers || {};
+  const anthropic = Object.entries(providers).find(
     ([, p]) =>
+      p &&
       p.type === "anthropic" &&
       (p.providerClass || "credential") === "credential",
   );
-  const hasAnthropicProvider = !!anthropicProvider;
-  const anthropicProviderName = anthropicProvider?.[0];
-  // Decrypted key (when AppContext exposes it) enables the live Models API
-  // fetch; without it, listModels returns the curated fallback list.
-  const anthropicApiKey = anthropicProvider?.[1]?.credentials?.apiKey || null;
+  const hasKey = !!anthropic;
 
-  // Check CLI availability on mount
   useEffect(() => {
-    if (window.mainApi?.llm?.checkCliAvailable) {
-      window.mainApi.llm
-        .checkCliAvailable()
-        .then((result) => setCliStatus(result || { available: false }))
-        .catch(() => setCliStatus({ available: false }));
-    } else {
+    const llm = window.mainApi?.llm;
+    if (!llm?.checkCliAvailable) {
       setCliStatus({ available: false });
+      return;
     }
+    llm
+      .checkCliAvailable()
+      .then((r) => setCliStatus(r || { available: false }))
+      .catch(() => setCliStatus({ available: false }));
   }, []);
 
-  // Fetch selectable models for the current provider. With an API key the
-  // main process does a live Anthropic Models API fetch; otherwise it returns
-  // the curated fallback. Provider is "anthropic" for both current backends.
-  const fetchModels = useCallback(() => {
-    if (!window.mainApi?.llm?.listModels) return;
-    setModelsLoading(true);
-    window.mainApi.llm
-      .listModels("anthropic", anthropicApiKey)
-      .then((res) => setAvailableModels((res && res.models) || []))
-      .catch(() => setAvailableModels([]))
-      .finally(() => setModelsLoading(false));
-  }, [anthropicApiKey]);
-
-  // Load models on mount and whenever the available API key changes (so the
-  // list upgrades from curated → live once a key is configured).
-  useEffect(() => {
-    fetchModels();
-  }, [fetchModels]);
-
-  // Save AI settings to app settings
-  const saveAiSettings = useCallback(
-    (updates) => {
-      if (appContext?.changeSettings) {
-        const current = appContext.settings || {};
-        const newAiSettings = {
-          ...(current.aiAssistant || {}),
-          ...updates,
-        };
-        appContext.changeSettings({
-          ...current,
-          aiAssistant: newAiSettings,
-        });
-      }
-    },
-    [appContext],
-  );
-
-  // Auto-migrate a retired saved model to its current replacement (one-time,
-  // on mount) so an old selection can't 404 the assistant. Shows a notice.
-  useEffect(() => {
-    const saved = aiSettings.model;
-    if (saved && isRetiredModel(saved)) {
-      const replacement = migrateModelId(saved);
-      setSelectedModel(replacement);
-      saveAiSettings({ model: replacement });
-      setMigrationNotice({ from: saved, to: replacement });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleBackendChange(e) {
-    const value = e.target.value;
-    setPreferredBackend(value);
-    saveAiSettings({ preferredBackend: value });
-  }
-
-  function handleModelChange(e) {
-    const value = e.target.value;
-    setSelectedModel(value);
-    saveAiSettings({ model: value });
-  }
-
-  function handleSaveApiKey() {
-    if (!apiKey.trim() || !dashApi || !credentials) return;
-    setIsSavingKey(true);
-    setSaveKeyStatus(null);
-
-    const providerName = anthropicProviderName || "Anthropic (AI Assistant)";
-    dashApi.saveProvider(
-      credentials.appId,
-      providerName,
-      {
-        providerType: "anthropic",
-        credentials: { apiKey: apiKey.trim() },
-      },
-      () => {
-        setIsSavingKey(false);
-        setSaveKeyStatus("saved");
-        setApiKey("");
-        if (refreshProviders) refreshProviders();
-        // Auto-select anthropic backend when key is added
-        if (!hasAnthropicProvider) {
-          setPreferredBackend("anthropic");
-          saveAiSettings({
-            preferredBackend: "anthropic",
-            anthropicProvider: providerName,
-          });
-        }
-      },
-      (e, err) => {
-        setIsSavingKey(false);
-        setSaveKeyStatus("error");
-        console.error("[AiAssistantSection] Save provider error:", err);
-      },
+  if (view === "bots") {
+    return (
+      <BotModelsList
+        ai={ai}
+        models={models}
+        bots={bots}
+        leads={leads}
+        team={team}
+        spending={summary}
+        saveBot={saveBot}
+        onChanged={reload}
+        onBack={() => setView("settings")}
+      />
     );
   }
 
-  // Model dropdown options — keep the current selection selectable even if it
-  // isn't in the fetched list (e.g. a pinned/custom id).
-  const modelOptions =
-    selectedModel && !availableModels.some((m) => m.value === selectedModel)
-      ? [{ value: selectedModel, label: selectedModel }, ...availableModels]
-      : availableModels;
+  if (!ai) {
+    return <span className={`text-sm ${muted}`}>Loading…</span>;
+  }
 
-  // Determine effective backend (what will actually be used)
-  const effectiveBackend = effectiveAiBackend({
-    preferred: preferredBackend,
-    cliAvailable: !!cliStatus?.available,
-    hasAnthropic: hasAnthropicProvider,
-  });
+  const onApi = ai.backend === "api";
+  const run = async (fn) => {
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError((err && err.message) || "That didn't save.");
+    }
+  };
+
+  // The old app setting the Create window read; kept in step.
+  const keepAppSetting = (backend) => {
+    const current = appContext.settings || {};
+    if (!appContext.changeSettings) return;
+    appContext.changeSettings({
+      ...current,
+      aiAssistant: {
+        ...(current.aiAssistant || {}),
+        preferredBackend: backend === "api" ? "anthropic" : "claude-code",
+      },
+    });
+  };
+
+  const chooseBackend = (value) => {
+    if (value === ai.backend) return;
+    if (value === "api") {
+      setUseCheaper(anyOnMostExpensive(ai, models));
+      setConfirmApi(true);
+      return;
+    }
+    run(async () => {
+      await save({ backend: "subscription" });
+      keepAppSetting("subscription");
+    });
+  };
+
+  const switchToApi = () =>
+    run(async () => {
+      await save({
+        backend: "api",
+        ...(useCheaper ? { defaults: cheaperDefaults(models) } : {}),
+      });
+      keepAppSetting("api");
+      setConfirmApi(false);
+    });
+
+  const ownModelBots = bots.filter((b) => b.model);
+  const defaultBotModel = effectiveJobModel("bots", ai, models);
+  const overall = summary && summary.overall;
+  const usedPct =
+    overall && overall.budget ? (overall.usd / overall.budget) * 100 : 0;
+
+  const backendOptions = [
+    {
+      value: "subscription",
+      label: (
+        <span className="flex flex-col gap-0.5">
+          <span className={`text-sm font-medium ${strong}`}>
+            Your Claude subscription (Claude Code CLI)
+          </span>
+          <span className={`text-xs ${muted}`}>
+            {cliStatus === null
+              ? "Checking for Claude Code…"
+              : cliStatus.available
+                ? "Uses your Claude Code sign-in. Runs count toward your plan's usage, not a bill."
+                : "Claude Code isn't installed on this computer."}
+          </span>
+        </span>
+      ),
+    },
+    {
+      value: "api",
+      label: (
+        <span className="flex flex-col gap-0.5">
+          <span className={`text-sm font-medium ${strong}`}>
+            Anthropic API key
+          </span>
+          <span className={`text-xs ${muted}`}>
+            {hasKey
+              ? "Paid per run from your Anthropic Console credits. Cheaper models for bots make them go much further."
+              : "Add a key below first."}
+          </span>
+        </span>
+      ),
+    },
+  ];
 
   return (
-    <div className="flex flex-col space-y-6">
-      {/* Status Overview */}
-      <div className="flex flex-col space-y-3">
-        <SubHeading3 title="Connection Status" padding={false} />
-        <div className="flex flex-col gap-3">
-          {/* CLI Status */}
-          <div className="flex items-center justify-between rounded-lg bg-white/5 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div
-                className={`h-2.5 w-2.5 rounded-full ${cliStatus?.available ? "bg-green-400" : cliStatus === null ? "bg-yellow-400 animate-pulse" : "bg-gray-500"}`}
-              />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">Claude Code CLI</span>
-                <span className="text-xs opacity-50">
-                  {cliStatus === null
-                    ? "Checking..."
-                    : cliStatus.available
-                      ? `Available at ${cliStatus.path || "claude"}`
-                      : "Not installed"}
-                </span>
-              </div>
-            </div>
-            {cliStatus && !cliStatus.available && (
-              <a
-                href="https://docs.anthropic.com/en/docs/claude-code/overview"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-              >
-                Install Guide
-              </a>
-            )}
-          </div>
+    <div className="flex flex-col gap-6" data-testid="ai-settings">
+      {error ? (
+        <AlertBanner variant="error" size="compact" message={error} />
+      ) : null}
 
-          {/* Anthropic API Status */}
-          <div className="flex items-center justify-between rounded-lg bg-white/5 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div
-                className={`h-2.5 w-2.5 rounded-full ${hasAnthropicProvider ? "bg-green-400" : "bg-gray-500"}`}
-              />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">Anthropic API</span>
-                <span className="text-xs opacity-50">
-                  {hasAnthropicProvider
-                    ? `Connected via "${anthropicProviderName}"`
-                    : "No API key configured"}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+      <section className="flex flex-col gap-3">
+        <SubHeading3 title="Run AI with" padding={false} />
+        <span className={`text-sm ${muted}`}>
+          Bots, dashboard leads and Create all use this.
+        </span>
+        <RadioGroup
+          name="ai-backend"
+          value={ai.backend}
+          onChange={(v) => {
+            if (v === "api" && !hasKey) return;
+            chooseBackend(v);
+          }}
+          options={backendOptions}
+        />
+        <ApiKeyField anthropic={anthropic} appContext={appContext} />
+      </section>
 
-        {/* Overall readiness */}
-        {effectiveBackend ? (
-          <div className="flex items-center gap-2 text-xs text-green-400">
-            <FontAwesomeIcon icon="check-circle" className="h-3.5 w-3.5" />
-            <span>
-              AI ready via{" "}
-              {effectiveBackend === "claude-code"
-                ? "Claude Code CLI"
-                : "Anthropic API"}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-xs text-yellow-400">
-            <FontAwesomeIcon
-              icon="exclamation-triangle"
-              className="h-3.5 w-3.5"
+      <section
+        className={`flex flex-col gap-2 rounded-lg border p-4 ${hairline}`}
+      >
+        <SubHeading3 title="Default models" padding={false} />
+        <span className={`text-sm ${muted}`}>
+          Used by everything that doesn&apos;t pick its own. Style sets how much
+          it thinks and writes: Brief, Normal or Thorough.{" "}
+          {onApi
+            ? "Costs are estimates for one run on your API key."
+            : "On your subscription these are included in your plan."}
+        </span>
+        <div className="flex flex-col" role="list">
+          {JOB_ROWS.map((row) => (
+            <JobRow
+              key={row.job}
+              row={row}
+              ai={ai}
+              models={models}
+              onApi={onApi}
+              botCount={bots.length}
+              leadCount={leads.length}
+              onSave={(patch) =>
+                run(() => save({ defaults: { [row.job]: patch } }))
+              }
             />
-            <span>
-              Install Claude Code CLI or add an Anthropic API key to use AI in
-              Create and the Widget Builder
-            </span>
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      </section>
 
-      {/* Preferred Backend */}
-      <div className="flex flex-col space-y-3">
-        <SubHeading3 title="Preferred Backend" padding={false} />
-        <div className="flex flex-row items-center justify-between py-1">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">LLM Backend</span>
-            <span className="text-xs opacity-50">
-              Which service to use for AI features
-            </span>
-          </div>
-          <select
-            value={preferredBackend}
-            onChange={handleBackendChange}
-            className="bg-white/10 border border-white/10 rounded-md px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      <section
+        className={`flex flex-row items-center gap-3 rounded-lg border p-4 ${hairline}`}
+      >
+        <div className="flex flex-col gap-1 flex-1 min-w-0">
+          <SubHeading3 title="Bot models" padding={false} />
+          <span
+            className={`text-sm ${muted}`}
+            data-testid="ai-bot-models-summary"
           >
-            {BACKENDS.map((b) => (
-              <option key={b.value} value={b.value}>
-                {b.label}
-                {b.value === "claude-code" && !cliStatus?.available
-                  ? " (not available)"
-                  : ""}
-                {b.value === "anthropic" && !hasAnthropicProvider
-                  ? " (no key)"
-                  : ""}
-              </option>
-            ))}
-          </select>
+            {ownModelBots.length
+              ? `${bots.length - ownModelBots.length} of ${bots.length} bots use the default (${shortModel(models, defaultBotModel)}). ${ownModelBots.length} ${ownModelBots.length === 1 ? "picks its" : "pick their"} own.`
+              : `All ${bots.length} bots use the default (${shortModel(models, defaultBotModel)}).`}
+            {isMostExpensive(models, defaultBotModel)
+              ? " That's the most expensive model."
+              : ""}
+          </span>
         </div>
+        <Button2
+          title={`Review all ${bots.length} bots`}
+          onClick={() => setView("bots")}
+        />
+      </section>
 
-        {migrationNotice && (
-          <div className="flex items-start gap-2 rounded-lg bg-yellow-900/30 border border-yellow-700 px-3 py-2 text-xs text-yellow-300">
-            <FontAwesomeIcon
-              icon="exclamation-triangle"
-              className="h-3.5 w-3.5 mt-0.5"
-            />
-            <span>
-              Your previously selected model (
-              <code>{migrationNotice.from}</code>) is no longer available.
-              Switched to <code>{migrationNotice.to}</code>.
-            </span>
-          </div>
-        )}
+      <section
+        className={`flex flex-col gap-3 rounded-lg border p-4 ${hairline}`}
+        data-testid="ai-spending-limits"
+      >
+        <SubHeading3 title="Spending limits" padding={false} />
+        <span className={`text-sm ${muted}`}>
+          A month&apos;s limit, in dollars, for runs on your API key. When one
+          is reached, what it covers stops until next month or until you raise
+          it.
+        </span>
+        <div className="flex flex-col gap-1">
+          <BudgetField
+            label="All AI together (bots, leads and Create)"
+            budget={overall ? overall.budget : null}
+            onSave={(usd) => setBudget("global", null, usd)}
+            testId="ai-limit-total"
+          />
+          {overall && overall.budget ? (
+            <div className="flex flex-col gap-1 max-w-md">
+              <ProgressBar value={Math.min(100, usedPct)} size="sm" />
+              <span className={`text-xs ${muted}`}>
+                {money(overall.usd)} used this month
+              </span>
+            </div>
+          ) : null}
+        </div>
+        <BudgetField
+          label="Each bot, by default (new bots start on this)"
+          budget={ai.limits.perBot}
+          onSave={(usd) => save({ limits: { perBot: usd } })}
+          testId="ai-limit-per-bot"
+        />
+      </section>
 
-        <div className="flex flex-row items-center justify-between py-1">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">Model</span>
-            <span className="text-xs opacity-50">
-              Model for Create and the Widget Builder
+      <section
+        className={`flex flex-col gap-3 rounded-lg border p-4 ${hairline}`}
+        data-testid="ai-run-limits"
+      >
+        <SubHeading3 title="Run limits" padding={false} />
+        <span className={`text-sm ${muted}`}>
+          Stops a single run that goes on too long, so a bot can&apos;t loop.
+          The run ends with a note saying which limit it hit. A step is one tool
+          use.
+        </span>
+        <LimitField
+          label="Steps per run · bots and leads"
+          hint="Most bots finish in 3–8"
+          value={ai.limits.steps}
+          onSave={(v) => run(() => save({ limits: { steps: v } }))}
+        />
+        <LimitField
+          label="Steps per run · Create"
+          hint="Building a widget takes more"
+          value={ai.limits.createSteps}
+          onSave={(v) => run(() => save({ limits: { createSteps: v } }))}
+        />
+        <LimitField
+          label="Cost per run (US dollars, API key only)"
+          hint="Stops a run that passes this, whatever its steps"
+          value={ai.limits.costPerRun}
+          decimal
+          onSave={(v) => run(() => save({ limits: { costPerRun: v } }))}
+        />
+        <LimitField
+          label="Time per run (minutes)"
+          hint="Also stops a run stuck waiting on a tool"
+          value={ai.limits.minutes}
+          onSave={(v) => run(() => save({ limits: { minutes: v } }))}
+        />
+      </section>
+
+      {confirmApi ? (
+        <ConfirmationModal
+          isOpen
+          setIsOpen={() => setConfirmApi(false)}
+          title="Run AI with your API key?"
+          confirmLabel="Use my API key"
+          onConfirm={switchToApi}
+          onCancel={() => setConfirmApi(false)}
+        >
+          <div className="flex flex-col gap-3 text-sm" data-testid="ai-switch">
+            <span className={strong}>
+              These move to your Anthropic API key and are paid from your
+              Console credits:
             </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedModel}
-              onChange={handleModelChange}
-              className="bg-white/10 border border-white/10 rounded-md px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {modelOptions.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
+            <div className="flex flex-col" role="list">
+              {[
+                [
+                  `${bots.length} bots`,
+                  ownModelBots.length
+                    ? `${bots.length - ownModelBots.length} on the default · ${ownModelBots.length} on their own`
+                    : "the default model",
+                ],
+                [`${leads.length} dashboard leads`, "the default model"],
+                [`Create (${team.length} roles)`, "their default models"],
+              ].map(([name, what]) => (
+                <div
+                  key={name}
+                  role="listitem"
+                  className={`flex flex-row justify-between gap-3 py-1.5 border-t ${hairline}`}
+                >
+                  <span className={strong}>{name}</span>
+                  <span className={muted}>{what}</span>
+                </div>
               ))}
-            </select>
-            <button
-              type="button"
-              onClick={fetchModels}
-              disabled={modelsLoading}
-              title="Refresh available models"
-              className="text-gray-400 hover:text-gray-200 disabled:opacity-40 transition-colors p-1.5"
-            >
-              <FontAwesomeIcon
-                icon="rotate"
-                className={`h-3.5 w-3.5 ${modelsLoading ? "animate-spin" : ""}`}
-              />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* API Key Setup (only if no Anthropic provider exists) */}
-      {!hasAnthropicProvider && (
-        <div className="flex flex-col space-y-3">
-          <SubHeading3 title="Anthropic API Key" padding={false} />
-          <div className="flex flex-col gap-2">
-            <span className="text-xs opacity-50">
-              Enter your Anthropic API key to use the Anthropic backend. The key
-              will be stored securely and encrypted.
+            </div>
+            <span className={`text-xs ${muted}`}>
+              Bots that picked Claude Code (CLI) themselves stay on it.
             </span>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => {
-                  setApiKey(e.target.value);
-                  setSaveKeyStatus(null);
-                }}
-                placeholder="sk-ant-..."
-                className="flex-1 bg-white/10 border border-white/10 rounded-md px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            {anyOnMostExpensive(ai, models) ? (
+              <AlertBanner
+                variant="warning"
+                size="compact"
+                message={expensiveNote(ai, models)}
               />
-              <Button
-                title={isSavingKey ? "Saving..." : "Save"}
-                onClick={handleSaveApiKey}
-                disabled={!apiKey.trim() || isSavingKey}
-              />
-            </div>
-            {saveKeyStatus === "saved" && (
-              <span className="text-xs text-green-400">
-                API key saved and encrypted.
-              </span>
-            )}
-            {saveKeyStatus === "error" && (
-              <span className="text-xs text-red-400">
-                Failed to save API key. Check the console for details.
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Info about existing provider */}
-      {hasAnthropicProvider && (
-        <div className="flex flex-col space-y-3">
-          <SubHeading3 title="Anthropic API Key" padding={false} />
-          <div className="flex items-center justify-between rounded-lg bg-white/5 px-4 py-3">
-            <div className="flex flex-col">
-              <span className="text-sm font-medium">
-                Using provider: {anthropicProviderName}
-              </span>
-              <span className="text-xs opacity-50">
-                Manage this provider in Settings &gt; Providers
-              </span>
-            </div>
-            <FontAwesomeIcon
-              icon="check-circle"
-              className="h-4 w-4 text-green-400"
+            ) : null}
+            <Checkbox
+              label="Use cheaper defaults: Haiku for bots and leads, Sonnet for Create"
+              checked={useCheaper}
+              onChange={setUseCheaper}
             />
+            <span className={`text-xs ${muted}`}>
+              You can switch back any time.
+            </span>
           </div>
-        </div>
-      )}
+        </ConfirmationModal>
+      ) : null}
     </div>
   );
 };
+
+/** "Some jobs run on Opus 5.5 by default, …" — the switch dialog's warning. */
+function expensiveNote(ai, models) {
+  const dear = JOB_ROWS.map(({ job }) =>
+    effectiveJobModel(job, ai, models),
+  ).find((id) => isMostExpensive(models, id));
+  const cheap = (models.find((m) => m.tier === "fast") || {}).value;
+  return `Some jobs run on ${shortModel(models, dear)} by default, the most expensive model: ${perRunText(models, dear)}${cheap ? `, against ${perRunText(models, cheap)} on ${shortModel(models, cheap)}` : ""}.`;
+}
+
+/** One job's default model and style, with its cost per run. */
+function JobRow({ row, ai, models, onApi, botCount, leadCount, onSave }) {
+  const { muted, strong, hairline } = useConfigTokens();
+  const d = ai.defaults[row.job] || {};
+  const model = effectiveJobModel(row.job, ai, models);
+  const sub =
+    row.job === "bots"
+      ? `${row.sub} · ${botCount} bots use it`
+      : row.job === "leads"
+        ? `${leadCount} leads · ${row.sub.toLowerCase()}`
+        : row.sub;
+  const modelOptions = [
+    ...(d.model
+      ? []
+      : [{ value: "", label: `${shortModel(models, model)} (built in)` }]),
+    ...models.map((m) => ({ value: m.value, label: m.label })),
+  ];
+  return (
+    <div
+      role="listitem"
+      className={`flex flex-row flex-wrap items-center gap-3 py-2 border-t ${hairline}`}
+      data-testid={`ai-job-${row.job}`}
+    >
+      <div className="flex flex-col flex-1 min-w-0">
+        <span className={`text-sm font-medium ${strong}`}>{row.name}</span>
+        <span className={`text-xs ${muted}`}>{sub}</span>
+      </div>
+      {isMostExpensive(models, model) ? (
+        <StatusBadge state="warning" label="Most expensive" />
+      ) : null}
+      <div className="w-48">
+        <SelectInput
+          ariaLabel={`${row.name} model`}
+          value={d.model || ""}
+          onChange={(v) => onSave({ model: v || null })}
+          options={modelOptions}
+        />
+      </div>
+      <div className="w-32">
+        <SelectInput
+          ariaLabel={`${row.name} style`}
+          value={d.style || ""}
+          onChange={(v) => onSave({ style: v || null })}
+          options={[
+            ...(d.style ? [] : [{ value: "", label: "Not set" }]),
+            ...STYLE_OPTIONS,
+          ]}
+        />
+      </div>
+      <span className={`w-28 text-right text-xs ${muted}`}>
+        {onApi
+          ? perRunText(models, model, COST_SUFFIX[row.job] || " a run")
+          : "Included in plan"}
+      </span>
+    </div>
+  );
+}
+
+/** A run limit: a number, saved with Set; empty means no limit. */
+function LimitField({ label, hint, value, decimal = false, onSave }) {
+  const { muted } = useConfigTokens();
+  const [text, setText] = useState(value == null ? "" : String(value));
+  useEffect(() => setText(value == null ? "" : String(value)), [value]);
+  const typed = text.trim();
+  const n = typed === "" ? null : Number(typed.replace(/^\$/, ""));
+  const invalid = typed !== "" && !(n > 0 && (decimal || Number.isInteger(n)));
+  const changed = n !== value && !(n === null && value == null);
+  return (
+    <div className="flex flex-row flex-wrap items-end gap-2">
+      <div className="w-64">
+        <InputText
+          label={label}
+          value={text}
+          onChange={(v) => setText(v)}
+          placeholder="No limit"
+          inputMode={decimal ? "decimal" : "numeric"}
+        />
+      </div>
+      <Button3
+        title="Set"
+        size="sm"
+        disabled={invalid || !changed}
+        onClick={() => onSave(n)}
+      />
+      <span className={`text-xs ${muted} pb-2`}>
+        {invalid
+          ? decimal
+            ? "Enter an amount, like 1 or 2.50."
+            : "Enter a whole number."
+          : hint}
+      </span>
+    </div>
+  );
+}
+
+/** The Anthropic API key: add one, or replace the saved one. */
+function ApiKeyField({ anthropic, appContext }) {
+  const { muted } = useConfigTokens();
+  const [key, setKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState(null);
+  const name = anthropic ? anthropic[0] : "Anthropic (AI Assistant)";
+  const saveKey = () => {
+    const { dashApi, credentials, refreshProviders } = appContext;
+    if (!key.trim() || !dashApi || !credentials) return;
+    setSaving(true);
+    setNote(null);
+    dashApi.saveProvider(
+      credentials.appId,
+      name,
+      { providerType: "anthropic", credentials: { apiKey: key.trim() } },
+      () => {
+        setSaving(false);
+        setKey("");
+        setNote(anthropic ? "Key replaced." : "Key saved.");
+        if (refreshProviders) refreshProviders();
+      },
+      () => {
+        setSaving(false);
+        setNote("The key didn't save. Try again.");
+      },
+    );
+  };
+  return (
+    <div className="flex flex-col gap-1 pl-6" data-testid="ai-api-key">
+      <div className="flex flex-row flex-wrap items-end gap-2">
+        <div className="w-80">
+          <InputText
+            label={
+              anthropic ? `Replace the key (${name})` : "Anthropic API key"
+            }
+            type="password"
+            value={key}
+            onChange={(v) => {
+              setKey(v);
+              setNote(null);
+            }}
+            placeholder={anthropic ? "Paste a new key" : "sk-ant-…"}
+          />
+        </div>
+        <Button
+          title={saving ? "Saving…" : anthropic ? "Replace key" : "Save key"}
+          size="sm"
+          disabled={!key.trim() || saving}
+          onClick={saveKey}
+        />
+      </div>
+      <span className={`text-xs ${muted}`} role="status">
+        {note || "Stored encrypted on this computer, never shown again."}
+      </span>
+    </div>
+  );
+}
+
+export default AiAssistantSection;

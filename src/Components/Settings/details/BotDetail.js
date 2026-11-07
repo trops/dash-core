@@ -27,6 +27,12 @@ import {
 import { dashboardOptions, offTeamSubscriptions } from "../../Bots/teamUtils";
 import { resultNameFor } from "./resultNames";
 import { BotBudgetSection } from "../../Bots/BotBudgetSection";
+import {
+  STYLE_LABELS,
+  STYLE_OPTIONS,
+  effectiveJobModel,
+  shortModel,
+} from "../sections/aiSettingsText";
 import { cleanIpcError } from "../../../utils/errorUtils";
 
 /**
@@ -57,17 +63,42 @@ function presentProviderTypes(providers) {
   return present;
 }
 
-// Model source of a saved bot with no AI model of its own (provider: null):
-// it runs on Claude Code (CLI), the default (electron/bots/runProvider.js).
+// Model source of a bot with no AI model of its own (provider: null): it
+// runs on what Settings › AI says — Claude Code (CLI) or the Anthropic API
+// key (electron/bots/runProvider.js).
 const USE_DEFAULT_PROVIDER = "default";
-const DEFAULT_BOT_PROVIDER = "claude-code";
 
-function useDefaultOption() {
+const backendProviderOf = (ai) =>
+  ai && ai.backend === "api" ? "anthropic" : "claude-code";
+
+function useDefaultOption(ai) {
   return {
     value: USE_DEFAULT_PROVIDER,
-    label: "Default — Claude Code (CLI)",
+    label: `Default — ${
+      backendProviderOf(ai) === "anthropic"
+        ? "Anthropic API key"
+        : "Claude Code (CLI)"
+    } (from Settings › AI)`,
   };
 }
+
+// The job whose defaults a bot follows (electron/bots/aiDefaults.js jobOf).
+function jobOfBot(bot) {
+  if (bot && bot.system === "dash-team") {
+    return bot.role === "dashlead" ? "dashLead" : bot.role;
+  }
+  return bot && bot.role === "lead" ? "leads" : "bots";
+}
+
+// A run limit field's text → its saved value (empty = the default).
+const limitValue = (text, decimal) => {
+  const t = String(text || "")
+    .trim()
+    .replace(/^\$/, "");
+  if (!t) return undefined;
+  const n = Number(t);
+  return n > 0 && (decimal || Number.isInteger(n)) ? n : undefined;
+};
 
 function providerOptionsFrom(providers) {
   return [
@@ -82,11 +113,11 @@ function providerOptionsFrom(providers) {
 }
 
 /**
- * The provider to pre-select for a new bot: Claude Code (CLI), the default.
- * An API key is used only when the user picks it for the bot.
+ * The model source to pre-select for a new bot: the default (Settings › AI).
+ * An API key of its own is used only when the user picks it for the bot.
  */
 function defaultProviderId() {
-  return DEFAULT_BOT_PROVIDER;
+  return USE_DEFAULT_PROVIDER;
 }
 
 const APPROVAL_HINTS = {
@@ -197,16 +228,37 @@ export const BotDetail = ({
   const [showOnDashboard, setShowOnDashboard] = useState(true);
   const [name, setName] = useState(bot?.name || "");
   const [instructions, setInstructions] = useState(bot?.instructions || "");
-  // A saved bot without its own AI model shows (and keeps) "Default AI
-  // provider"; a new bot pre-selects the user's default.
-  const followsDefault = !!bot?.id && !bot?.provider;
+  // A bot without its own AI model shows (and keeps) the default, Settings ›
+  // AI's; a new bot starts on it too.
   const [provider, setProvider] = useState(
-    bot?.provider ||
-      (bot?.id ? USE_DEFAULT_PROVIDER : defaultProviderId(providers)),
+    bot?.provider || defaultProviderId(providers),
   );
+  // Settings › AI: the backend, each job's default model and style, limits.
+  const [ai, setAi] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const api = getMainApi();
+    if (!api?.bots?.getSettings) return undefined;
+    Promise.resolve(api.bots.getSettings())
+      .then((s) => {
+        if (alive) setAi((s && s.aiResolved) || null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const usesDefault = provider === USE_DEFAULT_PROVIDER;
-  const effectiveProvider = usesDefault ? DEFAULT_BOT_PROVIDER : provider;
+  const effectiveProvider = usesDefault ? backendProviderOf(ai) : provider;
   const [model, setModel] = useState(bot?.model || "");
+  const [style, setStyle] = useState(bot?.style || "");
+  const ownLimits = bot?.runLimits || {};
+  const limitText = (v) => (v === undefined || v === null ? "" : String(v));
+  const [stepsLimit, setStepsLimit] = useState(limitText(ownLimits.steps));
+  const [costLimit, setCostLimit] = useState(limitText(ownLimits.costPerRun));
+  const [minutesLimit, setMinutesLimit] = useState(
+    limitText(ownLimits.minutes),
+  );
   const [engine, setEngine] = useState(bot?.engine || "");
   const [approvalPolicy, setApprovalPolicy] = useState(
     bot?.approvalPolicy || "ask",
@@ -358,6 +410,10 @@ export const BotDetail = ({
     provider,
     model,
     engine,
+    style,
+    stepsLimit,
+    costLimit,
+    minutesLimit,
     approvalPolicy,
     whilePaused,
     selectedServers,
@@ -468,8 +524,28 @@ export const BotDetail = ({
         : "Starts when the bot runs",
   }));
 
+  // The model and style it gets from Settings › AI, for the "Default" options.
+  const job = jobOfBot(bot);
+  const jobModel = ai ? effectiveJobModel(job, ai, modelOptions) : null;
+  const jobStyle = ai && ai.defaults[job] ? ai.defaults[job].style : null;
+  const runDefaults = ai
+    ? {
+        steps: ["planner", "builder", "checker", "scout"].includes(job)
+          ? ai.limits.createSteps
+          : ai.limits.steps,
+        cost: ai.limits.costPerRun,
+        minutes: ai.limits.minutes,
+      }
+    : null;
+  const defaultHint = (v, unit = "") =>
+    v ? `Default · ${unit === "$" ? "$" + v : v + unit}` : "Default · no limit";
   const modelSelectOptions = [
-    { value: "", label: "Recommended (default)" },
+    {
+      value: "",
+      label: jobModel
+        ? `Default · ${shortModel(modelOptions, jobModel)} (from Settings › AI)`
+        : "Default (from Settings › AI)",
+    },
     ...(model && !modelOptions.some((m) => m.value === model)
       ? [{ value: model, label: model }]
       : []),
@@ -613,6 +689,15 @@ export const BotDetail = ({
       provider: provider && !usesDefault ? provider : null,
       model: model.trim() || null,
       engine: engine || null,
+      // Settings › AI's default unless the bot has its own.
+      style: style || null,
+      runLimits: Object.fromEntries(
+        [
+          ["steps", limitValue(stepsLimit, false)],
+          ["costPerRun", limitValue(costLimit, true)],
+          ["minutes", limitValue(minutesLimit, false)],
+        ].filter(([, v]) => v !== undefined),
+      ),
       approvalPolicy,
       workspaceId: team || null,
       mcpServers: selectedServers,
@@ -838,11 +923,10 @@ export const BotDetail = ({
                   label="Model source"
                   value={provider}
                   onChange={setProvider}
-                  options={
-                    followsDefault || usesDefault
-                      ? [useDefaultOption(), ...providerOptionsFrom(providers)]
-                      : providerOptionsFrom(providers)
-                  }
+                  options={[
+                    useDefaultOption(ai),
+                    ...providerOptionsFrom(providers),
+                  ]}
                 />
                 <span className="text-xs opacity-50">
                   Which AI powers the bot — an API key from your Anthropic,
@@ -856,8 +940,27 @@ export const BotDetail = ({
                 value={model}
                 onChange={setModel}
                 options={modelSelectOptions}
-                placeholder="Recommended (default)"
+                placeholder="Default (from Settings › AI)"
               />
+
+              <SelectInput
+                label="Style"
+                value={style}
+                onChange={setStyle}
+                options={[
+                  {
+                    value: "",
+                    label: jobStyle
+                      ? `Default · ${STYLE_LABELS[jobStyle]} (from Settings › AI)`
+                      : "Default (from Settings › AI)",
+                  },
+                  ...STYLE_OPTIONS,
+                ]}
+              />
+              <span className="text-xs opacity-50">
+                How much it thinks and writes. Brief thinks less and answers in
+                a line or two — the cheapest.
+              </span>
 
               <SelectInput
                 label="Engine"
@@ -883,8 +986,54 @@ export const BotDetail = ({
             ) : null}
             {/* A saved bot's monthly limit and spending (US-019 AC2). */}
             {showBudget && !isCreating && bot && bot.id && !isTeamRole ? (
-              <BotBudgetSection bot={bot} />
+              <BotBudgetSection
+                bot={bot}
+                defaultLimit={
+                  ai && job === "bots" ? ai.limits.perBot || null : null
+                }
+              />
             ) : null}
+            <div className="flex flex-col gap-2" data-testid="bot-run-limits">
+              <span className="text-sm font-medium">Run limits</span>
+              <span className="text-xs opacity-50">
+                Stops one run that goes on too long. Leave a field empty to use
+                the default from Settings › AI.
+              </span>
+              <div className="flex flex-row flex-wrap gap-3">
+                <div className="w-40">
+                  <InputText
+                    label="Steps"
+                    value={stepsLimit}
+                    onChange={setStepsLimit}
+                    placeholder={defaultHint(runDefaults && runDefaults.steps)}
+                    inputMode="numeric"
+                  />
+                </div>
+                <div className="w-40">
+                  <InputText
+                    label="Cost per run (API key)"
+                    value={costLimit}
+                    onChange={setCostLimit}
+                    placeholder={defaultHint(
+                      runDefaults && runDefaults.cost,
+                      "$",
+                    )}
+                    inputMode="decimal"
+                  />
+                </div>
+                <div className="w-40">
+                  <InputText
+                    label="Minutes"
+                    value={minutesLimit}
+                    onChange={setMinutesLimit}
+                    placeholder={defaultHint(
+                      runDefaults && runDefaults.minutes,
+                    )}
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+            </div>
           </>
         )}
 

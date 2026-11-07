@@ -30,7 +30,7 @@ describe("BotDetail (create)", () => {
     expect(screen.getByText("Create")).not.toBeDisabled();
   });
 
-  it("a new bot starts on Claude Code (CLI), even with an API key marked default", () => {
+  it("a new bot follows the default (Settings › AI), even with an API key marked default", () => {
     const onSave = jest.fn().mockResolvedValue({});
     render(
       <BotDetail
@@ -42,7 +42,7 @@ describe("BotDetail (create)", () => {
         onSave={onSave}
       />,
     );
-    expect(screen.getByLabelText("Model source")).toHaveValue("claude-code");
+    expect(screen.getByLabelText("Model source")).toHaveValue("default");
     fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
       target: { value: "X" },
     });
@@ -50,13 +50,15 @@ describe("BotDetail (create)", () => {
       target: { value: "Y" },
     });
     fireEvent.click(screen.getByText("Create"));
-    expect(onSave.mock.calls[0][0].provider).toBe("claude-code");
+    expect(onSave.mock.calls[0][0].provider).toBeNull();
   });
 
   it("offers Claude Code (CLI) as a provider option", () => {
     render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
-    // With no API-key provider configured, CLI is the pre-selected fallback.
-    expect(screen.getByLabelText("Model source")).toHaveValue("claude-code");
+    expect(screen.getByLabelText("Model source")).toHaveValue("default");
+    expect(
+      screen.getByRole("option", { name: "Claude Code (CLI) — no API key" }),
+    ).toBeInTheDocument();
   });
 
   it("does not label the AI dropdown 'Provider' (that word means Dash MCP providers)", () => {
@@ -98,8 +100,8 @@ describe("BotDetail (create)", () => {
     expect(onSave.mock.calls[0][0]).toMatchObject({
       name: "PR Digest",
       instructions: "Summarize PRs",
-      // Claude Code (CLI) is the default, even with an API key marked default.
-      provider: "claude-code",
+      // Follows Settings › AI, even with an API key marked default.
+      provider: null,
       model: null,
       approvalPolicy: "ask",
       mcpServers: [],
@@ -1002,7 +1004,9 @@ describe("BotDetail (a bot with no AI model of its own)", () => {
     const select = screen.getByLabelText("Model source");
     expect(select).toHaveValue("default");
     expect(
-      screen.getByRole("option", { name: "Default — Claude Code (CLI)" }),
+      screen.getByRole("option", {
+        name: "Default — Claude Code (CLI) (from Settings › AI)",
+      }),
     ).toBeInTheDocument();
   });
 
@@ -1017,7 +1021,9 @@ describe("BotDetail (a bot with no AI model of its own)", () => {
     );
     expect(screen.getByLabelText("Model source")).toHaveValue("default");
     expect(
-      screen.getByRole("option", { name: "Default — Claude Code (CLI)" }),
+      screen.getByRole("option", {
+        name: "Default — Claude Code (CLI) (from Settings › AI)",
+      }),
     ).toBeInTheDocument();
     expect(
       screen.queryByText(/runs fail until you choose one/i),
@@ -1383,5 +1389,109 @@ describe("BotDetail — While paused (US-011 AC8)", () => {
       />,
     );
     expect(screen.queryByLabelText("While paused")).toBeNull();
+  });
+});
+
+describe("BotDetail — Settings › AI defaults", () => {
+  const MODELS = [
+    { value: "claude-opus-5-5", label: "Claude Opus 5.5", tier: "deep" },
+    { value: "claude-haiku-5-5", label: "Claude Haiku 5.5", tier: "fast" },
+  ];
+  const limits = {
+    steps: 25,
+    createSteps: 80,
+    costPerRun: 1,
+    minutes: 20,
+    perBot: 10,
+  };
+  beforeEach(() => {
+    window.mainApi = {
+      bots: {
+        getSettings: jest.fn(async () => ({
+          aiResolved: {
+            backend: "api",
+            defaults: {
+              bots: { model: "claude-haiku-5-5", style: "brief" },
+              leads: { model: null, style: null },
+            },
+            limits,
+          },
+        })),
+      },
+      llm: { listModels: jest.fn(async () => ({ models: MODELS })) },
+    };
+  });
+  afterEach(() => {
+    delete window.mainApi;
+  });
+
+  const fill = () => {
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Weekend Weather" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Post the weekend forecast." },
+    });
+  };
+
+  it("a new bot starts on the defaults and says where they come from", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    expect(
+      await screen.findByRole("option", {
+        name: "Default — Anthropic API key (from Settings › AI)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", {
+        name: "Default · Haiku 5.5 (from Settings › AI)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", {
+        name: "Default · Brief (from Settings › AI)",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Steps")).toHaveAttribute(
+      "placeholder",
+      "Default · 25",
+    );
+    expect(screen.getByLabelText("Cost per run (API key)")).toHaveAttribute(
+      "placeholder",
+      "Default · $1",
+    );
+    fill();
+    fireEvent.click(screen.getByText("Create"));
+    const def = onSave.mock.calls[0][0];
+    expect(def.provider).toBeNull();
+    expect(def.model).toBeNull();
+    expect(def.style).toBeNull();
+    expect(def.runLimits).toEqual({});
+  });
+
+  it("a bot can have its own style and run limits", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    await screen.findByRole("option", {
+      name: "Default · Brief (from Settings › AI)",
+    });
+    fill();
+    fireEvent.change(screen.getByLabelText("Style"), {
+      target: { value: "thorough" },
+    });
+    fireEvent.change(screen.getByLabelText("Steps"), {
+      target: { value: "60" },
+    });
+    fireEvent.change(screen.getByLabelText("Cost per run (API key)"), {
+      target: { value: "$2.50" },
+    });
+    // Not a whole number: ignored, so the default stays.
+    fireEvent.change(screen.getByLabelText("Minutes"), {
+      target: { value: "1.5" },
+    });
+    fireEvent.click(screen.getByText("Create"));
+    const def = onSave.mock.calls[0][0];
+    expect(def.style).toBe("thorough");
+    expect(def.runLimits).toEqual({ steps: 60, costPerRun: 2.5 });
   });
 });

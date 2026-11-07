@@ -87,7 +87,7 @@ test("Dash team is a badge, Model is labelled once, Last run is a titled group",
   expect(screen.getByRole("heading", { name: "Last run" })).toBeInTheDocument();
 });
 
-test("picking a model saves it for this role on this provider", async () => {
+test("picking a model saves it as the role's default (Settings › AI)", async () => {
   const { onChanged } = setup();
   await waitFor(() =>
     expect(screen.getByLabelText("Model").options.length).toBe(3),
@@ -97,9 +97,9 @@ test("picking a model saves it for this role on this provider", async () => {
   });
   await waitFor(() =>
     expect(botsApi.setSettings).toHaveBeenCalledWith({
-      dashTeam: {
-        models: { "claude-code": { scout: "claude-sonnet-4-6" } },
-      },
+      ai: { defaults: { scout: { model: "claude-sonnet-4-6" } } },
+      // An older per-provider pick is cleared: one place for the model.
+      dashTeam: { models: { "claude-code": { scout: null } } },
     }),
   );
   expect(onChanged).toHaveBeenCalled();
@@ -115,6 +115,7 @@ test("picking the recommended model clears the override", async () => {
   });
   await waitFor(() =>
     expect(botsApi.setSettings).toHaveBeenCalledWith({
+      ai: { defaults: { scout: { model: null } } },
       dashTeam: { models: { "claude-code": { scout: null } } },
     }),
   );

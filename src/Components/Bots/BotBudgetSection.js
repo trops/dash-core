@@ -11,8 +11,10 @@ import { money, spentLine } from "./spendingText";
  * running this month. Saved on its own (not with the form's Save).
  *
  * @param {object} bot  a saved bot ({ id })
+ * @param {number|null} [defaultLimit]  Settings › AI's limit for a bot with
+ *   none of its own
  */
-export const BotBudgetSection = ({ bot }) => {
+export const BotBudgetSection = ({ bot, defaultLimit = null }) => {
   const { muted, strong } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const { summary, setBudget, keepRunning } = useSpending();
@@ -43,6 +45,12 @@ export const BotBudgetSection = ({ bot }) => {
             />
           </div>
         </div>
+      ) : null}
+      {budget === null && defaultLimit ? (
+        <span className={`text-xs ${muted}`} data-testid="bot-budget-default">
+          No limit of its own, so the default applies: {money(defaultLimit)} a
+          month (Settings › AI).
+        </span>
       ) : null}
       <BudgetField
         label="Limit (USD a month)"

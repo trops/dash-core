@@ -86,16 +86,17 @@ export const DashTeamPanel = ({ bot, status, lastRun, onChanged, onEdit }) => {
     const b = api();
     if (!b || !b.setSettings) return;
     try {
+      // One place for a role's model: Settings › AI › Default models (an
+      // older per-provider pick is cleared). Picking the recommended model
+      // clears the default, so the role follows future tier changes.
+      const job = bot.role === "dashlead" ? "dashLead" : bot.role;
       await b.setSettings({
-        dashTeam: {
-          models: {
-            [bot.providerId]: {
-              // Picking the recommended model clears the override, so the
-              // role follows future tier changes.
-              [bot.role]: value === bot.recommendedModel ? null : value,
-            },
+        ai: {
+          defaults: {
+            [job]: { model: value === bot.recommendedModel ? null : value },
           },
         },
+        dashTeam: { models: { [bot.providerId]: { [bot.role]: null } } },
       });
       if (onChanged) await onChanged();
     } catch (err) {

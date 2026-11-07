@@ -618,7 +618,14 @@ function Tag({ text, onClick, className }) {
   );
 }
 
-function SelectInput({ label, value, onChange, options = [], placeholder }) {
+function SelectInput({
+  label,
+  value,
+  onChange,
+  options = [],
+  placeholder,
+  ariaLabel,
+}) {
   return React.createElement(
     "label",
     null,
@@ -628,7 +635,7 @@ function SelectInput({ label, value, onChange, options = [], placeholder }) {
       {
         value: value,
         onChange: (e) => onChange(e.target.value),
-        "aria-label": label || placeholder,
+        "aria-label": label || ariaLabel || placeholder,
       },
       options.map((o) =>
         React.createElement(

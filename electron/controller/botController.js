@@ -1518,7 +1518,10 @@ const botController = {
    * (Settings › AI — aiDefaults.js).
    */
   getBotSettings() {
-    return this._store.getSettings();
+    const settings = this._store.getSettings();
+    // Settings › AI with every value filled in (the built-in limits where
+    // none is set), for the screens; patches still go to `ai`.
+    return { ...settings, aiResolved: readAi(settings) };
   },
 
   setBotSettings(patch) {
