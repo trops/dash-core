@@ -995,9 +995,18 @@ export const BotDetail = ({
             ) : null}
             <div className="flex flex-col gap-2" data-testid="bot-run-limits">
               <span className="text-sm font-medium">Run limits</span>
-              <span className="text-xs opacity-50">
-                Stops one run that goes on too long. Leave a field empty to use
-                the default from Settings › AI.
+              <span className="text-xs opacity-50" role="status">
+                {[
+                  [stepsLimit, false],
+                  [costLimit, true],
+                  [minutesLimit, false],
+                ].some(
+                  ([t, decimal]) =>
+                    String(t || "").trim() &&
+                    limitValue(t, decimal) === undefined,
+                )
+                  ? "Steps and minutes are whole numbers; cost is an amount like 1 or 2.50. A field that isn't uses the default."
+                  : "Stops one run that goes on too long. Leave a field empty to use the default from Settings › AI."}
               </span>
               <div className="flex flex-row flex-wrap gap-3">
                 <div className="w-40">

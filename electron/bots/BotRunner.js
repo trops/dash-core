@@ -239,6 +239,13 @@ class BotRunner {
         ...request,
         runStartedAt: startedAt,
       });
+      // Waiting for the user doesn't count toward the time limit.
+      waitingOnUser++;
+      pauseTimeLimit();
+      const done = () => {
+        waitingOnUser = Math.max(0, waitingOnUser - 1);
+        if (!waitingOnUser) startTimeLimit();
+      };
       Promise.resolve(pending && pending.promise)
         .then((decision) => {
           approvalLog.push({
@@ -252,7 +259,8 @@ class BotRunner {
                 : "denied",
           });
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(done);
       return pending;
     };
     const controller = new AbortController();
@@ -273,8 +281,28 @@ class BotRunner {
     const callIndex = new Map();
     let providerOf = () => null;
     let attempts = 0;
+    // The time limit (Settings › AI): the time left, counted only while the
+    // run isn't waiting on the user to approve something.
     let timeLimit = null;
     let timeLimitMinutes = null;
+    let timeLeftMs = null;
+    let timerStartedAt = 0;
+    let waitingOnUser = 0;
+    function startTimeLimit() {
+      if (timeLeftMs === null || timeLimit || waitingOnUser) return;
+      timerStartedAt = Date.now();
+      timeLimit = setTimeout(
+        () => controller.abort("time-limit"),
+        Math.max(0, timeLeftMs),
+      );
+      if (timeLimit && typeof timeLimit.unref === "function") timeLimit.unref();
+    }
+    function pauseTimeLimit() {
+      if (!timeLimit) return;
+      clearTimeout(timeLimit);
+      timeLimit = null;
+      timeLeftMs -= Date.now() - timerStartedAt;
+    }
 
     try {
       const profile = await this._resolveRunProfile(bot);
@@ -386,6 +414,17 @@ class BotRunner {
         // key, cost. The time limit is kept below.
         maxTurns: profile.maxTurns != null ? profile.maxTurns : bot.maxTurns,
         maxCostUsd: profile.maxCostUsd || null,
+        // What the run has cost so far, for engines that check the cost
+        // limit themselves (tool-loop).
+        costSoFar: (u) => {
+          if (!this._costOf || !u) return 0;
+          const c = this._costOf({
+            providerId: profile.providerId,
+            model: profile.model,
+            usage: u,
+          });
+          return (c && c.usd) || 0;
+        },
         effort: profile.effort || null,
         longCache: !!profile.longCache,
         signal: controller.signal,
@@ -408,14 +447,9 @@ class BotRunner {
 
       // The time limit: stop the run (and any retry) when it's up.
       if (profile.maxMinutes > 0) {
-        timeLimit = setTimeout(
-          () => controller.abort("time-limit"),
-          profile.maxMinutes * 60 * 1000,
-        );
-        if (timeLimit && typeof timeLimit.unref === "function") {
-          timeLimit.unref();
-        }
         timeLimitMinutes = profile.maxMinutes;
+        timeLeftMs = profile.maxMinutes * 60 * 1000;
+        startTimeLimit();
       }
 
       // Attempts (US-023 AC1): a run that fails on temporary trouble — before

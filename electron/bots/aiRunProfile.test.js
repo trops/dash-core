@@ -162,6 +162,34 @@ describe("the run profile — Settings › AI", () => {
   });
 });
 
+describe("the run profile — review fixes", () => {
+  it("a bot on another AI provider doesn't get a Claude default model", () => {
+    const self = fake({
+      ai: { defaults: { bots: { model: "claude-haiku-5-5" } } },
+    });
+    const p = profile(self, { provider: "openai" });
+    assert.equal(p.providerId, "openai");
+    assert.notEqual(p.model, "claude-haiku-5-5");
+  });
+
+  it("on the API key with no key saved: a clear error, never the Claude login", () => {
+    const self = fake({ ai: { backend: "api" } });
+    self._providers.listProviders = () => ({ providers: [] });
+    assert.throws(() => profile(self, { provider: null }), /no key is saved/);
+  });
+
+  it("Create's roles get the effort but not the answer-length line", () => {
+    const self = fake({
+      ai: {
+        defaults: { checker: { model: "claude-sonnet-5-5", style: "brief" } },
+      },
+    });
+    const p = profile(self, { system: "dash-team", role: "checker" });
+    assert.equal(p.effort, "low");
+    assert.equal(p.styleLine, null);
+  });
+});
+
 describe("followDefaultOnce", () => {
   it("moves bots that saved Claude Code as the default, once", () => {
     const self = fake({

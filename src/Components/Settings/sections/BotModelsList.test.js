@@ -45,6 +45,7 @@ const BOTS = [
   { id: "b2", name: "Recipe Bot", schedules: [{ cron: "0 8 * * 0" }] },
   { id: "b3", name: "Inbox", subscriptions: [{ event: "x" }] },
   { id: "b4", name: "Writer", model: "claude-sonnet-5-5" },
+  { id: "b5", name: "Grok Bot", provider: "xai", model: "grok-4" },
 ];
 
 function setup({ ai } = {}) {
@@ -104,7 +105,7 @@ test("every bot with what starts it, its model, a run's cost and this month", ()
 
 test("filters: default model / own model", () => {
   setup();
-  fireEvent.click(screen.getByText("Own model · 1"));
+  fireEvent.click(screen.getByText("Own model · 2"));
   expect(screen.queryByTestId("bot-models-row-b1")).toBeNull();
   expect(screen.getByTestId("bot-models-row-b4")).toBeInTheDocument();
   fireEvent.click(screen.getByText("Default model · 3"));
@@ -150,7 +151,7 @@ test("tick several and set them all at once; only those change", async () => {
   );
 });
 
-test("Select all ticks every shown bot; Default puts them back on the default", async () => {
+test("Select all ticks every Claude bot; Default puts them back on the default", async () => {
   const { saveBot } = setup();
   fireEvent.click(screen.getByLabelText("Select all"));
   expect(screen.getByTestId("bot-models-bulk")).toHaveTextContent(
@@ -175,4 +176,13 @@ test("with a cheap default, nothing is flagged", () => {
   // No limit: just what it spent.
   expect(screen.getByTestId("bot-models-row-b1")).toHaveTextContent("$0.28");
   expect(screen.getByTestId("bot-models-row-b1")).not.toHaveTextContent(" of ");
+});
+
+test("a bot on another AI provider shows it and isn't given a Claude model", () => {
+  setup();
+  const row = screen.getByTestId("bot-models-row-b5");
+  expect(row).toHaveTextContent("xAI · grok-4 — set in its settings");
+  expect(screen.queryByLabelText("Grok Bot model")).toBeNull();
+  expect(screen.queryByLabelText("Grok Bot")).toBeNull();
+  expect(row).not.toHaveTextContent("Most expensive");
 });

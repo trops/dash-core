@@ -175,7 +175,7 @@ test("choosing the API key asks first and offers cheaper defaults", async () => 
   );
   expect(
     screen.getByLabelText(
-      "Use cheaper defaults: Haiku for bots and leads, Sonnet for Create",
+      "Use cheaper defaults where you haven't chosen: Haiku for bots and leads, Sonnet for Create",
     ),
   ).toBeChecked();
   fireEvent.click(screen.getByText("Use my API key"));
@@ -188,9 +188,9 @@ test("choosing the API key asks first and offers cheaper defaults", async () => 
           leads: { model: "claude-haiku-5-5", style: "brief" },
           planner: { model: "claude-sonnet-5-5", style: "thorough" },
           builder: { model: "claude-sonnet-5-5", style: "normal" },
-          checker: { model: "claude-sonnet-5-5", style: "brief" },
-          scout: { model: "claude-haiku-5-5", style: "brief" },
-          dashLead: { model: "claude-haiku-5-5", style: "brief" },
+          checker: { model: "claude-sonnet-5-5", style: "normal" },
+          scout: { model: "claude-haiku-5-5", style: "normal" },
+          dashLead: { model: "claude-haiku-5-5", style: "normal" },
         },
       },
     }),
@@ -209,7 +209,7 @@ test("unticking cheaper defaults switches without changing them", async () => {
   await screen.findByTestId("ai-switch");
   fireEvent.click(
     screen.getByLabelText(
-      "Use cheaper defaults: Haiku for bots and leads, Sonnet for Create",
+      "Use cheaper defaults where you haven't chosen: Haiku for bots and leads, Sonnet for Create",
     ),
   );
   fireEvent.click(screen.getByText("Use my API key"));
@@ -267,4 +267,27 @@ test("Review all bots opens Bot models", async () => {
   setup();
   fireEvent.click(await screen.findByText("Review all 2 bots"));
   expect(await screen.findByTestId("bot-models")).toBeInTheDocument();
+});
+
+test("cheaper defaults keep what the user already chose", async () => {
+  setup({
+    providers: KEY,
+    ai: resolved({
+      defaults: {
+        ...resolved().defaults,
+        bots: { model: "claude-sonnet-5-5", style: null },
+      },
+    }),
+  });
+  fireEvent.click(await screen.findByDisplayValue("api"));
+  await screen.findByTestId("ai-switch");
+  fireEvent.click(screen.getByText("Use my API key"));
+  await waitFor(() => expect(botsApi.setSettings).toHaveBeenCalled());
+  const patch = botsApi.setSettings.mock.calls[0][0].ai;
+  // Its model stays; only the style it hadn't set is filled in.
+  expect(patch.defaults.bots).toEqual({ style: "brief" });
+  expect(patch.defaults.leads).toEqual({
+    model: "claude-haiku-5-5",
+    style: "brief",
+  });
 });

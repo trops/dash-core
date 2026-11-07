@@ -2965,7 +2965,13 @@ const botController = {
     // A model of its own wins, then its job's default in Settings › AI. Without
     // either: Dash team bots run on their role's model for this provider;
     // leads on the fast tier (they only read team data).
-    const jobModel = defaultModelFor(bot, ai);
+    // Job defaults are Claude models: only for bots running on Claude.
+    const jobDefault = defaultModelFor(bot, ai);
+    const jobModel =
+      jobDefault &&
+      getCuratedModels(providerId).some((m) => m.value === jobDefault)
+        ? jobDefault
+        : null;
     let model;
     if (bot.model) {
       model = migrateModelId(providerId, bot.model);
@@ -2992,7 +2998,16 @@ const botController = {
       // Leave credentials empty — the engine will surface a clear auth error.
     }
 
-    // The style's effort, when the model takes one (Haiku 4.5 doesn't).
+    // Following Settings › AI onto the API key with no key saved: say so,
+    // never fall back to the Claude login quietly.
+    if (followsDefault && providerId === "anthropic" && !credentials.apiKey) {
+      throw new Error(
+        "Settings › AI runs AI with an Anthropic API key, but no key is saved. Add one in Settings › AI, or switch back to your Claude subscription.",
+      );
+    }
+
+    // The style's effort, when the model takes one (Haiku 4.5 and other
+    // providers' models don't).
     const style = styleFor(bot, ai);
     const takesEffort = getCuratedModels(providerId).some(
       (m) =>
@@ -3015,7 +3030,9 @@ const botController = {
           ? "claude-agent"
           : provider.engine),
       effort: style && takesEffort ? style.effort : null,
-      styleLine: style ? style.line : null,
+      // The answer-length line isn't for Create's roles: their answers have
+      // formats the next step reads (a verdict, a list of matches).
+      styleLine: style && !isDashTeam(bot) ? style.line : null,
       maxTurns: limits.maxTurns,
       maxMinutes: limits.minutes,
       maxCostUsd: limits.costPerRun,

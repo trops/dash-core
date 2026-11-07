@@ -422,3 +422,23 @@ describe("toolLoopEngine — usage across turns (CRE-012)", () => {
     assert.equal(done.usage.inputTokens, 1);
   });
 });
+
+describe("toolLoopEngine — the cost limit (Settings › AI)", () => {
+  it("stops after the step that passes it, with its note", async () => {
+    const ctx = baseCtx({
+      maxCostUsd: 1,
+      costSoFar: (u) => (u ? u.inputTokens : 0),
+      adapter: mockAdapter([
+        { toolCalls: [{ id: "c", name: "t", input: {} }] },
+        { toolCalls: [{ id: "d", name: "t", input: {} }] },
+      ]),
+    });
+    const events = await drain(toolLoopEngine.run(ctx));
+    const err = events.find((e) => e.type === "error");
+    assert.equal(err.code, "RUN_LIMIT");
+    assert.match(
+      err.message,
+      /^Stopped at \$1\.00 — its cost limit for one run\./,
+    );
+  });
+});

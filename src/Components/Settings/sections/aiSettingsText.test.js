@@ -58,6 +58,15 @@ test("cheaper defaults: Haiku for bots and leads, Sonnet for Create", () => {
   expect(d.bots).toEqual({ model: "claude-haiku-5-5", style: "brief" });
   expect(d.planner).toEqual({ model: "claude-sonnet-5-5", style: "thorough" });
   expect(d.builder).toEqual({ model: "claude-sonnet-5-5", style: "normal" });
+  // Create's checker and scout keep Normal: their answers have formats.
+  expect(d.checker.style).toBe("normal");
+  expect(d.scout.style).toBe("normal");
+  // A job the user set keeps its choice.
+  expect(
+    cheaperDefaults(MODELS, {
+      defaults: { bots: { model: "claude-opus-5-5", style: "thorough" } },
+    }).bots,
+  ).toBeUndefined();
   expect(anyOnMostExpensive(ai(), MODELS)).toBe(true);
   expect(anyOnMostExpensive(ai(d), MODELS)).toBe(false);
 });

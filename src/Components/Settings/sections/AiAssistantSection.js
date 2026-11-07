@@ -137,7 +137,7 @@ export const AiAssistantSection = () => {
     run(async () => {
       await save({
         backend: "api",
-        ...(useCheaper ? { defaults: cheaperDefaults(models) } : {}),
+        ...(useCheaper ? { defaults: cheaperDefaults(models, ai) } : {}),
       });
       keepAppSetting("api");
       setConfirmApi(false);
@@ -286,8 +286,9 @@ export const AiAssistantSection = () => {
           ) : null}
         </div>
         <BudgetField
-          label="Each bot, by default (new bots start on this)"
+          label="Each bot without its own limit"
           budget={ai.limits.perBot}
+          // BudgetField shows its own error when the save fails.
           onSave={(usd) => save({ limits: { perBot: usd } })}
           testId="ai-limit-per-bot"
         />
@@ -369,7 +370,7 @@ export const AiAssistantSection = () => {
               ))}
             </div>
             <span className={`text-xs ${muted}`}>
-              Bots that picked Claude Code (CLI) themselves stay on it.
+              A bot with its own model source (in its settings) stays on it.
             </span>
             {anyOnMostExpensive(ai, models) ? (
               <AlertBanner
@@ -379,12 +380,13 @@ export const AiAssistantSection = () => {
               />
             ) : null}
             <Checkbox
-              label="Use cheaper defaults: Haiku for bots and leads, Sonnet for Create"
+              label="Use cheaper defaults where you haven't chosen: Haiku for bots and leads, Sonnet for Create"
               checked={useCheaper}
               onChange={setUseCheaper}
             />
             <span className={`text-xs ${muted}`}>
-              You can switch back any time.
+              You can switch back any time. The default models stay as you set
+              them.
             </span>
           </div>
         </ConfirmationModal>

@@ -30,15 +30,16 @@ const JOB_TIER = {
   dashLead: "fast",
 };
 
-// The cheaper defaults the switch to an API key offers.
+// The cheaper defaults the switch to an API key offers. Create's roles stay
+// Normal or Thorough: their answers have formats the next step reads.
 const CHEAPER_TIER = {
   bots: ["fast", "brief"],
   leads: ["fast", "brief"],
   planner: ["balanced", "thorough"],
   builder: ["balanced", "normal"],
-  checker: ["balanced", "brief"],
-  scout: ["fast", "brief"],
-  dashLead: ["fast", "brief"],
+  checker: ["balanced", "normal"],
+  scout: ["fast", "normal"],
+  dashLead: ["fast", "normal"],
 };
 
 export const STYLE_LABELS = {
@@ -110,12 +111,19 @@ export function perRunText(models, id, suffix = " a run") {
   return `≈ $${Number(shown)}${suffix}`;
 }
 
-/** The cheaper defaults for every job: { <job>: { model, style } }. */
-export function cheaperDefaults(models) {
+/**
+ * The cheaper defaults: { <job>: { model, style } } — only for jobs the
+ * user hasn't set (a model or style they chose stays).
+ */
+export function cheaperDefaults(models, ai = null) {
   const out = {};
   for (const [job, [tier, style]] of Object.entries(CHEAPER_TIER)) {
+    const own = (ai && ai.defaults && ai.defaults[job]) || {};
     const m = tierModel(models, tier);
-    if (m) out[job] = { model: m.value, style };
+    const row = {};
+    if (!own.model && m) row.model = m.value;
+    if (!own.style) row.style = style;
+    if (Object.keys(row).length) out[job] = row;
   }
   return out;
 }

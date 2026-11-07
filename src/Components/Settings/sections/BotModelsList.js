@@ -19,6 +19,12 @@ import {
   shortModel,
 } from "./aiSettingsText";
 
+const PROVIDER_NAMES = { openai: "OpenAI", xai: "xAI" };
+
+/** A bot on an AI provider other than Claude (its own OpenAI or xAI key). */
+const otherProvider = (b) =>
+  !!b.provider && b.provider !== "anthropic" && b.provider !== "claude-code";
+
 /**
  * Settings › AI › Bot models: every bot with what starts it, its model, a
  * run's cost and this month's spending — change one, or tick several and
@@ -54,8 +60,12 @@ export const BotModelsList = ({
         ? bots.filter((b) => !b.model)
         : bots;
   const spentRows = (spending && spending.bots) || [];
-  const allPicked = shown.length > 0 && shown.every((b) => picked.has(b.id));
-  const somePicked = shown.some((b) => picked.has(b.id));
+  // Claude models only fit bots on Claude: a bot on another AI provider
+  // keeps its model, set in its own settings.
+  const pickable = shown.filter((b) => !otherProvider(b));
+  const allPicked =
+    pickable.length > 0 && pickable.every((b) => picked.has(b.id));
+  const somePicked = pickable.some((b) => picked.has(b.id));
 
   const setOne = (id, on) => {
     const next = new Set(picked);
@@ -161,7 +171,7 @@ export const BotModelsList = ({
               }
               checked={allPicked}
               onChange={(on) =>
-                setPicked(on ? new Set(shown.map((b) => b.id)) : new Set())
+                setPicked(on ? new Set(pickable.map((b) => b.id)) : new Set())
               }
             />
           </span>
@@ -171,7 +181,8 @@ export const BotModelsList = ({
           <span className="w-28 text-right">This month</span>
         </div>
         {shown.map((b) => {
-          const model = b.model || defaultModel;
+          const other = otherProvider(b);
+          const model = other ? b.model : b.model || defaultModel;
           const row = spentRows.find((r) => r.id === b.id);
           const limit =
             row && row.budget !== null && row.budget !== undefined
@@ -185,22 +196,32 @@ export const BotModelsList = ({
               data-testid={`bot-models-row-${b.id}`}
             >
               <span className={`flex-1 min-w-0 truncate text-sm ${strong}`}>
-                <Checkbox
-                  label={b.name}
-                  checked={picked.has(b.id)}
-                  onChange={(on) => setOne(b.id, on)}
-                />
+                {other ? (
+                  <span className="pl-6">{b.name}</span>
+                ) : (
+                  <Checkbox
+                    label={b.name}
+                    checked={picked.has(b.id)}
+                    onChange={(on) => setOne(b.id, on)}
+                  />
+                )}
               </span>
               <span className={`w-40 text-xs ${muted}`}>{runsText(b)}</span>
               <span className="w-56 flex flex-row items-center gap-2">
-                <span className="flex-1 min-w-0">
-                  <SelectInput
-                    ariaLabel={`${b.name} model`}
-                    value={b.model || ""}
-                    onChange={(v) => apply([b.id], v)}
-                    options={modelOptions}
-                  />
-                </span>
+                {other ? (
+                  <span className={`flex-1 min-w-0 text-xs ${muted}`}>
+                    {`${PROVIDER_NAMES[b.provider] || b.provider}${b.model ? ` · ${b.model}` : ""} — set in its settings`}
+                  </span>
+                ) : (
+                  <span className="flex-1 min-w-0">
+                    <SelectInput
+                      ariaLabel={`${b.name} model`}
+                      value={b.model || ""}
+                      onChange={(v) => apply([b.id], v)}
+                      options={modelOptions}
+                    />
+                  </span>
+                )}
                 {isMostExpensive(models, model) ? (
                   <StatusBadge state="warning" label="Most expensive" />
                 ) : null}

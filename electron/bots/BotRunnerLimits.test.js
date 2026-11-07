@@ -166,3 +166,80 @@ describe("BotRunner — Settings › AI", () => {
     assert.equal(record.error, null);
   });
 });
+
+describe("BotRunner — time limit and approvals", () => {
+  it("waiting on the user's approval doesn't count toward the time limit", async () => {
+    let decide;
+    const engine = {
+      id: "claude-agent",
+      run(ctx) {
+        return (async function* () {
+          // Ask for approval and wait longer than the limit (60 ms).
+          const p = ctx.createApproval({ toolName: "send" });
+          setTimeout(() => decide({ allow: true }), 150);
+          await p.promise;
+          yield { type: "done", stopReason: "end" };
+        })();
+      },
+    };
+    const runs = [];
+    const runner = new BotRunner({
+      engines: { getEngine: () => engine },
+      store: {
+        get: () => ({ id: "bot_1", instructions: "x", mcpServers: [] }),
+        saveSession: () => {},
+        appendRun: (id, run) => {
+          runs.push(run);
+          return run;
+        },
+      },
+      approvals: {
+        create: () => ({
+          id: "a1",
+          promise: new Promise((res) => {
+            decide = res;
+          }),
+        }),
+      },
+      resolveRunProfile: async () => ({
+        providerId: "anthropic",
+        engineId: "claude-agent",
+        model: "m",
+        credentials: {},
+        maxMinutes: 0.001, // 60 ms
+      }),
+      resolveTools: async () => ({ tools: [], resolveServer: () => null }),
+      callTool: async () => ({ text: "ok" }),
+      makeRequestPermission: () => async () => ({ allow: true }),
+      sleep: async () => {},
+    });
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.equal(record.status, "completed");
+  });
+
+  it("gives engines the run's cost so far", async () => {
+    const engine = engineYielding([{ type: "done", stopReason: "end" }]);
+    const runner = new BotRunner({
+      engines: { getEngine: () => engine },
+      store: {
+        get: () => ({ id: "bot_1", instructions: "x", mcpServers: [] }),
+        saveSession: () => {},
+        appendRun: (id, run) => run,
+      },
+      approvals: { create: () => ({ id: "a", promise: Promise.resolve({}) }) },
+      resolveRunProfile: async () => ({
+        providerId: "anthropic",
+        engineId: "tool-loop",
+        model: "m",
+        credentials: {},
+      }),
+      resolveTools: async () => ({ tools: [], resolveServer: () => null }),
+      callTool: async () => ({ text: "ok" }),
+      makeRequestPermission: () => async () => ({ allow: true }),
+      costOf: ({ usage }) => ({ usd: usage.inputTokens / 1000 }),
+    });
+    await runner.run("bot_1", { prompt: "go" });
+    assert.equal(engine.lastCtx.costSoFar({ inputTokens: 2500 }), 2.5);
+    assert.equal(engine.lastCtx.costSoFar(null), 0);
+  });
+});
