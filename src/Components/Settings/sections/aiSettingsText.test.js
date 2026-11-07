@@ -47,9 +47,9 @@ test("a job runs on its default, else what it ran on before", () => {
 });
 
 test("cost per run: an estimate from the price list, or nothing", () => {
-  expect(perRunText(MODELS, "claude-haiku-5-5")).toBe("≈ $0.0007 a run");
-  expect(perRunText(MODELS, "claude-sonnet-5-5")).toBe("≈ $0.014 a run");
-  expect(perRunText(MODELS, "claude-opus-5-5", "")).toBe("≈ $0.028");
+  expect(perRunText(MODELS, "claude-haiku-5-5")).toBe("≈ $0.0011 a run");
+  expect(perRunText(MODELS, "claude-sonnet-5-5")).toBe("≈ $0.023 a run");
+  expect(perRunText(MODELS, "claude-opus-5-5", "")).toBe("≈ $0.046");
   expect(perRunText(MODELS, "claude-x")).toBe("");
 });
 

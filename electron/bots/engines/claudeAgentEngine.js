@@ -365,6 +365,22 @@ async function _runAgent(ctx, stream) {
       }
       if (ctx.signal && ctx.signal.aborted) break;
     }
+  } catch (err) {
+    // After an error result, Claude Code exits non-zero and the SDK throws
+    // "Claude Code returned an error result: …" — the result already said
+    // what happened (a run limit keeps its note). Without one, a limit is
+    // still told by its text.
+    if (!failure) {
+      const text = (err && err.message) || "";
+      const subtype = /maximum number of turns/i.test(text)
+        ? "error_max_turns"
+        : /maximum budget|max_budget/i.test(text)
+          ? "error_max_budget_usd"
+          : null;
+      const note = subtype ? _limitNote(subtype, ctx) : null;
+      if (!note) throw err;
+      failure = { message: note, code: "RUN_LIMIT" };
+    }
   } finally {
     if (typeof q.close === "function") {
       try {
@@ -392,7 +408,7 @@ async function _runAgent(ctx, stream) {
 /** What a run stopped by one of its limits says, or null. */
 function _limitNote(subtype, ctx) {
   if (subtype === "error_max_turns") {
-    return `Stopped after ${ctx.maxTurns} steps — its step limit. Raise it in Settings › AI › Run limits, or on this bot.`;
+    return `Stopped after ${ctx.maxTurns} step${ctx.maxTurns === 1 ? "" : "s"} — its step limit. Raise it in Settings › AI › Run limits, or on this bot.`;
   }
   if (subtype === "error_max_budget_usd") {
     return `Stopped at $${Number(ctx.maxCostUsd).toFixed(2)} — its cost limit for one run. Raise it in Settings › AI › Run limits, or on this bot.`;

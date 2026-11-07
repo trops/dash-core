@@ -86,9 +86,10 @@ export function isMostExpensive(models, id) {
 }
 
 /**
- * About what one run costs on an API key: a small bot run reads ~5,500
- * tokens it hasn't cached (most of the prompt is cached) and writes ~300.
- * Measured runs on Haiku 5.5 / Sonnet 5.5 land within 2–3× of this.
+ * About what one run costs on an API key: a small bot run reads the
+ * equivalent of ~10,000 full-price tokens (most of its prompt comes from the
+ * cache at a tenth) and writes ~300. Measured runs (Haiku 5.5 $0.0006–0.002,
+ * Sonnet 5.5 $0.006–0.035, Opus 5.5 $0.066 uncached) sit around this.
  * @returns {number|null}
  */
 export function runCostEstimate(models, id) {
@@ -97,7 +98,7 @@ export function runCostEstimate(models, id) {
   if (!p || typeof p.input !== "number" || typeof p.output !== "number") {
     return null;
   }
-  return (5500 * p.input + 300 * p.output) / 1e6;
+  return (10000 * p.input + 300 * p.output) / 1e6;
 }
 
 /** "≈ $0.002 a run" — two significant figures, or "" when unknown. */

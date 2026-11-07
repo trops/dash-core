@@ -169,7 +169,7 @@ test("choosing the API key asks first and offers cheaper defaults", async () => 
   fireEvent.click(radio);
   const dialog = await screen.findByTestId("ai-switch");
   expect(dialog).toHaveTextContent("2 bots");
-  expect(dialog).toHaveTextContent("1 dashboard leads");
+  expect(dialog).toHaveTextContent("1 dashboard lead");
   expect(dialog).toHaveTextContent(
     "Some jobs run on Opus 5.5 by default, the most expensive model",
   );
@@ -232,7 +232,7 @@ test("on the API key: costs per run and the limits", async () => {
     }),
   });
   const row = await screen.findByTestId("ai-job-bots");
-  expect(row).toHaveTextContent("≈ $0.0007 a run");
+  expect(row).toHaveTextContent("≈ $0.0011 a run");
   expect(row).not.toHaveTextContent("Most expensive");
   expect(screen.getByLabelText("Steps per run · bots and leads")).toHaveValue(
     "25",

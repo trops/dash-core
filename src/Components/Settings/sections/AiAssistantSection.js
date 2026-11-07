@@ -347,12 +347,15 @@ export const AiAssistantSection = () => {
             <div className="flex flex-col" role="list">
               {[
                 [
-                  `${bots.length} bots`,
+                  `${bots.length} ${bots.length === 1 ? "bot" : "bots"}`,
                   ownModelBots.length
                     ? `${bots.length - ownModelBots.length} on the default · ${ownModelBots.length} on their own`
                     : "the default model",
                 ],
-                [`${leads.length} dashboard leads`, "the default model"],
+                [
+                  `${leads.length} dashboard ${leads.length === 1 ? "lead" : "leads"}`,
+                  "the default model",
+                ],
                 [`Create (${team.length} roles)`, "their default models"],
               ].map(([name, what]) => (
                 <div
@@ -406,9 +409,9 @@ function JobRow({ row, ai, models, onApi, botCount, leadCount, onSave }) {
   const model = effectiveJobModel(row.job, ai, models);
   const sub =
     row.job === "bots"
-      ? `${row.sub} · ${botCount} bots use it`
+      ? `${row.sub} · ${botCount} ${botCount === 1 ? "bot uses" : "bots use"} it`
       : row.job === "leads"
-        ? `${leadCount} leads · ${row.sub.toLowerCase()}`
+        ? `${leadCount} ${leadCount === 1 ? "lead" : "leads"} · ${row.sub.toLowerCase()}`
         : row.sub;
   const modelOptions = [
     ...(d.model

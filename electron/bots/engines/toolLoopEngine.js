@@ -176,7 +176,7 @@ async function runLoop(ctx, stream, state) {
 
   stream.push({
     type: "error",
-    message: `Stopped after ${maxTurns} steps — its step limit. Raise it in Settings › AI › Run limits, or on this bot.`,
+    message: `Stopped after ${maxTurns} step${maxTurns === 1 ? "" : "s"} — its step limit. Raise it in Settings › AI › Run limits, or on this bot.`,
     code: "RUN_LIMIT",
     usage,
   });

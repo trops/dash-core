@@ -652,6 +652,48 @@ describe("claudeAgentEngine — Settings › AI (style, limits, cache)", () => {
     assert.match(err.message, /^Stopped after 25 steps — its step limit\./);
   });
 
+  it("keeps the limit note when Claude Code then exits with an error", async () => {
+    // The real SDK: the error result, then a throw once the CLI exits.
+    claudeAgentEngine.__setQueryForTest((args) => {
+      captured = args;
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "result",
+            subtype: "error_max_turns",
+            is_error: true,
+            usage: {},
+          };
+          throw new Error(
+            "Claude Code returned an error result: Reached maximum number of turns (1)",
+          );
+        },
+        interrupt() {},
+        close() {},
+      };
+    });
+    const events = await collect(claudeAgentEngine.run(ctx({ maxTurns: 1 })));
+    const errs = events.filter((e) => e.type === "error");
+    assert.equal(errs.length, 1);
+    assert.equal(errs[0].code, "RUN_LIMIT");
+    assert.match(errs[0].message, /^Stopped after 1 step — its step limit\./);
+  });
+
+  it("tells a limit by the thrown text when no result came", async () => {
+    claudeAgentEngine.__setQueryForTest(() => ({
+      async *[Symbol.asyncIterator]() {
+        throw new Error(
+          "Claude Code returned an error result: Reached maximum number of turns (25)",
+        );
+      },
+      interrupt() {},
+      close() {},
+    }));
+    const events = await collect(claudeAgentEngine.run(ctx({ maxTurns: 25 })));
+    const err = events.find((e) => e.type === "error");
+    assert.equal(err.code, "RUN_LIMIT");
+  });
+
   it("a run stopped by its cost limit says so (RUN_LIMIT)", async () => {
     stubQuery([
       {
