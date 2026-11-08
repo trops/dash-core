@@ -35,6 +35,11 @@ const API_ERROR_STATUS = {
 const { createEventStream } = require("./eventStream");
 const { BOT_MCP_SERVER, buildBotMcpServer } = require("./agentToolBridge");
 const { imagePlaceholder } = require("../toolImages");
+const {
+  connectorForTool,
+  connectorDisallowList,
+  connectorNeedsSubscriptionMessage,
+} = require("../claudeConnectors");
 
 // The SDK names bridged tools "mcp__<server>__<tool>".
 const BRIDGED_PREFIX = `mcp__${BOT_MCP_SERVER}__`;
@@ -181,6 +186,33 @@ function _makeCanUseTool(ctx) {
           "This bot can only read files; make changes with its Dash tools.",
       };
     }
+    // A Claude connector's tool: only on a connector this bot was granted,
+    // and only a tool it may use; then the same Dash gate as its providers
+    // (keyed by the CLI's full tool name, which the gate maps to the
+    // provider).
+    const linked = !bridged && connectorForTool(ctx.connectors, toolName);
+    if (linked) {
+      const allowed = linked.connector.allowed;
+      if (Array.isArray(allowed) && !allowed.includes(linked.tool)) {
+        return {
+          behavior: "deny",
+          message: `${linked.tool} isn't allowed for this bot on ${linked.connector.provider}.`,
+        };
+      }
+      if (ctx.approvalPolicy === "allow") {
+        return { behavior: "allow", updatedInput: input };
+      }
+      if (typeof ctx.requestPermission !== "function") {
+        return { behavior: "deny", message: "no approval channel available" };
+      }
+      const decision = await ctx.requestPermission(toolName, input);
+      return decision && decision.allow
+        ? { behavior: "allow", updatedInput: input }
+        : {
+            behavior: "deny",
+            message: (decision && decision.reason) || "not permitted",
+          };
+    }
     // Anything else outside this bot's built-ins — denied, never asked, even
     // under "allow".
     if (!bridged && !_allowedBuiltins(ctx).includes(toolName)) {
@@ -245,8 +277,19 @@ async function _runAgent(ctx, stream) {
   if (ctx.credentials && ctx.credentials.apiKey) {
     env.ANTHROPIC_API_KEY = ctx.credentials.apiKey;
   }
-  // No claude.ai connectors from the user's Claude login.
-  env.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
+  // The user's Claude account connectors only for a bot granted one (Claude
+  // connector providers), on the Claude login; otherwise none.
+  const linked = Array.isArray(ctx.connectors) && ctx.connectors.length > 0;
+  if (linked && ctx.credentials && ctx.credentials.apiKey) {
+    throw Object.assign(
+      new Error(connectorNeedsSubscriptionMessage(ctx.connectors)),
+      { code: "CONNECTOR_NEEDS_SUBSCRIPTION" },
+    );
+  }
+  env.ENABLE_CLAUDEAI_MCP_SERVERS = linked ? "true" : "false";
+  // A key in Dash's own environment would replace the Claude login (and
+  // with it the connectors).
+  if (linked) delete env.ANTHROPIC_API_KEY;
   // A bot that runs again within the hour keeps its prompt cached that long
   // (reads cost a tenth; Settings › AI).
   if (ctx.longCache) env.ENABLE_PROMPT_CACHING_1H = "1";
@@ -261,9 +304,19 @@ async function _runAgent(ctx, stream) {
     // ~/.claude settings/plugins/skills/hooks, and ignore every MCP config
     // other than the servers passed in `mcpServers`.
     settingSources: [],
-    strictMcpConfig: true,
+    // Strict mode also drops the account's connectors, so a run with one
+    // goes without it: no settings are loaded either way, the connectors it
+    // isn't granted are hidden below, and canUseTool still refuses any tool
+    // that isn't its own.
+    strictMcpConfig: !linked,
     env,
   };
+  if (linked) {
+    options.disallowedTools = connectorDisallowList(
+      ctx.connectorServers,
+      ctx.connectors.map((c) => c.server),
+    );
+  }
   // Run the user's installed Claude Code CLI — the one they chose and logged
   // into. The SDK's bundled CLI is per-platform and the packaged app only
   // carries the build machine's (arm64), so it's missing on Intel Macs.

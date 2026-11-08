@@ -111,6 +111,27 @@ test("nothing needs you: just the log (frame 28)", async () => {
   );
 });
 
+test("an approval shows the exact command it asks to run", async () => {
+  setup({
+    approvals: [
+      {
+        id: "a1",
+        createdAt: iso(5),
+        request: {
+          botId: "inbox",
+          toolName: "Bash",
+          input: { command: "date +%Y-%m-%d", description: "Get the date" },
+        },
+      },
+    ],
+  });
+  const [item] = await screen.findAllByTestId("bot-notifications-item");
+  expect(within(item).getByTestId("approval-preview")).toHaveTextContent(
+    "Command · Get the date",
+  );
+  expect(within(item).getByText("date +%Y-%m-%d")).toBeInTheDocument();
+});
+
 test("an approval is answered here: Allow once / Deny", async () => {
   const { onNeedsChange } = setup({
     approvals: [

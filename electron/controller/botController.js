@@ -229,8 +229,14 @@ const {
   listToolSources,
   ensureBotServers,
   resolveBotTools,
+  resolveBotConnectors,
+  CONNECTOR_CLASS,
   checkToolCall,
 } = require("../bots/toolSources");
+const {
+  createConnectorLister,
+  readClaudeAuthStatus,
+} = require("../bots/claudeConnectors");
 const {
   rememberToolGrant,
   forgetToolGrant,
@@ -896,11 +902,35 @@ const botController = {
     } catch (_e) {
       providers = [];
     }
+    const listed = this._claudeConnectors().cached();
     return listToolSources({
       providers,
       connected: this._connectedServers(),
       workspaceId,
+      connectors: listed ? listed.connectors : null,
     });
+  },
+
+  /**
+   * The connectors in the user's Claude account, as their signed-in Claude
+   * Code CLI reports them (Providers › New › Claude connector). Names,
+   * status and tools only.
+   * @param {{ refresh?: boolean }} [opts]
+   */
+  listClaudeConnectors(opts = {}) {
+    return this._claudeConnectors().list({ refresh: !!(opts && opts.refresh) });
+  },
+
+  _claudeConnectors() {
+    if (!this._connectorLister) {
+      this._connectorLister = createConnectorLister({
+        loadQuery: async () =>
+          (await import("@anthropic-ai/claude-agent-sdk")).query,
+        resolveCli: () => require("./cliController").resolveCliBinary() || null,
+        readAuthStatus: (cliPath) => readClaudeAuthStatus(cliPath),
+      });
+    }
+    return this._connectorLister;
   },
 
   get(botId) {
@@ -4704,7 +4734,13 @@ const botController = {
     }
     // Credential providers (an API key a widget uses directly) have no tools.
     const credentials = (all || [])
-      .filter((p) => p && p.name && p.providerClass !== "mcp")
+      .filter(
+        (p) =>
+          p &&
+          p.name &&
+          p.providerClass !== "mcp" &&
+          p.providerClass !== CONNECTOR_CLASS,
+      )
       .map((p) => ({ name: p.name, type: p.type || null, credentials: true }));
     const mcp = this.listToolSources(null).map((p) => {
       const live = connected.find((c) => c.serverName === p.name);
@@ -4948,8 +4984,12 @@ const botController = {
       connected: this._connectedServers(),
       providerLimits: this._providerToolLimits(),
     });
+    // Claude connectors from the user's Claude account: the bot's Claude
+    // Code run reaches them itself; Dash says which and gates each call.
+    const linked = await this._resolveConnectors(bot);
+    Object.assign(toolServer, linked.toolServer);
     // Remembered per bot so _callTool can hard-enforce the same whitelist.
-    this._allowedByBot.set(bot.id, allowedFor);
+    this._allowedByBot.set(bot.id, { ...allowedFor, ...linked.allowedFor });
     // Always-available in-process memory tools (P1: FR-010).
     for (const tool of MEMORY_TOOLS) {
       tools.push(tool);
@@ -4960,7 +5000,79 @@ const botController = {
       tools.push(tool);
       toolServer[tool.name] = RESULTS_SERVER;
     }
-    return { tools, resolveServer: (toolName) => toolServer[toolName] || null };
+    return {
+      tools,
+      resolveServer: (toolName) => toolServer[toolName] || null,
+      connectors: linked.connectors,
+      connectorServers: linked.connectorServers,
+      readOnlyTools: linked.readOnly,
+    };
+  },
+
+  /**
+   * The bot's granted Claude connectors for one run (resolveBotConnectors),
+   * with every connector in the account so the run can hide the rest. Reads
+   * the account's list when the bot has any and it's older than 10 minutes.
+   */
+  async _resolveConnectors(bot) {
+    const none = {
+      connectors: [],
+      connectorServers: [],
+      toolServer: {},
+      readOnly: [],
+      allowedFor: {},
+    };
+    let providers = [];
+    try {
+      const win = this._getMainWindow();
+      ({ providers = [] } =
+        this._providers.listProviders(win, this._appId) || {});
+    } catch (_e) {
+      return none;
+    }
+    const wanted = new Set(bot.mcpServers || []);
+    const granted = providers.filter(
+      (p) => p && p.providerClass === CONNECTOR_CLASS && wanted.has(p.name),
+    );
+    if (!granted.length) return none;
+    let listed = null;
+    try {
+      listed = await this._claudeConnectors().list({
+        maxAgeMs: 10 * 60 * 1000,
+      });
+    } catch (_e) {
+      listed = null;
+    }
+    // Not read (Claude Code missing, not signed in, no answer): the run
+    // can't tell which connectors to allow or hide, so it doesn't start.
+    if (!listed || listed.state !== "ready") {
+      const names = granted.map((p) => p.name).join(", ");
+      throw new Error(
+        `${names} couldn't be used: ${
+          (listed && listed.message) ||
+          "Dash couldn't read your Claude connectors."
+        } Check Providers › ${granted[0].name}.`,
+      );
+    }
+    const all = listed.connectors || [];
+    const resolved = resolveBotConnectors({
+      bot,
+      providers: granted,
+      connectors: all,
+    });
+    for (const name of resolved.missing) {
+      this._broadcast(BOT_STREAM, {
+        botId: bot.id,
+        event: {
+          type: "warning",
+          message: `${name} isn't connected in your Claude account right now, so its tools may not be available this run. Check it on claude.ai › Settings › Connectors.`,
+        },
+      });
+    }
+    return {
+      ...resolved,
+      connectorServers: all.map((c) => c.server),
+    };
   },
 
   async _callTool(serverName, toolName, args, opts = {}) {
@@ -5079,7 +5191,11 @@ const botController = {
       const { providers = [] } =
         this._providers.listProviders(win, this._appId) || {};
       for (const p of providers) {
-        if (p && p.providerClass === "mcp" && p.name) {
+        if (
+          p &&
+          (p.providerClass === "mcp" || p.providerClass === CONNECTOR_CLASS) &&
+          p.name
+        ) {
           limits[p.name] = Array.isArray(p.allowedTools)
             ? p.allowedTools
             : null;

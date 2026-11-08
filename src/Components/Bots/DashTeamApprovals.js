@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Button, Button3 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { ApprovalPreview } from "./ApprovalPreview";
 
 function api() {
   return typeof window !== "undefined" && window.mainApi
@@ -119,6 +120,7 @@ export const DashTeamApprovals = ({ compact = false, bots = null }) => {
             data-testid="dash-team-approval"
           >
             <span>{approvalText(a.request, bot && bot.name)}</span>
+            <ApprovalPreview request={a.request} />
             <span className={`text-xs ${muted}`}>
               It&apos;s waiting for your answer before it carries on.
             </span>

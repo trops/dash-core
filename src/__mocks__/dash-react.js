@@ -286,10 +286,10 @@ function FontAwesomeIcon({ icon, className, onClick }) {
   });
 }
 
-function Button({ title, children, onClick, disabled }) {
+function Button({ title, children, onClick, disabled, ariaLabel }) {
   return React.createElement(
     "button",
-    { onClick: onClick, disabled: disabled },
+    { onClick: onClick, disabled: disabled, "aria-label": ariaLabel },
     children !== undefined ? children : title,
   );
 }

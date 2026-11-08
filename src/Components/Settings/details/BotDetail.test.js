@@ -399,13 +399,13 @@ describe("BotDetail — Providers (the user's Dash MCP providers)", () => {
     expect(onSave.mock.calls[0][0].mcpServers).toEqual(["notion"]);
   });
 
-  it("puts Providers before the AI model settings", async () => {
+  it("puts the AI model before Providers: it decides which it can use", async () => {
     render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
     await screen.findByLabelText("Gmail");
     const providersHeading = screen.getByText("Providers");
     const aiHeading = screen.getByText("AI model");
     expect(
-      providersHeading.compareDocumentPosition(aiHeading) &
+      aiHeading.compareDocumentPosition(providersHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
@@ -1493,5 +1493,112 @@ describe("BotDetail — Settings › AI defaults", () => {
     const def = onSave.mock.calls[0][0];
     expect(def.style).toBe("thorough");
     expect(def.runLimits).toEqual({ steps: 60, costPerRun: 2.5 });
+  });
+});
+
+describe("BotDetail — Claude connectors", () => {
+  const sources = [
+    {
+      name: "Google Calendar",
+      type: "claude-connector",
+      connector: true,
+      server: "claude.ai Google Calendar",
+      status: "connected",
+      running: true,
+      toolCount: 9,
+      declared: true,
+      tools: ["list_events", "get_event"],
+    },
+  ];
+  const withBackend = (backend) => {
+    window.mainApi = {
+      bots: {
+        listToolSources: jest.fn().mockResolvedValue(sources),
+        getSettings: jest.fn(async () => ({
+          aiResolved: {
+            backend,
+            defaults: { bots: { model: null, style: null } },
+            limits: {
+              steps: 25,
+              createSteps: 80,
+              costPerRun: 1,
+              minutes: 20,
+              perBot: null,
+            },
+          },
+        })),
+      },
+    };
+  };
+  afterEach(() => {
+    delete window.mainApi;
+  });
+  const bot = {
+    id: "bot_1",
+    name: "Agenda",
+    instructions: "List today's meetings.",
+    provider: null,
+    mcpServers: ["Google Calendar"],
+  };
+
+  it("shows as a Claude connector, with no warning on the subscription", async () => {
+    withBackend("subscription");
+    render(<BotDetail bot={bot} providers={{}} onSave={jest.fn()} />);
+    expect(
+      await screen.findByText("Claude connector · 9 tools"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /only works when this bot runs on your Claude subscription/,
+      ),
+    ).toBeNull();
+  });
+
+  it("on the API key: warned, with a one-click fix", async () => {
+    withBackend("api");
+    render(<BotDetail bot={bot} providers={{}} onSave={jest.fn()} />);
+    expect(
+      await screen.findByText(
+        /Google Calendar is a Claude connector\. It only works when this bot runs on your Claude subscription, and this bot runs on your API key\./,
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Run this bot on my Claude subscription"));
+    await waitFor(() =>
+      expect(
+        screen.queryByText(
+          /only works when this bot runs on your Claude subscription/,
+        ),
+      ).toBeNull(),
+    );
+  });
+
+  it("on the API key a connector can't be picked; on the subscription it can", async () => {
+    withBackend("api");
+    const { unmount } = render(
+      <BotDetail
+        bot={{ ...bot, mcpServers: [] }}
+        providers={{}}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(
+      await screen.findByText(
+        "Claude connector · needs your Claude subscription",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Google Calendar")).toBeDisabled();
+    unmount();
+    withBackend("subscription");
+    render(
+      <BotDetail
+        bot={{ ...bot, mcpServers: [] }}
+        providers={{}}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(
+      await screen.findByText("Claude connector · 9 tools"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Google Calendar")).not.toBeDisabled();
   });
 });

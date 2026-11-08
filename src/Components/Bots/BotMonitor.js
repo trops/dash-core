@@ -7,6 +7,8 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { INTERRUPTED_TEXT, toPlainText } from "./botConversation";
+import { shortToolName } from "../../utils/toolNames";
+import { ApprovalPreview } from "./ApprovalPreview";
 
 /**
  * BotMonitor — the Bot Activity side panel's body (bot-teams PRD TEAM-011
@@ -163,9 +165,12 @@ export const BotMonitor = ({
                 </span>
                 <span className={`text-xs ${muted}`}>
                   Wants to use{" "}
-                  <span className="font-mono">{req.toolName || "a tool"}</span>
+                  <span className="font-mono">
+                    {req.toolName ? shortToolName(req.toolName) : "a tool"}
+                  </span>
                   {req.serverName ? ` on ${req.serverName}` : " (built-in)"}
                 </span>
+                <ApprovalPreview request={req} />
                 <div className="flex flex-row flex-wrap items-center gap-2">
                   <Button3
                     title="Allow once"

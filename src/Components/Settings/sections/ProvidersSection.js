@@ -33,6 +33,12 @@ import { McpCatalogDetail } from "../details/McpCatalogDetail";
 import { CustomMcpServerForm } from "../details/CustomMcpServerForm";
 import { WebSocketProviderForm } from "../details/WebSocketProviderForm";
 import { NewProviderPicker } from "../details/NewProviderPicker";
+import {
+  ClaudeConnectorDetail,
+  ClaudeConnectorPicker,
+  connectorLabel,
+  connectorProviderName,
+} from "../details/ClaudeConnectorDetail";
 import { saveMcpProvider } from "../../../utils/saveMcpProvider";
 import {
   envMappingToRows,
@@ -46,11 +52,13 @@ const CLASS_CHIPS = [
   { value: "credentials", label: "API keys" },
   { value: "mcp", label: "Tools (MCP)" },
   { value: "websocket", label: "Live data" },
+  { value: "connector", label: "Claude connectors" },
 ];
 const CLS_OF_TAB = {
   credentials: "credential",
   mcp: "mcp",
   websocket: "websocket",
+  connector: "connector",
 };
 const STATUS_DOT = {
   needsSetup: "bg-amber-400",
@@ -102,6 +110,8 @@ export const ProvidersSection = ({
   const catalog = useMcpCatalog(dashApi);
   const workspaces = workspacesProp || [];
   const status = useProviderStatus({ providers, workspaces, dashApi, catalog });
+  // The Claude account's connectors (Claude connector providers).
+  const claude = status.claudeConnectors;
   // Who uses a provider, or null while that isn't known.
   const knownUsage = (name) =>
     workspacesProp && status.botsLoaded ? status.usageOf(name) : null;
@@ -134,6 +144,11 @@ export const ProvidersSection = ({
   const [isEditingMcp, setIsEditingMcp] = useState(false);
   const [isAddingWs, setIsAddingWs] = useState(false);
   const [isEditingWs, setIsEditingWs] = useState(false);
+  // Providers › New › Claude connector: the Claude account's connectors.
+  const [isAddingConnector, setIsAddingConnector] = useState(false);
+  const [connectorError, setConnectorError] = useState(null);
+  // The connector being added: nothing is saved until Add provider.
+  const [connectorDraft, setConnectorDraft] = useState(null);
   // NAV-015 "Choose where to use…": the provider whose dialog is open, and
   // the rows worked out when it opened (kept fixed while the user ticks).
   const [useTarget, setUseTarget] = useState(null);
@@ -186,6 +201,9 @@ export const ProvidersSection = ({
     setIsEditing(false);
     setIsEditingMcp(false);
     setIsEditingWs(false);
+    setIsAddingConnector(false);
+    setConnectorDraft(null);
+    setConnectorError(null);
   }
 
   function handleSave() {
@@ -561,6 +579,87 @@ export const ProvidersSection = ({
     );
   }
 
+  // A connector from the user's Claude account becomes a provider, named
+  // and with its tools picked on the add page: no credentials, just which
+  // connector it is.
+  function handleConnectorAdd(connector, allowedTools, name) {
+    if (!dashApi || !appId || !connector || !name) return Promise.resolve();
+    setConnectorError(null);
+    const failed = (message) =>
+      setConnectorError(
+        `Couldn't add ${connector.name}${message ? `: ${message}` : "."}`,
+      );
+    return new Promise((resolve) =>
+      dashApi.saveProvider(
+        appId,
+        name,
+        {
+          providerType: "claude-connector",
+          credentials: {},
+          providerClass: "connector",
+          mcpConfig: {
+            transport: "claude-connector",
+            server: connector.server,
+          },
+          allowedTools,
+        },
+        (event, result) => {
+          resolve();
+          if (result && result.error) {
+            failed(result.message);
+            return;
+          }
+          setIsAddingConnector(false);
+          setConnectorDraft(null);
+          setCameFromClassChooser(false);
+          refreshProviders && refreshProviders();
+          setSelectedName(name);
+          setProviderTab("all");
+        },
+        (e, err) => {
+          resolve();
+          failed(err && err.message);
+        },
+      ),
+    );
+  }
+
+  // Which of a Claude connector's tools bots may use.
+  function handleSaveConnectorTools(providerName, allowedTools) {
+    const prov = providers[providerName];
+    if (!dashApi || !appId || !prov) return Promise.resolve();
+    setConnectorError(null);
+    const failed = (message) =>
+      setConnectorError(
+        `Couldn't save its tools${message ? `: ${message}` : "."}`,
+      );
+    return new Promise((resolve) =>
+      dashApi.saveProvider(
+        appId,
+        providerName,
+        {
+          providerType: prov.type || "claude-connector",
+          credentials: prov.credentials || {},
+          providerClass: "connector",
+          mcpConfig: prov.mcpConfig,
+          allowedTools,
+        },
+        (event, result) => {
+          resolve();
+          if (result && result.error) {
+            failed(result.message);
+            return;
+          }
+          refreshProviders && refreshProviders();
+        },
+        (e, err) => {
+          resolve();
+          failed(err && err.message);
+        },
+      ),
+    );
+  }
+
   // Respond to external create trigger from header (or from the
   // cross-modal "Add new <type>" event dispatched by the Widget
   // Builder, with optional initialProviderType/initialProviderClass
@@ -657,7 +756,8 @@ export const ProvidersSection = ({
     isAddingMcp ||
     isAddingWs ||
     isEditingMcp ||
-    isEditingWs;
+    isEditingWs ||
+    isAddingConnector;
   // The selected provider, else the first one shown (like the other pages).
   const shownName =
     selectedName && providers[selectedName]
@@ -687,7 +787,13 @@ export const ProvidersSection = ({
   };
 
   const iconForClass = (cls) =>
-    cls === "mcp" ? "server" : cls === "websocket" ? "plug" : "key";
+    cls === "mcp"
+      ? "server"
+      : cls === "websocket"
+        ? "plug"
+        : cls === "connector"
+          ? "link"
+          : "key";
 
   const selectProvider = (name) => {
     setSelectedName(name);
@@ -699,6 +805,7 @@ export const ProvidersSection = ({
     setIsEditingWs(false);
     setIsShowingClassChooser(false);
     setCameFromClassChooser(false);
+    setIsAddingConnector(false);
     resetForm();
   };
 
@@ -733,12 +840,25 @@ export const ProvidersSection = ({
                     data-name
                     className={`text-sm font-medium truncate ${strong}`}
                   >
-                    {name}
+                    {cls === "connector"
+                      ? connectorLabel(name, provider)
+                      : name}
                   </span>
-                  <span className={`text-xs truncate ${muted}`}>
-                    {provider.type || cls}
-                    {used ? ` · used by ${used}` : ""}
-                  </span>
+                  {cls === "connector" ? (
+                    <span className="flex flex-row items-center gap-2 min-w-0">
+                      <StatusBadge state="info" label="Claude connector" />
+                      {used ? (
+                        <span className={`text-xs truncate ${muted}`}>
+                          used by {used}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : (
+                    <span className={`text-xs truncate ${muted}`}>
+                      {provider.type || cls}
+                      {used ? ` · used by ${used}` : ""}
+                    </span>
+                  )}
                 </span>
                 <span
                   className={`flex flex-row items-center gap-1.5 text-xs flex-shrink-0 ${muted}`}
@@ -769,9 +889,18 @@ export const ProvidersSection = ({
     setIsAddingWs(false);
     setIsAddingMcp(false);
     setIsCreating(false);
+    setIsAddingConnector(false);
     setCameFromClassChooser(false);
     setIsShowingClassChooser(true);
   };
+
+  // A Claude connector is removed from Dash (it stays in the Claude
+  // account), and goes by its connector's name.
+  const deleteIsConnector =
+    !!deleteTarget && providers[deleteTarget]?.providerClass === "connector";
+  const deleteLabel = deleteIsConnector
+    ? connectorLabel(deleteTarget, providers[deleteTarget])
+    : deleteTarget;
 
   let detailContent = null;
   if (isAddingWs) {
@@ -812,6 +941,11 @@ export const ProvidersSection = ({
           setCameFromClassChooser(true);
           if (cls === "mcp") {
             setIsAddingMcp(true);
+          } else if (cls === "connector") {
+            setConnectorDraft(null);
+            setConnectorError(null);
+            setIsAddingConnector(true);
+            claude.refresh();
           } else if (cls === "websocket") {
             setIsAddingWs(true);
           } else {
@@ -819,6 +953,42 @@ export const ProvidersSection = ({
             if (chooserType.current) setFormType(chooserType.current);
           }
         }}
+      />
+    );
+  } else if (isAddingConnector && connectorDraft) {
+    detailContent = (
+      <ClaudeConnectorDetail
+        key={connectorDraft.server}
+        adding
+        providerName={connectorDraft.name}
+        connector={connectorDraft}
+        status={connectorDraft.status}
+        error={connectorError}
+        onBack={() => {
+          setConnectorError(null);
+          setConnectorDraft(null);
+        }}
+        onSave={(allowed) =>
+          handleConnectorAdd(
+            connectorDraft,
+            allowed,
+            connectorProviderName(connectorDraft, providers),
+          )
+        }
+      />
+    );
+  } else if (isAddingConnector) {
+    detailContent = (
+      <ClaudeConnectorPicker
+        connectors={claude}
+        providers={providers}
+        onAdd={(c) => {
+          setConnectorError(null);
+          setConnectorDraft(c);
+        }}
+        error={connectorError}
+        onOpen={selectProvider}
+        onBack={cameFromClassChooser ? goBackToClassChooser : null}
       />
     );
   } else if (isAddingMcp) {
@@ -873,6 +1043,24 @@ export const ProvidersSection = ({
         initialSignedIn={!!selectedProvider.signedIn}
         onSave={handleMcpEditSave}
         onBack={() => setIsEditingMcp(false)}
+      />
+    );
+  } else if (shownName && shownProvider?.providerClass === "connector") {
+    const server = shownProvider.mcpConfig && shownProvider.mcpConfig.server;
+    const listed =
+      (claude.result &&
+        (claude.result.connectors || []).find((c) => c.server === server)) ||
+      null;
+    detailContent = (
+      <ClaudeConnectorDetail
+        key={`${shownName}:${listed ? listed.tools.length : 0}`}
+        providerName={shownName}
+        provider={shownProvider}
+        connector={listed}
+        status={claude.statusOf(server)}
+        error={connectorError}
+        onSave={(allowed) => handleSaveConnectorTools(shownName, allowed)}
+        onDelete={(name) => setDeleteTarget(name)}
       />
     );
   } else if (shownName && shownProvider) {
@@ -986,12 +1174,13 @@ export const ProvidersSection = ({
         <ConfirmationModal
           isOpen
           setIsOpen={() => setDeleteTarget(null)}
-          title={`Delete ${deleteTarget}?`}
-          message={providerDeleteMessage(
-            deleteTarget,
-            knownUsage(deleteTarget),
-          )}
-          confirmLabel="Delete"
+          title={
+            deleteIsConnector
+              ? `Remove ${deleteLabel} from Dash?`
+              : `Delete ${deleteTarget}?`
+          }
+          message={providerDeleteMessage(deleteLabel, knownUsage(deleteTarget))}
+          confirmLabel={deleteIsConnector ? "Remove" : "Delete"}
           variant="danger"
           onConfirm={handleConfirmDelete}
           onCancel={() => setDeleteTarget(null)}

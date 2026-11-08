@@ -243,7 +243,11 @@ describe("BotRunner.run — happy path", () => {
     await runner.run("bot_1", { prompt: "summarize" });
     assert.equal(engine.lastCtx.prompt, "summarize");
     assert.equal(engine.lastCtx.model, "claude-opus-4-8");
-    assert.equal(engine.lastCtx.systemPrompt, "do it");
+    // The bot's instructions, then today's date (it has no other clock).
+    assert.match(
+      engine.lastCtx.systemPrompt,
+      /^do it\n\nToday is \w+day, \w+ \d+, \d{4} \(/,
+    );
     assert.equal(engine.lastCtx.adapterId, "anthropic");
     assert.ok(engine.lastCtx.signal); // AbortSignal present
   });
@@ -1081,5 +1085,75 @@ describe("BotRunner — retries (US-023 AC1/AC2)", () => {
     assert.equal(engine.calls, 1);
     assert.equal(record.status, "stopped");
     assert.equal(record.error, null);
+  });
+});
+
+// Claude connectors (the user's Claude account): only a run on the Claude
+// login has them — anything else stops before it starts, saying why.
+describe("BotRunner.run — Claude connectors", () => {
+  const calendar = {
+    provider: "Google Calendar",
+    server: "claude.ai Google Calendar",
+    allowed: null,
+  };
+  const connectorTools = async () => ({
+    tools: [],
+    resolveServer: (n) =>
+      n === "mcp__claude_ai_Google_Calendar__list_events"
+        ? "Google Calendar"
+        : null,
+    connectors: [calendar],
+    connectorServers: ["claude.ai Google Calendar", "claude.ai Slack"],
+    readOnlyTools: ["mcp__claude_ai_Google_Calendar__list_events"],
+  });
+
+  it("refuses a connector run on an API key, with the reason", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine, {
+      deps: { resolveTools: connectorTools },
+    });
+    const record = await runner.run("bot_1", { prompt: "today?" });
+    assert.equal(record.status, "failed");
+    assert.match(
+      record.error,
+      /Google Calendar is a Claude connector, so it only works when this bot runs on your Claude subscription/,
+    );
+    assert.equal(engine.lastCtx, null);
+  });
+
+  it("on the Claude login: the engine gets them, and calls show by name", async () => {
+    const engine = mockEngine([
+      {
+        type: "tool_call",
+        id: "t1",
+        name: "mcp__claude_ai_Google_Calendar__list_events",
+        input: {},
+      },
+      { type: "tool_result", id: "t1", output: "[]", isError: false },
+      { type: "done", stopReason: "end_turn" },
+    ]);
+    engine.id = "claude-agent";
+    const { runner } = makeRunner(engine, {
+      deps: {
+        engines: { getEngine: () => engine },
+        resolveRunProfile: async () => ({
+          providerId: "claude-code",
+          engineId: "claude-agent",
+          model: "claude-haiku-5-5",
+          credentials: {},
+        }),
+        resolveTools: connectorTools,
+      },
+    });
+    const record = await runner.run("bot_1", { prompt: "today?" });
+    assert.equal(record.status, "completed");
+    assert.deepEqual(engine.lastCtx.connectors, [calendar]);
+    assert.deepEqual(engine.lastCtx.connectorServers, [
+      "claude.ai Google Calendar",
+      "claude.ai Slack",
+    ]);
+    assert.deepEqual(record.toolCalls, [
+      { tool: "list_events", provider: "Google Calendar", ok: true },
+    ]);
   });
 });

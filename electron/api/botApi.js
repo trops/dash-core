@@ -30,6 +30,7 @@ const {
   BOTS_RESUME_BOT,
   BOTS_GET_PAUSE_STATE,
   BOTS_LIST_TOOL_SOURCES,
+  BOTS_LIST_CLAUDE_CONNECTORS,
   BOTS_GET_GRANTS,
   BOTS_REVOKE_GRANT,
   BOTS_ENSURE_LEAD,
@@ -206,6 +207,15 @@ const botApi = {
   /** The user's Dash MCP providers a bot can use: [{ name, type, running, toolCount }]. */
   listToolSources: (workspaceId = null) =>
     ipcRenderer.invoke(BOTS_LIST_TOOL_SOURCES, { workspaceId }),
+
+  /**
+   * The connectors in the user's Claude account, from their signed-in Claude
+   * Code CLI: { state, connectors: [{ server, name, status, tools }], checkedAt }.
+   */
+  listClaudeConnectors: (opts = {}) =>
+    ipcRenderer.invoke(BOTS_LIST_CLAUDE_CONNECTORS, {
+      refresh: !!(opts && opts.refresh),
+    }),
 
   /** Remembered approvals ("Always allow"): { [provider]: { tools, folders } }. */
   getGrants: (botId) => ipcRenderer.invoke(BOTS_GET_GRANTS, { botId }),

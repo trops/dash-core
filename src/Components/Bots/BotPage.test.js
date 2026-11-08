@@ -293,9 +293,18 @@ describe("BotPage tabs", () => {
   it("waiting approvals show above every tab", () => {
     const approval = {
       id: "a1",
-      request: { botId: "b1", toolName: "send_email", serverName: "Gmail" },
+      request: {
+        botId: "b1",
+        toolName: "send_email",
+        serverName: "Gmail",
+        input: { to: "someone@example.com", subject: "Hi" },
+      },
     };
     setup({}, { approvals: [approval] });
+    // What it will send, so there's something to decide on.
+    expect(screen.getByTestId("approval-preview")).toHaveTextContent(
+      "to: someone@example.com",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Allow" }));
     expect(mockContacts.approve).toHaveBeenCalledWith("a1", { allow: true });
   });

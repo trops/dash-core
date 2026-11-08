@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useContext, useRef } from "react";
 import { keepLatest } from "./botFormMerge";
+import { connectorToolName } from "../../../utils/toolNames";
 import {
+  AlertBanner,
   Button,
   Button3,
   InputText,
@@ -296,14 +298,26 @@ export const BotDetail = ({
     };
   }, [bot?.id]);
 
+  // A Claude connector's approvals are kept under the engine's tool name.
+  const grantKey = (serverName, tool) => {
+    const src = toolSources.find((s) => s.name === serverName);
+    return src && src.connector ? connectorToolName(src.server, tool) : tool;
+  };
   const isRemembered = (serverName, tool) =>
-    !!(grants[serverName] && (grants[serverName].tools || []).includes(tool));
+    !!(
+      grants[serverName] &&
+      (grants[serverName].tools || []).includes(grantKey(serverName, tool))
+    );
 
   const revokeRemembered = async (serverName, tool) => {
     const api = getMainApi();
     if (!bot?.id || !api?.bots?.revokeGrant) return;
     try {
-      const next = await api.bots.revokeGrant(bot.id, serverName, tool);
+      const next = await api.bots.revokeGrant(
+        bot.id,
+        serverName,
+        grantKey(serverName, tool),
+      );
       setGrants(next && typeof next === "object" ? next : {});
     } catch (_e) {
       // Leave the badge as-is; the revoke can be retried.
@@ -513,16 +527,48 @@ export const BotDetail = ({
       })),
   ].map((s) => ({
     serverName: s.name,
-    label: prettyServer(s.name),
+    // A Claude connector by its own name; its status says what it is.
+    label:
+      s.connector && s.server
+        ? String(s.server).replace(/^claude\.ai\s+/i, "")
+        : prettyServer(s.name),
     // The provider's declared tools (or live tools if undeclared + running);
     // null → every tool, list not known yet.
     tools: Array.isArray(s.tools) ? s.tools : null,
+    connector: !!s.connector,
     status: s.missing
       ? "No longer set up on the Providers page"
-      : s.running
-        ? `Running · ${s.toolCount ?? 0} tools`
-        : "Starts when the bot runs",
+      : s.connector
+        ? s.status === "connected"
+          ? `Claude connector · ${s.toolCount ?? 0} tools`
+          : s.status === "needs-auth"
+            ? "Claude connector · sign in on claude.ai"
+            : s.status === "disabled"
+              ? "Claude connector · turned off in Claude Code"
+              : s.status
+                ? "Claude connector · not connected right now"
+                : "Claude connector"
+        : s.running
+          ? `Running · ${s.toolCount ?? 0} tools`
+          : "Starts when the bot runs",
   }));
+  // Claude connectors only work on the Claude subscription (Claude Code CLI).
+  const onSubscription = effectiveProvider === "claude-code";
+  const pickedConnectors = availableServers.filter(
+    (s) => s.connector && selectedServers.includes(s.serverName),
+  );
+  const connectorWarning =
+    pickedConnectors.length && !onSubscription
+      ? `${pickedConnectors.map((s) => s.label).join(", ")} ${
+          pickedConnectors.length === 1
+            ? "is a Claude connector. It only works"
+            : "are Claude connectors. They only work"
+        } when this bot runs on your Claude subscription, and this bot runs on ${
+          effectiveProvider === "anthropic"
+            ? "your API key"
+            : "another AI provider"
+        }.`
+      : null;
 
   // The model and style it gets from Settings › AI, for the "Default" options.
   const job = jobOfBot(bot);
@@ -795,15 +841,98 @@ export const BotDetail = ({
           </>
         )}
 
+        {/* The model source decides which providers it can use (Claude
+            connectors only on the subscription), so it comes first. */}
+        {showInstructions && (
+          <>
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium">AI model</span>
+              <div className="flex flex-col gap-1">
+                <SelectInput
+                  label="Model source"
+                  value={provider}
+                  onChange={setProvider}
+                  options={[
+                    useDefaultOption(ai),
+                    ...providerOptionsFrom(providers),
+                  ]}
+                />
+                <span className="text-xs opacity-50">
+                  Which AI powers the bot — an API key from your Anthropic,
+                  OpenAI or xAI providers, or &quot;Claude Code (CLI)&quot;,
+                  which uses your Claude login with no API key.
+                </span>
+              </div>
+
+              <SelectInput
+                label="Model"
+                value={model}
+                onChange={setModel}
+                options={modelSelectOptions}
+                placeholder="Default (from Settings › AI)"
+              />
+
+              <SelectInput
+                label="Style"
+                value={style}
+                onChange={setStyle}
+                options={[
+                  {
+                    value: "",
+                    label: jobStyle
+                      ? `Default · ${STYLE_LABELS[jobStyle]} (from Settings › AI)`
+                      : "Default (from Settings › AI)",
+                  },
+                  ...STYLE_OPTIONS,
+                ]}
+              />
+              <span className="text-xs opacity-50">
+                How much it thinks and writes. Brief thinks less and answers in
+                a line or two — the cheapest.
+              </span>
+
+              <SelectInput
+                label="Engine"
+                value={engine}
+                onChange={setEngine}
+                options={ENGINE_OPTIONS}
+                placeholder="Standard (default)"
+              />
+            </div>
+          </>
+        )}
+
         {showAccess && (
           <>
             <div className="flex flex-col gap-2">
               <span className="text-sm font-medium">Providers</span>
               <span className="text-xs opacity-50">
-                What this bot can use — your MCP providers from Settings →
+                What this bot can use — your providers from Settings →
                 Providers. The bot starts any that aren&apos;t running when it
                 runs.
               </span>
+              {connectorWarning ? (
+                <div className="flex flex-col gap-2">
+                  <AlertBanner
+                    variant="warning"
+                    size="compact"
+                    message={connectorWarning}
+                  />
+                  <div>
+                    <Button3
+                      title="Run this bot on my Claude subscription"
+                      size="xs"
+                      onClick={() =>
+                        setProvider(
+                          backendProviderOf(ai) === "claude-code"
+                            ? USE_DEFAULT_PROVIDER
+                            : "claude-code",
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              ) : null}
               {availableServers.length ? (
                 <div className="flex flex-col gap-1">
                   {availableServers.map((s) => {
@@ -814,9 +943,14 @@ export const BotDetail = ({
                           <Checkbox
                             label={s.label}
                             checked={on}
+                            disabled={s.connector && !onSubscription && !on}
                             onChange={() => toggleServer(s.serverName)}
                           />
-                          <span className="text-xs opacity-50">{s.status}</span>
+                          <span className="text-xs opacity-50">
+                            {s.connector && !onSubscription && !on
+                              ? "Claude connector · needs your Claude subscription"
+                              : s.status}
+                          </span>
                         </div>
                         {on ? (
                           <div className="flex flex-col gap-1 pl-7 pb-2">
@@ -910,65 +1044,6 @@ export const BotDetail = ({
               <span className="text-xs opacity-50">
                 Each tool call follows the approval policy below.
               </span>
-            </div>
-          </>
-        )}
-
-        {showInstructions && (
-          <>
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">AI model</span>
-              <div className="flex flex-col gap-1">
-                <SelectInput
-                  label="Model source"
-                  value={provider}
-                  onChange={setProvider}
-                  options={[
-                    useDefaultOption(ai),
-                    ...providerOptionsFrom(providers),
-                  ]}
-                />
-                <span className="text-xs opacity-50">
-                  Which AI powers the bot — an API key from your Anthropic,
-                  OpenAI or xAI providers, or &quot;Claude Code (CLI)&quot;,
-                  which uses your Claude login with no API key.
-                </span>
-              </div>
-
-              <SelectInput
-                label="Model"
-                value={model}
-                onChange={setModel}
-                options={modelSelectOptions}
-                placeholder="Default (from Settings › AI)"
-              />
-
-              <SelectInput
-                label="Style"
-                value={style}
-                onChange={setStyle}
-                options={[
-                  {
-                    value: "",
-                    label: jobStyle
-                      ? `Default · ${STYLE_LABELS[jobStyle]} (from Settings › AI)`
-                      : "Default (from Settings › AI)",
-                  },
-                  ...STYLE_OPTIONS,
-                ]}
-              />
-              <span className="text-xs opacity-50">
-                How much it thinks and writes. Brief thinks less and answers in
-                a line or two — the cheapest.
-              </span>
-
-              <SelectInput
-                label="Engine"
-                value={engine}
-                onChange={setEngine}
-                options={ENGINE_OPTIONS}
-                placeholder="Standard (default)"
-              />
             </div>
           </>
         )}

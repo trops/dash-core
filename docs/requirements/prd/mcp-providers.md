@@ -460,6 +460,72 @@ token storage.
     state round-trip tests in `providerController.test.js` +
     `connectStreamableHttpWithOAuth` dance tests in `mcpController.test.js`.
 
+### Phase 7: Claude connector providers (bots) — Implemented 2026-11-07
+
+**User story (MCP-CC-001):** As a user who already connected Gmail, Google
+Calendar, Drive or Slack in my Claude account (claude.ai › Settings ›
+Connectors), I want my bots to use those connectors without setting up a
+Google project or an MCP server in Dash.
+
+**Acceptance criteria:**
+
+1. ✅ Providers › New has a 4th kind, **Claude connector** (bots only). It
+   lists the connectors in the Claude account the user's Claude Code CLI is
+   signed in to, with each one's status (Connected / Sign in on claude.ai /
+   Couldn't connect) and its tool count; **Add** opens its setup (its tools,
+   Back, **Add provider**) — nothing is saved until Add provider. It's named
+   for the connector ("Google Calendar", or "Google Calendar (Claude
+   connector)" beside a provider already called that) and listed by the
+   connector's name with a **Claude connector** chip.
+2. ✅ Claude Code not installed, or not signed in with a Claude account:
+   says so, how to sign in, and **Check again**.
+3. ✅ A Claude connector provider's detail: which of its tools bots may use
+   (Read-only / Changes things / Deletes, Read-only only, Select all). New
+   ones start with their read-only tools on.
+4. ✅ The bot form has AI model before Providers (the model source decides
+   what it can use) and lists Claude connectors with the other providers;
+   off the subscription they can't be ticked, and a bot already granted one
+   is warned, with **Run this bot on my Claude subscription**.
+5. ✅ A run of a bot with a Claude connector off the subscription stops
+   before it starts, saying why (an API key loads no connectors).
+6. ✅ A run on the subscription gets only its granted connectors (the rest
+   are hidden), only their allowed tools, and each call goes through the
+   bot's approval policy like any provider. Activity shows the tool under
+   its provider.
+7. ✅ Widgets never get one (later round: a relay through a short Claude
+   Code session).
+8. ✅ Every card that asks to allow a bot's tool call (notifications, the
+   bot's page, Bots monitor, chat, Dash team approvals, MCP tasks) shows
+   what it will do: the command, file, address, or the values it sends.
+9. ✅ Bots are told today's date (date only, so the cached prompt holds):
+   their instructions replace Claude Code's own prompt, and without it a bot
+   asked about "today" asked to run `date`.
+
+**How it works:**
+
+-   `electron/bots/claudeConnectors.js` lists the connectors with the Agent
+    SDK's `mcpServerStatus()` on a session that never sends a message (no
+    model call, no cost), `ENABLE_CLAUDEAI_MCP_SERVERS=true`, no settings,
+    and waits for ones still connecting. `claude auth status` says whether
+    the CLI is signed in with a Claude account. Cached in the main process
+    (`bots.listClaudeConnectors({ refresh })`).
+-   Provider shape: `providerClass: "connector"`, `type: "claude-connector"`,
+    no credentials, `mcpConfig: { transport: "claude-connector", server:
+    "claude.ai Gmail" }`, `allowedTools` as the ceiling.
+-   `toolSources.resolveBotConnectors` gives the run its granted connectors
+    and their tools by the CLI's names (`mcp__claude_ai_Gmail__<tool>`);
+    `ensureBotServers` never starts one.
+-   `claudeAgentEngine`: with connectors, `ENABLE_CLAUDEAI_MCP_SERVERS=true`,
+    `strictMcpConfig: false` (strict mode also drops the account's
+    connectors), `settingSources: []` still, `disallowedTools` hides every
+    connector not granted, and `canUseTool` lets a connector tool through
+    only for a granted connector and an allowed tool, then the Dash gate.
+
+**Tested live (2026-11-07, this Mac's Claude login):** the listing returned
+Gmail (30 tools), Google Calendar (9), Slack (13), Atlassian (41), Claude
+Docs (8) and Google Drive (needs sign-in) in ~6 s; `disallowedTools`
+hid Slack from a run; with `ANTHROPIC_API_KEY` set, no connectors loaded.
+
 ---
 
 ## Implementation Notes & Lessons Learned
@@ -641,6 +707,7 @@ interactive OAuth 2.0 via the SDK's native `OAuthClientProvider`.
 | 1.1.0   | 2026-02-19 | Product Team | Phase 1-3 complete; added Implementation Notes & Lessons Learned section; resolved open questions (server start strategy, tool scoping layers); corrected Slack package name; updated architecture diagram re: AppContext |
 | 1.2.0   | 2026-02-19 | Product Team | Added multi-widget server deduplication & reference counting (mcpController pendingStarts + useMcpProvider module-level state); fixes restart loop when multiple widgets share an MCP server                              |
 | 1.3.0   | 2026-06-24 | Product Team | Phase 6: interactive OAuth 2.0 for custom streamable_http MCP servers via the SDK-native OAuthClientProvider (browser + loopback + DCR + encrypted token storage + auto-refresh). Resolves the OAuth open question.       |
+| 1.4.0   | 2026-11-07 | Product Team | Phase 7: Claude connector providers — bots use the connectors in the user's own Claude account through their signed-in Claude Code CLI (subscription only; widgets in a later round). |
 
 ---
 

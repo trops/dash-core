@@ -182,6 +182,75 @@ describe("claudeAgentEngine", () => {
     );
   });
 
+  // Claude connector providers: the user's own Claude account connectors,
+  // only the granted ones, only on the Claude login.
+  const calendar = {
+    provider: "Google Calendar",
+    server: "claude.ai Google Calendar",
+    allowed: ["list_events"],
+  };
+  const withConnector = (over = {}) =>
+    ctx({
+      connectors: [calendar],
+      connectorServers: [
+        "claude.ai Gmail",
+        "claude.ai Google Calendar",
+        "claude.ai Slack",
+      ],
+      ...over,
+    });
+
+  it("a bot granted a Claude connector gets the account's connectors, the rest hidden", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(withConnector()));
+    assert.equal(captured.options.env.ENABLE_CLAUDEAI_MCP_SERVERS, "true");
+    assert.equal(captured.options.strictMcpConfig, false);
+    assert.deepEqual(captured.options.settingSources, []);
+    assert.deepEqual(captured.options.disallowedTools, [
+      "mcp__claude_ai_Gmail",
+      "mcp__claude_ai_Slack",
+    ]);
+  });
+
+  it("connector tools: only the allowed ones, through the Dash gate", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    const asked = [];
+    await collect(
+      claudeAgentEngine.run(
+        withConnector({
+          approvalPolicy: "ask",
+          requestPermission: async (name) => {
+            asked.push(name);
+            return { allow: true };
+          },
+        }),
+      ),
+    );
+    const can = captured.options.canUseTool;
+    const ok = await can("mcp__claude_ai_Google_Calendar__list_events", {});
+    assert.equal(ok.behavior, "allow");
+    assert.deepEqual(asked, ["mcp__claude_ai_Google_Calendar__list_events"]);
+    const no = await can("mcp__claude_ai_Google_Calendar__delete_event", {});
+    assert.equal(no.behavior, "deny");
+    // A connector it wasn't granted is refused outright.
+    const other = await can("mcp__claude_ai_Slack__send_message", {});
+    assert.equal(other.behavior, "deny");
+    assert.equal(asked.length, 1);
+  });
+
+  it("a connector run on an API key is refused with the reason", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    const events = await collect(
+      claudeAgentEngine.run(withConnector({ credentials: { apiKey: "sk-x" } })),
+    );
+    const err = events.find((e) => e.type === "error");
+    assert.equal(err.code, "CONNECTOR_NEEDS_SUBSCRIPTION");
+    assert.match(
+      err.message,
+      /only works when this bot runs on your Claude subscription/,
+    );
+  });
+
   it("builtinTools 'none' disables every SDK built-in (team leads)", async () => {
     stubQuery([{ type: "result", subtype: "success", usage: {} }]);
     await collect(claudeAgentEngine.run(ctx({ builtinTools: "none" })));

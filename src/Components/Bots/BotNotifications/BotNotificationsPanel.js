@@ -12,6 +12,7 @@ import { WorkspaceContext } from "../../../Context/WorkspaceContext";
 import { useBotContacts } from "../useBotContacts";
 import { useTeamLeads } from "../../AiAssistant/components/RecipientPicker";
 import { BotAvatar } from "../BotAvatar";
+import { ApprovalPreview } from "../ApprovalPreview";
 import { needsYou, whenText } from "./needsYou";
 import { activityLog } from "./activityLog";
 
@@ -352,6 +353,9 @@ export const BotNotificationsPanel = ({
                   {whenText(n.at)}
                 </span>
               </span>
+              {n.kind === "approval" ? (
+                <ApprovalPreview request={n.request} />
+              ) : null}
               <span className={`text-sm ${muted}`}>{n.text}</span>
               {n.convo ? (
                 <span className={`text-xs ${muted}`}>{n.convo}</span>

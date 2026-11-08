@@ -347,3 +347,24 @@ describe("using a provider you have", () => {
     expect(createdFor([], "gmail")).toBe(null);
   });
 });
+
+describe("Claude connectors in a plan", () => {
+  const providers = {
+    Gmail: {
+      name: "Gmail",
+      type: "claude-connector",
+      providerClass: "connector",
+    },
+    Slack: { name: "Slack", type: "slack", providerClass: "mcp" },
+  };
+  it("a connector named like the plan's provider doesn't stand in for it", () => {
+    const have = providerTypesOf(providers);
+    expect(have.has("gmail")).toBe(false);
+    expect(have.has("slack")).toBe(true);
+  });
+  it("isn't offered as one to use", () => {
+    expect(providerChoices(providers, "gmail").map((p) => p.name)).toEqual([
+      "Slack",
+    ]);
+  });
+});

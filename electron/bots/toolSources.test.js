@@ -21,6 +21,7 @@ const {
   resolveBotTools,
   effectiveAllowedTools,
   checkToolCall,
+  resolveBotConnectors,
 } = require("./toolSources");
 
 const CONNECTED = "connected";
@@ -411,5 +412,110 @@ describe("checkToolCall — the last-line enforcement in botController._callTool
       checkToolCall(undefined, "Filesystem", "read_text_file").ok,
       false,
     );
+  });
+});
+
+// Claude connector providers: a connector from the user's Claude account.
+// Listed for bots, never started by Dash, and resolved per run.
+describe("Claude connector providers", () => {
+  const calendarProvider = {
+    name: "Google Calendar",
+    type: "claude-connector",
+    providerClass: "connector",
+    mcpConfig: {
+      transport: "claude-connector",
+      server: "claude.ai Google Calendar",
+    },
+    allowedTools: ["list_events", "get_event", "delete_event"],
+  };
+  const listing = [
+    {
+      server: "claude.ai Google Calendar",
+      name: "Google Calendar",
+      status: "connected",
+      tools: [
+        { name: "list_events", readOnly: true },
+        { name: "get_event", readOnly: true },
+        { name: "delete_event", destructive: true },
+        { name: "create_event" },
+      ],
+    },
+  ];
+
+  it("shows in the bot form's list with its status and tools", () => {
+    const [src] = listToolSources({
+      providers: [calendarProvider],
+      connectors: listing,
+    });
+    assert.equal(src.name, "Google Calendar");
+    assert.equal(src.connector, true);
+    assert.equal(src.server, "claude.ai Google Calendar");
+    assert.equal(src.running, true);
+    assert.equal(src.toolCount, 4);
+    assert.deepEqual(src.tools, ["list_events", "get_event", "delete_event"]);
+  });
+
+  it("before the account was read: listed, status unknown", () => {
+    const [src] = listToolSources({ providers: [calendarProvider] });
+    assert.equal(src.status, null);
+    assert.equal(src.running, false);
+  });
+
+  it("Dash never starts one", async () => {
+    const started = [];
+    const { failed } = await ensureBotServers({
+      bot: { mcpServers: ["Google Calendar"] },
+      getProvider: async () => ({ provider: calendarProvider }),
+      startServer: async (name) => {
+        started.push(name);
+        return {};
+      },
+    });
+    assert.deepEqual(started, []);
+    assert.deepEqual(failed, []);
+  });
+
+  it("a run gets the granted tools by their CLI names, read-only ones marked", () => {
+    const r = resolveBotConnectors({
+      bot: {
+        mcpServers: ["Google Calendar"],
+        toolSelections: { "Google Calendar": ["list_events", "delete_event"] },
+      },
+      providers: [calendarProvider],
+      connectors: listing,
+    });
+    assert.deepEqual(r.connectors, [
+      {
+        provider: "Google Calendar",
+        server: "claude.ai Google Calendar",
+        allowed: ["list_events", "delete_event"],
+      },
+    ]);
+    assert.deepEqual(Object.keys(r.toolServer).sort(), [
+      "mcp__claude_ai_Google_Calendar__delete_event",
+      "mcp__claude_ai_Google_Calendar__list_events",
+    ]);
+    assert.deepEqual(r.readOnly, [
+      "mcp__claude_ai_Google_Calendar__list_events",
+    ]);
+    assert.deepEqual(r.missing, []);
+  });
+
+  it("not granted: nothing; not connected in the account: flagged", () => {
+    assert.deepEqual(
+      resolveBotConnectors({
+        bot: { mcpServers: [] },
+        providers: [calendarProvider],
+        connectors: listing,
+      }).connectors,
+      [],
+    );
+    const r = resolveBotConnectors({
+      bot: { mcpServers: ["Google Calendar"] },
+      providers: [calendarProvider],
+      connectors: [{ ...listing[0], status: "needs-auth", tools: [] }],
+    });
+    assert.deepEqual(r.missing, ["Google Calendar"]);
+    assert.equal(r.connectors.length, 1);
   });
 });

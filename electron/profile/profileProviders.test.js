@@ -39,6 +39,25 @@ const catalog = [
 ];
 
 describe("profileProviders", () => {
+  it("a Claude connector keeps which connector it is, and needs nothing to run", () => {
+    const p = safeProfileProvider({
+      name: "Gmail",
+      type: "claude-connector",
+      providerClass: "connector",
+      credentials: {},
+      mcpConfig: { transport: "claude-connector", server: "claude.ai Gmail" },
+      allowedTools: ["search_threads"],
+    });
+    assert.deepEqual(p.mcpConfig, {
+      transport: "claude-connector",
+      server: "claude.ai Gmail",
+    });
+    assert.deepEqual(providerNeeds(p, catalog), {
+      signIn: false,
+      needsRun: false,
+    });
+  });
+
   it("keeps the connection settings, never a key — even from a crafted profile", () => {
     const p = safeProfileProvider({
       name: "Files",

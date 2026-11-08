@@ -30,6 +30,8 @@ import {
 } from "./botConversation";
 import { appendAnswerText } from "../../utils/answerText";
 import { runCostLabel } from "../../utils/runCostLabel";
+import { shortToolName } from "../../utils/toolNames";
+import { ApprovalPreview } from "./ApprovalPreview";
 
 /**
  * BotChat — a bot's conversation in the Bots view and the Bots dock
@@ -178,10 +180,7 @@ export const BotChat = ({
             ...cur.toolCalls,
             {
               id: event.id,
-              tool: String(event.name || "").replace(
-                /^mcp__[^_]+(?:-[^_]+)*__/,
-                "",
-              ),
+              tool: shortToolName(event.name),
               provider: null,
               ok: null,
             },
@@ -505,6 +504,7 @@ export const BotChat = ({
                   ? ` on ${a.request.serverName}`
                   : " (built-in)"}
               </span>
+              <ApprovalPreview request={a.request} />
               <div className="flex flex-row flex-wrap gap-2">
                 <Button3
                   title="Allow once"

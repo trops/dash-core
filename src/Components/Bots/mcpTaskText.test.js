@@ -122,7 +122,11 @@ describe("mcpTaskText", () => {
         team,
         describe,
       ),
-    ).toEqual({ taskId: "t2", text: "b7 asks" });
+    ).toEqual({
+      taskId: "t2",
+      text: "b7 asks",
+      request: { botId: "b7" },
+    });
     // Asked before the task started, or by another team's bot: not it.
     expect(
       approvalForTasks(
@@ -165,7 +169,12 @@ describe("mcpTaskText", () => {
         team,
         describe,
       ),
-    ).toEqual({ taskId: "t1", text: "asks", id: "a1" });
+    ).toEqual({
+      taskId: "t1",
+      text: "asks",
+      id: "a1",
+      request: { botId: "b7" },
+    });
   });
 
   it("a row's summary is plain text", () => {

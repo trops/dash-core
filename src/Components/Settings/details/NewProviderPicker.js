@@ -41,6 +41,7 @@ const OptionCard = ({ icon, title, description, onClick, currentTheme }) => (
  *   credential → ProviderDetail (credential create form)
  *   mcp        → McpCatalogDetail (catalog browser)
  *   websocket  → WsProviderDetail (WebSocket add form)
+ *   connector  → ClaudeConnectorPicker (the Claude account's connectors)
  *
  * The Widget Builder's existing deep-link path (which always passes
  * an explicit class) bypasses this chooser and goes straight to the
@@ -81,6 +82,13 @@ export const NewProviderPicker = ({ onSelect }) => {
           title="WebSocket"
           description="Real-time WebSocket connection to a streaming endpoint"
           onClick={() => onSelect("websocket")}
+          currentTheme={currentTheme}
+        />
+        <OptionCard
+          icon="link"
+          title="Claude connector"
+          description="Gmail, Calendar, Drive, Slack… from your Claude account, through your Claude subscription. No setup in Dash. Bots only."
+          onClick={() => onSelect("connector")}
           currentTheme={currentTheme}
         />
       </div>

@@ -3,6 +3,7 @@ import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
 import { getAllProviderBindings } from "../../utils/providerResolution";
 import { classOf, providerStatus, providerUsage } from "./providerSummary";
+import { useClaudeConnectors } from "../Settings/details/useClaudeConnectors";
 
 export const getWidgetRequirements = (name) =>
   (name && ComponentManager.config(name)?.providers) || [];
@@ -57,6 +58,11 @@ export function useProviderStatus({
         .join("\n"),
     [providers],
   );
+  // Claude connectors: read the account's list only when there are some.
+  const hasConnectors = Object.values(providers || {}).some(
+    (p) => classOf(p) === "connector",
+  );
+  const claude = useClaudeConnectors(hasConnectors);
 
   // Only re-render when a server's state actually changed.
   const mark = (name, value) =>
@@ -135,6 +141,10 @@ export function useProviderStatus({
             p &&
             (catalog || []).some((e) => e && e.id === p.type && e.authCommand)
           ),
+          connectorStatus:
+            p && classOf(p) === "connector"
+              ? claude.statusOf(p.mcpConfig && p.mcpConfig.server)
+              : null,
         });
       },
       usageOf: (name) => providerUsage(name, { workspaces, bots, bindingsFor }),
@@ -142,8 +152,11 @@ export function useProviderStatus({
       bots,
       botsLoaded,
       refresh: checkRunning,
+      // The Claude account's connectors (list, Check again).
+      claudeConnectors: claude,
     }),
     [
+      claude,
       providers,
       running,
       catalog,

@@ -15,8 +15,45 @@
 "use strict";
 
 const { parseServerKey } = require("../utils/mcpServerKey");
+const { connectorToolPrefix } = require("./claudeConnectors");
 
 const NO_WORKSPACE = "__no_workspace__";
+
+// A connector from the user's Claude account (claudeConnectors.js): nothing
+// for Dash to start — the bot's Claude Code run reaches it.
+const CONNECTOR_CLASS = "connector";
+
+/** A Claude connector provider's account server ("claude.ai Gmail"). */
+const connectorServerOf = (p) =>
+  (p && p.mcpConfig && p.mcpConfig.server) || null;
+
+/**
+ * A Claude connector provider in the bot form's list. `connectors` is the
+ * last listing of the account (null when not read yet): it gives the status
+ * and the tool names.
+ */
+function connectorSource(p, connectors) {
+  const server = connectorServerOf(p);
+  const found = Array.isArray(connectors)
+    ? connectors.find((c) => c.server === server)
+    : null;
+  const declared = Array.isArray(p.allowedTools);
+  return {
+    name: p.name,
+    type: p.type || null,
+    connector: true,
+    server,
+    status: found ? found.status : null,
+    running: !!found && found.status === "connected",
+    toolCount: found ? found.tools.length : null,
+    declared,
+    tools: declared
+      ? [...p.allowedTools]
+      : found
+        ? found.tools.map((t) => t.name)
+        : null,
+  };
+}
 
 const normalizeWorkspace = (wid) =>
   typeof wid === "string" && wid && wid !== NO_WORKSPACE ? wid : null;
@@ -67,11 +104,20 @@ function listToolSources({
   providers,
   connected = [],
   workspaceId = null,
+  connectors = null,
 } = {}) {
   if (!Array.isArray(providers)) return [];
   return providers
-    .filter((p) => p && p.providerClass === "mcp" && p.name)
+    .filter(
+      (p) =>
+        p &&
+        p.name &&
+        (p.providerClass === "mcp" || p.providerClass === CONNECTOR_CLASS),
+    )
     .map((p) => {
+      if (p.providerClass === CONNECTOR_CLASS) {
+        return connectorSource(p, connectors);
+      }
       const live = (connected || []).find(
         (s) => s.serverName === p.name && inBucket(s, workspaceId),
       );
@@ -144,6 +190,8 @@ async function ensureBotServers({
         continue;
       }
       const provider = result && result.provider ? result.provider : result;
+      // A Claude connector has nothing to start: the run reaches it.
+      if (provider && provider.providerClass === CONNECTOR_CLASS) continue;
       if (
         !provider ||
         provider.providerClass !== "mcp" ||
@@ -218,6 +266,51 @@ function resolveBotTools({ bot, connected = [], providerLimits }) {
 }
 
 /**
+ * The Claude connectors a bot may use this run: its granted connector
+ * providers, each with the tools it may call (the provider's limit narrowed
+ * by the bot's selection). Tools are named as the CLI names them
+ * ("mcp__claude_ai_Gmail__search_threads"), so they never clash with the
+ * bot's other tools.
+ *
+ * @param {{ bot, providers, connectors }} args  providers: the provider
+ *   list; connectors: the account listing (status + tools), or null.
+ * @returns {{ connectors: {provider, server, allowed}[], toolServer,
+ *   readOnly: string[], allowedFor, missing: string[] }}
+ */
+function resolveBotConnectors({ bot, providers, connectors }) {
+  const wanted = new Set(
+    Array.isArray(bot && bot.mcpServers) ? bot.mcpServers : [],
+  );
+  const selections = (bot && bot.toolSelections) || {};
+  const out = [];
+  const toolServer = Object.create(null);
+  const allowedFor = Object.create(null);
+  const readOnly = [];
+  const missing = [];
+  for (const p of providers || []) {
+    if (!p || p.providerClass !== CONNECTOR_CLASS || !wanted.has(p.name)) {
+      continue;
+    }
+    const server = connectorServerOf(p);
+    if (!server) continue;
+    const allowed = effectiveAllowedTools(p.allowedTools, selections[p.name]);
+    allowedFor[p.name] = allowed;
+    out.push({ provider: p.name, server, allowed });
+    const found = Array.isArray(connectors)
+      ? connectors.find((c) => c.server === server)
+      : null;
+    if (!found || found.status !== "connected") missing.push(p.name);
+    const prefix = connectorToolPrefix(server);
+    for (const t of (found && found.tools) || []) {
+      if (allowed && !allowed.includes(t.name)) continue;
+      toolServer[prefix + t.name] = p.name;
+      if (t.readOnly) readOnly.push(prefix + t.name);
+    }
+  }
+  return { connectors: out, toolServer, readOnly, allowedFor, missing };
+}
+
+/**
  * Last-line enforcement for a bot tool call. `allowedMap` is the
  * `allowedFor` from this bot's resolveBotTools. Fails closed: unknown bot,
  * unknown provider, or a tool outside the whitelist → rejected.
@@ -245,6 +338,8 @@ function checkToolCall(allowedMap, serverName, toolName) {
 }
 
 module.exports = {
+  CONNECTOR_CLASS,
+  resolveBotConnectors,
   checkToolCall,
   connectedServersFromMap,
   listToolSources,
