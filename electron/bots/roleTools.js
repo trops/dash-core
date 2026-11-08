@@ -604,6 +604,11 @@ function classifyTool(tool) {
 }
 
 function describeProvider(p) {
+  // A connector from the user's Claude account: a bot on the Claude
+  // subscription can use it; a widget never can.
+  if (p.connector) {
+    return `${p.name} — Claude connector: bots only, when they run on the Claude subscription. Widgets can't use it.`;
+  }
   if (p.credentials) {
     return `${p.name}${p.type ? ` (${p.type})` : ""} — credentials widgets can use (no tools)`;
   }

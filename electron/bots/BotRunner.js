@@ -28,6 +28,11 @@
 const { createRequestPermission } = require("./PermissionGate");
 const { truncateText } = require("./botEvents");
 const { appendAnswerText } = require("./answerText");
+const {
+  connectorForTool,
+  runsOnClaudeLogin,
+  connectorNeedsSubscriptionMessage,
+} = require("./claudeConnectors");
 
 const { MAX_ATTEMPTS, classifyError, retryDelay } = require("./retryPolicy");
 
@@ -119,6 +124,23 @@ async function* untilQuit(events, signal) {
         .catch(() => {});
     }
   }
+}
+
+/**
+ * "Today is Saturday, November 7, 2026 (America/New_York)." The date only:
+ * it changes once a day, so the cached prompt still holds between runs.
+ */
+function dateLine(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const when = d.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  return `Today is ${when}${zone ? ` (${zone})` : ""}.`;
 }
 
 class BotRunner {
@@ -248,8 +270,14 @@ class BotRunner {
       };
       Promise.resolve(pending && pending.promise)
         .then((decision) => {
+          const linked = connectorForTool(
+            linkedConnectors,
+            request && request.toolName,
+          );
           approvalLog.push({
-            tool: (request && request.toolName) || "tool",
+            tool: linked
+              ? linked.tool
+              : (request && request.toolName) || "tool",
             provider: (request && request.serverName) || null,
             decision:
               decision && decision.allow
@@ -280,6 +308,8 @@ class BotRunner {
     const toolCalls = [];
     const callIndex = new Map();
     let providerOf = () => null;
+    // This run's granted Claude connectors (set once its tools resolve).
+    let linkedConnectors = [];
     let attempts = 0;
     // The time limit (Settings › AI): the time left, counted only while the
     // run isn't waiting on the user to approve something.
@@ -319,6 +349,11 @@ class BotRunner {
         // providers (the Dash team's build tools, CRE-011) — the gate asks
         // about their tools instead of refusing them as unconfigured.
         servers: extraServers = [],
+        // Claude connectors from the user's Claude account (bots only): the
+        // granted ones, every one in the account, and their read-only tools.
+        connectors = [],
+        connectorServers = [],
+        readOnlyTools = [],
       } = await this._resolveTools(bot, opts);
       providerOf = (name) => {
         try {
@@ -327,6 +362,12 @@ class BotRunner {
           return null;
         }
       };
+      // Only a run on the Claude subscription has the account's connectors
+      // (with an API key the CLI loads none): say so, never run without them.
+      if (connectors.length && !runsOnClaudeLogin(profile)) {
+        throw new Error(connectorNeedsSubscriptionMessage(connectors));
+      }
+      linkedConnectors = connectors;
 
       // Tools their server declares read-only (MCP readOnlyHint, or the
       // catalog's readOnlyTools) — the gate runs these without a prompt
@@ -338,6 +379,7 @@ class BotRunner {
           )
           .map((t) => t.name),
       );
+      for (const name of readOnlyTools) readOnly.add(name);
       const requestPermission = this._makeRequestPermission({
         botId,
         workspaceId: bot.workspaceId,
@@ -352,8 +394,9 @@ class BotRunner {
         // approvals too, so the user can see what ran.
         audit: (entry) => {
           if (entry && entry.outcome === "read-only") {
+            const linked = connectorForTool(linkedConnectors, entry.toolName);
             approvalLog.push({
-              tool: entry.toolName || "tool",
+              tool: linked ? linked.tool : entry.toolName || "tool",
               provider: entry.serverName || null,
               decision: "read-only",
             });
@@ -404,10 +447,16 @@ class BotRunner {
         credentials: profile.credentials,
         adapterId: profile.adapterId,
         baseURL: profile.baseURL,
-        // The style's line on answer length goes after the instructions.
-        systemPrompt: profile.styleLine
-          ? `${bot.instructions}\n\n${profile.styleLine}`
-          : bot.instructions,
+        // The style's line on answer length goes after the instructions,
+        // then the date: the instructions replace Claude Code's own prompt,
+        // so without it a bot asked about "today" shells out to `date`.
+        systemPrompt: [
+          bot.instructions,
+          profile.styleLine,
+          dateLine(this._now()),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         tools,
         session,
         // Run limits (Settings › AI, or the bot's own): steps and, on an API
@@ -437,6 +486,10 @@ class BotRunner {
         approvalPolicy,
         createApproval,
       };
+      if (connectors.length) {
+        ctx.connectors = connectors;
+        ctx.connectorServers = connectorServers;
+      }
       // Engine built-ins this bot may use: a team lead gets none (bot-teams
       // TEAM-002 AC4); Dash team roles get what their job needs (CRE-011) —
       // the run profile says which.
@@ -479,13 +532,18 @@ class BotRunner {
             usedTool = true;
           }
           if (event.type === "tool_call" && event.name) {
+            // A Claude connector's tool: its own name, under its provider.
+            const linked = connectorForTool(connectors, event.name);
             // Bridged tools arrive as "mcp__bot-mcp__<tool>" on the agent engine.
-            const tool = String(event.name).replace(
-              /^mcp__[^_]+(?:-[^_]+)*__/,
-              "",
-            );
+            const tool = linked
+              ? linked.tool
+              : String(event.name).replace(/^mcp__[^_]+(?:-[^_]+)*__/, "");
             callIndex.set(event.id, toolCalls.length);
-            toolCalls.push({ tool, provider: providerOf(tool), ok: null });
+            toolCalls.push({
+              tool,
+              provider: linked ? linked.connector.provider : providerOf(tool),
+              ok: null,
+            });
           } else if (event.type === "tool_result" && callIndex.has(event.id)) {
             toolCalls[callIndex.get(event.id)].ok = !event.isError;
           }

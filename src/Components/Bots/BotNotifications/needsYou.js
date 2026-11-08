@@ -114,6 +114,7 @@ export function needsYou({
       id: `approval:${a.id}`,
       kind: "approval",
       approvalId: a.id,
+      request: req,
       botId: req.botId,
       at: ms(a.createdAt) || now,
       who: place.name ? `${name} · ${place.name}` : name,

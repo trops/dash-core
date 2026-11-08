@@ -58,6 +58,22 @@ test("a Dash team bot's approval: what it wants, and Allow once / Always allow /
   );
 });
 
+test("a Dash team bot's shell command shows before it's allowed", async () => {
+  mount([
+    {
+      id: "ap2",
+      request: {
+        botId: "b_builder",
+        toolName: "Bash",
+        input: { command: "npm test" },
+      },
+    },
+  ]);
+  const card = await screen.findByTestId("dash-team-approval");
+  expect(card).toHaveTextContent("Command");
+  expect(card).toHaveTextContent("npm test");
+});
+
 test("the team's build tools: Allow once or Deny — never a saved grant", async () => {
   mount([builderAsks]);
   await screen.findByTestId("dash-team-approval");

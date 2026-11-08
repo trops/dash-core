@@ -14,6 +14,7 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { approvalText } from "../AppPages/botSummary";
+import { ApprovalPreview } from "./ApprovalPreview";
 import { RunDetails } from "./BotRunHistory";
 import { toPlainText } from "./botConversation";
 import {
@@ -251,6 +252,7 @@ const TaskPart = ({ task, approval, muted, onApprove, hasRun }) => {
           ) : null}
         </div>
       ) : null}
+      {approval ? <ApprovalPreview request={approval.request} /> : null}
       {task.needsYou ? <span>{task.needsYou}</span> : null}
       {/* With a run, its details below hold the answer. */}
       {!hasRun && task.summary ? (

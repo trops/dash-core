@@ -53,7 +53,9 @@ export function providerTypesOf(providers) {
     : Object.values(providers || {});
   const out = new Set();
   for (const p of list) {
-    if (!p) continue;
+    // A Claude connector is for bots on the Claude subscription, never a
+    // widget: it doesn't stand in for a plan's provider.
+    if (!p || p.providerClass === "connector") continue;
     if (normalizeType(p.type)) out.add(normalizeType(p.type));
     if (normalizeType(p.name)) out.add(normalizeType(p.name));
   }
@@ -78,7 +80,7 @@ const providerList = (providers) =>
   (Array.isArray(providers)
     ? providers
     : Object.values(providers || {})
-  ).filter((p) => p && p.name);
+  ).filter((p) => p && p.name && p.providerClass !== "connector");
 
 /**
  * The user's providers to offer for a needed type, closest first: the

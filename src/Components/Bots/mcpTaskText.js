@@ -195,8 +195,8 @@ export function routeRow(route, now = Date.now()) {
  * @param {object[]} approvals  [{ request: { botId, ... }, createdAt }]
  * @param {Set<string>} teamBotIds
  * @param {(a) => string} describe  approvalText
- * @returns {{ taskId: string, text: string, id: string } | null}  id: the
- *   approval's, for Allow / Deny
+ * @returns {{ taskId: string, text: string, id: string, request: object } | null}
+ *   id: the approval's, for Allow / Deny; request: what it asks to do
  */
 export function approvalForTasks(tasks, approvals, teamBotIds, describe) {
   const task = (tasks || []).find(
@@ -214,7 +214,9 @@ export function approvalForTasks(tasks, approvals, teamBotIds, describe) {
     const at = new Date(x.createdAt).getTime();
     return at >= since && at <= until;
   });
-  return a ? { taskId: task.id, text: describe(a), id: a.id } : null;
+  return a
+    ? { taskId: task.id, text: describe(a), id: a.id, request: a.request }
+    : null;
 }
 
 /** "Started 9:04 AM · Done 9:11 AM" — an opened task's times. */

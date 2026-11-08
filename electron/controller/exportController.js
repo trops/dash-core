@@ -104,6 +104,9 @@ const SAFE_MCP_CONFIG_FIELDS = [
   "envMapping",
   "url",
   "builtin",
+  // A Claude connector: which connector of the user's Claude account
+  // ("claude.ai Gmail") — a name, never a sign-in.
+  "server",
 ];
 
 function safeMcpConfig(config) {

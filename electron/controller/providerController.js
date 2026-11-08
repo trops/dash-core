@@ -192,13 +192,18 @@ const providerController = {
         dateUpdated: new Date().toISOString(),
       };
 
+      // A Claude connector (bots only) keeps which connector of the user's
+      // Claude account it is, as { transport: "claude-connector", server }.
+      const toolClass =
+        providerClass === "mcp" || providerClass === "connector";
+
       // Add mcpConfig for MCP providers
-      if (providerClass === "mcp" && mcpConfig) {
+      if (toolClass && mcpConfig) {
         providerEntry.mcpConfig = mcpConfig;
       }
 
       // Add allowedTools for MCP providers
-      if (providerClass === "mcp" && allowedTools) {
+      if (toolClass && allowedTools) {
         providerEntry.allowedTools = allowedTools;
       }
 
@@ -422,7 +427,10 @@ const providerController = {
         providerClass: p.providerClass || "credential",
         wsConfig: p.wsConfig,
       };
-      const ready = hasKey && !opts.signIn && keyComplete(given, draft);
+      // A Claude connector has no key: the user's Claude account signs in.
+      const isConnector = p.providerClass === "connector";
+      const ready =
+        isConnector || (hasKey && !opts.signIn && keyComplete(given, draft));
       const entry = {
         type: p.type,
         providerClass: p.providerClass || "credential",
@@ -435,10 +443,11 @@ const providerController = {
         // Set up by signing in here, not by pasting a key.
         ...(opts.signIn ? { signIn: true } : {}),
       };
-      if (entry.providerClass === "mcp" && p.mcpConfig) {
+      const toolClass = entry.providerClass === "mcp" || isConnector;
+      if (toolClass && p.mcpConfig) {
         entry.mcpConfig = p.mcpConfig;
       }
-      if (entry.providerClass === "mcp" && Array.isArray(p.allowedTools)) {
+      if (toolClass && Array.isArray(p.allowedTools)) {
         entry.allowedTools = p.allowedTools;
       }
       if (entry.providerClass === "websocket" && p.wsConfig) {

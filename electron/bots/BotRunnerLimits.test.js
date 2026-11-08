@@ -77,9 +77,9 @@ describe("BotRunner — Settings › AI", () => {
     });
     await runner.run("bot_1", { prompt: "go" });
     const ctx = engine.lastCtx;
-    assert.equal(
+    assert.match(
       ctx.systemPrompt,
-      "do it\n\nKeep your final answer to a line or two.",
+      /^do it\n\nKeep your final answer to a line or two\.\n\nToday is \w+day, /,
     );
     assert.equal(ctx.effort, "low");
     assert.equal(ctx.maxTurns, 25);
@@ -91,7 +91,7 @@ describe("BotRunner — Settings › AI", () => {
     const engine = engineYielding([{ type: "done", stopReason: "end" }]);
     const { runner } = makeRunner(engine);
     await runner.run("bot_1", { prompt: "go" });
-    assert.equal(engine.lastCtx.systemPrompt, "do it");
+    assert.match(engine.lastCtx.systemPrompt, /^do it\n\nToday is /);
     assert.equal(engine.lastCtx.effort, null);
     assert.equal(engine.lastCtx.maxCostUsd, null);
   });

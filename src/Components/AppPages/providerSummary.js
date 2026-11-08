@@ -26,6 +26,9 @@ export function missingFields(
 ) {
   if (!provider) return [];
   const cls = classOf(provider);
+  // A Claude connector has nothing to fill in: its sign-in is the user's
+  // Claude account.
+  if (cls === "connector") return [];
   if (cls === "websocket") {
     return provider.wsConfig && provider.wsConfig.url ? [] : ["URL"];
   }
@@ -94,8 +97,26 @@ export function providerStatus(
     credentialSchema,
     credentialOptions = null,
     signIn = false,
+    // A Claude connector: its status in the user's Claude account
+    // ("connected", "needs-auth", …), or null when not read yet.
+    connectorStatus = null,
   } = {},
 ) {
+  if (classOf(provider) === "connector") {
+    if (connectorStatus === "connected") {
+      return { key: "connected", label: "Connected", missing: [] };
+    }
+    const label = {
+      "needs-auth": "Sign in on claude.ai",
+      failed: "Couldn't connect",
+      disabled: "Turned off in Claude Code",
+      // Listed before, not in the account now.
+      absent: "Not in your Claude account",
+    }[connectorStatus];
+    if (label)
+      return { key: "needsSetup", label, missing: [], connector: true };
+    return { key: "ready", label: "Claude connector", missing: [] };
+  }
   const missing = missingFields(provider, credentialSchema, credentialOptions);
   // From a loaded profile (dash-profiles): a program waits for the user's
   // OK before it first runs; one with no key yet says which it needs.
@@ -240,6 +261,7 @@ export function providerRenameMessage(from, to, usage) {
 
 const GROUPS = [
   { cls: "mcp", label: "Tools (MCP)" },
+  { cls: "connector", label: "Claude connectors" },
   { cls: "credential", label: "API keys" },
   { cls: "websocket", label: "Live data" },
 ];

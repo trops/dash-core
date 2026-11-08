@@ -33,6 +33,8 @@ const BOTS_PAUSE_BOT = "bots-pause-bot";
 const BOTS_RESUME_BOT = "bots-resume-bot";
 const BOTS_GET_PAUSE_STATE = "bots-get-pause-state";
 const BOTS_LIST_TOOL_SOURCES = "bots-list-tool-sources";
+// The connectors in the user's Claude account (Claude connector providers).
+const BOTS_LIST_CLAUDE_CONNECTORS = "bots-list-claude-connectors";
 const BOTS_GET_GRANTS = "bots-get-grants";
 const BOTS_REVOKE_GRANT = "bots-revoke-grant";
 // Team leads (bot-teams TEAM-002 / TEAM-003).
@@ -142,6 +144,7 @@ module.exports = {
   BOTS_RESUME_BOT,
   BOTS_GET_PAUSE_STATE,
   BOTS_LIST_TOOL_SOURCES,
+  BOTS_LIST_CLAUDE_CONNECTORS,
   BOTS_GET_GRANTS,
   BOTS_REVOKE_GRANT,
   BOTS_ENSURE_LEAD,

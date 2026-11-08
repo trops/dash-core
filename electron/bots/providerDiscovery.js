@@ -300,8 +300,15 @@ async function findProviders(capability, deps) {
       id: `installed:${p.name}`,
       tier: "installed",
       name: p.name,
-      description: entry ? entry.description || "" : "",
-      runs: "Already set up",
+      description: p.connector
+        ? "A connector from your Claude account — bots only, when they run on your Claude subscription. Widgets can't use it."
+        : entry
+          ? entry.description || ""
+          : "",
+      runs: p.connector
+        ? "Already set up (Claude connector, bots only)"
+        : "Already set up",
+      ...(p.connector ? { botsOnly: true } : {}),
       credentials: [],
       sourceUrl: null,
       installable: true,

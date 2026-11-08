@@ -45,7 +45,11 @@ jest.mock("../details/WebSocketProviderForm", () => ({
   WebSocketProviderForm: () => <div data-testid="ws-form" />,
 }));
 jest.mock("../details/NewProviderPicker", () => ({
-  NewProviderPicker: () => <div data-testid="class-chooser" />,
+  NewProviderPicker: ({ onSelect }) => (
+    <div data-testid="class-chooser">
+      <button onClick={() => onSelect("connector")}>Claude connector</button>
+    </div>
+  ),
 }));
 
 import { ProvidersSection } from "./ProvidersSection";
@@ -79,7 +83,7 @@ const workspaces = [
   },
 ];
 
-function setup({ appProviders = providers, ...props } = {}) {
+function setup({ appProviders = providers, claudeConnectors, ...props } = {}) {
   window.mainApi = {
     bots: {
       list: jest.fn().mockResolvedValue([
@@ -88,6 +92,12 @@ function setup({ appProviders = providers, ...props } = {}) {
       ]),
       onListChanged: jest.fn(() => "l"),
       removeListener: jest.fn(),
+      // The Claude account's connectors, read when the page opens.
+      ...(claudeConnectors
+        ? {
+            listClaudeConnectors: jest.fn().mockResolvedValue(claudeConnectors),
+          }
+        : {}),
     },
   };
   const dashApi = {
@@ -557,5 +567,131 @@ describe("ProvidersSection empty state (design audit)", () => {
       within(list()).getByText("No providers match these filters."),
     ).toBeTruthy();
     expect(screen.queryByTestId("providers-empty")).toBeNull();
+  });
+});
+
+describe("ProvidersSection — Claude connectors", () => {
+  const CALENDAR = {
+    server: "claude.ai Google Calendar",
+    name: "Google Calendar",
+    status: "connected",
+    tools: [{ name: "list_events", readOnly: true }, { name: "create_event" }],
+  };
+
+  it("New › Claude connector lists the account's connectors; Add opens its setup, Add provider saves it", async () => {
+    const utils = setup({ createRequested: true });
+    window.mainApi.bots.listClaudeConnectors = jest
+      .fn()
+      .mockResolvedValue({ state: "ready", connectors: [CALENDAR] });
+    fireEvent.click(screen.getByText("Claude connector"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Add Google Calendar" }),
+    );
+    expect(window.mainApi.bots.listClaudeConnectors).toHaveBeenCalledWith({
+      refresh: true,
+    });
+    // Nothing saved yet: its tools first.
+    expect(utils.dashApi.saveProvider).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Name")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+    const [appId, name, data] = utils.dashApi.saveProvider.mock.calls[0];
+    expect(appId).toBe("app");
+    expect(name).toBe("Google Calendar");
+    expect(data).toEqual({
+      providerType: "claude-connector",
+      credentials: {},
+      providerClass: "connector",
+      mcpConfig: {
+        transport: "claude-connector",
+        server: "claude.ai Google Calendar",
+      },
+      // Read-only tools on to begin with.
+      allowedTools: ["list_events"],
+    });
+  });
+
+  it("Back from a connector's setup returns to the list without saving", async () => {
+    const utils = setup({ createRequested: true });
+    window.mainApi.bots.listClaudeConnectors = jest
+      .fn()
+      .mockResolvedValue({ state: "ready", connectors: [CALENDAR] });
+    fireEvent.click(screen.getByText("Claude connector"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Add Google Calendar" }),
+    );
+    // No tools ticked: nothing to add.
+    fireEvent.click(screen.getByLabelText("list_events"));
+    expect(screen.getByRole("button", { name: "Add provider" })).toBeDisabled();
+    fireEvent.click(screen.getAllByRole("button", { name: "Back" })[0]);
+    expect(
+      await screen.findByRole("button", { name: "Add Google Calendar" }),
+    ).toBeInTheDocument();
+    expect(utils.dashApi.saveProvider).not.toHaveBeenCalled();
+  });
+
+  it("an added one shows under Claude connectors with its account status", async () => {
+    setup({
+      appProviders: {
+        ...providers,
+        "Google Calendar": {
+          type: "claude-connector",
+          providerClass: "connector",
+          credentials: {},
+          mcpConfig: {
+            transport: "claude-connector",
+            server: "claude.ai Google Calendar",
+          },
+          allowedTools: ["list_events"],
+        },
+      },
+    });
+    window.mainApi.bots.listClaudeConnectors = jest
+      .fn()
+      .mockResolvedValue({ state: "ready", connectors: [CALENDAR] });
+    expect(
+      screen.getAllByTestId("provider-group").map((g) => g.textContent),
+    ).toContain("Claude connectors");
+    fireEvent.click(row("Google Calendar"));
+    expect(
+      await screen.findByTestId("claude-connector-detail"),
+    ).toBeInTheDocument();
+  });
+
+  it("named apart from another provider, it still shows as the connector, with its chip; a failed save says so", async () => {
+    const utils = setup({
+      appProviders: {
+        ...providers,
+        "Google Calendar (Claude connector)": {
+          type: "claude-connector",
+          providerClass: "connector",
+          credentials: {},
+          mcpConfig: {
+            transport: "claude-connector",
+            server: "claude.ai Google Calendar",
+          },
+          allowedTools: ["list_events"],
+        },
+      },
+      claudeConnectors: { state: "ready", connectors: [CALENDAR] },
+    });
+    const r = row("Google Calendar");
+    expect(within(r).getAllByText("Claude connector").length).toBeGreaterThan(
+      0,
+    );
+    fireEvent.click(r);
+    await screen.findByTestId("claude-connector-detail");
+    utils.dashApi.saveProvider.mockImplementation((appId, name, data, ok) =>
+      ok(null, { error: true, message: "disk full" }),
+    );
+    fireEvent.click(await screen.findByLabelText("create_event"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Couldn't save its tools: disk full"),
+    ).toBeInTheDocument();
+    // Removing it names the connector, not its provider key.
+    fireEvent.click(screen.getByRole("button", { name: "Remove from Dash" }));
+    expect(
+      await screen.findByText("Remove Google Calendar from Dash?"),
+    ).toBeInTheDocument();
   });
 });

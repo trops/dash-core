@@ -14,6 +14,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotDetail } from "../Settings/details/BotDetail";
 import { AuditLogView } from "../AppPages/AuditLogView";
 import { approvalText } from "../AppPages/botSummary";
+import { ApprovalPreview } from "./ApprovalPreview";
 import { BotAvatar } from "./BotAvatar";
 import { BotRunHistory } from "./BotRunHistory";
 import { BotSpending } from "./BotSpending";
@@ -348,25 +349,28 @@ export const BotPage = ({
           {approvals.map((a) => (
             <div
               key={a.id}
-              className={`flex flex-row flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 ${statusTokens.warning.bg} ${statusTokens.warning.border}`}
+              className={`flex flex-col gap-2 rounded-lg border px-4 py-3 ${statusTokens.warning.bg} ${statusTokens.warning.border}`}
             >
-              <span
-                className={`flex flex-row items-center gap-2 text-sm ${statusTokens.warning.text}`}
-              >
-                {approvalText(a)}
-              </span>
-              <span className="flex flex-row gap-2">
-                <Button
-                  title="Allow"
-                  size="sm"
-                  onClick={() => c.approve(a.id, { allow: true })}
-                />
-                <Button3
-                  title="Deny"
-                  size="sm"
-                  onClick={() => c.approve(a.id, { allow: false })}
-                />
-              </span>
+              <div className="flex flex-row flex-wrap items-center justify-between gap-3">
+                <span
+                  className={`flex flex-row items-center gap-2 text-sm ${statusTokens.warning.text}`}
+                >
+                  {approvalText(a)}
+                </span>
+                <span className="flex flex-row gap-2">
+                  <Button
+                    title="Allow"
+                    size="sm"
+                    onClick={() => c.approve(a.id, { allow: true })}
+                  />
+                  <Button3
+                    title="Deny"
+                    size="sm"
+                    onClick={() => c.approve(a.id, { allow: false })}
+                  />
+                </span>
+              </div>
+              <ApprovalPreview request={a.request} />
             </div>
           ))}
         </div>
