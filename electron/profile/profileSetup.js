@@ -21,6 +21,7 @@
 const zlib = require("zlib");
 const crypto = require("crypto");
 const { normalizePackageRef } = require("../registry/packageRef");
+const { builtinFor } = require("../bots/builtinInstructions");
 
 const PROFILE_SETUP_SCHEMA_VERSION = 3;
 // What the account keeps per profile (dash-registry MAX_PROFILE_BYTES).
@@ -48,7 +49,14 @@ const VOLATILE = {
     "lastOpenedAt",
     "activePageId",
   ],
-  bots: ["createdAt", "updatedAt", ...BOT_LOCAL_FIELDS],
+  // promptLayers / layersNotice: set on each computer (bot-teams TEAM-017).
+  bots: [
+    "createdAt",
+    "updatedAt",
+    "promptLayers",
+    "layersNotice",
+    ...BOT_LOCAL_FIELDS,
+  ],
   themes: [],
   folders: [],
 };
@@ -68,6 +76,15 @@ const plain = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 function portableSetupBot(bot) {
   const out = { ...(bot || {}) };
   for (const f of BOT_LOCAL_FIELDS) delete out[f];
+  // A lead's built-in instructions are added at run time (bot-teams
+  // TEAM-017), so its own may be empty — which an older Dash refuses. It
+  // goes with its built-in text instead; a newer Dash takes that back out
+  // when it saves the lead. The markers are this computer's.
+  delete out.promptLayers;
+  delete out.layersNotice;
+  if (out.role === "lead" && !String(out.instructions || "").trim()) {
+    out.instructions = builtinFor(out);
+  }
   return out;
 }
 

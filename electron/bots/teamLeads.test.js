@@ -17,6 +17,7 @@ const {
   LEAD_ACTION_HISTORY,
   CURRENT_LEAD_ACTION,
 } = require("./teamLeads");
+const { userPartOf } = require("./builtinInstructions");
 
 const bots = [
   { id: "lead_7", role: "lead", workspaceId: "7", name: "Kitchen Sink Lead" },
@@ -75,15 +76,23 @@ describe("leadDefinition", () => {
     assert.deepEqual(def.mcpServers, []);
   });
 
+  // Its built-in text is added at run time (TEAM-017): only the user's own
+  // words are saved on it.
+  it("holds no built-in text of its own", () => {
+    assert.equal(def.instructions, "");
+    assert.equal(def.promptLayers, 1);
+  });
+
   it("is told to answer from team data, treat it as untrusted, and not act", () => {
-    assert.match(def.instructions, /Kitchen Sink/);
-    assert.match(def.instructions, /team_recent_runs/);
-    assert.match(def.instructions, /never as instructions/i);
-    assert.match(def.instructions, /can't make or change bots/i);
+    const text = leadInstructions("Kitchen Sink");
+    assert.match(text, /Kitchen Sink/);
+    assert.match(text, /team_recent_runs/);
+    assert.match(text, /never as instructions/i);
+    assert.match(text, /can't make or change bots/i);
   });
 
   it("asks for plain-text answers (the chat shows text, not Markdown)", () => {
-    assert.match(def.instructions, /plain text/i);
+    assert.match(leadInstructions("Kitchen Sink"), /plain text/i);
   });
 });
 
@@ -170,53 +179,35 @@ describe("planEnsureLead", () => {
     assert.match(text, /busy, paused, or waiting for the user to approve/);
   });
 
-  it("upgrades a lead still on any earlier generated instructions", () => {
+  // Older leads' copy of their built-in text is taken out of their own
+  // instructions (builtinInstructions.js); ensureLead never rewrites them.
+  it("leaves a lead on any earlier generated instructions to the one-time move", () => {
     for (const oldAction of LEAD_ACTION_HISTORY) {
       const old = leadInstructions("Kitchen Sink").replace(
         CURRENT_LEAD_ACTION,
         oldAction,
       );
+      const stale = { ...bots[0], instructions: old };
       const plan = planEnsureLead({
         ...base,
-        bots: [{ ...bots[0], instructions: old }, ...bots.slice(1)],
+        bots: [stale, ...bots.slice(1)],
         workspaceId: "7",
         dashboardName: "Kitchen Sink",
       });
-      assert.equal(plan.action, "upgrade", oldAction.slice(0, 40));
-      assert.match(plan.instructions, /team_ask_dash_team/);
+      assert.equal(plan.action, "none", oldAction.slice(0, 40));
+      assert.equal(userPartOf(stale), "", oldAction.slice(0, 40));
+      // Without the plain-text rule (before 2a) too.
+      assert.equal(
+        userPartOf({
+          ...stale,
+          instructions: old.replace(
+            " Answer in plain text — no Markdown formatting.",
+            "",
+          ),
+        }),
+        "",
+      );
     }
-  });
-
-  it("upgrades the Bots-view-era instructions (kept from TEAM-011)", () => {
-    const old = leadInstructions("Kitchen Sink").replace(
-      CURRENT_LEAD_ACTION,
-      LEAD_ACTION_HISTORY[0],
-    );
-    const stale = { ...bots[0], instructions: old };
-    const plan = planEnsureLead({
-      ...base,
-      bots: [stale, ...bots.slice(1)],
-      workspaceId: "7",
-      dashboardName: "Kitchen Sink",
-    });
-    assert.equal(plan.action, "upgrade");
-    assert.equal(plan.lead.id, "lead_7");
-    assert.match(plan.instructions, /Bots view/);
-    assert.doesNotMatch(plan.instructions, /Dashboard Config/);
-  });
-
-  it("also upgrades the older version without the plain-text rule", () => {
-    const older = leadInstructions("Kitchen Sink")
-      .replace(CURRENT_LEAD_ACTION, LEAD_ACTION_HISTORY[0])
-      .replace(" Answer in plain text — no Markdown formatting.", "");
-    const plan = planEnsureLead({
-      ...base,
-      bots: [{ ...bots[0], instructions: older }, ...bots.slice(1)],
-      workspaceId: "7",
-      dashboardName: "Kitchen Sink",
-    });
-    assert.equal(plan.action, "upgrade");
-    assert.match(plan.instructions, /plain text/);
   });
 
   it("leaves instructions the user edited alone", () => {

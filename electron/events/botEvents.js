@@ -42,6 +42,9 @@ const BOTS_ENSURE_LEAD = "bots-ensure-lead";
 const BOTS_SET_LEAD_ENABLED = "bots-set-lead-enabled";
 const BOTS_GET_TEAM_SETTINGS = "bots-get-team-settings";
 const BOTS_DISMISS_LEAD_INTRO = "bots-dismiss-lead-intro";
+// A bot's built-in instructions, for its settings (TEAM-017).
+const BOTS_BUILTIN_INSTRUCTIONS = "bots-builtin-instructions";
+const BOTS_DISMISS_LAYERS_NOTICE = "bots-dismiss-layers-notice";
 const BOTS_GET_SETTINGS = "bots-get-settings";
 const BOTS_SET_SETTINGS = "bots-set-settings";
 const BOTS_ASK_LEAD = "bots-ask-lead";
@@ -151,6 +154,8 @@ module.exports = {
   BOTS_SET_LEAD_ENABLED,
   BOTS_GET_TEAM_SETTINGS,
   BOTS_DISMISS_LEAD_INTRO,
+  BOTS_BUILTIN_INSTRUCTIONS,
+  BOTS_DISMISS_LAYERS_NOTICE,
   BOTS_GET_SETTINGS,
   BOTS_SET_SETTINGS,
   BOTS_ASK_LEAD,

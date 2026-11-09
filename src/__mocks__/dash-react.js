@@ -344,13 +344,21 @@ function useStatusTokens() {
   };
 }
 
-function AlertBanner({ title, message, children, variant }) {
+function AlertBanner({ title, message, children, variant, onClose }) {
   return React.createElement(
     "div",
     { role: "alert", "data-variant": variant },
     title ? React.createElement("h3", null, title) : null,
     message,
     children,
+    // The real banner's close button.
+    onClose
+      ? React.createElement(
+          "button",
+          { type: "button", "aria-label": "Dismiss alert", onClick: onClose },
+          "×",
+        )
+      : null,
   );
 }
 
