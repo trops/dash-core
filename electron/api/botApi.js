@@ -34,6 +34,8 @@ const {
   BOTS_GET_GRANTS,
   BOTS_REVOKE_GRANT,
   BOTS_ENSURE_LEAD,
+  BOTS_BUILTIN_INSTRUCTIONS,
+  BOTS_DISMISS_LAYERS_NOTICE,
   BOTS_SET_LEAD_ENABLED,
   BOTS_GET_TEAM_SETTINGS,
   BOTS_DISMISS_LEAD_INTRO,
@@ -239,6 +241,11 @@ const botApi = {
     ipcRenderer.invoke(BOTS_GET_TEAM_SETTINGS, { workspaceId }),
   dismissLeadIntro: (workspaceId) =>
     ipcRenderer.invoke(BOTS_DISMISS_LEAD_INTRO, { workspaceId }),
+  /** A bot's built-in instructions and the user's own. → { builtin, user } */
+  builtinInstructions: (botId) =>
+    ipcRenderer.invoke(BOTS_BUILTIN_INSTRUCTIONS, { botId }),
+  dismissLayersNotice: (botId) =>
+    ipcRenderer.invoke(BOTS_DISMISS_LAYERS_NOTICE, { botId }),
   /**
    * The Dash team's role bots (CRE-011), in role order, each with its
    * summary, tier, recommended model and pause state. Not in list().

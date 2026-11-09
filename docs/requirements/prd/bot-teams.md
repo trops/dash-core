@@ -1047,6 +1047,26 @@ Acceptance criteria:
 
 Decisions: a passphrase instead of a PIN (harder to guess, easier to say); stored encrypted, not hashed, so the user can see it again — the lockout is what protects a short one; the agent names itself with `from` (the MCP server is stateless per request, so the client's own name isn't available on a tool call).
 
+## TEAM-017: Built-in instructions + the user's own (2026-11-09)
+
+**Status:** Implemented (to the approved mockup, canvas page "Bot instructions: built-in + yours").
+
+**Why:** a lead's and a Dash team bot's generated prompt used to be copied into `bot.instructions`, the field the user edits. Replacing it with their own text took away what Dash needs — a lead stopped bringing in the Dash team to make a widget — and the exact-match upgrade then skipped that bot for good.
+
+**As a user**, I want to add my own instructions to a lead or a Dash team bot without breaking what it does in Dash.
+
+Acceptance criteria:
+
+- [x] Every bot's system prompt is Dash's **built-in instructions**, then — when there are any — a line on who wins on what, then the user's own in `<user_instructions>…</user_instructions>`, then the style line and the date (`electron/bots/builtinInstructions.js`, `_resolveRunProfile` → `profile.instructions`, `BotRunner`). The built-in part is built at run time, so it's always the current one.
+- [x] The user wins on style and format (Markdown included); the built-in part wins on what the bot can do and the rules about data and approvals. A lead asked for something its tools can't do still brings in the Dash team. Dash team roles are the exception on format: Dash reads their answers (a plan, matches, a verdict), so their formats stay fixed.
+- [x] Every save of a lead or Dash team bot (`botController.save`) takes a copy of its built-in text out, so a profile an older Dash saved can't put one back. A profile carries a lead with no instructions of its own as its built-in text, so an older Dash still loads it; `promptLayers` / `layersNotice` belong to each computer and don't make two copies differ.
+- [x] Built-in parts: a lead's is its lead text for its dashboard's current name; a Dash team bot's is its role's text; every other bot gets three short rules (tool data is information, a refused approval means stop, end with a short answer).
+- [x] New leads and Dash team bots save `instructions: ""` and `promptLayers: 1`; their own instructions may be empty (`botSchema`). Other bots still need instructions.
+- [x] Once per bot, at startup and when a dashboard's lead is ensured (`layerInstructionsOnce`): a lead or Dash team bot still holding a copy of its generated text — current or any earlier version (`previousLeadInstructions`, role `history`) — has every paragraph of it taken out; what's left is kept as the user's own. Kept text gets a one-time note in its settings (`layersNotice`, dismissed with `dismissLayersNotice`). Runs take the copy out too until the move is saved.
+- [x] Bot settings: a lead or Dash team bot shows **Built-in instructions** (closed, read-only, "Always on") then **Your instructions**; any other bot shows its instructions then **Built-in rules every bot follows** (`BuiltinInstructions.js`, IPC `bots-builtin-instructions`).
+
+Decisions: the user's part goes after the built-in part so the prompt prefix stays the same from run to run (prompt caching); the built-in text can't be turned off by text — capability switches would come later if wanted.
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams
@@ -1163,6 +1183,7 @@ Decisions: a passphrase instead of a PIN (harder to guess, easier to say); store
 | 1.18    | 2026-10-20 | John   | Consolidation 2c-2: TEAM-005 drafts superseded by the lead's hand-off to the Dash team                                                                                                                                       |
 | 1.19    | 2026-10-21 | John   | Consolidation 4a: TEAM-015 AC9 — the open dashboard's lead and the Dash team pinned                                                                                                                                          |
 | 1.20    | 2026-10-22 | John   | Consolidation 5: reconciled with the code — "Where things are now"; Assistant, Settings › Bots, drafts, removed components and the Ask box marked superseded; TEAM-005 drafts moved to Appendix: history; phase boxes ticked |
+| 1.21    | 2026-11-09 | John   | Added TEAM-017: built-in instructions + the user's own (Implemented)                                                                                                                                                         |
 
 ---
 

@@ -22,7 +22,38 @@ describe("botController — Dash team (CRE-011)", () => {
   it("creates the team at startup, before it's ready", () => {
     assert.match(
       ctrl,
-      /this\.ensureDashTeam\(\);\s*this\.followDefaultOnce\(\);\s*this\._ready = true;/,
+      /this\.ensureDashTeam\(\);\s*this\.layerInstructionsOnce\(\);\s*this\.followDefaultOnce\(\);\s*this\._ready = true;/,
+    );
+  });
+
+  // TEAM-017: built-in instructions first, then the user's own.
+  it("runs every bot on its built-in instructions plus the user's own", () => {
+    assert.match(
+      ctrl,
+      /instructions: instructionsFor\(bot, \{\s*dashboardName: isLead\(bot\)/,
+    );
+    const runner = fs.readFileSync(
+      path.join(__dirname, "BotRunner.js"),
+      "utf8",
+    );
+    assert.match(
+      runner,
+      /profile\.instructions != null\s*\? profile\.instructions/,
+    );
+    assert.match(api, /builtinInstructions: \(botId\) =>/);
+    assert.match(api, /dismissLayersNotice: \(botId\) =>/);
+  });
+
+  it("takes a copy of the built-in text out on every lead or team bot save", () => {
+    // e.g. a profile an older Dash saved, loaded over a lead already moved.
+    assert.match(
+      ctrl,
+      /\(isLead\(whole\) \|\| isDashTeam\(whole\)\) &&\s*typeof definition\.instructions === "string"[\s\S]{0,400}userPartOf\(\s*\{ \.\.\.whole, promptLayers: undefined \}/,
+    );
+    // The one-time move notes kept text once.
+    assert.match(
+      ctrl,
+      /\.\.\.\(step\.instructions \? \{ layersNotice: true \} : \{\}\)/,
     );
   });
 

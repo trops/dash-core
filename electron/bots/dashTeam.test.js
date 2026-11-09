@@ -17,12 +17,27 @@ const {
   builtinToolsFor,
   mergeDashTeamSettings,
 } = require("./dashTeam");
+const { planLayerInstructions } = require("./builtinInstructions");
 
-const teamBot = (role, over = {}) => ({
-  id: `b_${role}`,
-  ...dashTeamDefinition(role),
-  ...over,
-});
+// A team bot as an older Dash made it: not yet on the layers (TEAM-017).
+const teamBot = (role, over = {}) => {
+  // eslint-disable-next-line no-unused-vars
+  const { promptLayers, ...def } = dashTeamDefinition(role);
+  return { id: `b_${role}`, ...def, ...over };
+};
+
+// Team bots still holding an earlier generated copy of their role's text:
+// the copy is taken out of their own instructions (TEAM-017) and the role's
+// current text is added at run time. Text the user wrote stays.
+const upgrades = (bots) =>
+  planLayerInstructions(bots)
+    .map((step) => ({ step, bot: bots.find((b) => b.id === step.id) }))
+    .filter(({ step, bot }) => bot.instructions && step.instructions === "")
+    .map(({ step, bot }) => ({
+      action: "upgrade",
+      role: bot.role,
+      instructions: step.instructions,
+    }));
 
 describe("Dash team roles", () => {
   it("has the Planner, Scout, Builder, Checker and their lead", () => {
@@ -77,6 +92,7 @@ describe("planEnsureDashTeam", () => {
 
   it("the Dash Lead (lead-workspace release 1): the team's contact, on the fast tier", () => {
     const def = dashTeamDefinition("dashlead");
+    const text = ROLES.find((r) => r.role === "dashlead").instructions;
     assert.equal(def.name, "Dash Lead");
     assert.equal(def.ref, "dash/dashlead");
     // Never a dashboard lead: those are role "lead" on a dashboard.
@@ -86,11 +102,11 @@ describe("planEnsureDashTeam", () => {
       modelForRole(teamBot("dashlead"), "claude-code", {}),
       "claude-haiku-5-5",
     );
-    assert.match(def.instructions, /ask_role/);
+    assert.match(text, /ask_role/);
     // Release 3a: the plan shows beside its answer, to approve or change —
     // no more sending the user to Create.
-    assert.match(def.instructions, /approve it or change it right there/);
-    assert.doesNotMatch(def.instructions, /open Create in the left menu/);
+    assert.match(text, /approve it or change it right there/);
+    assert.doesNotMatch(text, /open Create in the left menu/);
   });
 
   it("a Dash Lead still on release 1's or 3a's words upgrades; edited ones stay", () => {
@@ -102,25 +118,22 @@ describe("planEnsureDashTeam", () => {
     assert.match(spec.instructions, /the plan is still as it was/);
     const was3a = { ...teamBot("dashlead"), instructions: spec.history[1] };
     assert.equal(
-      planEnsureDashTeam([
+      upgrades([
         ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
         was3a,
       ]).length,
       1,
     );
     const old = { ...teamBot("dashlead"), instructions: spec.history[2] };
-    const plan = planEnsureDashTeam([
+    const plan = upgrades([
       ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
       old,
     ]);
     assert.equal(plan.length, 1);
-    assert.match(
-      JSON.stringify(plan[0]),
-      /approve it or change it right there/,
-    );
+    assert.equal(plan[0].action, "upgrade");
     const edited = { ...old, instructions: "My own words." };
     assert.deepEqual(
-      planEnsureDashTeam([
+      upgrades([
         ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
         edited,
       ]),
@@ -131,7 +144,7 @@ describe("planEnsureDashTeam", () => {
   it("leaves a complete team alone, including edited instructions", () => {
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[0].instructions = "My own words.";
-    assert.deepEqual(planEnsureDashTeam(bots), []);
+    assert.deepEqual(upgrades(bots), []);
   });
 
   it("upgrades instructions still on an earlier generated version", () => {
@@ -140,10 +153,10 @@ describe("planEnsureDashTeam", () => {
     try {
       const bots = ROLE_IDS.map((r) => teamBot(r));
       bots[1].instructions = "old scout text";
-      const plan = planEnsureDashTeam(bots);
+      const plan = upgrades(bots);
       assert.equal(plan.length, 1);
       assert.equal(plan[0].action, "upgrade");
-      assert.equal(plan[0].instructions, spec.instructions);
+      assert.equal(plan[0].instructions, "");
     } finally {
       spec.history.pop();
     }
@@ -234,7 +247,7 @@ describe("Dash team instructions (slice 3a)", () => {
     assert.ok(planner.history.length >= 1);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[0].instructions = planner.history[5];
-    const plan = planEnsureDashTeam(bots);
+    const plan = upgrades(bots);
     assert.equal(plan[0].action, "upgrade");
     assert.equal(plan[0].role, "planner");
   });
@@ -252,7 +265,7 @@ describe("Dash team instructions (slice 3b-1)", () => {
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[2].instructions = builder.history[1];
     bots[3].instructions = checker.history[1];
-    const plan = planEnsureDashTeam(bots);
+    const plan = upgrades(bots);
     assert.deepEqual(
       plan.map((p) => [p.action, p.role]),
       [
@@ -299,7 +312,7 @@ describe("Dash team instructions (slice 4)", () => {
     assert.equal(scout.history.length, 3);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[1].instructions = scout.history[1];
-    const plan = planEnsureDashTeam(bots);
+    const plan = upgrades(bots);
     assert.deepEqual(
       plan.map((p) => [p.action, p.role]),
       [["upgrade", "scout"]],
@@ -467,7 +480,7 @@ describe("Dash team instructions (Create build fixes 3)", () => {
     assert.equal(checker.history.length, 6);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[3].instructions = checker.history[1];
-    const plan = planEnsureDashTeam(bots);
+    const plan = upgrades(bots);
     assert.deepEqual(
       plan.map((p) => [p.action, p.role]),
       [["upgrade", "checker"]],
@@ -484,7 +497,7 @@ describe("Dash team instructions (plan grids)", () => {
     assert.match(planner.instructions, /one filter per row/);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[0].instructions = planner.history[2];
-    const plan = planEnsureDashTeam(bots);
+    const plan = upgrades(bots);
     assert.deepEqual(
       plan.map((p) => [p.action, p.role]),
       [["upgrade", "planner"]],
@@ -518,7 +531,7 @@ describe("Dash team instructions (dashboards can be apps)", () => {
       const bots = ROLE_IDS.map((r) => teamBot(r));
       bots[0].instructions = old;
       assert.deepEqual(
-        planEnsureDashTeam(bots).map((p) => [p.action, p.role]),
+        upgrades(bots).map((p) => [p.action, p.role]),
         [["upgrade", "planner"]],
       );
     }
@@ -544,7 +557,7 @@ describe("Dash team instructions (bot results cards are the user's call)", () =>
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[0].instructions = planner.history[1];
     assert.deepEqual(
-      planEnsureDashTeam(bots).map((p) => [p.action, p.role]),
+      upgrades(bots).map((p) => [p.action, p.role]),
       [["upgrade", "planner"]],
     );
   });
@@ -593,12 +606,13 @@ describe("Dash team instructions (consolidation Phase 3: a change to one widget)
     const bots = roles.map((r) =>
       teamBot(r, { instructions: role(r).history[0] }),
     );
+    // A copy of the current text goes too (TEAM-017).
     bots.push(
       teamBot("dashlead", { instructions: role("dashlead").instructions }),
     );
     assert.deepEqual(
-      planEnsureDashTeam(bots).map((p) => [p.action, p.role]),
-      roles.map((r) => ["upgrade", r]),
+      upgrades(bots).map((p) => [p.action, p.role]),
+      [...roles, "dashlead"].map((r) => ["upgrade", r]),
     );
   });
 });
@@ -669,11 +683,12 @@ describe("Dash team instructions (design guide)", () => {
       const h = role(r).history;
       return teamBot(r, { instructions: h[h.length - 1] });
     });
-    const plan = planEnsureDashTeam(bots);
+    const plan = upgrades(bots);
     for (const r of ["builder", "checker"]) {
       const p = plan.find((x) => x.role === r);
       assert.equal(p && p.action, "upgrade", r);
-      assert.equal(p.instructions, role(r).instructions);
+      // Only the copy goes; the role text is added at run time.
+      assert.equal(p.instructions, "");
     }
   });
   it("teams on the text before the guide upgrade", () => {
@@ -681,11 +696,12 @@ describe("Dash team instructions (design guide)", () => {
       const h = role(r).history;
       return teamBot(r, { instructions: h[h.length - 1] });
     });
-    const plan = planEnsureDashTeam(bots);
+    const plan = upgrades(bots);
     for (const r of ["planner", "checker"]) {
       const p = plan.find((x) => x.role === r);
       assert.equal(p && p.action, "upgrade", r);
-      assert.equal(p.instructions, role(r).instructions);
+      // Only the copy goes; the role text is added at run time.
+      assert.equal(p.instructions, "");
     }
   });
 });
@@ -763,7 +779,7 @@ describe("Dash team instructions (plan → build: never stuck)", () => {
     // The Lead on the words before upgrades.
     assert.doesNotMatch(lead.history[0], /neither can you ask the Builder/);
     const was = { ...teamBot("dashlead"), instructions: lead.history[0] };
-    const plan = planEnsureDashTeam([
+    const plan = upgrades([
       ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
       was,
     ]);
@@ -778,7 +794,7 @@ describe("Dash team instructions (plan → build: never stuck)", () => {
     assert.doesNotMatch(before, /don't ask where it goes/);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[0].instructions = before;
-    const plan = planEnsureDashTeam(bots);
+    const plan = upgrades(bots);
     assert.equal(plan[0].action, "upgrade");
     assert.equal(plan[0].role, "planner");
   });

@@ -24,6 +24,9 @@
 const { getCuratedModels, getDefaultModel } = require("../llm/modelProviders");
 
 const SYSTEM = "dash-team";
+// Same marker as a lead's (teamLeads.js): `instructions` hold only the
+// user's own words.
+const PROMPT_LAYERS = 1;
 
 // How the Scout hands back what it found, for Create to show (slice 4).
 const MATCHES_FORMAT =
@@ -89,9 +92,9 @@ const LAYOUT_RULES =
   "Lay a dashboard out the way the Dash design guide does: one main area that holds what the dashboard is for, with supporting widgets beside or above it — not a wall of equal tiles; keep related controls together (filters beside the results they filter, a search bar above them); and each widget is its own panel, so don't plan a widget whose only job is to frame or label others.";
 
 /**
- * The roles. `instructions` is the current generated text; `history` keeps
- * earlier generated versions so ensureDashTeam can upgrade them — text the
- * user edited is never touched.
+ * The roles. `instructions` is each role's built-in text, added at run time
+ * (builtinInstructions.js); `history` keeps earlier versions so the copies
+ * older team bots hold can be taken out of their own instructions.
  */
 const ROLES = [
   {
@@ -357,7 +360,9 @@ function dashTeamDefinition(role) {
     system: SYSTEM,
     role: spec.role,
     workspaceId: null,
-    instructions: spec.instructions,
+    // Only the user's own; the role's text is added at run time.
+    instructions: "",
+    promptLayers: PROMPT_LAYERS,
     // Follows Settings › AI (runProvider.js).
     provider: null,
     model: null,
@@ -371,29 +376,17 @@ function dashTeamDefinition(role) {
 }
 
 /**
- * What ensureDashTeam should do for each role.
- * @returns {Array<{ action: "create", role, definition } |
- *                 { action: "upgrade", role, bot, instructions }>}
+ * The roles ensureDashTeam should create.
+ * @returns {Array<{ action: "create", role, definition }>}
  */
 function planEnsureDashTeam(bots) {
   const out = [];
   for (const spec of ROLES) {
-    const bot = dashTeamBot(bots, spec.role);
-    if (!bot) {
+    if (!dashTeamBot(bots, spec.role)) {
       out.push({
         action: "create",
         role: spec.role,
         definition: dashTeamDefinition(spec.role),
-      });
-    } else if (
-      bot.instructions !== spec.instructions &&
-      spec.history.includes(bot.instructions)
-    ) {
-      out.push({
-        action: "upgrade",
-        role: spec.role,
-        bot,
-        instructions: spec.instructions,
       });
     }
   }

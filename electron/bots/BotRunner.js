@@ -447,11 +447,14 @@ class BotRunner {
         credentials: profile.credentials,
         adapterId: profile.adapterId,
         baseURL: profile.baseURL,
-        // The style's line on answer length goes after the instructions,
+        // Dash's built-in instructions and the user's own
+        // (builtinInstructions.js), then the style's line on answer length,
         // then the date: the instructions replace Claude Code's own prompt,
         // so without it a bot asked about "today" shells out to `date`.
         systemPrompt: [
-          bot.instructions,
+          profile.instructions != null
+            ? profile.instructions
+            : bot.instructions,
           profile.styleLine,
           dateLine(this._now()),
         ]

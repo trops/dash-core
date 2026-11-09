@@ -109,6 +109,13 @@ const {
   handleTeamTool,
 } = require("../bots/teamTools");
 const { isLead, leadOf, planEnsureLead } = require("../bots/teamLeads");
+const {
+  builtinFor,
+  userPartOf,
+  instructionsFor,
+  planLayerInstructions,
+  PROMPT_LAYERS,
+} = require("../bots/builtinInstructions");
 // Every widget item of a workspace: main layout, pages and the sidebar.
 const layoutItems = (ws) =>
   [
@@ -628,6 +635,7 @@ const botController = {
     );
 
     this.ensureDashTeam();
+    this.layerInstructionsOnce();
     this.followDefaultOnce();
 
     this._ready = true;
@@ -637,24 +645,74 @@ const botController = {
   },
 
   /**
-   * The Dash team (CRE-011): create any missing role bots and upgrade
-   * generated instructions the user hasn't edited. Safe to call any time.
+   * The Dash team (CRE-011): create any missing role bots. Safe to call any
+   * time.
    */
   ensureDashTeam() {
     const created = [];
     for (const step of planEnsureDashTeam(this._store.list())) {
       try {
-        if (step.action === "create") {
-          created.push(this._store.create(step.definition));
-        } else if (step.action === "upgrade") {
-          this._store.update(step.bot.id, { instructions: step.instructions });
-        }
+        created.push(this._store.create(step.definition));
       } catch (_e) {
         // A broken store shouldn't stop the app starting; the team is
         // retried on the next launch.
       }
     }
     return created;
+  },
+
+  /**
+   * Once per bot (TEAM-017): leads and Dash team bots made before the
+   * built-in instructions were kept apart hold a copy of them in
+   * `instructions`. Take the copy out and keep the user's own words. Safe to
+   * call any time; bots already done are skipped.
+   */
+  layerInstructionsOnce() {
+    const done = [];
+    for (const step of planLayerInstructions(this._store.list(), (id) =>
+      this._dashboardName(id),
+    )) {
+      try {
+        this._store.update(step.id, {
+          instructions: step.instructions,
+          promptLayers: PROMPT_LAYERS,
+          // Its settings say once what happened to the user's own text.
+          ...(step.instructions ? { layersNotice: true } : {}),
+        });
+        done.push(step.id);
+      } catch (_e) {
+        // Retried on the next launch; runs take the copy out meanwhile.
+      }
+    }
+    return done;
+  },
+
+  /**
+   * A bot's built-in instructions and the user's own, for its settings. No
+   * id: a new bot's (the rules every bot gets).
+   * @returns {{ builtin: string, user: string, notice: boolean } |
+   *           { error: string }}
+   */
+  builtinInstructions(botId) {
+    if (!botId) return { builtin: builtinFor({}), user: "", notice: false };
+    const bot = this._store.get(botId);
+    if (!bot) return { error: "Bot not found" };
+    const dashboardName = isLead(bot)
+      ? this._dashboardName(bot.workspaceId)
+      : null;
+    return {
+      builtin: builtinFor(bot, { dashboardName }),
+      user: userPartOf(bot, { dashboardName }),
+      notice: bot.layersNotice === true,
+    };
+  },
+
+  /** The user read the note about their text being kept (TEAM-017). */
+  dismissLayersNotice(botId) {
+    const bot = this._store.get(botId);
+    if (!bot || !bot.layersNotice) return { ok: true };
+    this._store.update(botId, { layersNotice: false });
+    return { ok: true };
   },
 
   /**
@@ -979,6 +1037,25 @@ const botController = {
           .map((e) => `- ${e}`)
           .join("\n")}`,
       );
+    }
+    // A lead or Dash team bot keeps only the user's own words (TEAM-017): a
+    // copy of its built-in text — from a profile an older Dash saved — is
+    // taken out here, whatever marker the copy came with.
+    if (
+      (isLead(whole) || isDashTeam(whole)) &&
+      typeof definition.instructions === "string"
+    ) {
+      const dashboardName = isLead(whole)
+        ? this._dashboardName(whole.workspaceId)
+        : null;
+      definition = {
+        ...definition,
+        instructions: userPartOf(
+          { ...whole, promptLayers: undefined },
+          { dashboardName },
+        ),
+        promptLayers: PROMPT_LAYERS,
+      };
     }
     const saved = isNew
       ? this._store.create(definition, { keepId: !!opts.keepId })
@@ -1325,13 +1402,10 @@ const botController = {
       providers,
       force,
     });
-    if (plan.action === "upgrade") {
-      const lead = this._store.update(plan.lead.id, {
-        instructions: plan.instructions,
-      });
-      return { lead, created: false, reason: "upgraded" };
-    }
     if (plan.action !== "create") {
+      // A lead from a profile or an older Dash may still hold a copy of its
+      // built-in instructions.
+      if (plan.lead) this.layerInstructionsOnce();
       // Opening a dashboard in a profile brings its lead along.
       if (plan.lead && this._appId) {
         profileMembership.addToActive(this._appId, "bots", plan.lead.id);
@@ -3073,6 +3147,12 @@ const botController = {
       baseURL: provider.baseURL,
       model,
       credentials,
+      // Dash's built-in instructions, then the user's own.
+      instructions: instructionsFor(bot, {
+        dashboardName: isLead(bot)
+          ? this._dashboardName(bot.workspaceId)
+          : null,
+      }),
       // Engine built-ins: none for leads and most Dash team roles, read-only
       // for the Builder; undefined = the engine's full set.
       builtinTools: isLead(bot)

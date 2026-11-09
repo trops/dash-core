@@ -36,6 +36,7 @@ import {
   shortModel,
 } from "../sections/aiSettingsText";
 import { cleanIpcError } from "../../../utils/errorUtils";
+import { BuiltinInstructions } from "./BuiltinInstructions";
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -227,6 +228,9 @@ export const BotDetail = ({
   // A Dash team role (CRE-011) is never on a dashboard and only runs when
   // Dash hands it work — no Team, Schedule, events or Results.
   const isTeamRole = !!bot && bot.system === "dash-team";
+  // Leads and Dash team roles have built-in instructions (TEAM-017): the
+  // user's own are optional.
+  const hasBuiltin = isTeamRole || (!!bot && bot.role === "lead");
   const [showOnDashboard, setShowOnDashboard] = useState(true);
   const [name, setName] = useState(bot?.name || "");
   const [instructions, setInstructions] = useState(bot?.instructions || "");
@@ -687,7 +691,10 @@ export const BotDetail = ({
   // An existing bot saves only when something changed, so Save visibly does
   // something; a new bot can always be created once it has a name.
   const canSave =
-    name.trim() && instructions.trim() && !saving && (isCreating || dirty);
+    name.trim() &&
+    (hasBuiltin || instructions.trim()) &&
+    !saving &&
+    (isCreating || dirty);
 
   const handleSave = async () => {
     setError(null);
@@ -772,7 +779,9 @@ export const BotDetail = ({
   // The edit panel: hand each valid change over right away (no Save here).
   useEffect(() => {
     if (!stageChanges || typeof onChange !== "function") return;
-    if (!dirty || !name.trim() || !instructions.trim()) return;
+    if (!dirty || !name.trim() || (!hasBuiltin && !instructions.trim())) {
+      return;
+    }
     onChange(formDefinition(), openedRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot, stageChanges]);
@@ -794,18 +803,46 @@ export const BotDetail = ({
               />
             </div>
 
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Instructions</span>
-              <TextArea
-                value={instructions}
-                onChange={setInstructions}
-                placeholder="What should this bot do?"
-                rows={5}
-                // Grow with the text — the form already scrolls; no scroll
-                // inside a scroll.
-                autoGrow
-              />
-            </div>
+            {/* Dash's built-in instructions always apply; the user's own
+                add to them (TEAM-017). A lead's or role's built-in part is
+                its job, so it comes first; another bot's own instructions
+                are its job, with the shared rules under them. */}
+            {hasBuiltin ? (
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">Instructions</span>
+                <BuiltinInstructions
+                  botId={bot.id}
+                  kind={isTeamRole ? "role" : "lead"}
+                />
+                <span className="text-sm font-medium">Your instructions</span>
+                <span className="text-xs opacity-50">
+                  {isTeamRole
+                    ? "Added after the built-in ones. Add duties, preferences or tone. The built-in ones decide what this role can do and the format of its answers, which Dash reads."
+                    : "Added after the built-in ones. Add duties, preferences or tone — you decide style and format. The built-in ones decide what this bot can do."}
+                </span>
+                <TextArea
+                  value={instructions}
+                  onChange={setInstructions}
+                  placeholder="Add duties, preferences or tone. Built-in instructions always apply."
+                  rows={3}
+                  autoGrow
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">Instructions</span>
+                <TextArea
+                  value={instructions}
+                  onChange={setInstructions}
+                  placeholder="What should this bot do?"
+                  rows={5}
+                  // Grow with the text — the form already scrolls; no scroll
+                  // inside a scroll.
+                  autoGrow
+                />
+                <BuiltinInstructions botId={bot?.id || null} kind="bot" />
+              </div>
+            )}
 
             {isTeamRole ? null : (
               <div className="flex flex-col gap-2">

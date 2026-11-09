@@ -86,6 +86,39 @@ describe("the setup", () => {
     }
   });
 
+  // bot-teams TEAM-017: an older Dash needs a lead's instructions filled in.
+  it("a lead with no instructions of its own goes with its built-in text", () => {
+    const lead = {
+      id: "l1",
+      name: "Kitchen Lead",
+      role: "lead",
+      workspaceId: "1",
+      instructions: "",
+      promptLayers: 1,
+      layersNotice: false,
+    };
+    const b = portableSetupBot(lead);
+    assert.match(b.instructions, /team lead for the "Kitchen" dashboard/);
+    assert.equal("promptLayers" in b, false);
+    assert.equal("layersNotice" in b, false);
+    // The user's own words go as they are.
+    assert.equal(
+      portableSetupBot({ ...lead, instructions: "Like a pirate." })
+        .instructions,
+      "Like a pirate.",
+    );
+    // An older Dash's copy and this one's empty lead compare the same, as a
+    // profile load compares them (both as a profile carries them).
+    const { promptLayers: _p, layersNotice: _n, ...older } = lead;
+    assert.equal(
+      setupHash("bots", portableSetupBot(lead)),
+      setupHash(
+        "bots",
+        portableSetupBot({ ...older, instructions: b.instructions }),
+      ),
+    );
+  });
+
   it("the same record, whatever changes by itself", () => {
     const ws = setup().dashboards[0];
     assert.equal(

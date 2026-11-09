@@ -13,6 +13,10 @@
 
 const { normalizeWorkspaceId, isOnTeam } = require("./teams");
 
+// Bots whose `instructions` hold only the user's own words; their built-in
+// instructions are added at run time (builtinInstructions.js).
+const PROMPT_LAYERS = 1;
+
 function isLead(bot) {
   return !!bot && bot.role === "lead";
 }
@@ -35,8 +39,8 @@ function defaultLeadProvider(_providers) {
 }
 
 // What the lead says about adding or changing bots. Earlier generated
-// versions are kept so ensureLead can upgrade leads still using them —
-// instructions the user edited are never touched.
+// versions are kept so the copies older leads hold can be taken out of
+// their own instructions (builtinInstructions.js).
 // Consolidation Phase 2c-2: the lead hands "make something" to the Dash
 // team (handoff.js reads the marker; Dash shows the button).
 // Lead-workspace release 1: it asks its bots to run (team_ask_bot).
@@ -118,7 +122,10 @@ function leadDefinition({ workspaceId, dashboardName, provider }) {
     name: `${name} Lead`,
     role: "lead",
     workspaceId: normalizeWorkspaceId(workspaceId),
-    instructions: leadInstructions(name),
+    // Its built-in instructions are added at run time
+    // (builtinInstructions.js); these are only the user's own.
+    instructions: "",
+    promptLayers: PROMPT_LAYERS,
     provider: provider || null,
     model: null,
     engine: null,
@@ -148,16 +155,7 @@ function planEnsureLead({
     return { action: "none", reason: "no-dashboard" };
   }
   const lead = leadOf(bots, workspaceId);
-  if (lead) {
-    // Upgrade generated instructions that predate the Bots view; anything
-    // the user edited is theirs and stays as is.
-    const name = String(lead.name || "").replace(/ Lead$/, "");
-    const current = leadInstructions(name);
-    if (previousLeadInstructions(name).includes(lead.instructions)) {
-      return { action: "upgrade", lead, instructions: current };
-    }
-    return { action: "none", reason: "exists", lead };
-  }
+  if (lead) return { action: "none", reason: "exists", lead };
   if (!force) {
     if (teamSettings && teamSettings.leadEnabled === false) {
       return { action: "none", reason: "turned-off" };
@@ -182,7 +180,9 @@ module.exports = {
   defaultLeadProvider,
   leadDefinition,
   leadInstructions,
+  previousLeadInstructions,
   planEnsureLead,
   LEAD_ACTION_HISTORY,
   CURRENT_LEAD_ACTION,
+  PROMPT_LAYERS,
 };

@@ -99,7 +99,13 @@ function validateBotDefinition(def) {
   if (typeof def.name !== "string" || !def.name.trim()) {
     errors.push("name is required");
   }
-  if (typeof def.instructions !== "string" || !def.instructions.trim()) {
+  // Leads and Dash team bots have built-in instructions
+  // (builtinInstructions.js): the user's own may be empty.
+  const builtIn = def.role === "lead" || def.system === "dash-team";
+  if (
+    typeof def.instructions !== "string" ||
+    (!builtIn && !def.instructions.trim())
+  ) {
     errors.push("instructions are required");
   }
   // provider may be null (use default) or a non-empty string.
