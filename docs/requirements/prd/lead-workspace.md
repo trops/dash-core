@@ -231,7 +231,7 @@ Decided with the user: **your own theme** changes in place and can be published 
 
 A screenshot-to-mockup check after merging found the workspace off the approved frames; fixed:
 
-- The switcher's list scrolls inside the window, each lead with its avatar and the current one ticked; under the name at the top, who's on the team (`workspaceContacts` `line`).
+- The switcher's list scrolls inside the window, each lead with its avatar and the current one ticked; under the name at the top, its dashboard and how many bots ("Life HQ · 1 bot", "Dash team · 4 bots"; `workspaceContacts` `line`), and in the menu its dashboard and who's on the team ("Life HQ · Team: Email Reader"; `menuLine`). Changed 2026-11-09: a bot's name alone under the lead read like the lead's job.
 - A new Dash Lead conversation (frame 13): the mockup's words and starters (outlined), a New conversation row in Recents, and **Start from** on the right — Describe it (the box), a dashboard from the registry (Create's starters until release 6), copy a dashboard (the Dashboards page) and edit a widget (the Widgets page), via `onOpenPage`.
 - The right column in the mockup's order: Outputs, Before it builds (a warn-bordered box, a row per item with its mark, who asks and its action — `PlanChecklistRows rows`), approvals, output cards (icon tile and kind — `OutputCard`), a divider, the team (Scout, Planner, Builder, Checker; ready / done / waiting with each role's line; Findings ›, Plan › in the link colour), and Providers.
 - The opened plan is read only (frame 6): a line ("2 widgets · uses Home Assistant") and a row per widget or bot with a warning row per provider to connect; changes are asked for in the chat. An earlier plan keeps its card in the chat and opens read only.
@@ -253,6 +253,7 @@ Frames 3, 4, 7, 8, 31, 33.
   - Carry on building when it stopped or the app closed mid-build.
 
   **Leave it off** is the conversation's own: the failed piece, and what was skipped because of it, count as left off, and the build reads as built ("Built · Camera strip left off").
+
 - While it builds, the reply box says what's going on ("The team is working · the Builder is building 2 widgets"), and its Stop stops the build (AskStep `working`; `follow` keeps the chat on the newest step).
 - On the right:
   - the plan's line follows the build ("Building · 3 of 7 done", "4 of 7 done · 1 failed", "Built");
@@ -307,8 +308,10 @@ Frames 22, 27–29.
     - **A plan waiting for a yes** (a conversation with a plan and no build, in the last 7 days): **Review in conversation** opens that conversation (`dash:open-workspace` with `recentId`). It says which conversation.
 
     Details opens the lead's conversation, or a lone bot's page.
+
   - **Activity** (`activityLog.js`): a line per run, from this dashboard by default or **All**, each tagged; a lead's run opens its conversation.
   - **Nothing pending:** "Nothing needs you right now."
+
 - **The panel opens by itself** when something new needs the user (not while editing a dashboard, never in a popout). The rail's robot shows a dot while anything does.
 - **Small doors:** `dash:open-page` (`{ page: "providers", providerName? }` | `{ page: "bots" }`) for the panel; the workspace opens on a conversation (`request.recentId`).
 - **Unchanged:** OS notifications; clicking one opens the panel, and the bot's conversation or page.

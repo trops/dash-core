@@ -75,7 +75,11 @@ describe("DashboardStage — bot teams wiring", () => {
 
   it("makes sure an opened dashboard has its idle team lead (TEAM-002)", () => {
     expect(stageSrc).toMatch(
-      /bots\.ensureLead\(\s*workspaceSelected\.id,\s*workspaceSelected\.name/,
+      /bots\.ensureLead\(\s*workspaceSelected\.id,\s*workspaceSelectedSavedName \|\| workspaceSelected\.name/,
+    );
+    // Checked again when the saved name changes: the lead renames with it.
+    expect(stageSrc).toMatch(
+      /workspaceSelectedIsSaved,\s*workspaceSelectedSavedName,\s*\]\);/,
     );
     // Never from a popped-out widget window.
     expect(stageSrc).toMatch(

@@ -14,6 +14,7 @@ const {
   leadDefinition,
   leadInstructions,
   planEnsureLead,
+  leadRename,
   LEAD_ACTION_HISTORY,
   CURRENT_LEAD_ACTION,
 } = require("./teamLeads");
@@ -120,9 +121,97 @@ describe("planEnsureLead", () => {
     const plan = planEnsureLead({
       ...base,
       workspaceId: 7,
-      dashboardName: "x",
+      dashboardName: "Kitchen Sink",
     });
-    assert.deepEqual(plan, { action: "none", reason: "exists", lead: bots[0] });
+    assert.equal(plan.action, "none");
+    assert.equal(plan.reason, "exists");
+    assert.equal(plan.lead, bots[0]);
+    // Its name already matches: it only learns where the name came from.
+    assert.deepEqual(plan.rename, { namedFor: "Kitchen Sink" });
+  });
+
+  it("renames a lead with Dash's own name from the saved name", () => {
+    const own = [
+      {
+        id: "l1",
+        role: "lead",
+        workspaceId: "3",
+        name: "Untitled dashboard Lead",
+        namedFor: "Untitled dashboard",
+      },
+    ];
+    const plan = planEnsureLead({
+      ...base,
+      bots: own,
+      workspaceId: 3,
+      dashboardName: "typed, not saved",
+      savedDashboardName: " Life HQ ",
+    });
+    assert.equal(plan.reason, "exists");
+    assert.deepEqual(plan.rename, {
+      name: "Life HQ Lead",
+      namedFor: "Life HQ",
+    });
+    // Not saved (no saved name): nothing.
+    assert.equal(
+      planEnsureLead({
+        ...base,
+        bots: own,
+        workspaceId: 3,
+        dashboardName: "Life HQ",
+        savedDashboardName: null,
+      }).rename,
+      undefined,
+    );
+  });
+
+  it("leadRename: a name the user chose stays, every time the dashboard opens", () => {
+    // Named by Dash for "Home", then renamed by the user.
+    assert.equal(
+      leadRename({ name: "Sales Lead", namedFor: "Home" }, "Home"),
+      null,
+    );
+    assert.equal(
+      leadRename({ name: "Chief of staff", namedFor: "Home" }, "Life HQ"),
+      null,
+    );
+    // Still Dash's name: follows the dashboard.
+    assert.deepEqual(
+      leadRename({ name: "Home Lead", namedFor: "Home" }, "Life HQ"),
+      { name: "Life HQ Lead", namedFor: "Life HQ" },
+    );
+    assert.equal(
+      leadRename({ name: "Home Lead", namedFor: "Home" }, "Home"),
+      null,
+    );
+    assert.equal(leadRename({ name: "Home Lead", namedFor: "Home" }, ""), null);
+    assert.equal(leadRename(null, "Life HQ"), null);
+  });
+
+  it("leadRename: an older lead (no namedFor) renames only from Dash's default name", () => {
+    assert.deepEqual(
+      leadRename({ name: "Untitled dashboard Lead" }, "Life HQ"),
+      { name: "Life HQ Lead", namedFor: "Life HQ" },
+    );
+    assert.deepEqual(
+      leadRename({ name: "Untitled dashboard 2 Lead" }, "Garden"),
+      { name: "Garden Lead", namedFor: "Garden" },
+    );
+    // Could be the user's own: left alone.
+    assert.equal(leadRename({ name: "Sales Lead" }, "Home"), null);
+    // Already matches: it just learns where its name came from.
+    assert.deepEqual(leadRename({ name: "Home Lead" }, "Home"), {
+      namedFor: "Home",
+    });
+  });
+
+  it("a new lead records the dashboard name its name came from", () => {
+    const plan = planEnsureLead({
+      ...base,
+      workspaceId: "9",
+      dashboardName: "Sales",
+    });
+    assert.equal(plan.definition.namedFor, "Sales");
   });
 
   it("does nothing when the lead was turned off for that dashboard", () => {

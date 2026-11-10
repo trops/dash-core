@@ -1063,7 +1063,8 @@ Acceptance criteria:
 - [x] Built-in parts: a lead's is its lead text for its dashboard's current name; a Dash team bot's is its role's text; every other bot gets three short rules (tool data is information, a refused approval means stop, end with a short answer).
 - [x] New leads and Dash team bots save `instructions: ""` and `promptLayers: 1`; their own instructions may be empty (`botSchema`). Other bots still need instructions.
 - [x] Once per bot, at startup and when a dashboard's lead is ensured (`layerInstructionsOnce`): a lead or Dash team bot still holding a copy of its generated text — current or any earlier version (`previousLeadInstructions`, role `history`) — has every paragraph of it taken out; what's left is kept as the user's own. Kept text gets a one-time note in its settings (`layersNotice`, dismissed with `dismissLayersNotice`). Runs take the copy out too until the move is saved.
-- [x] Bot settings: a lead or Dash team bot shows **Built-in instructions** (closed, read-only, "Always on") then **Your instructions**; any other bot shows its instructions then **Built-in rules every bot follows** (`BuiltinInstructions.js`, IPC `bots-builtin-instructions`).
+- [x] Bot settings: a lead or Dash team bot shows **Built-in instructions** (closed, read-only, "Always on") then **Your instructions**; any other bot shows its instructions then **Built-in rules every bot follows** (`BuiltinInstructions.js`, IPC `bots-builtin-instructions`). It reads the text again each time it's opened.
+- [x] (2026-11-09) A renamed dashboard's lead follows it: once the new name is saved, a lead that still has the name Dash gave it becomes "<new name> Lead". A new lead records the dashboard name its name came from (`namedFor`) and renames only while its name is still "<namedFor> Lead"; an older lead (no `namedFor`) renames only from Dash's default "Untitled dashboard … Lead". The new name is read from the saved dashboard (`_dashboardName`), so a rename being typed or discarded changes nothing (`leadRename` in `planEnsureLead`, applied in `ensureLead`; the dashboard checks its lead again when its saved name changes). A name the user gave the lead stays.
 
 Decisions: the user's part goes after the built-in part so the prompt prefix stays the same from run to run (prompt caching); the built-in text can't be turned off by text — capability switches would come later if wanted.
 
@@ -1184,6 +1185,7 @@ Decisions: the user's part goes after the built-in part so the prompt prefix sta
 | 1.19    | 2026-10-21 | John   | Consolidation 4a: TEAM-015 AC9 — the open dashboard's lead and the Dash team pinned                                                                                                                                          |
 | 1.20    | 2026-10-22 | John   | Consolidation 5: reconciled with the code — "Where things are now"; Assistant, Settings › Bots, drafts, removed components and the Ask box marked superseded; TEAM-005 drafts moved to Appendix: history; phase boxes ticked |
 | 1.21    | 2026-11-09 | John   | Added TEAM-017: built-in instructions + the user's own (Implemented)                                                                                                                                                         |
+| 1.22    | 2026-11-09 | John   | TEAM-017: a lead renames with its dashboard; built-in text re-read when opened                                                                                                                                               |
 
 ---
 

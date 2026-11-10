@@ -176,7 +176,11 @@ test("the switcher lists the Dash Lead, dashboard leads and lone bots; switching
   expect(
     within(menu).queryByRole("button", { name: "Inbox Watch" }),
   ).toBeNull();
-  expect(within(menu).getByText("Inbox Watch")).toBeInTheDocument();
+  const teamLine = within(menu).getByText(
+    /^Kitchen Sink · Team: .*Inbox Watch/,
+  );
+  // Cut short when long: hovering shows all of it.
+  expect(teamLine).toHaveAttribute("title", teamLine.textContent);
   fireEvent.click(within(menu).getByText("Dash Lead"));
   expect(screen.getByTestId("workspace-switcher")).toHaveTextContent(
     "Dash Lead",
@@ -773,8 +777,12 @@ describe("release 3a: matches the mockup", () => {
     render(
       <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
     );
-    // Under the name at the top: who's on the team.
+    // Under the name at the top: its dashboard and how many bots — never
+    // a bot's name, which read like the lead's job.
     expect(screen.getByTestId("workspace-switcher")).toHaveTextContent(
+      /Kitchen Sink · \d+ bots?/,
+    );
+    expect(screen.getByTestId("workspace-switcher")).not.toHaveTextContent(
       "Inbox Watch",
     );
     fireEvent.click(screen.getByTestId("workspace-switcher"));

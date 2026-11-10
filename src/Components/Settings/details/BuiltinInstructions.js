@@ -19,6 +19,8 @@ export const BuiltinInstructions = ({ botId = null, kind = "bot" }) => {
   const [info, setInfo] = useState(null);
   const [open, setOpen] = useState(false);
 
+  // Read again each time it's opened: a lead's text names its dashboard,
+  // which can be renamed while these settings are open.
   useEffect(() => {
     let alive = true;
     const api = getMainApi();
@@ -31,7 +33,7 @@ export const BuiltinInstructions = ({ botId = null, kind = "bot" }) => {
     return () => {
       alive = false;
     };
-  }, [botId]);
+  }, [botId, open]);
 
   const dismissNotice = () => {
     setInfo((prev) => (prev ? { ...prev, notice: false } : prev));

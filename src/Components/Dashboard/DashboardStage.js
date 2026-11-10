@@ -111,7 +111,11 @@ import { applyBulkUserPrefs } from "../../utils/applyBulkUserPrefs";
 import { applyBulkProviderBindings } from "../../utils/applyBulkProviderBindings";
 import { moveWidgetAcrossContainers } from "../../utils/layout";
 import { ComponentManager } from "../../ComponentManager";
-import { saveNewWorkspace, isSavedWorkspace } from "./saveNewWorkspace";
+import {
+  saveNewWorkspace,
+  isSavedWorkspace,
+  savedWorkspaceName,
+} from "./saveNewWorkspace";
 import { syncLayoutRefs } from "./editStaging";
 import { describeEditChanges, withPendingSettings } from "./editChanges";
 import { DiscardList } from "./DiscardList";
@@ -778,17 +782,31 @@ const DashboardStageInner = ({
     workspaceConfig,
     workspaceSelected?.id,
   );
+  // The saved name, not the one being typed: a lead renames with its
+  // dashboard on Save, never on a rename that's discarded.
+  const workspaceSelectedSavedName = savedWorkspaceName(
+    workspaceConfig,
+    workspaceSelected?.id,
+  );
   useEffect(() => {
     if (popout || !workspaceSelected || !workspaceSelectedIsSaved) return;
     const bots = typeof window !== "undefined" && window.mainApi?.bots;
     if (!bots || typeof bots.ensureLead !== "function") return;
     Promise.resolve(
-      bots.ensureLead(workspaceSelected.id, workspaceSelected.name),
+      bots.ensureLead(
+        workspaceSelected.id,
+        workspaceSelectedSavedName || workspaceSelected.name,
+      ),
     )
       .then(() => teamRefreshRef.current && teamRefreshRef.current())
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [popout, workspaceSelected?.id, workspaceSelectedIsSaved]);
+  }, [
+    popout,
+    workspaceSelected?.id,
+    workspaceSelectedIsSaved,
+    workspaceSelectedSavedName,
+  ]);
 
   // Modal state
   const [isThemeManagerOpen, setIsThemeManagerOpen] = useState(false);

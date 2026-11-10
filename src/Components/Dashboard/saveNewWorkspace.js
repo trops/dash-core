@@ -36,3 +36,10 @@ export function isSavedWorkspace(savedWorkspaces, id) {
   }
   return savedWorkspaces.some((ws) => ws && String(ws.id) === String(id));
 }
+
+/** The saved name of workspace `id`, or null when it isn't saved. */
+export function savedWorkspaceName(savedWorkspaces, id) {
+  if (!isSavedWorkspace(savedWorkspaces, id)) return null;
+  const ws = savedWorkspaces.find((w) => w && String(w.id) === String(id));
+  return (ws && typeof ws.name === "string" && ws.name) || null;
+}

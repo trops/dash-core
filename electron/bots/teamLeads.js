@@ -120,6 +120,9 @@ function leadDefinition({ workspaceId, dashboardName, provider }) {
   const name = dashboardName || "Dashboard";
   return {
     name: `${name} Lead`,
+    // The dashboard name its name came from: it renames with the dashboard
+    // only while it still has that name (leadRename).
+    namedFor: name,
     role: "lead",
     workspaceId: normalizeWorkspaceId(workspaceId),
     // Its built-in instructions are added at run time
@@ -137,15 +140,44 @@ function leadDefinition({ workspaceId, dashboardName, provider }) {
   };
 }
 
+// A lead from before `namedFor` was kept: renamed only while it still has
+// the name Dash gives a new dashboard's lead.
+const DEFAULT_LEAD_NAME = /^(Untitled dashboard( \d+)?|Dashboard) Lead$/;
+
+/**
+ * What to change on a lead when its dashboard's saved name changed: only
+ * while it still has the name Dash gave it; a name the user chose stays.
+ * @returns {{ name?: string, namedFor: string } | null}  a patch, or null
+ */
+function leadRename(lead, dashboardName) {
+  const saved = typeof dashboardName === "string" ? dashboardName.trim() : "";
+  if (!lead || !saved || typeof lead.name !== "string") return null;
+  const next = `${saved} Lead`;
+  const auto =
+    typeof lead.namedFor === "string"
+      ? lead.name === `${lead.namedFor} Lead`
+      : DEFAULT_LEAD_NAME.test(lead.name) || lead.name === next;
+  if (!auto) return null;
+  if (lead.name === next) {
+    // Already right; an older lead just learns where its name came from.
+    return lead.namedFor === saved ? null : { namedFor: saved };
+  }
+  return { name: next, namedFor: saved };
+}
+
 /**
  * Should this dashboard get a lead now?
  * @returns {{ action: "create", definition } |
- *           { action: "none", reason: string, lead?: object }}
+ *           { action: "none", reason: string, lead?: object,
+ *             rename?: { name?: string, namedFor: string } }}
  */
 function planEnsureLead({
   bots,
   workspaceId,
   dashboardName,
+  // The dashboard's name as saved (the controller reads it from disk); a
+  // lead renames from this only. Undefined: dashboardName.
+  savedDashboardName,
   teamSettings = { leadEnabled: true },
   settings = { autoLeads: true },
   providers = [],
@@ -155,7 +187,18 @@ function planEnsureLead({
     return { action: "none", reason: "no-dashboard" };
   }
   const lead = leadOf(bots, workspaceId);
-  if (lead) return { action: "none", reason: "exists", lead };
+  if (lead) {
+    const rename = leadRename(
+      lead,
+      savedDashboardName !== undefined ? savedDashboardName : dashboardName,
+    );
+    return {
+      action: "none",
+      reason: "exists",
+      lead,
+      ...(rename ? { rename } : {}),
+    };
+  }
   if (!force) {
     if (teamSettings && teamSettings.leadEnabled === false) {
       return { action: "none", reason: "turned-off" };
@@ -182,6 +225,7 @@ module.exports = {
   leadInstructions,
   previousLeadInstructions,
   planEnsureLead,
+  leadRename,
   LEAD_ACTION_HISTORY,
   CURRENT_LEAD_ACTION,
   PROMPT_LAYERS,

@@ -1,4 +1,8 @@
-import { saveNewWorkspace, isSavedWorkspace } from "./saveNewWorkspace";
+import {
+  saveNewWorkspace,
+  isSavedWorkspace,
+  savedWorkspaceName,
+} from "./saveNewWorkspace";
 
 describe("saveNewWorkspace", () => {
   const workspace = { id: 123, name: "Daily Brief", layout: [] };
@@ -67,5 +71,15 @@ describe("isSavedWorkspace", () => {
     expect(isSavedWorkspace(saved, null)).toBe(false);
     expect(isSavedWorkspace(null, 1)).toBe(false);
     expect(isSavedWorkspace([], 1)).toBe(false);
+  });
+});
+
+describe("savedWorkspaceName", () => {
+  it("is the saved name, or null when not saved or unnamed", () => {
+    const saved = [{ id: 1, name: "Life HQ" }, { id: 2 }];
+    expect(savedWorkspaceName(saved, "1")).toBe("Life HQ");
+    expect(savedWorkspaceName(saved, 2)).toBeNull();
+    expect(savedWorkspaceName(saved, 3)).toBeNull();
+    expect(savedWorkspaceName(null, 1)).toBeNull();
   });
 });

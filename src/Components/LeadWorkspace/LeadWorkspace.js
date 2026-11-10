@@ -1352,7 +1352,10 @@ export const LeadWorkspace = ({
               <span className={`text-sm font-semibold truncate ${strong}`}>
                 {contact ? contact.name : "No one to talk to yet"}
               </span>
-              <span className={`text-xs truncate ${muted}`}>
+              <span
+                className={`text-xs truncate ${muted}`}
+                title={contact ? contact.line || contact.sub : undefined}
+              >
                 {contact ? contact.line || contact.sub : ""}
               </span>
             </span>
@@ -1407,10 +1410,14 @@ export const LeadWorkspace = ({
                           </span>
                         }
                         ariaLabel={current ? `${c.name} (current)` : c.name}
-                        // One line: its bots (or "Just the lead").
+                        // One line: its dashboard and its bots.
                         meta={
-                          <span className="block truncate">
-                            {c.line || c.sub}
+                          <span
+                            className="block truncate"
+                            // A long team is cut short: hover for all of it.
+                            title={c.menuLine || c.line || c.sub}
+                          >
+                            {c.menuLine || c.line || c.sub}
                           </span>
                         }
                         // The one you are on, in the theme's colour (the

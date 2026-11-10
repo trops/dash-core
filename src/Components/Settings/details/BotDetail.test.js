@@ -390,6 +390,17 @@ describe("BotDetail — Providers (the user's Dash MCP providers)", () => {
     expect(screen.getByText(/starts when the bot runs/i)).toBeInTheDocument();
   });
 
+  it("tags each provider with its kind; no filters for a short list", async () => {
+    render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
+    await screen.findByLabelText("Gmail");
+    const tags = screen
+      .getAllByTestId("status-badge")
+      .filter((b) => b.textContent === "MCP");
+    expect(tags).toHaveLength(2);
+    expect(screen.queryByPlaceholderText("Search providers…")).toBeNull();
+    expect(screen.queryByLabelText("Picked only")).toBeNull();
+  });
+
   it("saves the selected providers as mcpServers", async () => {
     const onSave = jest.fn().mockResolvedValue({});
     render(<BotDetail isCreating providers={{}} onSave={onSave} />);
@@ -1544,9 +1555,12 @@ describe("BotDetail — Claude connectors", () => {
   it("shows as a Claude connector, with no warning on the subscription", async () => {
     withBackend("subscription");
     render(<BotDetail bot={bot} providers={{}} onSave={jest.fn()} />);
+    expect(await screen.findByText("Connected · 9 tools")).toBeInTheDocument();
     expect(
-      await screen.findByText("Claude connector · 9 tools"),
-    ).toBeInTheDocument();
+      screen
+        .getAllByTestId("status-badge")
+        .some((b) => b.textContent === "Claude connector"),
+    ).toBe(true);
     expect(
       screen.queryByText(
         /only works when this bot runs on your Claude subscription/,
@@ -1582,9 +1596,7 @@ describe("BotDetail — Claude connectors", () => {
       />,
     );
     expect(
-      await screen.findByText(
-        "Claude connector · needs your Claude subscription",
-      ),
+      await screen.findByText("Needs your Claude subscription"),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Google Calendar")).toBeDisabled();
     unmount();
@@ -1596,9 +1608,130 @@ describe("BotDetail — Claude connectors", () => {
         onSave={jest.fn()}
       />,
     );
-    expect(
-      await screen.findByText("Claude connector · 9 tools"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Connected · 9 tools")).toBeInTheDocument();
     expect(screen.getByLabelText("Google Calendar")).not.toBeDisabled();
+  });
+});
+
+describe("BotDetail — Providers search and filters (many providers)", () => {
+  const mcp = (name) => ({
+    name,
+    type: name,
+    running: false,
+    toolCount: null,
+    declared: false,
+    tools: null,
+  });
+  const cc = (name) => ({
+    name,
+    type: "claude-connector",
+    connector: true,
+    server: "claude.ai " + name,
+    status: "connected",
+    running: true,
+    toolCount: 3,
+    declared: true,
+    tools: ["a", "b", "c"],
+  });
+  const sources = [
+    mcp("algolia"),
+    mcp("filesystem"),
+    mcp("github"),
+    mcp("notion"),
+    cc("Gmail"),
+    cc("Google Calendar"),
+    cc("Google Drive"),
+  ];
+  beforeEach(() => {
+    window.mainApi = {
+      bots: { listToolSources: jest.fn().mockResolvedValue(sources) },
+    };
+  });
+  afterEach(() => {
+    delete window.mainApi;
+  });
+  const shown = () =>
+    screen
+      .queryAllByRole("checkbox")
+      .map((c) => c.closest("label").textContent)
+      .filter((t) => t !== "Picked only");
+  const renderIt = (props = {}) =>
+    render(
+      <BotDetail isCreating providers={{}} onSave={jest.fn()} {...props} />,
+    );
+
+  it("shows search, the kind switch with counts and Picked only", async () => {
+    renderIt();
+    await screen.findByLabelText("Algolia");
+    expect(
+      screen.getByPlaceholderText("Search providers…"),
+    ).toBeInTheDocument();
+    const kinds = screen.getByRole("radiogroup", { name: "Kind" });
+    expect(
+      Array.from(kinds.querySelectorAll("button")).map((b) => b.textContent),
+    ).toEqual(["All 7", "MCP 4", "Claude connectors 3"]);
+    expect(screen.getByLabelText("Picked only")).toBeInTheDocument();
+    expect(screen.getByText("0 picked · showing 7 of 7")).toBeInTheDocument();
+  });
+
+  it("the kind switch shows only that kind", async () => {
+    renderIt();
+    await screen.findByLabelText("Algolia");
+    fireEvent.click(screen.getByText("Claude connectors 3"));
+    expect(shown()).toEqual(["Gmail", "Google Calendar", "Google Drive"]);
+  });
+
+  it("search narrows the list", async () => {
+    renderIt();
+    await screen.findByLabelText("Algolia");
+    fireEvent.change(screen.getByPlaceholderText("Search providers…"), {
+      target: { value: "goo" },
+    });
+    expect(shown()).toEqual(["Google Calendar", "Google Drive"]);
+  });
+
+  it("Picked only shows what the bot uses; hidden picked ones stay on and Show all clears", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    renderIt({ onSave });
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Brief" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Morning brief" },
+    });
+    fireEvent.click(await screen.findByLabelText("Filesystem"));
+    fireEvent.click(screen.getByLabelText("Picked only"));
+    expect(shown()).toEqual(["Filesystem"]);
+    fireEvent.click(screen.getByLabelText("Picked only"));
+    fireEvent.click(screen.getByText("Claude connectors 3"));
+    expect(
+      screen.getByText("1 picked provider is hidden by the filter — still on"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].mcpServers).toEqual(["filesystem"]);
+    fireEvent.click(screen.getByText("Show all"));
+    expect(shown()).toHaveLength(7);
+  });
+
+  it("unticking under Picked only leaves the provider there to tick again", async () => {
+    renderIt();
+    fireEvent.click(await screen.findByLabelText("Filesystem"));
+    fireEvent.click(screen.getByLabelText("Picked only"));
+    fireEvent.click(screen.getByLabelText("Filesystem"));
+    expect(shown()).toEqual(["Filesystem"]);
+    expect(screen.getByLabelText("Filesystem")).not.toBeChecked();
+  });
+
+  it("nothing matches: one line and Clear filters", async () => {
+    renderIt();
+    await screen.findByLabelText("Algolia");
+    fireEvent.change(screen.getByPlaceholderText("Search providers…"), {
+      target: { value: "jira" },
+    });
+    expect(
+      screen.getByText("No providers match these filters."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Clear filters"));
+    expect(shown()).toHaveLength(7);
   });
 });
