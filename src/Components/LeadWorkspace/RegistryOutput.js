@@ -109,7 +109,7 @@ export const RegistryOutput = ({ onUse }) => {
       ) : !list.length ? (
         <span className={`text-sm ${muted}`} role="status">
           {failed
-            ? "The registry couldn't be reached. Try again later, or describe what you want in the box."
+            ? "The registry couldn't be reached. Try again later, or click Ask AI instead."
             : "There are no dashboards in the registry yet."}
         </span>
       ) : (

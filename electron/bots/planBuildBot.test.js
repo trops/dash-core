@@ -208,3 +208,32 @@ describe("botController — bot builds (Phase 2c-1)", () => {
     );
   });
 });
+
+describe("bot builds — a Claude connector runs on the Claude subscription", () => {
+  const sources = [
+    { name: "Work Gmail", type: "gmail", tools: ["search"] },
+    {
+      name: "Gmail",
+      type: "claude-connector",
+      connector: true,
+      server: "claude.ai Gmail",
+      tools: ["search_threads"],
+    },
+  ];
+  it("a bot that uses a connector is set to run on the Claude subscription", () => {
+    const def = planBotDefinition(
+      { ...piece, tools: [{ provider: "Gmail", tools: ["search_threads"] }] },
+      { dashboardId: "7", sources },
+    );
+    assert.deepEqual(def.mcpServers, ["Gmail"]);
+    assert.equal(def.provider, "claude-code");
+  });
+  it("one that doesn't keeps Settings › AI's default", () => {
+    const def = planBotDefinition(piece, {
+      dashboardId: "7",
+      sources: [sources[0]],
+    });
+    assert.deepEqual(def.mcpServers, ["Work Gmail"]);
+    assert.ok(!def.provider);
+  });
+});

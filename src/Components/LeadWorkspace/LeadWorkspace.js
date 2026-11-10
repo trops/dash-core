@@ -34,7 +34,21 @@ import {
   registrySeed,
   MAKE_KINDS,
   START_FROM,
+  waysFor,
 } from "./workspaceStart";
+import {
+  CopyPicker,
+  GoesOn,
+  WayActions,
+  WayScreen,
+  WaysChooser,
+  WherePicker,
+} from "./MakeWays";
+import { RegistryOutput } from "./RegistryOutput";
+import { RegistryBrowse } from "../Bots/RegistryBrowse";
+import { TeamImportReview } from "../Bots/TeamImportReview";
+import { botCopy, copyCandidates } from "../Bots/botCopy";
+import { scheduleLabel } from "../Create/planChecklist";
 import { useDashboard } from "./useDashboard";
 import { useWidgetTarget } from "./useWidgetTarget";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
@@ -105,6 +119,17 @@ const BUILT_TAG = {
   interrupted: "Interrupted",
   removed: "Removed",
 };
+
+/** A bot in Copy one of your bots: what it does, and when it runs. */
+function botLine(b) {
+  const what = String((b && b.instructions) || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const short = what.length > 80 ? `${what.slice(0, 79)}…` : what;
+  const cron = b && b.schedules && b.schedules[0] && b.schedules[0].cron;
+  const when = cron ? scheduleLabel(cron) : "when you run it";
+  return [short, when].filter(Boolean).join(" · ");
+}
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -196,6 +221,15 @@ function startText(contact) {
  * @param {(key) => void} [onStartWithoutAi]  Start from's blank dashboard
  *   ("blank-dashboard") or file ("import-dashboard"), in the workspace's
  *   place (release 6c)
+ * @param {object[]} [dashboards]  the user's dashboards — where a new bot
+ *   goes, and Copy one of your dashboards ("make it in Create")
+ * @param {(dashboard) => Promise} [onDuplicateDashboard]  saves a copy of
+ *   one and opens it
+ *
+ * Making a bot or a dashboard ("make it in Create": a page's New, a
+ * dashboard's Add bot, or its card on the start) shows the ways first —
+ * Ask AI, or the registry, a copy, a blank one, a file — each on its own
+ * screen with ← Back; the box is only Ask AI's.
  */
 export const LeadWorkspace = ({
   request = null,
@@ -205,6 +239,8 @@ export const LeadWorkspace = ({
   onOpenThemeEditor = null,
   onPublishTheme = null,
   onStartWithoutAi = null,
+  dashboards = EMPTY,
+  onDuplicateDashboard = null,
 }) => {
   // rawThemes: whose a changed theme is (theme change round).
   // changeCurrentTheme: Use the remix for the app (theme change leftovers).
@@ -307,9 +343,14 @@ export const LeadWorkspace = ({
     (cellDashboard && (cellDashboard.label || cellDashboard.name)) ||
     "";
   const contactName = contact ? contact.name : "";
+  // What's being made: a page's New, a dashboard's Add bot (with where the
+  // bot goes, `target`), or the start's dashboard or bot card.
+  const [makingReq, setMakingReq] = useState(
+    (request && request.making) || null,
+  );
   const making = useMemo(
     () =>
-      makingStart(request && request.making) ||
+      makingStart(makingReq) ||
       cellStart(cellReq, {
         dashboardName: cellDashboardName,
         leadName: contactName,
@@ -335,16 +376,10 @@ export const LeadWorkspace = ({
             gone: true,
           }
         : null),
-    [request, cellReq, widgetReq, found, cellDashboardName, contactName],
+    [makingReq, cellReq, widgetReq, found, cellDashboardName, contactName],
   );
   const [makingOn, setMakingOn] = useState(
     !!(request && request.making) || !!cellReq || !!widgetReq,
-  );
-  // A page's New Dashboard keeps Start from (release 6c).
-  const makingDashboard = !!(
-    request &&
-    request.making &&
-    request.making.kind === "dashboard"
   );
   const makingShown =
     !!making &&
@@ -353,6 +388,29 @@ export const LeadWorkspace = ({
     (making.cell || making.widget || making.gone
       ? contact.kind !== "bot"
       : contact.kind === "dashlead");
+  // Making a bot or a dashboard: its ways, then the one picked — "ai",
+  // "where" (a bot's dashboard first), "registry", "copy" or "file" — one
+  // at a time (null: the ways).
+  const ways =
+    makingShown && !making.cell && !making.widget
+      ? waysFor(makingReq && makingReq.kind)
+      : null;
+  // A door that brings words for the box (a lead's hand-off) opens on Ask AI.
+  const [way, setWay] = useState(() =>
+    request && typeof request.draft === "string" && request.draft.trim()
+      ? "ai"
+      : null,
+  );
+  // After Where it goes: the way it was picked for, and the pick so far.
+  const [whereNext, setWhereNext] = useState(null);
+  const [wherePick, setWherePick] = useState(null);
+  // A way's search, pick, review (a registry package or a file), outcome.
+  const [wayQuery, setWayQuery] = useState("");
+  const [wayPicked, setWayPicked] = useState(null);
+  const [review, setReview] = useState(null);
+  const [installing, setInstalling] = useState(false);
+  const [wayError, setWayError] = useState(null);
+  const [installed, setInstalled] = useState(null);
   const [switchOpen, setSwitchOpen] = useState(false);
   // What's open in the middle: a thread ({ recentId }), a new question just
   // sent ({ question }), or nothing yet (the start).
@@ -539,7 +597,17 @@ export const LeadWorkspace = ({
     setSeedError(null);
     setReopenedAbout(null);
     setModePick(null);
+    leaveWay(null);
   };
+  // To another way (null: the ways), leaving the last one's pick behind.
+  function leaveWay(next) {
+    setWay(next);
+    setWayQuery("");
+    setWayPicked(null);
+    setReview(null);
+    setWayError(null);
+    setInstalled(null);
+  }
   const switchTo = (next) => {
     setSwitchOpen(false);
     setNavOpen(false);
@@ -711,7 +779,7 @@ export const LeadWorkspace = ({
       ok
         ? null
         : {
-            error: `${dashboard.name} didn't come over. Pick it again, or describe what you want in the box.`,
+            error: `${dashboard.name} didn't come over. Pick it again, or click Ask AI instead.`,
           },
     );
   const startNew = () => {
@@ -1032,21 +1100,23 @@ export const LeadWorkspace = ({
   // The lead is still answering: the plan isn't changed meanwhile.
   const answering = stillAnswering(messages) || askBusy;
 
-  // Or start from shows in a new Dash Lead conversation (and a page's New
-  // Dashboard), in the middle.
+  // Or start from shows in a new Dash Lead conversation, in the middle.
+  // Making a bot or a dashboard has its own ways instead.
   const startsHere =
-    !open &&
-    !!contact &&
-    contact.kind === "dashlead" &&
-    (!makingShown || makingDashboard);
-  // Start from (frame 13). Describing it is the box; the registry's
-  // dashboards open on the right (frame 42); copying a dashboard and editing
-  // a widget are on their pages.
+    !open && !!contact && contact.kind === "dashlead" && !makingShown;
+  // Making a bot or a dashboard: its ways first (one place to start → make
+  // it in Create).
+  const startMaking = (kind, next = null) => {
+    setMakingReq({ kind });
+    setMakingOn(true);
+    leaveWay(next);
+  };
+  // Start from (frame 13): the registry's dashboards and copying one open
+  // on their own, as making a dashboard does; editing a widget is on its
+  // page.
   const startFrom = (kind) => {
-    if (kind === "registry") {
-      setSideOpen("registry");
-      // A small window: the right column is a panel — opened with it.
-      if (narrow) setOutsOpen(true);
+    if (kind === "registry" || kind === "copy") {
+      startMaking("dashboard", kind);
       return;
     }
     if (kind === "blank" || kind === "import") {
@@ -1057,9 +1127,218 @@ export const LeadWorkspace = ({
       else onClose();
       return;
     }
-    const page = kind === "copy" ? "dashboards" : "widgets";
-    if (onOpenPage) onOpenPage(page);
+    if (onOpenPage) onOpenPage("widgets");
     else onClose();
+  };
+
+  // ── Making a bot: where it goes, and each way ──
+  const botTarget = makingReq && makingReq.target ? makingReq.target : null;
+  const targetId =
+    botTarget && !botTarget.none && botTarget.id != null
+      ? String(botTarget.id)
+      : null;
+  const savedDashboards = useMemo(
+    () =>
+      (dashboards || [])
+        .filter((d) => d && d.id !== undefined && d.id !== null)
+        .map((d) => ({
+          id: String(d.id),
+          name: d.name || "Dashboard",
+          bots: (all.bots || []).filter(
+            (b) =>
+              b &&
+              b.role !== "lead" &&
+              b.workspaceId != null &&
+              String(b.workspaceId) === String(d.id),
+          ).length,
+        })),
+    [dashboards, all.bots],
+  );
+  const dashboardName = (id) => {
+    const d = savedDashboards.find((x) => x.id === String(id));
+    return d ? d.name : "";
+  };
+  // The bot form, for a blank bot or a copy: on its dashboard's Bots view,
+  // or in a window for no dashboard (DashboardStage hears dash:new-bot).
+  const openBotForm = (initial = null, note = null) => {
+    window.dispatchEvent(
+      new CustomEvent("dash:new-bot", {
+        detail: { workspaceId: targetId, initial, note },
+      }),
+    );
+    onClose();
+  };
+  // A bot file: the file picker, then its review here.
+  const startBotFile = async () => {
+    const b = botsApi();
+    if (!b || !b.previewTeamImport) return;
+    let r;
+    try {
+      r = (await b.previewTeamImport(targetId)) || {};
+    } catch (e) {
+      r = { error: (e && e.message) || "That file couldn't be read." };
+    }
+    if (r.canceled || r.error) {
+      // Back to the ways (from Where it goes too), saying what went wrong.
+      leaveWay(null);
+      if (r.error) setWayError([r.error, ...(r.errors || [])].join(" "));
+      return;
+    }
+    leaveWay("file");
+    setReview(r);
+  };
+  // A way, once a bot's dashboard is known.
+  const goWay = (w) => {
+    if (w === "blank") openBotForm();
+    else if (w === "file") startBotFile();
+    else leaveWay(w);
+  };
+  const pickWay = (w) => {
+    setWayError(null);
+    if (w === "ai") {
+      leaveWay("ai");
+      return;
+    }
+    if (makingReq && makingReq.kind === "dashboard") {
+      if (w === "blank" || w === "file") {
+        if (onStartWithoutAi)
+          onStartWithoutAi(
+            w === "blank" ? "blank-dashboard" : "import-dashboard",
+          );
+        else onClose();
+        return;
+      }
+      leaveWay(w);
+      return;
+    }
+    // A bot: where it goes first, unless the door said.
+    if (!botTarget) {
+      setWhereNext(w);
+      setWherePick(null);
+      leaveWay("where");
+      return;
+    }
+    goWay(w);
+  };
+  const changeWhere = () => {
+    setWhereNext(way);
+    setWherePick(botTarget);
+    leaveWay("where");
+  };
+  const confirmWhere = () => {
+    if (!wherePick) return;
+    setMakingReq((m) => ({ ...(m || { kind: "bot" }), target: wherePick }));
+    const next = whereNext;
+    setWhereNext(null);
+    if (!next || next === "ai") {
+      leaveWay(next);
+      return;
+    }
+    // The target is read from the request: go once it's set.
+    setPendingWay(next);
+  };
+  const [pendingWay, setPendingWay] = useState(null);
+  useEffect(() => {
+    if (!pendingWay || !botTarget) return;
+    const next = pendingWay;
+    setPendingWay(null);
+    goWay(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingWay, botTarget]);
+  // A registry bot or team: checked in the main process, then reviewed.
+  const pickRegistryBot = async (ref) => {
+    const b = botsApi();
+    if (!b || !b.previewRegistryInstall) return;
+    setWayError(null);
+    let r;
+    try {
+      r = (await b.previewRegistryInstall(targetId, ref)) || {};
+      if (r.authRequired) {
+        const signedIn = await ensureAuthed({
+          message: "Sign in to the Dash registry to install.",
+        });
+        if (!signedIn) return;
+        r = (await b.previewRegistryInstall(targetId, ref)) || {};
+      }
+    } catch (e) {
+      r = { error: (e && e.message) || "That package couldn't be opened." };
+    }
+    if (r.error) {
+      setWayError([r.error, ...(r.errors || [])].join(" "));
+      return;
+    }
+    setReview(r);
+  };
+  const installReviewed = async (choices, roles = null) => {
+    const b = botsApi();
+    if (!b || !review) return;
+    setInstalling(true);
+    setWayError(null);
+    try {
+      const r =
+        (review.previewId
+          ? await b.installFromRegistry(
+              targetId,
+              review.previewId,
+              choices,
+              roles,
+            )
+          : await b.installTeam(targetId, review.manifest, choices, roles)) ||
+        {};
+      if (r.error) {
+        setWayError([r.error, ...(r.errors || [])].join(" "));
+        return;
+      }
+      setInstalled({
+        name: review.manifest.name,
+        bots: r.installed || [],
+        // Triggers and widgets that couldn't be set up (no such widget here).
+        skipped: (r.unwired || []).filter((x) => typeof x === "string"),
+      });
+      setReview(null);
+    } catch (e) {
+      setWayError((e && e.message) || "It couldn't be installed.");
+    } finally {
+      setInstalling(false);
+    }
+  };
+  // Copy one of your bots: its own bot, in the form.
+  const botGroups = useMemo(
+    () => copyCandidates(all.bots, dashboards, wayQuery),
+    [all.bots, dashboards, wayQuery],
+  );
+  const copyPickedBot = () => {
+    const bot = (all.bots || []).find((b) => b.id === wayPicked);
+    if (!bot) return;
+    const { initial, note } = botCopy(bot, {
+      workspaceId: targetId,
+      dashboardName: targetId ? dashboardName(targetId) : "",
+      fromDashboardName:
+        bot.workspaceId != null ? dashboardName(bot.workspaceId) : "",
+    });
+    openBotForm(initial, note);
+  };
+  // Copy one of your dashboards: saved as its own, then opened.
+  const [copying, setCopying] = useState(false);
+  const copyPickedDashboard = async () => {
+    const ws = (dashboards || []).find(
+      (d) => d && String(d.id) === String(wayPicked),
+    );
+    if (!ws || !onDuplicateDashboard || copying) return;
+    setCopying(true);
+    setWayError(null);
+    try {
+      await onDuplicateDashboard(ws);
+      onClose();
+    } catch (e) {
+      setWayError(
+        `${ws.name || "That dashboard"} couldn't be copied: ${
+          (e && e.message) || "try again"
+        }`,
+      );
+    } finally {
+      setCopying(false);
+    }
   };
 
   // What a build's chat needs to know about a widget change or a cell.
@@ -1273,6 +1552,211 @@ export const LeadWorkspace = ({
       : open && open.recentId
         ? reopenedAbout
         : null;
+  // Making a bot or a dashboard: the way picked, on its own screen.
+  const makingBot = !!makingReq && makingReq.kind === "bot";
+  const backToWays = () => leaveWay(null);
+  const askAiInstead = () => leaveWay("ai");
+  const wayErrorLine = wayError ? (
+    <span
+      className={`text-sm ${muted}`}
+      role="status"
+      data-testid="make-way-error"
+    >
+      {wayError}
+    </span>
+  ) : null;
+  const goesOn = makingBot ? (
+    <GoesOn
+      target={botTarget}
+      onChange={installed || installing ? null : changeWhere}
+    />
+  ) : null;
+  let wayView = null;
+  if (ways && way && way !== "ai") {
+    const screen = (props, children) => (
+      <WayScreen
+        onBack={backToWays}
+        onAskAi={askAiInstead}
+        testId={`make-way-${way}`}
+        {...props}
+      >
+        {children}
+      </WayScreen>
+    );
+    if (way === "where") {
+      wayView = screen(
+        {
+          title: "Where should the bot go?",
+          footer: (
+            <WayActions
+              primary="Continue"
+              disabled={!wherePick}
+              onPrimary={confirmWhere}
+            />
+          ),
+        },
+        <WherePicker
+          dashboards={savedDashboards}
+          picked={wherePick}
+          onPick={setWherePick}
+        />,
+      );
+    } else if (installed) {
+      const n = installed.bots.length;
+      const first = installed.bots[0];
+      wayView = screen(
+        {
+          title: `${installed.name} is installed`,
+          goesOn,
+          footer: first ? (
+            <WayActions
+              primary="Open it"
+              onPrimary={() => {
+                window.dispatchEvent(
+                  new CustomEvent("dash:open-bot", {
+                    detail: { botId: first.id, tab: "activity" },
+                  }),
+                );
+                onClose();
+              }}
+            />
+          ) : null,
+        },
+        <div className="flex flex-col gap-2" data-testid="make-installed">
+          <span className={`text-sm ${strong}`}>
+            {`Added ${n} paused bot${n === 1 ? "" : "s"}. Turn ${
+              n === 1 ? "it" : "them"
+            } on when you're ready.`}
+          </span>
+          {installed.skipped && installed.skipped.length ? (
+            <div className="flex flex-col gap-1">
+              <span className={`text-xs ${muted}`}>Not set up:</span>
+              {installed.skipped.map((t) => (
+                <span key={t} className={`text-xs ${muted}`}>
+                  {t}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>,
+      );
+    } else if (review) {
+      wayView = screen(
+        {
+          title: way === "file" ? "A bot file" : "A bot from the registry",
+          goesOn,
+        },
+        <TeamImportReview
+          key={review.previewId || review.fileName || "review"}
+          preview={review}
+          installing={installing}
+          error={wayError}
+          noDashboard={!!(botTarget && botTarget.none)}
+          onInstall={installReviewed}
+          onCancel={() => {
+            setWayError(null);
+            if (way === "file") backToWays();
+            else setReview(null);
+          }}
+        />,
+      );
+    } else if (way === "registry" && makingBot) {
+      wayView = screen(
+        { title: "A bot from the registry", goesOn },
+        <>
+          {wayErrorLine}
+          <RegistryBrowse
+            embedded
+            onPick={pickRegistryBot}
+            onClose={backToWays}
+          />
+        </>,
+      );
+    } else if (way === "registry") {
+      wayView = screen(
+        { title: "A dashboard from the registry" },
+        <>
+          <span className={`text-sm ${muted}`}>
+            Use this turns it into a plan in this conversation — you adjust it
+            with the Dash team, and nothing is installed until you say yes.
+          </span>
+          <RegistryOutput onUse={pickRegistryDashboard} />
+        </>,
+      );
+    } else if (way === "copy" && makingBot) {
+      wayView = screen(
+        {
+          title: "Copy one of your bots",
+          goesOn,
+          footer: (
+            <WayActions
+              primary="Copy and open the form"
+              disabled={!wayPicked}
+              onPrimary={copyPickedBot}
+            />
+          ),
+        },
+        <CopyPicker
+          intro="Pick one to start from. The copy is its own bot — changing one never changes the other — and you can change anything before it's saved."
+          searchLabel="Search your bots"
+          query={wayQuery}
+          onQuery={setWayQuery}
+          groups={botGroups.map((g) => ({
+            label: g.label,
+            items: g.bots.map((b) => ({
+              id: b.id,
+              title: b.name,
+              meta: botLine(b),
+            })),
+          }))}
+          pickedId={wayPicked}
+          onPick={setWayPicked}
+          note="Leads and the Dash team aren't listed — each dashboard has its own lead."
+          empty="No bots to copy yet."
+        />,
+      );
+    } else if (way === "copy") {
+      const q = wayQuery.trim().toLowerCase();
+      wayView = screen(
+        {
+          title: "Copy one of your dashboards",
+          footer: (
+            <WayActions
+              primary={copying ? "Copying…" : "Copy and open it"}
+              disabled={!wayPicked || copying || !onDuplicateDashboard}
+              onPrimary={copyPickedDashboard}
+            />
+          ),
+        },
+        <>
+          {wayErrorLine}
+          <CopyPicker
+            intro="Pick one to start from. The copy is its own dashboard with the same widgets and layout; its bots stay with the original — copy them with Add bot."
+            searchLabel="Search your dashboards"
+            query={wayQuery}
+            onQuery={setWayQuery}
+            groups={[
+              {
+                label: "",
+                items: savedDashboards
+                  .filter((d) => !q || d.name.toLowerCase().includes(q))
+                  .map((d) => ({
+                    id: d.id,
+                    title: d.name,
+                    meta: d.bots
+                      ? `${d.bots} bot${d.bots === 1 ? "" : "s"}`
+                      : "No bots",
+                  })),
+              },
+            ].filter((g) => g.items.length)}
+            pickedId={wayPicked}
+            onPick={setWayPicked}
+            empty="No dashboards to copy yet."
+          />
+        </>,
+      );
+    }
+  }
   const title = isBot
     ? `Your conversation with ${contact.name}`
     : open
@@ -1607,6 +2091,20 @@ export const LeadWorkspace = ({
             </div>
           ) : isBot && lone ? (
             <BotChat key={lone.id} bot={lone} />
+          ) : !open && ways && way === null ? (
+            // Making a bot or a dashboard: its ways (frames 2 and 10).
+            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col px-6 py-6">
+              <div className="my-auto">
+                <WaysChooser
+                  ways={ways}
+                  onPick={pickWay}
+                  raised={raised}
+                  error={wayError}
+                />
+              </div>
+            </div>
+          ) : !open && wayView ? (
+            wayView
           ) : open && contact ? (
             <AskStep
               // A new lead is a new conversation (never a carried-over one).
@@ -1677,9 +2175,15 @@ export const LeadWorkspace = ({
                   className="flex flex-col gap-4 max-w-5xl my-auto"
                   data-testid="workspace-start"
                 >
+                  {ways ? (
+                    <div>
+                      <Button3 size="sm" title="← Back" onClick={backToWays} />
+                    </div>
+                  ) : null}
                   <span className={`text-2xl font-semibold ${strong}`}>
                     {start.title}
                   </span>
+                  {ways ? goesOn : null}
                   <span className={`text-sm ${muted}`}>{start.text}</span>
                   {seedError ? (
                     <span
@@ -1714,8 +2218,17 @@ export const LeadWorkspace = ({
                           <button
                             key={k.kind}
                             type="button"
-                            aria-label={`${k.title}. ${k.hint}. Example: ${k.example}`}
+                            aria-label={
+                              waysFor(k.kind)
+                                ? `${k.title}. ${k.hint}`
+                                : `${k.title}. ${k.hint}. Example: ${k.example}`
+                            }
                             onClick={() => {
+                              // A dashboard or a bot: its ways first.
+                              if (waysFor(k.kind)) {
+                                startMaking(k.kind);
+                                return;
+                              }
                               setDraft(k.example);
                               if (composer.current) composer.current.focus();
                             }}
@@ -1741,8 +2254,9 @@ export const LeadWorkspace = ({
                         ))}
                       </div>
                       <span className={`text-xs ${muted}`}>
-                        Click one to put its example in the box — then change it
-                        to what you want.
+                        A dashboard or a bot shows the ways to make it; the
+                        others put their example in the box — then change it to
+                        what you want.
                       </span>
                     </div>
                   ) : null}
@@ -1755,9 +2269,7 @@ export const LeadWorkspace = ({
                     >
                       <span className={`text-xs ${muted}`}>Or start from</span>
                       <div className="flex flex-row flex-wrap gap-3">
-                        {START_FROM.filter(
-                          (s) => !(makingDashboard && s.kind === "widget"),
-                        ).map((s) => (
+                        {START_FROM.map((s) => (
                           <button
                             key={s.kind}
                             type="button"
@@ -1913,7 +2425,6 @@ export const LeadWorkspace = ({
               // No Expand in a small window: the column already covers it.
               onToggleWide={narrow ? null : () => setWide((v) => !v)}
               onSummary={setSideSummary}
-              onUseRegistry={pickRegistryDashboard}
             />
           ) : null}
         </aside>

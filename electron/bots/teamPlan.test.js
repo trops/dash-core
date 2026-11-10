@@ -365,7 +365,7 @@ describe("validatePlan — changing a dashboard you have (5e-2b)", () => {
   it("a dashboard without an id, or one that's gone, is an error", () => {
     assert.match(
       validatePlan(targeted([clock], { name: "Slack Pack" })).errors.join(" "),
-      /needs the id/,
+      /with its id from list_dashboards/,
     );
     assert.match(
       validatePlan(targeted([clock]), {
@@ -987,6 +987,38 @@ describe("validatePlan — a change to a saved theme (theme change round)", () =
     assert.match(
       r.errors.join(" "),
       /all four colors as #rrggbb: secondary, tertiary, neutral/,
+    );
+  });
+});
+
+describe("a bot's dashboard: one of the user's, or none — never a new one", () => {
+  const bot = {
+    kind: "bot",
+    name: "Morning Email Summary",
+    source: "new",
+    instructions: "Summarize my unread email.",
+  };
+  it("a dashboard without an id says what to do instead", () => {
+    for (const dashboard of ["new", { name: "New dashboard" }, { id: "" }]) {
+      const errors = validatePlan(
+        { summary: "s", dashboard, pieces: [bot] },
+        { bot: true },
+      ).errors;
+      assert.ok(
+        errors.includes(
+          "dashboard must be one of the user's dashboards, with its id from list_dashboards — or leave dashboard out for no dashboard. A bot never makes a new dashboard.",
+        ),
+        JSON.stringify(dashboard),
+      );
+    }
+  });
+  it("no dashboard at all is fine", () => {
+    assert.deepEqual(
+      validatePlan(
+        { summary: "s", dashboard: null, pieces: [bot] },
+        { bot: true },
+      ).errors,
+      [],
     );
   });
 });

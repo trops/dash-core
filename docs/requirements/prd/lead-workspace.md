@@ -1,10 +1,10 @@
 # PRD: Lead Workspace — Talk to Each Team Through Its Lead
 
 **Status:** In Progress (release 3)
-**Last Updated:** 2026-10-30
+**Last Updated:** 2026-11-10
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; dash-electron hosts the notifications panel and picks up each release)
-**Approved mockup:** https://claude.ai/artifact/LQogUdGVwvhr1w435jXkrS (page "CURRENT — Lead workspace", frames 1–37; release 6c frames 38–43; theme round frames 44–47; theme change round frames 48–52b)
+**Approved mockup:** https://claude.ai/artifact/LQogUdGVwvhr1w435jXkrS (page "CURRENT — Lead workspace", frames 1–37; release 6c frames 38–43; theme round frames 44–47; theme change round frames 48–52b; page "Make a bot or dashboard in Create", frames 1–18)
 **Related PRDs:** [bot-teams.md](./bot-teams.md) (teams, leads), [app-navigation.md](./app-navigation.md) (Bots page, bot page), [bot-factory.md](./bot-factory.md) (bots, approvals)
 
 ---
@@ -392,3 +392,19 @@ The examples in the middle and "Start from" under **Outputs** on the right felt 
 - **Outputs** holds only what's made. Until then it shows "What the team makes shows here."
 - After the first message the middle is the conversation, so the start options go away.
 - A role's line ("finds what you already have") is in the normal font. Only its live line ("› search_library") is code-ish.
+
+### Make it in Create — bots and dashboards, one way at a time (approved 2026-11-10, page "Make a bot or dashboard in Create", frames 1–18)
+
+The Create window is where every bot and dashboard starts. Before, a dashboard's **Add bot** opened a blank form, and only left-nav **+ → Bot** offered the AI conversation; the registry and team files were on the Bots view; a bot couldn't be copied; and the registry's dashboards opened beside the box, so a pick and a typed question could both be in play.
+
+- **The doors:** left-nav **+ → Bot** / **Dashboard** (a page's New), a dashboard's **+ Add bot** (`making: { kind: "bot", from: "dashboard", target: { id, name } }`), and the start's **A dashboard** / **A bot** cards all open Create on that kind's **ways** (`waysFor`, `MakeWays.WaysChooser`, frames 2 and 10): "How do you want to make the bot?" — **Ask AI** first (marked Easiest), then **Or start from**: the registry, a copy, a blank one, a file. No box on this screen.
+- **One way at a time:** picking one opens it on its own in the middle (`MakeWays.WayScreen`) with **← Back** to the ways and **Ask AI instead** at the bottom; nothing is kept from the way you leave. **Ask AI** is the box with the kind's examples, and ← Back. A door that brings words (a lead's hand-off) opens on Ask AI with them in the box. The plain start's Or start from (registry, copy) opens the dashboard ways the same way.
+- **Where a bot goes:** one of the user's dashboards, or **No dashboard** — never a new one. From a dashboard's Add bot it's set; from left-nav + the blank, copy, registry and file ways ask first (`WherePicker`, frame 4; each dashboard with its bot count). Every bot way shows **Goes on: X · Change**.
+- **A blank bot / a copy:** the bot form opens where it usually is — the dashboard's Bots view (`dash:new-bot` → `focusBot(…, "__new__", "settings", { initial, note })`), or a window for no dashboard (`NewBotModal`). Nothing is saved until Create.
+- **Copy one of your bots** (frame 5): the user's bots by dashboard, then on no dashboard; leads and the Dash team aren't listed (`copyCandidates`). The copy (`botCopy`) keeps instructions, model, engine, style, limits, providers and tools, schedule, approval policy and results; it's named "<name> (<dashboard>)" ("(copy)" on the same dashboard). It never shares anything with the original. Not copied: runs, "Always allow" approvals, its record (id, sessions, registry links), and — on another dashboard — the old dashboard's widget and bot triggers. The form says so at the top (frame 6).
+- **A bot from the registry / a bot file** (frames 7–9): `RegistryBrowse` (embedded) and the file picker, then `TeamImportReview` in the middle; installed paused on the chosen dashboard, or on none for a single bot (a team needs a dashboard — the review says so and Install waits). Then "<name> is installed" with **Open it** (the bot's page).
+- **Dashboards** (frames 10–13): Ask AI; the registry's dashboards in the middle (`RegistryOutput`; **Use this** makes a plan, as before); **Copy one of your dashboards** picked right there — the Dashboards page's Duplicate (`dashboardCopy`), saved and opened; its bots stay with the original; a blank dashboard and a dashboard file as before.
+- **Bot plans** (frames 14–17):
+  - The Planner is told the dashboard when the door set it (`makingStart` note with its id), "no dashboard", or to ask — one of theirs or none, never new (Planner instructions `BOT_PLACEMENT`). A plan whose dashboard has no id says to use list_dashboards' id or leave dashboard out (`validatePlan`).
+  - Claude connectors: `list_providers` says which service each is and its tools; the Planner offers them for a bot's service, marked "(Claude connector)". The plan's "Or use one you have" offers them for what only bots need (`planHave`, `providerChoices({ bots })`). A planned bot that uses one shows **Runs on: Your Claude subscription**, and the build sets it there (`planBotDefinition` → `provider: "claude-code"`).
+- **Not done:** the dashboard copy doesn't copy its bots (as Duplicate); the dashboard's Bots view only shows a new bot's form when it isn't being edited.

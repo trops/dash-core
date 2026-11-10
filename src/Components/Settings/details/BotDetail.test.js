@@ -1735,3 +1735,45 @@ describe("BotDetail — Providers search and filters (many providers)", () => {
     expect(shown()).toHaveLength(7);
   });
 });
+
+// Copy one of your bots (making a bot in Create): the form starts filled in.
+describe("BotDetail — a copy of another bot", () => {
+  const initial = {
+    name: "Morning Inbox (Life HQ)",
+    instructions: "List what needs a reply.",
+    engine: "claude-agent",
+    approvalPolicy: "ask",
+    schedules: [{ cron: "0 7 * * 1-5", prompt: "" }],
+    modelSelection: "pinned",
+    allowedTools: ["search_threads"],
+    workspaceId: "7",
+  };
+  it("starts from the copy and creates a new bot with it", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        isCreating
+        initial={initial}
+        defaultWorkspaceId="7"
+        providers={{}}
+        onSave={onSave}
+      />,
+    );
+    expect(screen.getByPlaceholderText("e.g. PR Digest")).toHaveValue(
+      "Morning Inbox (Life HQ)",
+    );
+    expect(screen.getByPlaceholderText("What should this bot do?")).toHaveValue(
+      "List what needs a reply.",
+    );
+    fireEvent.click(screen.getByText("Create"));
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.id).toBeUndefined();
+    expect(saved).toMatchObject({
+      name: "Morning Inbox (Life HQ)",
+      engine: "claude-agent",
+      modelSelection: "pinned",
+      allowedTools: ["search_threads"],
+      schedules: [{ cron: "0 7 * * 1-5", prompt: "" }],
+    });
+  });
+});

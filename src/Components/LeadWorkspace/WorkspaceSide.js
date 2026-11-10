@@ -11,7 +11,6 @@ import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { normalizeType } from "../Create/planChecklist";
 import { toolName } from "./handoffSteps";
 import { BeforeItBuilds, OutputCard, PlanNext, PlanOutput } from "./PlanViews";
-import { RegistryOutput } from "./RegistryOutput";
 import {
   BuildLogOutput,
   BuildNeedsYou,
@@ -227,8 +226,6 @@ function memberState(
  *   (release 3c, frame 18)
  * @param {({ count, needsYou }) => void} [onSummary]  told what the column
  *   holds — the folded column's button (release 6a)
- * @param {(dashboard, config) => void} [onUseRegistry]  a registry
- *   dashboard picked in Start from (opened as "registry", release 6c)
  * @param {string|null} [next]  the plan's next step (planNext): shown on
  *   its card, with `planActions` (PlanNext's handlers) and, once it
  *   builds, `buildNext` (the build's choices)
@@ -248,7 +245,6 @@ export const WorkspaceSide = ({
   pb = null,
   dashTeam = [],
   onSummary = null,
-  onUseRegistry = null,
   // A change to one widget (release 6c): in place or new; sign in.
   onWidgetMode = null,
   onSignIn = null,
@@ -368,9 +364,6 @@ export const WorkspaceSide = ({
       </div>
     </div>
   );
-  if (open === "registry" && onUseRegistry) {
-    return opened(<RegistryOutput onUse={onUseRegistry} />);
-  }
   if (open === "plan" && plan) {
     return opened(
       <PlanOutput

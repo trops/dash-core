@@ -17,6 +17,8 @@ import {
   scheduleLabel,
   isSkipped,
   providerLabel,
+  planHave,
+  connectorNames,
 } from "./planChecklist";
 
 const plan = {
@@ -366,5 +368,88 @@ describe("Claude connectors in a plan", () => {
     expect(providerChoices(providers, "gmail").map((p) => p.name)).toEqual([
       "Slack",
     ]);
+  });
+  // Bots made in Create: a bot can use one (it runs on the subscription).
+  const connector = {
+    name: "Mail",
+    type: "claude-connector",
+    providerClass: "connector",
+    mcpConfig: { transport: "claude-connector", server: "claude.ai Gmail" },
+  };
+  const withMail = { Mail: connector, Slack: providers.Slack };
+  const bot = {
+    kind: "bot",
+    name: "Inbox",
+    source: "new",
+    providers: ["gmail"],
+  };
+  const widget = {
+    kind: "widget",
+    name: "Unread",
+    source: "new",
+    providers: ["gmail"],
+  };
+  it("stands in for a type only the plan's bots need, by its name or its service", () => {
+    expect(planHave({ pieces: [bot] }, withMail).has("gmail")).toBe(true);
+    expect(planHave({ pieces: [bot] }, providers).has("gmail")).toBe(true);
+    expect(
+      buildChecklist({ pieces: [bot] }, planHave({ pieces: [bot] }, withMail)),
+    ).toEqual([]);
+  });
+  it("never for a type a widget needs too", () => {
+    const plan = { pieces: [bot, widget] };
+    expect(planHave(plan, withMail).has("gmail")).toBe(false);
+    expect(buildChecklist(plan, planHave(plan, withMail))[0]).toMatchObject({
+      id: "connect:gmail",
+      botsOnly: false,
+    });
+  });
+  it("a bots-only connect row says so, and offers connectors, labelled", () => {
+    expect(buildChecklist({ pieces: [bot] }, new Set())[0]).toMatchObject({
+      providerType: "gmail",
+      botsOnly: true,
+    });
+    const choices = providerChoices(withMail, "gmail", { bots: true });
+    expect(choices.map((p) => p.name)).toEqual(["Mail", "Slack"]);
+    expect(choices[0]).toMatchObject({
+      type: "claude-connector",
+      label: "Mail · Claude connector",
+    });
+    expect(providerChoices(withMail, "gmail").map((p) => p.name)).toEqual([
+      "Slack",
+    ]);
+  });
+});
+
+describe("a planned bot that uses a Claude connector", () => {
+  const providers = {
+    Mail: {
+      name: "Mail",
+      type: "claude-connector",
+      providerClass: "connector",
+    },
+    Slack: { name: "Slack", type: "slack", providerClass: "mcp" },
+  };
+  const piece = {
+    kind: "bot",
+    name: "Inbox",
+    tools: [{ provider: "Mail", tools: ["search_threads"] }],
+  };
+  it("says it runs on the Claude subscription", () => {
+    const rows = botDetails(piece, { connectors: connectorNames(providers) });
+    expect(rows.find((r) => r.label === "Runs on")).toEqual({
+      label: "Runs on",
+      value: "Your Claude subscription — Mail is a Claude connector",
+    });
+  });
+  it("a bot without one doesn't", () => {
+    const rows = botDetails(
+      { ...piece, tools: [{ provider: "Slack", tools: [] }] },
+      { connectors: connectorNames(providers) },
+    );
+    expect(rows.find((r) => r.label === "Runs on")).toBeUndefined();
+    expect(
+      botDetails(piece).find((r) => r.label === "Runs on"),
+    ).toBeUndefined();
   });
 });

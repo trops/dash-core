@@ -85,6 +85,8 @@ import { DashboardConfigModal } from "./DashboardConfigModal";
 import { useTeamBots } from "../Bots/useTeamBots";
 import { BotsView } from "../Bots/BotsView";
 import { BotPageModal } from "../Bots/BotPageModal";
+import { NewBotModal } from "../Bots/NewBotModal";
+import { dashboardCopy } from "../../utils/dashboardCopy";
 import { LeadWorkspace } from "../LeadWorkspace/LeadWorkspace";
 import { usePendingApprovalCount } from "../Bots/usePendingApprovalCount";
 import { useProvidersNeedingSetup } from "../AppPages/useProviderStatus";
@@ -545,9 +547,11 @@ const DashboardStageInner = ({
         }
       : null,
   );
-  const focusBot = useCallback((workspaceId, botId, tab) => {
+  // `extra`: a new bot's form from Create — a copy's { initial, note }.
+  const focusBot = useCallback((workspaceId, botId, tab, extra = null) => {
     setStageModeByWorkspace((prev) => ({ ...prev, [workspaceId]: "bots" }));
     setBotsFocus((prev) => ({
+      ...(extra || {}),
       workspaceId: String(workspaceId),
       botId,
       tab: tab || "activity",
@@ -687,6 +691,50 @@ const DashboardStageInner = ({
       window.removeEventListener("dash:open-bot", handler);
       window.removeEventListener("dash:open-dash-team", onDashTeam);
     };
+  }, []);
+  // A new bot's form from Create (making a bot: a blank bot or a copy).
+  // On a dashboard: that dashboard's Bots view; on none: the bot form in a
+  // window. detail: { workspaceId | null, initial?, note? }
+  const [newBotRequest, setNewBotRequest] = useState(null);
+  const newBotRef = useRef(null);
+  newBotRef.current = (d) => {
+    const extra = { initial: d.initial || null, note: d.note || null };
+    if (
+      d.workspaceId === undefined ||
+      d.workspaceId === null ||
+      d.workspaceId === ""
+    ) {
+      setNewBotRequest({ ...extra, seq: Date.now() });
+      return;
+    }
+    const ws = (workspaceConfig || []).find(
+      (w) => w && String(w.id) === String(d.workspaceId),
+    );
+    if (!ws) return;
+    // Unsaved edits, or the dashboard being edited: say so instead of
+    // asking — a form waiting behind a question could open later, by itself.
+    const here =
+      workspaceSelected && String(workspaceSelected.id) === String(ws.id);
+    if ((isDirty && !here) || (here && !previewMode) || botsDirtyRef.current) {
+      window.dispatchEvent(
+        new CustomEvent("dash:notify", {
+          detail: {
+            type: "info",
+            title: "Save or cancel your edits first",
+            message: `Then make the bot again — its form opens in ${ws.name || "the dashboard"}'s Bots view.`,
+            duration: 8000,
+          },
+        }),
+      );
+      return;
+    }
+    focusBot(ws.id, "__new__", "settings", extra);
+    handleOpenTab(ws);
+  };
+  useEffect(() => {
+    const handler = (e) => newBotRef.current((e && e.detail) || {});
+    window.addEventListener("dash:new-bot", handler);
+    return () => window.removeEventListener("dash:new-bot", handler);
   }, []);
   // The lead workspace (lead-workspace release 2): talk to a team through
   // its lead, or to a bot on no dashboard. detail.key: "role:dashlead" |
@@ -1656,6 +1704,20 @@ const DashboardStageInner = ({
       setLayoutInitialMethod("import");
       setIsLayoutPickerOpen(true);
     }
+  }
+
+  // Create's Copy one of your dashboards: saved as a new dashboard (as the
+  // Dashboards page's Duplicate), then opened. Rejects on a failed save.
+  async function handleDuplicateDashboard(ws) {
+    const copy = dashboardCopy(ws);
+    await saveNewWorkspace({
+      dashApi,
+      appId: credentials?.appId,
+      workspace: copy,
+    });
+    loadWorkspaces();
+    handleOpenTab(copy);
+    return copy;
   }
 
   // A dashboard a plan build made (phase 4d): open it, live (not the editor).
@@ -3191,6 +3253,14 @@ const DashboardStageInner = ({
                         workspaces={workspaceConfig}
                         team={team}
                         focus={botsFocus}
+                        // A new bot's form opens once (make it in Create).
+                        onFocusApplied={(seq) =>
+                          setBotsFocus((prev) =>
+                            prev && prev.seq === seq && prev.botId === "__new__"
+                              ? null
+                              : prev,
+                          )
+                        }
                         onDirtyChange={(d) => {
                           botsDirtyRef.current = d;
                         }}
@@ -3537,8 +3607,21 @@ const DashboardStageInner = ({
                   setWorkspaceRequest(null);
                   handleStartWithoutAi(k);
                 }}
+                // Making a bot or a dashboard: where it can go, and Copy
+                // one of your dashboards (lead-workspace "make it in Create").
+                dashboards={workspaceConfig}
+                onDuplicateDashboard={handleDuplicateDashboard}
               />
             ) : null}
+            <NewBotModal
+              key={newBotRequest ? newBotRequest.seq : "none"}
+              request={newBotRequest}
+              onClose={() => setNewBotRequest(null)}
+              onSaved={(bot) =>
+                setBotPageRequest({ botId: bot.id, tab: "activity" })
+              }
+              workspaces={workspaceConfig}
+            />
             <BotPageModal
               request={botPageRequest}
               onClose={() => setBotPageRequest(null)}

@@ -470,7 +470,9 @@ function validatePlan(plan, context = {}) {
     }
   }
   if (plan.dashboard !== undefined && plan.dashboard !== null && !target) {
-    errors.push("dashboard needs the id of one of the user's dashboards.");
+    errors.push(
+      "dashboard must be one of the user's dashboards, with its id from list_dashboards — or leave dashboard out for no dashboard. A bot never makes a new dashboard.",
+    );
   }
   if (
     target &&

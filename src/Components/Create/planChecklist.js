@@ -62,6 +62,49 @@ export function providerTypesOf(providers) {
   return out;
 }
 
+const CONNECTOR = "connector";
+
+/** A Claude connector's service as a plan names it: its name and its server ("claude.ai Gmail" → "gmail"). */
+function connectorTypes(p) {
+  const server = String((p.mcpConfig && p.mcpConfig.server) || "").replace(
+    /^claude\.ai\s+/i,
+    "",
+  );
+  return [normalizeType(p.name), normalizeType(server)].filter(Boolean);
+}
+
+/** The provider types only the plan's bots need — no widget needs them too. */
+function botOnlyTypes(plan) {
+  const bots = new Set();
+  const others = new Set();
+  for (const p of (plan && plan.pieces) || []) {
+    for (const t of (p && p.providers) || []) {
+      const type = normalizeType(t);
+      if (type) (p.kind === "bot" ? bots : others).add(type);
+    }
+  }
+  return new Set([...bots].filter((t) => !others.has(t)));
+}
+
+/**
+ * What the user has for this plan: providerTypesOf, plus their Claude
+ * connectors for the types only the plan's bots need — a bot can use one
+ * (it runs on the Claude subscription), a widget never can.
+ */
+export function planHave(plan, providers) {
+  const have = providerTypesOf(providers);
+  const botOnly = botOnlyTypes(plan);
+  if (!botOnly.size) return have;
+  const list = Array.isArray(providers)
+    ? providers
+    : Object.values(providers || {});
+  for (const p of list) {
+    if (!p || p.providerClass !== CONNECTOR) continue;
+    for (const t of connectorTypes(p)) if (botOnly.has(t)) have.add(t);
+  }
+  return have;
+}
+
 const titleCase = (t) =>
   String(t)
     .split("-")
@@ -76,32 +119,47 @@ const PROVIDER_NAMES = {
   websocket: "WebSocket",
 };
 
-const providerList = (providers) =>
+// Claude connectors only when bots alone need the type (`bots`).
+const providerList = (providers, bots = false) =>
   (Array.isArray(providers)
     ? providers
     : Object.values(providers || {})
-  ).filter((p) => p && p.name && p.providerClass !== "connector");
+  ).filter((p) => p && p.name && (bots || p.providerClass !== CONNECTOR));
 
 /**
  * The user's providers to offer for a needed type, closest first: the
  * same type, then MCP servers (most plans' tools are MCP), then the rest.
- * @returns {Array<{ name, type, providerClass }>}
+ * With `bots` (only the plan's bots need it), Claude connectors too.
+ * @returns {Array<{ name, type, providerClass, label }>}
  */
-export function providerChoices(providers, providerType) {
+export function providerChoices(
+  providers,
+  providerType,
+  { bots = false } = {},
+) {
   const want = normalizeType(providerType);
   const rank = (p) =>
-    normalizeType(p.type) === want || normalizeType(p.name) === want
+    normalizeType(p.type) === want ||
+    normalizeType(p.name) === want ||
+    (p.providerClass === CONNECTOR && connectorTypes(p).includes(want))
       ? 0
       : p.providerClass === "mcp"
         ? 1
         : 2;
-  return providerList(providers)
+  return providerList(providers, bots)
+    .slice()
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
     .map((p) => ({
       name: p.name,
       type: p.type || "",
       providerClass: p.providerClass || null,
-    }))
-    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+      label:
+        p.providerClass === CONNECTOR
+          ? `${p.name} · Claude connector`
+          : p.type
+            ? `${p.name} · ${p.type}`
+            : p.name,
+    }));
 }
 
 /**
@@ -199,6 +257,8 @@ export function buildChecklist(plan, have = new Set()) {
     }
   });
   const seenType = new Set();
+  // Only bots need it: a Claude connector can stand in.
+  const botOnly = botOnlyTypes(plan);
   for (const p of pieces) {
     for (const t of (p && p.providers) || []) {
       const type = normalizeType(t);
@@ -209,6 +269,7 @@ export function buildChecklist(plan, have = new Set()) {
         kind: "connect",
         label: `Connect ${titleCase(type)}`,
         providerType: type,
+        botsOnly: botOnly.has(type),
       });
     }
   }
@@ -499,10 +560,13 @@ export function botSummary(piece) {
 
 /**
  * A planned bot as label / value rows for the plan card (screen audit,
- * October 2026): Runs, Uses, Sends — a labelled list, not loose lines.
+ * October 2026): Runs, Uses, Sends — a labelled list, not loose lines —
+ * and Runs on, when it uses one of the user's Claude connectors
+ * (`connectors`, from connectorNames): the build sets it to the Claude
+ * subscription.
  * @returns {{ label: string, value: string }[]}
  */
-export function botDetails(piece) {
+export function botDetails(piece, { connectors = null } = {}) {
   const p = piece || {};
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
   const starts = [];
@@ -537,7 +601,31 @@ export function botDetails(piece) {
         : "Its results → a Bot results widget",
     });
   }
+  const viaConnector =
+    connectors &&
+    (Array.isArray(p.tools) ? p.tools : []).find(
+      (t) =>
+        t && t.provider && connectors.has(String(t.provider).toLowerCase()),
+    );
+  if (viaConnector) {
+    rows.push({
+      label: "Runs on",
+      value: `Your Claude subscription — ${viaConnector.provider} is a Claude connector`,
+    });
+  }
   return rows;
+}
+
+/** The names of the user's Claude connectors, lowercased (for botDetails). */
+export function connectorNames(providers) {
+  const list = Array.isArray(providers)
+    ? providers
+    : Object.values(providers || {});
+  return new Set(
+    list
+      .filter((p) => p && p.name && p.providerClass === CONNECTOR)
+      .map((p) => String(p.name).toLowerCase()),
+  );
 }
 
 /** What the Planner is told about edits made in the panel. */

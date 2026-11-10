@@ -6,7 +6,7 @@ import {
   choosePlanProvider,
   isDone,
   providerLabel,
-  providerTypesOf,
+  planHave,
 } from "../Create/planChecklist";
 import {
   cellBuildPlan,
@@ -196,7 +196,8 @@ export function useWorkspacePlan({
       cell ? planForCell(state.plan, cell) : planForWidget(state.plan, widget),
     [state.plan, cell, widget],
   );
-  const have = providerTypesOf(app.providers);
+  // A Claude connector stands in for what only the plan's bots need.
+  const have = planHave(plan, app.providers);
   const checklist = useMemo(
     () => (plan ? buildChecklist(plan, have) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
