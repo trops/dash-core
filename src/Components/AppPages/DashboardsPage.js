@@ -31,7 +31,7 @@ import { dashboardSummary } from "./dashboardSummary";
 import { useApprovalsByDashboard } from "./useApprovalsByDashboard";
 import { exportedText } from "./exportedText";
 import { saveErrorText } from "../../utils/saveErrorText";
-import { remixSourceOf } from "../../utils/remixSource";
+import { dashboardCopy } from "../../utils/dashboardCopy";
 
 const UNCATEGORIZED = "Uncategorized";
 // Empty, so it takes the select's placeholder place ("No folder" once).
@@ -186,33 +186,8 @@ const DashboardDetailPanel = ({
     setRenaming(false);
   };
 
-  const duplicate = () => {
-    // The copy isn't the registry package the original came from or was
-    // published as (publishing it must never update the original's). Where
-    // it came from otherwise — author, can it be published — stays.
-    const { registryRef: _ref, ...copy } = deepCopy(ws);
-    if (copy._dashboardConfig) {
-      const {
-        registryPackage: _p,
-        registryScope: _s,
-        version: _v,
-        installedVersion: _i,
-        ...origin
-      } = copy._dashboardConfig;
-      copy._dashboardConfig = origin;
-    }
-    // A copy of someone else's dashboard stays credited to it: publishing
-    // the copy is a remix, which its author may not allow.
-    const source = remixSourceOf(ws);
-    if (source) copy.remixedFrom = source;
-    else delete copy.remixedFrom;
-    save({
-      ...copy,
-      id: Date.now(),
-      version: Date.now(),
-      name: `${ws.name || "Dashboard"} (Copy)`,
-    });
-  };
+  // Not the registry package it came from; still credited (dashboardCopy).
+  const duplicate = () => save(dashboardCopy(ws));
 
   // With its bots by default (create-entry 5a): they come back wired to
   // the imported dashboard's widgets.

@@ -37,8 +37,10 @@ function summaryLine(p) {
  *
  * @param {(packageRef: string) => void} onPick
  * @param {() => void} onClose
+ * @param {boolean} [embedded]  inside a screen that has its own title and
+ *   Back (making a bot in Create): no title, Close or frame of its own
  */
-export const RegistryBrowse = ({ onPick, onClose }) => {
+export const RegistryBrowse = ({ onPick, onClose, embedded = false }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
@@ -74,13 +76,15 @@ export const RegistryBrowse = ({ onPick, onClose }) => {
   return (
     <section
       aria-label="Find in registry"
-      className={`flex-1 min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
+      className={`flex-1 min-w-0 min-h-0 flex flex-col ${embedded ? "" : `rounded-xl border ${hairline}`}`}
     >
-      <div className="px-5 pt-4 flex flex-col gap-3">
-        <div className="flex flex-row items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Find bots and teams</h2>
-          <Button3 title="Close" size="sm" onClick={onClose} />
-        </div>
+      <div className={`${embedded ? "" : "px-5 pt-4 "}flex flex-col gap-3`}>
+        {embedded ? null : (
+          <div className="flex flex-row items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">Find bots and teams</h2>
+            <Button3 title="Close" size="sm" onClick={onClose} />
+          </div>
+        )}
         <SearchInput
           value={query}
           onChange={setQuery}
@@ -94,7 +98,9 @@ export const RegistryBrowse = ({ onPick, onClose }) => {
         />
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-2">
+      <div
+        className={`flex-1 min-h-0 overflow-y-auto ${embedded ? "py-4" : "px-5 py-4"} flex flex-col gap-2`}
+      >
         {error ? (
           <span className="text-xs text-red-400">
             {`Couldn't search the registry: ${error}`}

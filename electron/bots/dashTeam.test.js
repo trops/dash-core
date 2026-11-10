@@ -325,7 +325,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 19);
+    assert.equal(planner.history.length, 20);
   });
 });
 
@@ -625,7 +625,7 @@ describe("Dash team instructions (design guide)", () => {
     assert.match(planner.instructions, /each widget is its own panel/);
     // (the latest three are release 6c's and the theme round's, which
     // already had the rules)
-    const before = planner.history[planner.history.length - 6];
+    const before = planner.history[planner.history.length - 7];
     assert.doesNotMatch(before, /one main area/);
     assert.match(before, /<plan><\/plan>/);
   });
@@ -710,7 +710,7 @@ describe("Dash team instructions (lead-workspace 6c: no Create window)", () => {
   it("no Create in the text; the text before upgrades", () => {
     const planner = ROLES.find((x) => x.role === "planner");
     assert.doesNotMatch(planner.instructions, /in Create/);
-    const before = planner.history[planner.history.length - 5];
+    const before = planner.history[planner.history.length - 6];
     assert.match(before, /choose Theme in Create/);
   });
 });
@@ -728,7 +728,7 @@ describe("Dash team instructions (lead-workspace theme round)", () => {
       planner.instructions,
       /use New Theme on the Themes page/,
     );
-    const before = planner.history[planner.history.length - 4];
+    const before = planner.history[planner.history.length - 5];
     assert.match(before, /use New Theme on the Themes page/);
     assert.notEqual(before, planner.instructions);
   });
@@ -741,7 +741,7 @@ describe("Dash team instructions (theme round: color names)", () => {
       planner.instructions,
       /"colorNames": \{"primary": a one- or two-word name/,
     );
-    const before = planner.history[planner.history.length - 3];
+    const before = planner.history[planner.history.length - 4];
     assert.match(before, /"source": "new", "colors"/);
     assert.doesNotMatch(before, /colorNames/);
   });
@@ -759,7 +759,7 @@ describe("Dash team instructions (theme change round)", () => {
       planner.instructions,
       /Changing a saved theme isn't something a plan does/,
     );
-    const before = planner.history[planner.history.length - 2];
+    const before = planner.history[planner.history.length - 3];
     assert.match(before, /Changing a saved theme isn't something a plan does/);
     assert.match(before, /colorNames/);
   });
@@ -790,12 +790,30 @@ describe("Dash team instructions (plan → build: never stuck)", () => {
   it("a new theme doesn't ask where it goes; the Planner before it upgrades", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /don't ask where it goes/);
-    const before = planner.history[planner.history.length - 1];
+    const before = planner.history[planner.history.length - 2];
     assert.doesNotMatch(before, /don't ask where it goes/);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[0].instructions = before;
     const plan = upgrades(bots);
     assert.equal(plan[0].action, "upgrade");
     assert.equal(plan[0].role, "planner");
+  });
+});
+
+describe("Dash team instructions (bots in Create)", () => {
+  const planner = ROLES.find((r) => r.role === "planner");
+  it("a bot goes on one of the user's dashboards or none — never a new one", () => {
+    assert.match(planner.instructions, /never makes a dashboard/);
+    assert.match(planner.instructions, /No dashboard as the options/);
+    assert.match(planner.instructions, /never offer a new dashboard/);
+  });
+  it("offers Claude connectors when asking which provider a bot uses", () => {
+    assert.match(planner.instructions, /Claude connectors included/);
+    assert.match(planner.instructions, /\(Claude connector\)/);
+  });
+  it("keeps the text before so an unedited Planner's copy is recognized", () => {
+    const last = planner.history[planner.history.length - 1];
+    assert.match(last, /A new theme is saved to their themes either way/);
+    assert.doesNotMatch(last, /never offer a new dashboard/);
   });
 });

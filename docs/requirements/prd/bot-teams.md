@@ -421,6 +421,8 @@ answers from today's runs.
 - `electron/bots/botPackage.js` (pure): `buildBotPackage` (one bot embedded like a team member), `validateBotPackage`, `toTeamManifest` (a bot installs as a one-bot team), `registryManifestFor`, `publishFiles`, `toPackageName`, `nextVersion`, `checkPublishMeta`.
 - Publish: Bots view → **Publish team…** / bot **…** → **Publish bot…** (never a lead) → sign-in check (`useRegistryAuthGate`) → `PublishBotDialog` shows every bot's full instructions, wiring and "Not included", with name / package name / version / description / visibility. **Private by default** (decided 2026-10-05: instructions can hold personal details). The main process rebuilds the package, publishes under the signed-in username via `publishToRegistry` (signed, like themes), and remembers `published { name, version, visibility }` (team settings / the bot) so the next publish bumps the patch.
 
+**Moved to Create (2026-11-10, lead-workspace "Make it in Create"):** a dashboard's **+ Add bot** opens Create, making a bot for that dashboard. **Find in registry** and **Import team** moved there too, as "A bot from the registry" and "A bot file" — the same `RegistryBrowse` and `TeamImportReview` — so the Bots view keeps Team budget, Export team, Show team activity and Publish team. A single bot can be installed on **no dashboard**; more than one bot (a team) needs a dashboard (`TeamImportReview` `noDashboard`). The main process never required a dashboard for an install; only the Bots view did.
+
 **Implementation notes (slice 3b — find and install from the registry, 2026-10-05):**
 
 - Bots view → **Find in registry** (`RegistryBrowse`): search over bot names, team member names, providers, author and description (`botPackage.findBotPackages` on the app's registry index), All / Bots / Teams.
@@ -1186,6 +1188,7 @@ Decisions: the user's part goes after the built-in part so the prompt prefix sta
 | 1.20    | 2026-10-22 | John   | Consolidation 5: reconciled with the code — "Where things are now"; Assistant, Settings › Bots, drafts, removed components and the Ask box marked superseded; TEAM-005 drafts moved to Appendix: history; phase boxes ticked |
 | 1.21    | 2026-11-09 | John   | Added TEAM-017: built-in instructions + the user's own (Implemented)                                                                                                                                                         |
 | 1.22    | 2026-11-09 | John   | TEAM-017: a lead renames with its dashboard; built-in text re-read when opened                                                                                                                                               |
+| 1.23    | 2026-11-10 | John   | Add bot, Find in registry and Import team moved to Create (lead-workspace "Make it in Create"); a single bot can install on no dashboard                                                                                     |
 
 ---
 

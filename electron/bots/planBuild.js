@@ -766,6 +766,22 @@ function planBotDefinition(piece, { dashboardId, sources, team }) {
     definition.mcpServers.push(sug.provider);
     if (sug.tools.length) definition.toolSelections[sug.provider] = sug.tools;
   }
+  // A Claude connector only works on the user's Claude subscription: the
+  // bot is set to run there, as the bot form's "Run this bot on my Claude
+  // subscription" does.
+  // (Names compared as the plan card does: case aside.)
+  const connectorNames = new Set(
+    (sources || [])
+      .filter((s) => s && s.connector && s.name)
+      .map((s) => String(s.name).toLowerCase()),
+  );
+  if (
+    definition.mcpServers.some((n) =>
+      connectorNames.has(String(n).toLowerCase()),
+    )
+  ) {
+    definition.provider = "claude-code";
+  }
   return definition;
 }
 

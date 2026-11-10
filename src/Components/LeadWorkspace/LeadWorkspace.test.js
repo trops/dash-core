@@ -96,7 +96,8 @@ import { LeadWorkspace } from "./LeadWorkspace";
 
 // A new conversation as the start asks it (one place to start): a card's
 // example goes in the box, then Ask.
-function askStarter(example = "A dashboard for my smart home") {
+// (A dashboard or a bot card opens its ways — "make it in Create".)
+function askStarter(example = "A widget that shows my calendar") {
   fireEvent.click(screen.getByRole("button", { name: new RegExp(example) }));
   fireEvent.click(screen.getByRole("button", { name: "Ask" }));
 }
@@ -869,19 +870,26 @@ describe("release 3a: matches the mockup", () => {
     expect(
       within(rows[0]).getByText("finds what you already have"),
     ).not.toHaveClass("font-mono");
-    fireEvent.click(within(from).getByText("Copy one of your dashboards"));
-    expect(onOpenPage).toHaveBeenLastCalledWith("dashboards");
     fireEvent.click(within(from).getByText("Edit a widget you have"));
     expect(onOpenPage).toHaveBeenLastCalledWith("widgets");
-    // The registry's dashboards open on the right (release 6c, frame 42).
-    const heard = [];
-    const listen = (e) => heard.push(e.detail);
-    window.addEventListener("dash:open-create", listen);
+    // The registry's dashboards open on their own, in the middle — no box
+    // beside them (make it in Create, frame 12).
     fireEvent.click(within(from).getByText("A dashboard from the registry"));
-    window.removeEventListener("dash:open-create", listen);
-    expect(heard).toEqual([]);
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByTestId("workspace-registry")).toBeInTheDocument();
+    expect(screen.getByTestId("make-way-registry")).toContainElement(
+      screen.getByTestId("workspace-registry"),
+    );
+    expect(screen.queryByRole("textbox", { name: "Ask Dash Lead" })).toBeNull();
+    // Back: making a dashboard's ways; Copy opens its own list.
+    fireEvent.click(screen.getByRole("button", { name: "← Back" }));
+    expect(screen.getByTestId("make-ways")).toHaveTextContent(
+      "How do you want to make the dashboard?",
+    );
+    fireEvent.click(screen.getByTestId("make-way-copy"));
+    expect(screen.getByTestId("make-way-copy")).toHaveTextContent(
+      "Copy one of your dashboards",
+    );
+    expect(onOpenPage).not.toHaveBeenCalledWith("dashboards");
   });
 
   test("a dashboard's lead starts with its own questions: no cards, no Or start from", () => {
@@ -907,7 +915,21 @@ describe("release 3a: matches the mockup", () => {
     expect(onStartWithoutAi).toHaveBeenLastCalledWith("import-dashboard");
   });
 
-  test("New Dashboard has Start from; a door's words wait in the reply box (6c-4)", () => {
+  test("New Dashboard shows its ways; a door's words open on Ask AI, in the box (6c-4)", () => {
+    const { unmount } = render(
+      <LeadWorkspace
+        request={{
+          key: "role:dashlead",
+          making: { kind: "dashboard", from: "dashboards" },
+        }}
+        onClose={jest.fn()}
+      />,
+    );
+    const ways = screen.getByTestId("make-ways");
+    expect(ways).toHaveTextContent("A blank dashboard");
+    expect(ways).not.toHaveTextContent("Edit a widget you have");
+    expect(screen.queryByTestId("workspace-start-from")).toBeNull();
+    unmount();
     render(
       <LeadWorkspace
         request={{
@@ -918,15 +940,10 @@ describe("release 3a: matches the mockup", () => {
         onClose={jest.fn()}
       />,
     );
-    expect(screen.getByTestId("workspace-start-from")).toHaveTextContent(
-      "A blank dashboard",
-    );
-    expect(screen.getByTestId("workspace-start-from")).not.toHaveTextContent(
-      "Edit a widget you have",
-    );
     expect(screen.getByRole("textbox", { name: "Ask Dash Lead" })).toHaveValue(
       "A bot that sums up my email",
     );
+    expect(screen.getByRole("button", { name: "← Back" })).toBeInTheDocument();
   });
 
   describe("a page's New (release 6c, frame 41)", () => {
@@ -984,6 +1001,7 @@ describe("release 3a: matches the mockup", () => {
           onClose={jest.fn()}
         />,
       );
+      fireEvent.click(screen.getByTestId("make-way-ai"));
       fireEvent.click(
         screen.getByRole("button", { name: "Sum up my email each morning" }),
       );
@@ -991,7 +1009,7 @@ describe("release 3a: matches the mockup", () => {
       expect(mockAskProps.about).toEqual({
         label: "Making",
         text: "a bot — from the Bots page",
-        note: "(The user wants to make a bot — plan a bot.)",
+        note: "(The user wants to make a bot — plan a bot. Ask which of their dashboards it goes on, or no dashboard; a bot never makes a new dashboard.)",
       });
       expect(screen.getByTestId("workspace-about")).toHaveTextContent(
         "Making: a bot — from the Bots page",
@@ -1008,6 +1026,7 @@ describe("release 3a: matches the mockup", () => {
           onClose={jest.fn()}
         />,
       );
+      fireEvent.click(screen.getByTestId("make-way-ai"));
       fireEvent.click(screen.getByRole("button", { name: "My AWS costs" }));
       fireEvent.click(
         screen.getByRole("button", { name: "+ New conversation" }),
@@ -2311,7 +2330,7 @@ describe("a smaller window", () => {
     window.innerWidth = wideAs;
   });
 
-  it("Or start from › the registry, in the middle, opens the Outputs panel with it", () => {
+  it("Or start from › the registry opens in the middle; Outputs stays closed", () => {
     window.innerWidth = 1024;
     render(
       <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
@@ -2319,10 +2338,12 @@ describe("a smaller window", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /^A dashboard from the registry/ }),
     );
-    expect(screen.getByTestId("workspace-registry")).toBeInTheDocument();
+    expect(screen.getByTestId("make-way-registry")).toContainElement(
+      screen.getByTestId("workspace-registry"),
+    );
     expect(screen.getByRole("button", { name: /^Outputs/ })).toHaveAttribute(
       "aria-expanded",
-      "true",
+      "false",
     );
   });
 
@@ -3284,5 +3305,508 @@ describe("unfinished Create plans in the Dash Lead's Recents (release 6c)", () =
       ),
     ).toHaveLength(1);
     expect(window.mainApi.bots.saveCreateRecent).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Making a bot or a dashboard in Create (mockup "Make a bot or dashboard in
+// Create"): Ask AI or one other way, each on its own with ← Back.
+describe("make it in Create", () => {
+  const dashboards = [
+    { id: 7, name: "Kitchen Sink" },
+    { id: 9, name: "Smart Home" },
+  ];
+  const lifeDoor = {
+    key: "role:dashlead",
+    making: {
+      kind: "bot",
+      from: "dashboard",
+      target: { id: "7", name: "Kitchen Sink" },
+    },
+  };
+  const botsPage = {
+    key: "role:dashlead",
+    making: { kind: "bot", from: "bots" },
+  };
+  const heard = (type) => {
+    const got = [];
+    const fn = (e) => got.push(e.detail);
+    window.addEventListener(type, fn);
+    return { got, stop: () => window.removeEventListener(type, fn) };
+  };
+  const member = (role, name) => ({
+    role,
+    embedded: {
+      type: "bot",
+      name,
+      instructions: "Do it.",
+      modelSource: "claude-code",
+      approvalPolicy: "ask",
+      schedules: [],
+      providers: [],
+    },
+  });
+  const review = (kind, names) => ({
+    previewId: "p1",
+    kind,
+    source: { package: "trops/x", version: "1.0.0", author: "trops" },
+    manifest: {
+      name: kind === "bot" ? names[0] : "Inbox Team",
+      members: names.map((n, i) => member(`r${i}`, n)),
+      wiring: [],
+    },
+    plan: {
+      members: names.map((n, i) => ({
+        role: `r${i}`,
+        fileApprovalPolicy: "ask",
+        needs: [],
+      })),
+      wiring: [],
+    },
+  });
+
+  test("a dashboard's Add bot: the ways, no box; Ask AI knows the dashboard", () => {
+    render(
+      <LeadWorkspace
+        request={lifeDoor}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    expect(screen.getByTestId("workspace-about")).toHaveTextContent(
+      "Making: a bot — for the Kitchen Sink dashboard",
+    );
+    const ways = screen.getByTestId("make-ways");
+    expect(ways).toHaveTextContent("How do you want to make the bot?");
+    expect(
+      within(ways)
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("data-testid")),
+    ).toEqual([
+      "make-way-ai",
+      "make-way-registry",
+      "make-way-copy",
+      "make-way-blank",
+      "make-way-file",
+    ]);
+    expect(screen.queryByRole("textbox", { name: "Ask Dash Lead" })).toBeNull();
+    fireEvent.click(screen.getByTestId("make-way-ai"));
+    expect(screen.getByTestId("make-goes-on")).toHaveTextContent(
+      "Goes on:Kitchen Sink",
+    );
+    expect(
+      screen.getByRole("textbox", { name: "Ask Dash Lead" }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sum up my email each morning" }),
+    );
+    expect(mockAskProps.about.note).toBe(
+      '(The user wants to make a bot for their "Kitchen Sink" dashboard — plan one bot with "dashboard": {"id": "7", "name": "Kitchen Sink"}; don\'t ask which dashboard.)',
+    );
+  });
+
+  test("← Back from Ask AI returns to the ways", () => {
+    render(
+      <LeadWorkspace
+        request={lifeDoor}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-ai"));
+    fireEvent.click(screen.getByRole("button", { name: "← Back" }));
+    expect(screen.getByTestId("make-ways")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Ask Dash Lead" })).toBeNull();
+  });
+
+  test("the start's bot card opens the bot's ways", () => {
+    render(
+      <LeadWorkspace
+        request={{ key: "role:dashlead" }}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^A bot\. / }));
+    expect(screen.getByTestId("workspace-about")).toHaveTextContent(
+      "Making: a bot",
+    );
+    expect(screen.getByTestId("make-ways")).toHaveTextContent(
+      "How do you want to make the bot?",
+    );
+  });
+
+  test("from the Bots page, a blank bot asks where it goes first — a dashboard or none", () => {
+    const onClose = jest.fn();
+    render(
+      <LeadWorkspace
+        request={botsPage}
+        onClose={onClose}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-blank"));
+    const where = screen.getByTestId("make-way-where");
+    expect(
+      within(where)
+        .getAllByTestId("make-where-row")
+        .map((r) => r.textContent),
+    ).toEqual([
+      "Kitchen Sink1 bot",
+      "Smart HomeNo bots yet",
+      "No dashboardRuns on its own; find it on the Bots page",
+    ]);
+    expect(within(where).queryByText(/new dashboard$/i)).toBeNull();
+    const continueBtn = screen.getByRole("button", { name: "Continue" });
+    expect(continueBtn).toBeDisabled();
+    const sent = heard("dash:new-bot");
+    fireEvent.click(within(where).getByText("Kitchen Sink"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    sent.stop();
+    expect(sent.got).toEqual([{ workspaceId: "7", initial: null, note: null }]);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test("a blank bot on no dashboard opens the form for none", () => {
+    render(
+      <LeadWorkspace
+        request={botsPage}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-blank"));
+    const sent = heard("dash:new-bot");
+    fireEvent.click(screen.getByText("No dashboard"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    sent.stop();
+    expect(sent.got[0].workspaceId).toBe(null);
+  });
+
+  test("Copy one of your bots: its own list, no leads; the form opens filled in", () => {
+    const onClose = jest.fn();
+    render(
+      <LeadWorkspace
+        request={lifeDoor}
+        onClose={onClose}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-copy"));
+    const copy = screen.getByTestId("make-way-copy");
+    expect(screen.queryByRole("textbox", { name: "Ask Dash Lead" })).toBeNull();
+    const rows = within(copy).getAllByTestId("make-copy-row");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringMatching(/^Inbox Watch/),
+      expect.stringMatching(/^Word Keeper/),
+    ]);
+    const go = screen.getByRole("button", { name: "Copy and open the form" });
+    expect(go).toBeDisabled();
+    fireEvent.click(within(copy).getByText("Word Keeper"));
+    const sent = heard("dash:new-bot");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy and open the form" }),
+    );
+    sent.stop();
+    expect(sent.got[0]).toMatchObject({
+      workspaceId: "7",
+      initial: { name: "Word Keeper (Kitchen Sink)", workspaceId: "7" },
+    });
+    expect(sent.got[0].note).toMatch(/^Copied from Word Keeper:/);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test("Ask AI instead from a way goes to the box", () => {
+    render(
+      <LeadWorkspace
+        request={lifeDoor}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-copy"));
+    fireEvent.click(screen.getByRole("button", { name: "Ask AI instead" }));
+    expect(
+      screen.getByRole("textbox", { name: "Ask Dash Lead" }),
+    ).toBeInTheDocument();
+  });
+
+  test("a bot from the registry: reviewed, installed on the dashboard, then opened", async () => {
+    window.mainApi.bots.searchRegistry = jest.fn().mockResolvedValue([
+      {
+        ref: "trops/morning-briefing",
+        displayName: "Morning Briefing",
+        type: "bot",
+      },
+    ]);
+    window.mainApi.bots.previewRegistryInstall = jest
+      .fn()
+      .mockResolvedValue(review("bot", ["Morning Briefing"]));
+    window.mainApi.bots.installFromRegistry = jest.fn().mockResolvedValue({
+      installed: [{ role: "r0", id: "nb1", name: "Morning Briefing" }],
+    });
+    const onClose = jest.fn();
+    render(
+      <LeadWorkspace
+        request={lifeDoor}
+        onClose={onClose}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-registry"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Review Morning Briefing" }),
+    );
+    await waitFor(() =>
+      expect(window.mainApi.bots.previewRegistryInstall).toHaveBeenCalledWith(
+        "7",
+        "trops/morning-briefing",
+      ),
+    );
+    fireEvent.click(await screen.findByText("Install bot"));
+    await waitFor(() =>
+      expect(window.mainApi.bots.installFromRegistry).toHaveBeenCalledWith(
+        "7",
+        "p1",
+        {},
+        null,
+      ),
+    );
+    expect(await screen.findByTestId("make-installed")).toHaveTextContent(
+      "Added 1 paused bot.",
+    );
+    const opened = heard("dash:open-bot");
+    fireEvent.click(screen.getByRole("button", { name: "Open it" }));
+    opened.stop();
+    expect(opened.got).toEqual([{ botId: "nb1", tab: "activity" }]);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test("a registry team on no dashboard: it needs a dashboard", async () => {
+    window.mainApi.bots.searchRegistry = jest.fn().mockResolvedValue([
+      {
+        ref: "trops/inbox-team",
+        displayName: "Inbox Team",
+        type: "bot-team",
+      },
+    ]);
+    window.mainApi.bots.previewRegistryInstall = jest
+      .fn()
+      .mockResolvedValue(review("team", ["Sorter", "Drafter"]));
+    render(
+      <LeadWorkspace
+        request={{
+          ...botsPage,
+          making: { ...botsPage.making, target: { none: true } },
+        }}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-registry"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Review Inbox Team" }),
+    );
+    expect(
+      await screen.findByTestId("team-needs-dashboard"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Install team")).toBeDisabled();
+    expect(window.mainApi.bots.previewRegistryInstall).toHaveBeenCalledWith(
+      null,
+      "trops/inbox-team",
+    );
+  });
+
+  test("a bot file: the file picker, its review, installed on the dashboard", async () => {
+    const preview = { ...review("team", ["Digest"]), previewId: undefined };
+    preview.fileName = "Weekly Digest.json";
+    window.mainApi.bots.previewTeamImport = jest
+      .fn()
+      .mockResolvedValue(preview);
+    window.mainApi.bots.installTeam = jest.fn().mockResolvedValue({
+      installed: [{ role: "r0", id: "nb2", name: "Digest" }],
+    });
+    render(
+      <LeadWorkspace
+        request={lifeDoor}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-file"));
+    await waitFor(() =>
+      expect(window.mainApi.bots.previewTeamImport).toHaveBeenCalledWith("7"),
+    );
+    expect(await screen.findByTestId("make-way-file")).toHaveTextContent(
+      "A bot file",
+    );
+    fireEvent.click(screen.getByText("Install team"));
+    await waitFor(() =>
+      expect(window.mainApi.bots.installTeam).toHaveBeenCalledWith(
+        "7",
+        preview.manifest,
+        {},
+        null,
+      ),
+    );
+    expect(await screen.findByTestId("make-installed")).toBeInTheDocument();
+  });
+
+  test("a bot file the user didn't pick: still on the ways", async () => {
+    window.mainApi.bots.previewTeamImport = jest
+      .fn()
+      .mockResolvedValue({ canceled: true });
+    render(
+      <LeadWorkspace
+        request={lifeDoor}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-file"));
+    await waitFor(() =>
+      expect(window.mainApi.bots.previewTeamImport).toHaveBeenCalled(),
+    );
+    expect(screen.getByTestId("make-ways")).toBeInTheDocument();
+  });
+
+  test("Copy one of your dashboards: saved as its own, then opened", async () => {
+    const onDuplicateDashboard = jest.fn().mockResolvedValue({ id: 1 });
+    const onClose = jest.fn();
+    render(
+      <LeadWorkspace
+        request={{
+          key: "role:dashlead",
+          making: { kind: "dashboard", from: "dashboards" },
+        }}
+        onClose={onClose}
+        dashboards={dashboards}
+        onDuplicateDashboard={onDuplicateDashboard}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-copy"));
+    fireEvent.click(screen.getByText("Smart Home"));
+    fireEvent.click(screen.getByRole("button", { name: "Copy and open it" }));
+    await waitFor(() =>
+      expect(onDuplicateDashboard).toHaveBeenCalledWith(dashboards[1]),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+});
+
+describe("make it in Create — review fixes", () => {
+  const dashboards = [{ id: 7, name: "Kitchen Sink" }];
+  const botsPage = {
+    key: "role:dashlead",
+    making: { kind: "bot", from: "bots" },
+  };
+  const toFile = () => {
+    fireEvent.click(screen.getByTestId("make-way-file"));
+    fireEvent.click(screen.getByText("No dashboard"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  };
+
+  test("a bot file picked after Where it goes, then cancelled: back to the ways", async () => {
+    window.mainApi.bots.previewTeamImport = jest
+      .fn()
+      .mockResolvedValue({ canceled: true });
+    render(
+      <LeadWorkspace
+        request={botsPage}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    toFile();
+    await waitFor(() =>
+      expect(window.mainApi.bots.previewTeamImport).toHaveBeenCalledWith(null),
+    );
+    expect(await screen.findByTestId("make-ways")).toBeInTheDocument();
+  });
+
+  test("a bot file that isn't one: back to the ways, saying why", async () => {
+    window.mainApi.bots.previewTeamImport = jest
+      .fn()
+      .mockResolvedValue({ error: "That isn't a Dash team file." });
+    render(
+      <LeadWorkspace
+        request={botsPage}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    toFile();
+    expect(await screen.findByTestId("make-ways")).toHaveTextContent(
+      "That isn't a Dash team file.",
+    );
+  });
+
+  test("a file that can't be read at all says so too", async () => {
+    window.mainApi.bots.previewTeamImport = jest
+      .fn()
+      .mockRejectedValue(new Error("Disk not ready"));
+    render(
+      <LeadWorkspace
+        request={{
+          ...botsPage,
+          making: {
+            ...botsPage.making,
+            target: { id: "7", name: "Kitchen Sink" },
+          },
+        }}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("make-way-file"));
+    expect(await screen.findByTestId("make-ways")).toHaveTextContent(
+      "Disk not ready",
+    );
+  });
+
+  test("once installed, where it went can't be changed — and what wasn't set up is said", async () => {
+    const member = {
+      role: "r0",
+      embedded: {
+        type: "bot",
+        name: "Digest",
+        instructions: "Do it.",
+        modelSource: "claude-code",
+        approvalPolicy: "ask",
+        schedules: [],
+        providers: [],
+      },
+    };
+    window.mainApi.bots.previewTeamImport = jest.fn().mockResolvedValue({
+      fileName: "Digest.json",
+      manifest: { name: "Digest", members: [member], wiring: [] },
+      plan: {
+        members: [{ role: "r0", fileApprovalPolicy: "ask", needs: [] }],
+        wiring: [],
+      },
+    });
+    window.mainApi.bots.installTeam = jest.fn().mockResolvedValue({
+      installed: [{ role: "r0", id: "nb3", name: "Digest" }],
+      unwired: ["Digest's results widget (it isn't on the dashboard)"],
+    });
+    render(
+      <LeadWorkspace
+        request={botsPage}
+        onClose={jest.fn()}
+        dashboards={dashboards}
+      />,
+    );
+    toFile();
+    fireEvent.click(await screen.findByText("Install team"));
+    const done = await screen.findByTestId("make-installed");
+    expect(done).toHaveTextContent("Not set up:");
+    expect(done).toHaveTextContent("results widget");
+    expect(screen.getByTestId("make-goes-on")).toHaveTextContent(
+      "Goes on:No dashboard",
+    );
+    expect(
+      within(screen.getByTestId("make-goes-on")).queryByRole("button", {
+        name: "Change",
+      }),
+    ).toBeNull();
   });
 });

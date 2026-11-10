@@ -176,7 +176,7 @@ export function makingStart(making) {
   const m = making && MAKING[making.kind];
   if (!m) return null;
   const page = making.from ? PAGES[making.from] : null;
-  return {
+  const start = {
     label: "Making",
     text: page ? `${m.what} — from ${page}` : m.what,
     title: m.title,
@@ -185,6 +185,111 @@ export function makingStart(making) {
     // Goes with the first question (and the first reply after a reopen).
     note: `(The user wants to make ${m.what} — plan ${m.what}.)`,
   };
+  if (making.kind !== "bot") return start;
+  // A bot goes on one of the user's dashboards or none — never a new one:
+  // set by a dashboard's Add bot or Where it goes (`target`), else asked.
+  const t = making.target;
+  if (t && t.none) {
+    return {
+      ...start,
+      text: "a bot — on no dashboard",
+      note: "(The user wants to make a bot on no dashboard — plan one bot and leave dashboard out; don't ask which dashboard.)",
+    };
+  }
+  if (t && t.id !== undefined && t.id !== null && t.id !== "") {
+    const name = String(t.name || "their dashboard").slice(0, 80);
+    return {
+      ...start,
+      text: `a bot — for the ${name} dashboard`,
+      note: `(The user wants to make a bot for their "${name}" dashboard — plan one bot with "dashboard": {"id": "${String(t.id)}", "name": "${name}"}; don't ask which dashboard.)`,
+    };
+  }
+  return {
+    ...start,
+    note: "(The user wants to make a bot — plan a bot. Ask which of their dashboards it goes on, or no dashboard; a bot never makes a new dashboard.)",
+  };
+}
+
+// Making a bot or a dashboard (lead-workspace "make it in Create"): Ask AI,
+// or one other way to start at a time — each opens on its own, with Back.
+const WAYS = {
+  bot: {
+    title: "How do you want to make the bot?",
+    ai: {
+      title: "Ask AI",
+      sub: "Describe it in your own words. The Dash team asks what it needs, plans it with you, and sets it up — nothing is made until you say yes.",
+      icon: "wand-magic-sparkles",
+    },
+    from: [
+      {
+        way: "registry",
+        title: "A bot from the registry",
+        sub: "Install a ready-made bot or team, then adjust it",
+        icon: "cloud-arrow-down",
+      },
+      {
+        way: "copy",
+        title: "Copy one of your bots",
+        sub: "Start from one you have. The copy is its own bot — changing one never changes the other",
+        icon: "copy",
+      },
+      {
+        way: "blank",
+        title: "A blank bot",
+        sub: "Fill in the bot form yourself",
+        icon: "square-plus",
+      },
+      {
+        way: "file",
+        title: "A bot file",
+        sub: "Import a bot or team someone shared with you",
+        icon: "file-import",
+      },
+    ],
+  },
+  dashboard: {
+    title: "How do you want to make the dashboard?",
+    ai: {
+      title: "Ask AI",
+      sub: "Describe it in your own words. The Dash team plans it with you — widgets, bots, what to connect — and nothing is made until you say yes.",
+      icon: "wand-magic-sparkles",
+    },
+    from: [
+      {
+        way: "registry",
+        title: "A dashboard from the registry",
+        sub: "Install a ready-made one and its bots, then adjust it",
+        icon: "cloud-arrow-down",
+      },
+      {
+        way: "copy",
+        title: "Copy one of your dashboards",
+        sub: "Start from what you have and change it",
+        icon: "copy",
+      },
+      {
+        way: "blank",
+        title: "A blank dashboard",
+        sub: "Start empty and add widgets yourself",
+        icon: "square-plus",
+      },
+      {
+        way: "file",
+        title: "A dashboard file",
+        sub: "Import one someone shared with you",
+        icon: "file-import",
+      },
+    ],
+  },
+};
+
+/**
+ * How a bot or a dashboard can be made: { title, ai, from: [{ way, title,
+ * sub, icon }] } — Ask AI first. null for anything else (it starts in the
+ * box).
+ */
+export function waysFor(kind) {
+  return WAYS[kind] || null;
 }
 
 /** "row 2, column 1" — and its size when it spans more than one cell. */

@@ -101,6 +101,7 @@ function setup({
   narrow = false,
   apiOver = {},
   mode = "list",
+  focus = null,
 } = {}) {
   window.localStorage.clear();
   if (mode) window.localStorage.setItem("dash:botsView:mode", mode);
@@ -125,6 +126,7 @@ function setup({
         workspaces={[workspace]}
         team={team}
         narrow={narrow}
+        focus={focus}
       />
     </AppContext.Provider>,
   );
@@ -179,8 +181,9 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
   });
 
   it("a just-created bot shows Loading, not the empty form, until the team has it", async () => {
-    const { api } = setup();
-    fireEvent.click(screen.getByText("Add bot"));
+    const { api } = setup({
+      focus: { botId: "__new__", tab: "settings", seq: 1 },
+    });
     fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
       target: { value: "Fresh" },
     });
@@ -288,9 +291,8 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
     });
   });
 
-  it("+ Add bot opens the new-bot form beside the diagram", () => {
-    setup({ mode: null });
-    fireEvent.click(screen.getByRole("button", { name: "Add bot" }));
+  it("Create's new-bot form opens beside the diagram", () => {
+    setup({ mode: null, focus: { botId: "__new__", tab: "settings", seq: 1 } });
     expect(screen.getByRole("tab", { name: "New bot" })).toBeInTheDocument();
     expect(screen.getByTestId("diagram-card-lead_7")).toBeInTheDocument();
   });
@@ -401,11 +403,69 @@ describe("BotsView — tabs and actions", () => {
     expect(team.refresh).toHaveBeenCalled();
   });
 
-  it("+ Add bot opens a new bot's form on this team", () => {
+  it("+ Add bot opens Create, making a bot for this dashboard", () => {
     setup();
+    const opened = jest.fn();
+    window.addEventListener("dash:open-workspace", opened);
     fireEvent.click(screen.getByText("Add bot"));
+    window.removeEventListener("dash:open-workspace", opened);
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(opened.mock.calls[0][0].detail).toEqual({
+      key: "role:dashlead",
+      making: {
+        kind: "bot",
+        from: "dashboard",
+        target: { id: "7", name: "Kitchen Sink" },
+      },
+    });
+    // Nothing opens here.
+    expect(screen.queryByText("Create")).toBeNull();
+  });
+
+  it("Create's blank bot opens a new bot's form on this team", () => {
+    setup({ focus: { botId: "__new__", tab: "settings", seq: 1 } });
     expect(screen.getByText("Create")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Team" })).toHaveValue("7");
+  });
+
+  it("Create's copy opens the form filled in, saying what came along", async () => {
+    const { api } = setup({
+      focus: {
+        botId: "__new__",
+        tab: "settings",
+        seq: 1,
+        initial: {
+          name: "Morning Inbox (Kitchen Sink)",
+          instructions: "List what needs a reply.",
+          workspaceId: "7",
+        },
+        note: "Copied from Morning Inbox on Smart Home: instructions. Nothing is saved until you click Create.",
+      },
+    });
+    expect(screen.getByTestId("bot-copy-note")).toHaveTextContent(
+      "Copied from Morning Inbox on Smart Home",
+    );
+    expect(screen.getByPlaceholderText("e.g. PR Digest")).toHaveValue(
+      "Morning Inbox (Kitchen Sink)",
+    );
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() =>
+      expect(api.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Morning Inbox (Kitchen Sink)",
+          instructions: "List what needs a reply.",
+          workspaceId: "7",
+        }),
+      ),
+    );
+    expect(api.save.mock.calls[0][0].id).toBeUndefined();
+  });
+
+  it("Find in registry and Import team moved to Create's Add bot", () => {
+    setup();
+    expect(screen.queryByText("Find in registry")).toBeNull();
+    expect(screen.queryByText("Import team")).toBeNull();
+    expect(screen.getByText("Export team")).toBeInTheDocument();
   });
 
   it("a deleted bot refreshes the team (the lead is shown again)", () => {
@@ -641,51 +701,6 @@ describe("BotsView — team export/import (TEAM-006/007 slice 1)", () => {
     expect(screen.getByText(/Not included:/)).toBeInTheDocument();
     expect(screen.getByText(/CRM Sync: the trigger/)).toBeInTheDocument();
   });
-
-  it("imports: review first, then installs paused bots and refreshes the team", async () => {
-    const previewTeamImport = jest.fn().mockResolvedValue(preview);
-    const installTeam = jest.fn().mockResolvedValue({
-      installed: [{ role: "agenda", id: "bot_n1", name: "Agenda" }],
-    });
-    const { team } = setup({ apiOver: { previewTeamImport, installTeam } });
-    fireEvent.click(within(teamList()).getByText("Import team"));
-    expect(
-      await screen.findByText("Import team: Daily Brief"),
-    ).toBeInTheDocument();
-    expect(previewTeamImport).toHaveBeenCalledWith(7);
-    expect(installTeam).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText("Install team"));
-    await waitFor(() =>
-      expect(installTeam).toHaveBeenCalledWith(7, preview.manifest, {}, null),
-    );
-    expect(
-      await screen.findByText(
-        "Added 1 paused bot from Daily Brief. Turn it on when you're ready.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Import team: Daily Brief")).toBeNull();
-    expect(team.refresh).toHaveBeenCalled();
-  });
-
-  it("shows why a file couldn't be imported, and does nothing on cancel", async () => {
-    const previewTeamImport = jest
-      .fn()
-      .mockResolvedValueOnce({
-        error: "That isn't a Dash team file.",
-        errors: ['type must be "bot-team"'],
-      })
-      .mockResolvedValueOnce({ canceled: true });
-    setup({ apiOver: { previewTeamImport } });
-    fireEvent.click(within(teamList()).getByText("Import team"));
-    expect(
-      await screen.findByText(
-        /That isn't a Dash team file. type must be "bot-team"/,
-      ),
-    ).toBeInTheDocument();
-    fireEvent.click(within(teamList()).getByText("Import team"));
-    await waitFor(() => expect(previewTeamImport).toHaveBeenCalledTimes(2));
-    expect(screen.queryByText(/Import team:/)).toBeNull();
-  });
 });
 
 describe("BotsView — publish to the registry (TEAM-006 slice 3a)", () => {
@@ -805,137 +820,6 @@ describe("BotsView — publish to the registry (TEAM-006 slice 3a)", () => {
   });
 });
 
-describe("BotsView — install from the registry (TEAM-007 slice 3b)", () => {
-  const regPreview = {
-    previewId: "rp_1",
-    kind: "team",
-    source: {
-      package: "trops/daily-brief-test",
-      version: "1.0.0",
-      author: "trops",
-    },
-    manifest: {
-      name: "Daily Brief (test)",
-      description: "",
-      members: [
-        {
-          role: "agenda",
-          embedded: {
-            type: "bot",
-            name: "Agenda",
-            instructions: "Calendar.",
-            modelSource: "claude-code",
-            approvalPolicy: "ask",
-            schedules: [],
-            providers: [],
-          },
-        },
-        {
-          role: "inbox",
-          embedded: {
-            type: "bot",
-            name: "Inbox",
-            instructions: "Mail.",
-            modelSource: "claude-code",
-            approvalPolicy: "ask",
-            schedules: [],
-            providers: [],
-          },
-        },
-      ],
-      wiring: [{ role: "inbox", on: { role: "agenda", event: "completed" } }],
-    },
-    plan: {
-      members: [
-        { role: "agenda", needs: [] },
-        { role: "inbox", needs: [] },
-      ],
-      wiring: [{ role: "inbox", on: { role: "agenda", event: "completed" } }],
-    },
-  };
-  const searchRegistry = () =>
-    jest.fn().mockResolvedValue([
-      {
-        ref: "trops/daily-brief-test",
-        displayName: "Daily Brief (test)",
-        author: "trops",
-        type: "bot-team",
-        version: "1.0.0",
-        providerTypes: [],
-        team: {
-          members: [
-            { role: "agenda", name: "Agenda" },
-            { role: "inbox", name: "Inbox" },
-          ],
-        },
-      },
-    ]);
-
-  it("finds a team, reviews it, and installs just the ticked bots from the checked copy", async () => {
-    const previewRegistryInstall = jest.fn().mockResolvedValue(regPreview);
-    const installFromRegistry = jest.fn().mockResolvedValue({
-      installed: [{ role: "inbox", id: "bot_n2", name: "Inbox" }],
-      droppedWiring: [
-        { role: "inbox", on: { role: "agenda", event: "completed" } },
-      ],
-    });
-    const installTeam = jest.fn();
-    const { team } = setup({
-      apiOver: {
-        searchRegistry: searchRegistry(),
-        previewRegistryInstall,
-        installFromRegistry,
-        installTeam,
-      },
-    });
-    fireEvent.click(within(teamList()).getByText("Find in registry"));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Review Daily Brief (test)" }),
-    );
-    await waitFor(() =>
-      expect(previewRegistryInstall).toHaveBeenCalledWith(
-        7,
-        "trops/daily-brief-test",
-      ),
-    );
-    expect(
-      await screen.findByText(
-        "From the registry: trops/daily-brief-test v1.0.0 by trops",
-      ),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Agenda" }));
-    fireEvent.click(screen.getByText("Install 1 bot"));
-    await waitFor(() =>
-      expect(installFromRegistry).toHaveBeenCalledWith(7, "rp_1", {}, [
-        "inbox",
-      ]),
-    );
-    expect(installTeam).not.toHaveBeenCalled();
-    expect(
-      await screen.findByText(
-        "Added 1 paused bot from Daily Brief (test). Turn it on when you're ready.",
-      ),
-    ).toBeInTheDocument();
-    expect(team.refresh).toHaveBeenCalled();
-  });
-
-  it("shows why a registry package couldn't be opened", async () => {
-    const previewRegistryInstall = jest.fn().mockResolvedValue({
-      error: "The package failed verification: bad signature",
-    });
-    setup({
-      apiOver: { searchRegistry: searchRegistry(), previewRegistryInstall },
-    });
-    fireEvent.click(within(teamList()).getByText("Find in registry"));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Review Daily Brief (test)" }),
-    );
-    expect(
-      await screen.findByText("The package failed verification: bad signature"),
-    ).toBeInTheDocument();
-  });
-});
-
 describe("BotsView — show bots on the dashboard (TEAM-012)", () => {
   it("shows a bot's results on the dashboard from its … menu", async () => {
     const addBotWidget = jest
@@ -986,8 +870,10 @@ describe("BotsView — show bots on the dashboard (TEAM-012)", () => {
       .fn()
       .mockResolvedValue({ added: true, widgetId: 7 });
     const save = jest.fn().mockResolvedValue({ id: "bot_new", name: "Digest" });
-    setup({ apiOver: { addBotWidget, save } });
-    fireEvent.click(within(teamList()).getByText("Add bot"));
+    setup({
+      apiOver: { addBotWidget, save },
+      focus: { botId: "__new__", tab: "settings", seq: 1 },
+    });
     fireEvent.change(await screen.findByPlaceholderText("e.g. PR Digest"), {
       target: { value: "Digest" },
     });
@@ -1001,5 +887,74 @@ describe("BotsView — show bots on the dashboard (TEAM-012)", () => {
         botId: "bot_new",
       }),
     );
+  });
+});
+
+describe("BotsView — a new bot's form from Create opens once", () => {
+  test("it tells the host it used the request", () => {
+    window.localStorage.clear();
+    window.localStorage.setItem("dash:botsView:mode", "list");
+    window.mainApi = {
+      bots: {
+        getRuns: jest.fn().mockResolvedValue([]),
+        onStream: jest.fn(() => "s1"),
+        removeListener: jest.fn(),
+        list: jest.fn().mockResolvedValue([lead, inbox, crm]),
+        listToolSources: jest.fn().mockResolvedValue([]),
+        save: jest.fn().mockResolvedValue({ id: "b9" }),
+      },
+    };
+    const onFocusApplied = jest.fn();
+    render(
+      <AppContext.Provider value={{ providers: {} }}>
+        <BotsView
+          workspace={workspace}
+          workspaces={[workspace]}
+          team={makeTeam()}
+          narrow={false}
+          focus={{
+            workspaceId: "7",
+            botId: "__new__",
+            tab: "settings",
+            seq: 4,
+          }}
+          onFocusApplied={onFocusApplied}
+        />
+      </AppContext.Provider>,
+    );
+    expect(screen.getByText("Create")).toBeInTheDocument();
+    expect(onFocusApplied).toHaveBeenCalledWith(4);
+  });
+
+  test("a request for another dashboard is left alone", () => {
+    window.mainApi = {
+      bots: {
+        getRuns: jest.fn().mockResolvedValue([]),
+        onStream: jest.fn(() => "s1"),
+        removeListener: jest.fn(),
+        list: jest.fn().mockResolvedValue([lead, inbox, crm]),
+        listToolSources: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const onFocusApplied = jest.fn();
+    render(
+      <AppContext.Provider value={{ providers: {} }}>
+        <BotsView
+          workspace={workspace}
+          workspaces={[workspace]}
+          team={makeTeam()}
+          narrow={false}
+          focus={{
+            workspaceId: "9",
+            botId: "__new__",
+            tab: "settings",
+            seq: 5,
+          }}
+          onFocusApplied={onFocusApplied}
+        />
+      </AppContext.Provider>,
+    );
+    expect(screen.queryByText("Create")).toBeNull();
+    expect(onFocusApplied).not.toHaveBeenCalled();
   });
 });

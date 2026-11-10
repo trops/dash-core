@@ -166,3 +166,28 @@ describe("the Dash team and Claude connectors", () => {
     );
   });
 });
+
+describe("the Planner sees which service a Claude connector is", () => {
+  it("names the service and its tools", () => {
+    const text = describeProvider({
+      name: "Mail",
+      type: "claude-connector",
+      connector: true,
+      server: "claude.ai Gmail",
+      tools: ["search_threads", "get_thread"],
+    });
+    assert.match(text, /Claude connector: bots only/);
+    assert.match(text, /It's Gmail from the user's Claude account/);
+    assert.match(text, /tools: search_threads, get_thread/);
+  });
+  it("without a listing yet, still says what it is", () => {
+    const text = describeProvider({
+      name: "Gmail",
+      type: "claude-connector",
+      connector: true,
+      server: "claude.ai Gmail",
+      tools: null,
+    });
+    assert.match(text, /It's Gmail from the user's Claude account\.$/);
+  });
+});

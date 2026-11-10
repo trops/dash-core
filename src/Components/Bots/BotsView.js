@@ -7,6 +7,7 @@ import React, {
   useMemo,
 } from "react";
 import {
+  AlertBanner,
   Button,
   Button3,
   ButtonIcon,
@@ -22,10 +23,8 @@ import { TeamChart } from "./TeamChart";
 import { BotFlowSummary } from "./BotFlowSummary";
 import { BotPage } from "./BotPage";
 import { BotDetail } from "../Settings/details/BotDetail";
-import { TeamImportReview } from "./TeamImportReview";
 import { PublishBotDialog } from "./PublishBotDialog";
 import { TeamBudgetDialog } from "./TeamBudgetDialog";
-import { RegistryBrowse } from "./RegistryBrowse";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
@@ -57,7 +56,12 @@ import {
  * @param {(section: string) => void} [onOpenSettings]  error next steps
  * @param {{ botId: string, tab?: string, seq: number }} [focus]  open on a
  *   bot + tab (the Bot monitor's "Open in Bots view"); a new `seq` re-applies
- *   it, through the unsaved-changes guard.
+ *   it, through the unsaved-changes guard. A new bot's form ("__new__",
+ *   Create's blank bot or copy) may bring `initial` and its `note`.
+ *
+ * + Add bot opens Create, making a bot for this dashboard: Ask AI, the
+ * registry, a copy, a blank form or a file (lead-workspace "make it in
+ * Create").
  */
 const NEW_BOT = "__new__";
 const NARROW_PX = 900;
@@ -140,6 +144,9 @@ export const BotsView = ({
   focus = null,
   onDirtyChange = null,
   onOpenSettings = null,
+  // A new bot's form request was used (its seq): the host lets it go, so
+  // coming back to this view never opens it again.
+  onFocusApplied = null,
 }) => {
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const appContext = useContext(AppContext);
@@ -191,14 +198,10 @@ export const BotsView = ({
     setModeState(next);
     writeMode(next);
   };
-  // Team export/import (TEAM-006/007, slice 1): the review being shown, and
-  // the last outcome ({ text, details?: string[] }).
-  const [importPreview, setImportPreview] = useState(null);
-  const [installing, setInstalling] = useState(false);
-  const [importError, setImportError] = useState(null);
+  // Team export (TEAM-006): the last outcome ({ text, details?: string[] }).
   const [teamNote, setTeamNote] = useState(null);
-  // Registry install (TEAM-007 slice 3b): the search panel is open.
-  const [registryOpen, setRegistryOpen] = useState(false);
+  // A new bot's form from Create: a copy's values and what came along.
+  const [newFrom, setNewFrom] = useState(null);
   // Registry publish (TEAM-006 slice 3a): what's being published and how
   // it went.
   const { ensureAuthed, authGate } = useRegistryAuthGate();
@@ -291,8 +294,6 @@ export const BotsView = ({
       setTab(id === NEW_BOT ? "settings" : "activity");
       reopenPage();
       setMenuOpen(false);
-      setImportPreview(null);
-      setRegistryOpen(false);
       // A new bot has no summary — its form opens (diagram).
       if (id === NEW_BOT) setDetailOpen(true);
     });
@@ -317,11 +318,28 @@ export const BotsView = ({
       setTab(TABS.includes(nextTab) ? nextTab : "activity");
       reopenPage();
       setMenuOpen(false);
-      setImportPreview(null);
-      setRegistryOpen(false);
       setDetailOpen(true);
     });
   };
+  // + Add bot: Create, making a bot for this dashboard (Ask AI, the
+  // registry, a copy, a blank form, a file).
+  const addBot = () =>
+    guarded(() =>
+      window.dispatchEvent(
+        new CustomEvent("dash:open-workspace", {
+          detail: {
+            key: "role:dashlead",
+            making: {
+              kind: "bot",
+              from: "dashboard",
+              target: workspace
+                ? { id: String(workspace.id), name: workspace.name || "" }
+                : null,
+            },
+          },
+        }),
+      ),
+    );
   const closeDetail = () =>
     guarded(() => {
       setDirty(false);
@@ -341,6 +359,29 @@ export const BotsView = ({
   const appliedSeq = useRef(focusTarget ? focus.seq : null);
   useEffect(() => {
     if (!focus || focus.seq === appliedSeq.current) return;
+    // A new bot's form (Create's blank bot or copy), filled in if a copy.
+    if (focus.botId === NEW_BOT) {
+      // Only for this dashboard (the stage keeps one focus for all of them).
+      if (
+        focus.workspaceId != null &&
+        !(workspace && String(workspace.id) === String(focus.workspaceId))
+      )
+        return;
+      appliedSeq.current = focus.seq;
+      guarded(() => {
+        setDirty(false);
+        setNewFrom(
+          focus.initial ? { initial: focus.initial, note: focus.note } : null,
+        );
+        setSelectedId(NEW_BOT);
+        setTab("settings");
+        setFormKey((k) => k + 1);
+        setMenuOpen(false);
+        setDetailOpen(true);
+      });
+      if (onFocusApplied) onFocusApplied(focus.seq);
+      return;
+    }
     if (!all.some((b) => b.id === focus.botId)) return;
     appliedSeq.current = focus.seq;
     guarded(() => {
@@ -352,7 +393,12 @@ export const BotsView = ({
       setDetailOpen(true);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus && focus.seq, focus && focus.botId, team && team.bots]);
+  }, [
+    focus && focus.seq,
+    focus && focus.botId,
+    team && team.bots,
+    workspace && workspace.id,
+  ]);
 
   const afterChange = () => team && team.refresh && team.refresh();
 
@@ -435,6 +481,7 @@ export const BotsView = ({
   const saveBot = async (definition, opts = {}) => {
     const bots = api();
     const saved = await bots.save(definition);
+    setNewFrom(null);
     if (opts.showOnDashboard && saved && saved.id) {
       await showOnDashboard("results", saved);
     }
@@ -481,90 +528,6 @@ export const BotsView = ({
       });
     } else if (r.error) {
       setTeamNote({ text: r.error });
-    }
-  };
-
-  const importTeam = () =>
-    guarded(async () => {
-      const bots = api();
-      if (!bots || !bots.previewTeamImport || !workspace) return;
-      const r = (await bots.previewTeamImport(workspace.id)) || {};
-      if (r.canceled) return;
-      if (r.error) {
-        setTeamNote({
-          text: [r.error, ...(r.errors || [])].join(" "),
-        });
-        return;
-      }
-      setDirty(false);
-      setTeamNote(null);
-      setImportError(null);
-      setImportPreview(r);
-    });
-
-  const openRegistry = () =>
-    guarded(() => {
-      setDirty(false);
-      setTeamNote(null);
-      setImportPreview(null);
-      setRegistryOpen(true);
-    });
-
-  // A registry package was picked: download, verify and check it in the
-  // main process, then review it like an imported file.
-  const pickRegistryPackage = async (ref) => {
-    const bots = api();
-    if (!bots || !bots.previewRegistryInstall || !workspace) return;
-    let r = (await bots.previewRegistryInstall(workspace.id, ref)) || {};
-    if (r.authRequired) {
-      const signedIn = await ensureAuthed({
-        message: "Sign in to the Dash registry to install.",
-      });
-      if (!signedIn) return;
-      r = (await bots.previewRegistryInstall(workspace.id, ref)) || {};
-    }
-    if (r.error) {
-      setTeamNote({ text: [r.error, ...(r.errors || [])].join(" ") });
-      return;
-    }
-    setTeamNote(null);
-    setImportError(null);
-    setRegistryOpen(false);
-    setImportPreview(r);
-  };
-
-  const installTeam = async (choices, roles = null) => {
-    const bots = api();
-    if (!bots || !importPreview || !workspace) return;
-    setInstalling(true);
-    try {
-      // A registry package installs from the main process's checked copy.
-      const r =
-        (importPreview.previewId
-          ? await bots.installFromRegistry(
-              workspace.id,
-              importPreview.previewId,
-              choices,
-              roles,
-            )
-          : await bots.installTeam(
-              workspace.id,
-              importPreview.manifest,
-              choices,
-              roles,
-            )) || {};
-      if (r.error) {
-        setImportError([r.error, ...(r.errors || [])].join(" "));
-        return;
-      }
-      const n = (r.installed || []).length;
-      setTeamNote({
-        text: `Added ${n} paused bot${n === 1 ? "" : "s"} from ${importPreview.manifest.name}. Turn ${n === 1 ? "it" : "them"} on when you're ready.`,
-      });
-      setImportPreview(null);
-      afterChange();
-    } finally {
-      setInstalling(false);
     }
   };
 
@@ -632,8 +595,6 @@ export const BotsView = ({
           />
         ) : null}
         <Button3 title="Export team" size="sm" onClick={exportTeam} />
-        <Button3 title="Import team" size="sm" onClick={importTeam} />
-        <Button3 title="Find in registry" size="sm" onClick={openRegistry} />
         <Button3
           title="Show team activity"
           size="sm"
@@ -767,7 +728,7 @@ export const BotsView = ({
       ) : null}
       <div className="flex-1" />
       {teamActions}
-      <Button title="Add bot" size="sm" onClick={() => select(NEW_BOT)} />
+      <Button title="Add bot" size="sm" onClick={addBot} />
     </nav>
   );
 
@@ -784,11 +745,7 @@ export const BotsView = ({
         {teamLabel}
         <div className="flex flex-row items-center gap-2">
           {viewSwitch}
-          <Button
-            title="Add bot"
-            size="sm"
-            onClick={() => openBot(NEW_BOT, "settings")}
-          />
+          <Button title="Add bot" size="sm" onClick={addBot} />
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-2">
@@ -834,7 +791,7 @@ export const BotsView = ({
         <SelectInput
           label="Bot"
           value={selectedId || ""}
-          onChange={(v) => select(v)}
+          onChange={(v) => (v === NEW_BOT ? addBot() : select(v))}
           options={[
             ...all.map((b) => ({ value: b.id, label: b.name })),
             { value: NEW_BOT, label: "+ Add bot" },
@@ -860,24 +817,7 @@ export const BotsView = ({
         teamList
       )}
 
-      {registryOpen && !importPreview ? (
-        <RegistryBrowse
-          onPick={pickRegistryPackage}
-          onClose={() => setRegistryOpen(false)}
-        />
-      ) : importPreview ? (
-        <TeamImportReview
-          key={importPreview.previewId || importPreview.fileName || "import"}
-          preview={importPreview}
-          installing={installing}
-          error={importError}
-          onInstall={installTeam}
-          onCancel={() => {
-            setImportPreview(null);
-            setImportError(null);
-          }}
-        />
-      ) : sideBySide && !detailOpen && selected ? (
+      {sideBySide && !detailOpen && selected ? (
         <aside
           aria-label="Selected bot"
           className={`w-80 flex-shrink-0 min-h-0 overflow-y-auto rounded-xl border ${hairline}`}
@@ -985,7 +925,9 @@ export const BotsView = ({
               <>
                 <div className="flex flex-row items-start justify-between gap-4 px-5 pt-4">
                   <div className="min-w-0">
-                    <h2 className="text-lg font-semibold truncate">New bot</h2>
+                    <h2 className="text-lg font-semibold truncate">
+                      {newFrom ? "New bot — a copy" : "New bot"}
+                    </h2>
                     <div className={`text-sm ${muted}`}>
                       {`Joins the ${workspace ? workspace.name : "dashboard"} team`}
                     </div>
@@ -1017,6 +959,18 @@ export const BotsView = ({
                     key={`${selectedId || NEW_BOT}-${formKey}`}
                     bot={null}
                     isCreating
+                    initial={newFrom ? newFrom.initial : null}
+                    header={
+                      newFrom && newFrom.note ? (
+                        <div className="px-5 pt-3" data-testid="bot-copy-note">
+                          <AlertBanner
+                            variant="info"
+                            size="compact"
+                            message={newFrom.note}
+                          />
+                        </div>
+                      ) : null
+                    }
                     defaultWorkspaceId={workspace ? workspace.id : null}
                     providers={providers}
                     workspaces={workspaces}

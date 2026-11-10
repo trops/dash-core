@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Button2,
   ButtonIcon,
@@ -10,9 +10,11 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { AppContext } from "../../Context/App/AppContext";
 import { describeEstimate } from "../../utils/planEstimate";
 import {
   botDetails,
+  connectorNames,
   isDone,
   isSkipped,
   pieceSource,
@@ -121,7 +123,10 @@ const EditPlanDetails = ({ piece, edit, muted }) => {
  * list in a recessed panel, and its full instructions behind a real button.
  */
 const BotPlanDetails = ({ piece, muted, strong, open, onToggle }) => {
-  const rows = botDetails(piece);
+  // The user's Claude connectors: a bot that uses one runs on the Claude
+  // subscription (Runs on).
+  const app = useContext(AppContext) || {};
+  const rows = botDetails(piece, { connectors: connectorNames(app.providers) });
   return (
     <div
       className="flex flex-col gap-3 ml-7 rounded-md p-3"
@@ -376,7 +381,9 @@ export const PlanChecklistRows = ({
         // The user's providers that could stand in, closest first.
         const choices =
           it.kind === "connect"
-            ? providerChoices(providers, it.providerType)
+            ? providerChoices(providers, it.providerType, {
+                bots: !!it.botsOnly,
+              })
             : [];
         const picker = choices.length ? (
           <div className="w-full" data-testid="checklist-use-provider">
@@ -391,7 +398,7 @@ export const PlanChecklistRows = ({
                 { value: "", label: "Pick a provider…" },
                 ...choices.map((p) => ({
                   value: p.name,
-                  label: p.type ? `${p.name} · ${p.type}` : p.name,
+                  label: p.label,
                 })),
               ]}
             />

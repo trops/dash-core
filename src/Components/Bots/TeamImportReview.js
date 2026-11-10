@@ -1,5 +1,6 @@
 import React, { useContext, useState } from "react";
 import {
+  AlertBanner,
   Button,
   Button3,
   Checkbox,
@@ -61,6 +62,9 @@ export const TeamImportReview = ({
   onCancel,
   installing = false,
   error = null,
+  // Installing on no dashboard (making a bot in Create): one bot can go
+  // there; more than one is a team, which needs a dashboard.
+  noDashboard = false,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
@@ -79,6 +83,7 @@ export const TeamImportReview = ({
   const pickedRoles = manifest.members
     .map((m) => m.role)
     .filter((r) => picked.has(r));
+  const teamNeedsDashboard = noDashboard && pickedRoles.length > 1;
   const toggle = (role, on) =>
     setPicked((prev) => {
       const next = new Set(prev);
@@ -249,6 +254,15 @@ export const TeamImportReview = ({
         </div>
       </div>
 
+      {teamNeedsDashboard ? (
+        <div className="px-5 pb-3" data-testid="team-needs-dashboard">
+          <AlertBanner
+            variant="warning"
+            size="compact"
+            message="A team needs a dashboard — its bots work together through that dashboard's lead. Click Change to pick one, or install just one bot."
+          />
+        </div>
+      ) : null}
       <div
         className={`flex flex-row flex-wrap items-center justify-between gap-3 px-5 py-3 border-t ${hairline}`}
       >
@@ -267,7 +281,9 @@ export const TeamImportReview = ({
                   : "Install team"
             }
             size="sm"
-            disabled={installing || pickedRoles.length === 0}
+            disabled={
+              installing || pickedRoles.length === 0 || teamNeedsDashboard
+            }
             onClick={() => onInstall(choices, isPartial ? pickedRoles : null)}
           />
         </div>

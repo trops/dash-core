@@ -197,6 +197,13 @@ function getMainApi() {
   return typeof window !== "undefined" ? window.mainApi : null;
 }
 
+// A copied bot's settings the form doesn't show, saved as they came.
+const CARRIED = ["modelSelection", "allowedTools"];
+const carried = (initial) =>
+  Object.fromEntries(
+    CARRIED.filter((k) => initial[k] !== undefined).map((k) => [k, initial[k]]),
+  );
+
 export const BotDetail = ({
   bot = null,
   isCreating = false,
@@ -234,7 +241,11 @@ export const BotDetail = ({
   onChange = null,
   // The bot page shows the budget on its Spending tab instead (NAV-016).
   showBudget = true,
+  // A new bot filled in from a copy of another (botCopy's `initial`): the
+  // form starts from it; nothing is saved until Create.
+  initial = null,
 }) => {
+  const from = bot || initial;
   const showInstructions = !section || section === "instructions";
   const showAccess = !section || section === "access";
   // A Dash team role (CRE-011) is never on a dashboard and only runs when
@@ -244,12 +255,12 @@ export const BotDetail = ({
   // user's own are optional.
   const hasBuiltin = isTeamRole || (!!bot && bot.role === "lead");
   const [showOnDashboard, setShowOnDashboard] = useState(true);
-  const [name, setName] = useState(bot?.name || "");
-  const [instructions, setInstructions] = useState(bot?.instructions || "");
+  const [name, setName] = useState(from?.name || "");
+  const [instructions, setInstructions] = useState(from?.instructions || "");
   // A bot without its own AI model shows (and keeps) the default, Settings ›
   // AI's; a new bot starts on it too.
   const [provider, setProvider] = useState(
-    bot?.provider || defaultProviderId(providers),
+    from?.provider || defaultProviderId(providers),
   );
   // Settings › AI: the backend, each job's default model and style, limits.
   const [ai, setAi] = useState(null);
@@ -268,31 +279,33 @@ export const BotDetail = ({
   }, []);
   const usesDefault = provider === USE_DEFAULT_PROVIDER;
   const effectiveProvider = usesDefault ? backendProviderOf(ai) : provider;
-  const [model, setModel] = useState(bot?.model || "");
-  const [style, setStyle] = useState(bot?.style || "");
-  const ownLimits = bot?.runLimits || {};
+  const [model, setModel] = useState(from?.model || "");
+  const [style, setStyle] = useState(from?.style || "");
+  const ownLimits = from?.runLimits || {};
   const limitText = (v) => (v === undefined || v === null ? "" : String(v));
   const [stepsLimit, setStepsLimit] = useState(limitText(ownLimits.steps));
   const [costLimit, setCostLimit] = useState(limitText(ownLimits.costPerRun));
   const [minutesLimit, setMinutesLimit] = useState(
     limitText(ownLimits.minutes),
   );
-  const [engine, setEngine] = useState(bot?.engine || "");
+  const [engine, setEngine] = useState(from?.engine || "");
   const [approvalPolicy, setApprovalPolicy] = useState(
-    bot?.approvalPolicy || "ask",
+    from?.approvalPolicy || "ask",
   );
   const approvalHint = APPROVAL_HINTS[approvalPolicy] || null;
   // Events that arrive while it's paused or over budget (US-011 AC8).
   const [whilePaused, setWhilePaused] = useState(
-    bot?.whilePaused === "drop" ? "drop" : "queue",
+    from?.whilePaused === "drop" ? "drop" : "queue",
   );
 
   // --- Providers: the user's Dash MCP providers (Settings → Providers) ---
-  const [selectedServers, setSelectedServers] = useState(bot?.mcpServers || []);
+  const [selectedServers, setSelectedServers] = useState(
+    from?.mcpServers || [],
+  );
   // Per-provider narrowing within the provider's declared tools:
   // { [providerName]: string[] }. No entry → every tool the provider allows.
   const [toolSelections, setToolSelections] = useState(
-    bot?.toolSelections || {},
+    from?.toolSelections || {},
   );
   const [toolSources, setToolSources] = useState([]);
   const [sourcesLoaded, setSourcesLoaded] = useState(false);
@@ -349,7 +362,7 @@ export const BotDetail = ({
   const [modelOptions, setModelOptions] = useState([]);
 
   // --- Schedule (friendly dropdowns; raw cron behind Advanced) ---
-  const initialCron = bot?.schedules?.[0]?.cron || "";
+  const initialCron = from?.schedules?.[0]?.cron || "";
   const parsed = parseCron(initialCron);
   const [frequency, setFrequency] = useState(
     parsed.frequency === "custom" ? "off" : parsed.frequency,
@@ -364,7 +377,7 @@ export const BotDetail = ({
   const [advanced, setAdvanced] = useState(parsed.frequency === "custom");
   const [advancedCron, setAdvancedCron] = useState(initialCron);
   const [schedulePrompt, setSchedulePrompt] = useState(
-    bot?.schedules?.[0]?.prompt || "",
+    from?.schedules?.[0]?.prompt || "",
   );
 
   // --- Run-on-events (subscriptions) ---
@@ -372,7 +385,7 @@ export const BotDetail = ({
   // events. Each saved subscription keeps its runtime eventType plus a
   // structured source (see eventCatalog.js).
   const [subscriptions, setSubscriptions] = useState(
-    (bot?.subscriptions || []).filter((s) => s && s.eventType),
+    (from?.subscriptions || []).filter((s) => s && s.eventType),
   );
   const eventCatalog = useMemo(
     () => buildWidgetEventCatalog(workspaces, getWidgetConfig),
@@ -393,7 +406,7 @@ export const BotDetail = ({
   // bot; a just-added trigger reminds the user to Save.
   // --- Results the bot reports to its dashboard (team-dashboards TD-001) ---
   const [publishes, setPublishes] = useState(() =>
-    (bot?.publishes || []).filter((p) => p && p.name),
+    (from?.publishes || []).filter((p) => p && p.name),
   );
   const [newResultLabel, setNewResultLabel] = useState("");
   const [newResultDescription, setNewResultDescription] = useState("");
@@ -782,6 +795,8 @@ export const BotDetail = ({
     const schedules = cron ? [{ cron, prompt: schedulePrompt.trim() }] : [];
     return {
       ...(bot?.id ? { id: bot.id } : {}),
+      // A copy keeps what the form doesn't show.
+      ...(!bot && initial ? carried(initial) : {}),
       name: name.trim(),
       instructions: instructions.trim(),
       provider: provider && !usesDefault ? provider : null,
@@ -835,666 +850,675 @@ export const BotDetail = ({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-4">
-        {header}
-        {showInstructions && (
-          <>
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Name</span>
-              <InputText
-                value={name}
-                onChange={setName}
-                placeholder="e.g. PR Digest"
-              />
-            </div>
+      {/* The fields keep their size and the area scrolls: a short window
+          (the no-dashboard bot window) never squeezes them. */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+        <div className="flex flex-col gap-4">
+          {header}
+          {showInstructions && (
+            <>
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">Name</span>
+                <InputText
+                  value={name}
+                  onChange={setName}
+                  placeholder="e.g. PR Digest"
+                />
+              </div>
 
-            {/* Dash's built-in instructions always apply; the user's own
+              {/* Dash's built-in instructions always apply; the user's own
                 add to them (TEAM-017). A lead's or role's built-in part is
                 its job, so it comes first; another bot's own instructions
                 are its job, with the shared rules under them. */}
-            {hasBuiltin ? (
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium">Instructions</span>
-                <BuiltinInstructions
-                  botId={bot.id}
-                  kind={isTeamRole ? "role" : "lead"}
-                />
-                <span className="text-sm font-medium">Your instructions</span>
-                <span className="text-xs opacity-50">
-                  {isTeamRole
-                    ? "Added after the built-in ones. Add duties, preferences or tone. The built-in ones decide what this role can do and the format of its answers, which Dash reads."
-                    : "Added after the built-in ones. Add duties, preferences or tone — you decide style and format. The built-in ones decide what this bot can do."}
-                </span>
-                <TextArea
-                  value={instructions}
-                  onChange={setInstructions}
-                  placeholder="Add duties, preferences or tone. Built-in instructions always apply."
-                  rows={3}
-                  autoGrow
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium">Instructions</span>
-                <TextArea
-                  value={instructions}
-                  onChange={setInstructions}
-                  placeholder="What should this bot do?"
-                  rows={5}
-                  // Grow with the text — the form already scrolls; no scroll
-                  // inside a scroll.
-                  autoGrow
-                />
-                <BuiltinInstructions botId={bot?.id || null} kind="bot" />
-              </div>
-            )}
-
-            {isTeamRole ? null : (
-              <div className="flex flex-col gap-2">
-                <SelectInput
-                  label="Team"
-                  value={team}
-                  onChange={setTeam}
-                  options={teamOptions}
-                />
-                <span className="text-xs opacity-50">
-                  The dashboard this bot works for. A bot on a team only runs on
-                  its own dashboard&apos;s events; Unassigned bots hear every
-                  dashboard.
-                </span>
-                {isCreating && canShowOnDashboard ? (
-                  <Checkbox
-                    label="Show results on this dashboard"
-                    checked={showOnDashboard}
-                    onChange={(on) => setShowOnDashboard(!!on)}
-                  />
-                ) : null}
-                {offTeam.length ? (
-                  <span className="text-xs opacity-70">
-                    {offTeam.length === 1
-                      ? "1 event this bot runs on comes"
-                      : `${offTeam.length} events this bot runs on come`}{" "}
-                    from another dashboard and won&apos;t fire while it&apos;s
-                    on this team.
-                  </span>
-                ) : null}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* The model source decides which providers it can use (Claude
-            connectors only on the subscription), so it comes first. */}
-        {showInstructions && (
-          <>
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">AI model</span>
-              <div className="flex flex-col gap-1">
-                <SelectInput
-                  label="Model source"
-                  value={provider}
-                  onChange={setProvider}
-                  options={[
-                    useDefaultOption(ai),
-                    ...providerOptionsFrom(providers),
-                  ]}
-                />
-                <span className="text-xs opacity-50">
-                  Which AI powers the bot — an API key from your Anthropic,
-                  OpenAI or xAI providers, or &quot;Claude Code (CLI)&quot;,
-                  which uses your Claude login with no API key.
-                </span>
-              </div>
-
-              <SelectInput
-                label="Model"
-                value={model}
-                onChange={setModel}
-                options={modelSelectOptions}
-                placeholder="Default (from Settings › AI)"
-              />
-
-              <SelectInput
-                label="Style"
-                value={style}
-                onChange={setStyle}
-                options={[
-                  {
-                    value: "",
-                    label: jobStyle
-                      ? `Default · ${STYLE_LABELS[jobStyle]} (from Settings › AI)`
-                      : "Default (from Settings › AI)",
-                  },
-                  ...STYLE_OPTIONS,
-                ]}
-              />
-              <span className="text-xs opacity-50">
-                How much it thinks and writes. Brief thinks less and answers in
-                a line or two — the cheapest.
-              </span>
-
-              <SelectInput
-                label="Engine"
-                value={engine}
-                onChange={setEngine}
-                options={ENGINE_OPTIONS}
-                placeholder="Standard (default)"
-              />
-            </div>
-          </>
-        )}
-
-        {showAccess && (
-          <>
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Providers</span>
-              <span className="text-xs opacity-50">
-                What this bot can use — your providers from Settings →
-                Providers. The bot starts any that aren&apos;t running when it
-                runs.
-              </span>
-              {showProviderFilters ? (
-                <div
-                  role="search"
-                  className="flex flex-row flex-wrap items-center gap-3"
-                >
-                  <div className="w-64">
-                    <SearchInput
-                      value={providerQuery}
-                      onChange={setProviderQuery}
-                      placeholder="Search providers…"
-                    />
-                  </div>
-                  {providerKinds ? (
-                    <SegmentedControl
-                      ariaLabel="Kind"
-                      options={providerKinds}
-                      value={providerKind}
-                      onChange={setProviderKind}
-                    />
-                  ) : null}
-                  <Checkbox
-                    label="Picked only"
-                    checked={pickedOnly}
-                    onChange={togglePickedOnly}
-                  />
-                </div>
-              ) : null}
-              {connectorWarning ? (
+              {hasBuiltin ? (
                 <div className="flex flex-col gap-2">
-                  <AlertBanner
-                    variant="warning"
-                    size="compact"
-                    message={connectorWarning}
+                  <span className="text-sm font-medium">Instructions</span>
+                  <BuiltinInstructions
+                    botId={bot.id}
+                    kind={isTeamRole ? "role" : "lead"}
                   />
-                  <div>
-                    <Button3
-                      title="Run this bot on my Claude subscription"
-                      size="xs"
-                      onClick={() =>
-                        setProvider(
-                          backendProviderOf(ai) === "claude-code"
-                            ? USE_DEFAULT_PROVIDER
-                            : "claude-code",
-                        )
-                      }
-                    />
-                  </div>
-                </div>
-              ) : null}
-              {availableServers.length && !providerFilter.shown.length ? (
-                <div role="status">
-                  <EmptyState
-                    testId="bot-providers-no-match"
-                    title="No providers match these filters."
-                  >
-                    <Button3
-                      title="Clear filters"
-                      size="xs"
-                      onClick={clearProviderFilters}
-                    />
-                  </EmptyState>
-                </div>
-              ) : null}
-              {availableServers.length ? (
-                <div className="flex flex-col gap-1">
-                  {providerFilter.shown.map((s) => {
-                    const on = selectedServers.includes(s.serverName);
-                    return (
-                      <div key={s.serverName} className="flex flex-col gap-1">
-                        <div className="flex flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                          <div className="flex flex-row items-center gap-2 min-w-0">
-                            <Checkbox
-                              label={s.label}
-                              checked={on}
-                              disabled={s.connector && !onSubscription && !on}
-                              onChange={() => toggleServer(s.serverName)}
-                            />
-                            {s.missing ? null : (
-                              <StatusBadge
-                                state={s.connector ? "info" : "neutral"}
-                                label={s.connector ? "Claude connector" : "MCP"}
-                                className="whitespace-nowrap flex-shrink-0"
-                              />
-                            )}
-                          </div>
-                          <span className="text-xs opacity-50">
-                            {s.connector && !onSubscription && !on
-                              ? "Needs your Claude subscription"
-                              : s.status}
-                          </span>
-                        </div>
-                        {on ? (
-                          <div className="flex flex-col gap-1 pl-7 pb-2">
-                            {s.tools && s.tools.length ? (
-                              <>
-                                <div className="flex flex-row items-center gap-2">
-                                  <span className="text-xs opacity-50">
-                                    Tools this bot may use (from the
-                                    provider&apos;s allowed tools):
-                                  </span>
-                                  <Button3
-                                    title="All"
-                                    size="xs"
-                                    onClick={() =>
-                                      setAllTools(s.serverName, true)
-                                    }
-                                  />
-                                  <Button3
-                                    title="None"
-                                    size="xs"
-                                    onClick={() =>
-                                      setAllTools(s.serverName, false)
-                                    }
-                                  />
-                                </div>
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                                  {s.tools.map((tool) => (
-                                    <div
-                                      key={tool}
-                                      className="flex flex-row items-center gap-2"
-                                    >
-                                      <Checkbox
-                                        label={prettyTool(tool)}
-                                        checked={isToolOn(s.serverName, tool)}
-                                        onChange={() =>
-                                          toggleTool(
-                                            s.serverName,
-                                            s.tools,
-                                            tool,
-                                          )
-                                        }
-                                      />
-                                      {isRemembered(s.serverName, tool) ? (
-                                        <>
-                                          <span className="text-xs opacity-60">
-                                            Always allowed
-                                          </span>
-                                          <Button3
-                                            title="Revoke"
-                                            size="xs"
-                                            ariaLabel={`Revoke always-allow for ${prettyTool(tool)}`}
-                                            tooltip="Ask again before this tool runs"
-                                            onClick={() =>
-                                              revokeRemembered(
-                                                s.serverName,
-                                                tool,
-                                              )
-                                            }
-                                          />
-                                        </>
-                                      ) : null}
-                                    </div>
-                                  ))}
-                                </div>
-                                {grants[s.serverName] &&
-                                (grants[s.serverName].folders || []).length ? (
-                                  <span className="text-xs opacity-50">
-                                    Always-allowed folders:{" "}
-                                    {grants[s.serverName].folders.join(", ")}
-                                  </span>
-                                ) : null}
-                              </>
-                            ) : (
-                              <span className="text-xs opacity-50">
-                                All tools this provider offers — it has no tool
-                                limit set on the Providers page.
-                              </span>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : sourcesLoaded ? (
-                <span className="text-xs opacity-50">
-                  You haven&apos;t set up any MCP providers yet. Add one on the
-                  Providers page, then it will appear here.
-                </span>
-              ) : null}
-              {showProviderFilters ? (
-                <div className="flex flex-row flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">Your instructions</span>
                   <span className="text-xs opacity-50">
-                    {filterSummary({
-                      pickedCount: providerFilter.pickedCount,
-                      shownCount: providerFilter.shown.length,
-                      total: availableServers.length,
-                    })}
+                    {isTeamRole
+                      ? "Added after the built-in ones. Add duties, preferences or tone. The built-in ones decide what this role can do and the format of its answers, which Dash reads."
+                      : "Added after the built-in ones. Add duties, preferences or tone — you decide style and format. The built-in ones decide what this bot can do."}
                   </span>
-                  {providerFilter.hiddenPicked ? (
-                    <>
-                      <StatusBadge
-                        state="info"
-                        label={hiddenPickedNote(providerFilter.hiddenPicked)}
-                      />
-                      <Button3
-                        title="Show all"
-                        size="xs"
-                        onClick={clearProviderFilters}
-                      />
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-              <span className="text-xs opacity-50">
-                Each tool call follows the approval policy below.
-              </span>
-            </div>
-          </>
-        )}
-
-        {showAccess && (
-          <>
-            <SelectInput
-              label="Approval policy"
-              value={approvalPolicy}
-              onChange={setApprovalPolicy}
-              options={APPROVAL_OPTIONS}
-            />
-            {approvalHint ? (
-              <span className="text-xs opacity-50">{approvalHint}</span>
-            ) : null}
-            {/* A saved bot's monthly limit and spending (US-019 AC2). */}
-            {showBudget && !isCreating && bot && bot.id && !isTeamRole ? (
-              <BotBudgetSection
-                bot={bot}
-                defaultLimit={
-                  ai && job === "bots" ? ai.limits.perBot || null : null
-                }
-              />
-            ) : null}
-            <div className="flex flex-col gap-2" data-testid="bot-run-limits">
-              <span className="text-sm font-medium">Run limits</span>
-              <span className="text-xs opacity-50" role="status">
-                {[
-                  [stepsLimit, false],
-                  [costLimit, true],
-                  [minutesLimit, false],
-                ].some(
-                  ([t, decimal]) =>
-                    String(t || "").trim() &&
-                    limitValue(t, decimal) === undefined,
-                )
-                  ? "Steps and minutes are whole numbers; cost is an amount like 1 or 2.50. A field that isn't uses the default."
-                  : "Stops one run that goes on too long. Leave a field empty to use the default from Settings › AI."}
-              </span>
-              <div className="flex flex-row flex-wrap gap-3">
-                <div className="w-40">
-                  <InputText
-                    label="Steps"
-                    value={stepsLimit}
-                    onChange={setStepsLimit}
-                    placeholder={defaultHint(runDefaults && runDefaults.steps)}
-                    inputMode="numeric"
+                  <TextArea
+                    value={instructions}
+                    onChange={setInstructions}
+                    placeholder="Add duties, preferences or tone. Built-in instructions always apply."
+                    rows={3}
+                    autoGrow
                   />
-                </div>
-                <div className="w-40">
-                  <InputText
-                    label="Cost per run (API key)"
-                    value={costLimit}
-                    onChange={setCostLimit}
-                    placeholder={defaultHint(
-                      runDefaults && runDefaults.cost,
-                      "$",
-                    )}
-                    inputMode="decimal"
-                  />
-                </div>
-                <div className="w-40">
-                  <InputText
-                    label="Minutes"
-                    value={minutesLimit}
-                    onChange={setMinutesLimit}
-                    placeholder={defaultHint(
-                      runDefaults && runDefaults.minutes,
-                    )}
-                    inputMode="numeric"
-                  />
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {showInstructions && !isTeamRole && (
-          <>
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Schedule</span>
-
-              {!advanced ? (
-                <>
-                  <SelectInput
-                    label="Runs"
-                    value={frequency}
-                    onChange={setFrequency}
-                    options={FREQUENCIES}
-                  />
-                  {frequency !== "off" && frequency !== "hourly" ? (
-                    <SelectInput
-                      label="Time"
-                      value={time}
-                      onChange={setTime}
-                      options={TIME_OPTIONS}
-                    />
-                  ) : null}
-                  {frequency === "weekly" ? (
-                    <SelectInput
-                      label="Day of week"
-                      value={dayOfWeek}
-                      onChange={setDayOfWeek}
-                      options={DAYS_OF_WEEK}
-                    />
-                  ) : null}
-                  {frequency === "monthly" ? (
-                    <SelectInput
-                      label="Day of month"
-                      value={dayOfMonth}
-                      onChange={setDayOfMonth}
-                      options={DAYS_OF_MONTH}
-                    />
-                  ) : null}
-                </>
-              ) : (
-                <InputText
-                  label="Cron expression"
-                  value={advancedCron}
-                  onChange={setAdvancedCron}
-                  placeholder="Cron, e.g. 0 7 * * 1-5"
-                />
-              )}
-
-              {scheduleOn ? (
-                <InputText
-                  value={schedulePrompt}
-                  onChange={setSchedulePrompt}
-                  placeholder="Task prompt for the scheduled run"
-                />
-              ) : null}
-
-              <button
-                type="button"
-                onClick={() => setAdvanced((v) => !v)}
-                className="text-xs opacity-60 hover:opacity-100 self-start"
-              >
-                {advanced ? "Use simple schedule" : "Advanced (cron)"}
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Run on events</span>
-              {subscriptions.length ? (
-                <div className="flex flex-col gap-1">
-                  {subscriptions.map((sub) => {
-                    const { label, missing, kind } = describeSubscription(
-                      sub,
-                      eventCatalog,
-                      botCatalog,
-                    );
-                    return (
-                      <div
-                        key={sub.eventType}
-                        className="flex flex-row items-center justify-between gap-2"
-                      >
-                        <span className="text-sm flex flex-col">
-                          <span>
-                            {label}
-                            {missing ? (
-                              <span className="text-xs opacity-60">
-                                {" "}
-                                ({kind === "bot" ? "bot" : "widget"} missing)
-                              </span>
-                            ) : null}
-                          </span>
-                          {/* The owner's note for this trigger (TEAM-014) —
-                          edited from the team diagram. */}
-                          {sub.note ? (
-                            <span
-                              data-testid="trigger-note"
-                              className="text-xs opacity-60"
-                            >
-                              {`Then: ${sub.note}`}
-                            </span>
-                          ) : null}
-                        </span>
-                        <Button3
-                          title="Remove"
-                          size="xs"
-                          ariaLabel={`Remove ${label}`}
-                          onClick={() => removeSubscription(sub.eventType)}
-                        />
-                      </div>
-                    );
-                  })}
                 </div>
               ) : (
-                <span className="text-xs opacity-50">
-                  This bot doesn&apos;t run on any events yet.
-                </span>
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm font-medium">Instructions</span>
+                  <TextArea
+                    value={instructions}
+                    onChange={setInstructions}
+                    placeholder="What should this bot do?"
+                    rows={5}
+                    // Grow with the text — the form already scrolls; no scroll
+                    // inside a scroll.
+                    autoGrow
+                  />
+                  <BuiltinInstructions botId={bot?.id || null} kind="bot" />
+                </div>
               )}
-              {triggerOptions.length ? (
+
+              {isTeamRole ? null : (
                 <div className="flex flex-col gap-2">
                   <SelectInput
-                    label="Runs when…"
-                    value={pickTrigger}
-                    onChange={setPickTrigger}
-                    placeholder="Choose what triggers this bot…"
-                    options={triggerOptions.map((o) => ({
-                      value: o.value,
-                      label: o.label,
-                      group: o.group,
-                    }))}
+                    label="Team"
+                    value={team}
+                    onChange={setTeam}
+                    options={teamOptions}
                   />
-                  <Button
-                    title="Add trigger"
-                    onClick={addSubscription}
-                    size="sm"
-                    disabled={!pickedTrigger}
-                  />
-                  {triggerAdded && dirty ? (
+                  <span className="text-xs opacity-50">
+                    The dashboard this bot works for. A bot on a team only runs
+                    on its own dashboard&apos;s events; Unassigned bots hear
+                    every dashboard.
+                  </span>
+                  {isCreating && canShowOnDashboard ? (
+                    <Checkbox
+                      label="Show results on this dashboard"
+                      checked={showOnDashboard}
+                      onChange={(on) => setShowOnDashboard(!!on)}
+                    />
+                  ) : null}
+                  {offTeam.length ? (
                     <span className="text-xs opacity-70">
-                      Save to keep this trigger.
+                      {offTeam.length === 1
+                        ? "1 event this bot runs on comes"
+                        : `${offTeam.length} events this bot runs on come`}{" "}
+                      from another dashboard and won&apos;t fire while it&apos;s
+                      on this team.
                     </span>
                   ) : null}
                 </div>
-              ) : (
-                <span className="text-xs opacity-50">
-                  {team
-                    ? "Nothing can trigger this bot yet. Add a widget that publishes events to this dashboard, or another bot to its team."
-                    : "Nothing can trigger this bot yet. Add a widget that publishes events to a dashboard, or create another bot."}
-                </span>
               )}
-              <span className="text-xs opacity-50">
-                The bot runs automatically when one of these events fires.
-              </span>
-              {subscriptions.length ? (
+            </>
+          )}
+
+          {/* The model source decides which providers it can use (Claude
+            connectors only on the subscription), so it comes first. */}
+          {showInstructions && (
+            <>
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">AI model</span>
+                <div className="flex flex-col gap-1">
+                  <SelectInput
+                    label="Model source"
+                    value={provider}
+                    onChange={setProvider}
+                    options={[
+                      useDefaultOption(ai),
+                      ...providerOptionsFrom(providers),
+                    ]}
+                  />
+                  <span className="text-xs opacity-50">
+                    Which AI powers the bot — an API key from your Anthropic,
+                    OpenAI or xAI providers, or &quot;Claude Code (CLI)&quot;,
+                    which uses your Claude login with no API key.
+                  </span>
+                </div>
+
                 <SelectInput
-                  label="While paused"
-                  value={whilePaused}
-                  onChange={setWhilePaused}
-                  options={WHILE_PAUSED_OPTIONS}
+                  label="Model"
+                  value={model}
+                  onChange={setModel}
+                  options={modelSelectOptions}
+                  placeholder="Default (from Settings › AI)"
+                />
+
+                <SelectInput
+                  label="Style"
+                  value={style}
+                  onChange={setStyle}
+                  options={[
+                    {
+                      value: "",
+                      label: jobStyle
+                        ? `Default · ${STYLE_LABELS[jobStyle]} (from Settings › AI)`
+                        : "Default (from Settings › AI)",
+                    },
+                    ...STYLE_OPTIONS,
+                  ]}
+                />
+                <span className="text-xs opacity-50">
+                  How much it thinks and writes. Brief thinks less and answers
+                  in a line or two — the cheapest.
+                </span>
+
+                <SelectInput
+                  label="Engine"
+                  value={engine}
+                  onChange={setEngine}
+                  options={ENGINE_OPTIONS}
+                  placeholder="Standard (default)"
+                />
+              </div>
+            </>
+          )}
+
+          {showAccess && (
+            <>
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">Providers</span>
+                <span className="text-xs opacity-50">
+                  What this bot can use — your providers from Settings →
+                  Providers. The bot starts any that aren&apos;t running when it
+                  runs.
+                </span>
+                {showProviderFilters ? (
+                  <div
+                    role="search"
+                    className="flex flex-row flex-wrap items-center gap-3"
+                  >
+                    <div className="w-64">
+                      <SearchInput
+                        value={providerQuery}
+                        onChange={setProviderQuery}
+                        placeholder="Search providers…"
+                      />
+                    </div>
+                    {providerKinds ? (
+                      <SegmentedControl
+                        ariaLabel="Kind"
+                        options={providerKinds}
+                        value={providerKind}
+                        onChange={setProviderKind}
+                      />
+                    ) : null}
+                    <Checkbox
+                      label="Picked only"
+                      checked={pickedOnly}
+                      onChange={togglePickedOnly}
+                    />
+                  </div>
+                ) : null}
+                {connectorWarning ? (
+                  <div className="flex flex-col gap-2">
+                    <AlertBanner
+                      variant="warning"
+                      size="compact"
+                      message={connectorWarning}
+                    />
+                    <div>
+                      <Button3
+                        title="Run this bot on my Claude subscription"
+                        size="xs"
+                        onClick={() =>
+                          setProvider(
+                            backendProviderOf(ai) === "claude-code"
+                              ? USE_DEFAULT_PROVIDER
+                              : "claude-code",
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                {availableServers.length && !providerFilter.shown.length ? (
+                  <div role="status">
+                    <EmptyState
+                      testId="bot-providers-no-match"
+                      title="No providers match these filters."
+                    >
+                      <Button3
+                        title="Clear filters"
+                        size="xs"
+                        onClick={clearProviderFilters}
+                      />
+                    </EmptyState>
+                  </div>
+                ) : null}
+                {availableServers.length ? (
+                  <div className="flex flex-col gap-1">
+                    {providerFilter.shown.map((s) => {
+                      const on = selectedServers.includes(s.serverName);
+                      return (
+                        <div key={s.serverName} className="flex flex-col gap-1">
+                          <div className="flex flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                            <div className="flex flex-row items-center gap-2 min-w-0">
+                              <Checkbox
+                                label={s.label}
+                                checked={on}
+                                disabled={s.connector && !onSubscription && !on}
+                                onChange={() => toggleServer(s.serverName)}
+                              />
+                              {s.missing ? null : (
+                                <StatusBadge
+                                  state={s.connector ? "info" : "neutral"}
+                                  label={
+                                    s.connector ? "Claude connector" : "MCP"
+                                  }
+                                  className="whitespace-nowrap flex-shrink-0"
+                                />
+                              )}
+                            </div>
+                            <span className="text-xs opacity-50">
+                              {s.connector && !onSubscription && !on
+                                ? "Needs your Claude subscription"
+                                : s.status}
+                            </span>
+                          </div>
+                          {on ? (
+                            <div className="flex flex-col gap-1 pl-7 pb-2">
+                              {s.tools && s.tools.length ? (
+                                <>
+                                  <div className="flex flex-row items-center gap-2">
+                                    <span className="text-xs opacity-50">
+                                      Tools this bot may use (from the
+                                      provider&apos;s allowed tools):
+                                    </span>
+                                    <Button3
+                                      title="All"
+                                      size="xs"
+                                      onClick={() =>
+                                        setAllTools(s.serverName, true)
+                                      }
+                                    />
+                                    <Button3
+                                      title="None"
+                                      size="xs"
+                                      onClick={() =>
+                                        setAllTools(s.serverName, false)
+                                      }
+                                    />
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                    {s.tools.map((tool) => (
+                                      <div
+                                        key={tool}
+                                        className="flex flex-row items-center gap-2"
+                                      >
+                                        <Checkbox
+                                          label={prettyTool(tool)}
+                                          checked={isToolOn(s.serverName, tool)}
+                                          onChange={() =>
+                                            toggleTool(
+                                              s.serverName,
+                                              s.tools,
+                                              tool,
+                                            )
+                                          }
+                                        />
+                                        {isRemembered(s.serverName, tool) ? (
+                                          <>
+                                            <span className="text-xs opacity-60">
+                                              Always allowed
+                                            </span>
+                                            <Button3
+                                              title="Revoke"
+                                              size="xs"
+                                              ariaLabel={`Revoke always-allow for ${prettyTool(tool)}`}
+                                              tooltip="Ask again before this tool runs"
+                                              onClick={() =>
+                                                revokeRemembered(
+                                                  s.serverName,
+                                                  tool,
+                                                )
+                                              }
+                                            />
+                                          </>
+                                        ) : null}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {grants[s.serverName] &&
+                                  (grants[s.serverName].folders || [])
+                                    .length ? (
+                                    <span className="text-xs opacity-50">
+                                      Always-allowed folders:{" "}
+                                      {grants[s.serverName].folders.join(", ")}
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <span className="text-xs opacity-50">
+                                  All tools this provider offers — it has no
+                                  tool limit set on the Providers page.
+                                </span>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : sourcesLoaded ? (
+                  <span className="text-xs opacity-50">
+                    You haven&apos;t set up any MCP providers yet. Add one on
+                    the Providers page, then it will appear here.
+                  </span>
+                ) : null}
+                {showProviderFilters ? (
+                  <div className="flex flex-row flex-wrap items-center gap-2">
+                    <span className="text-xs opacity-50">
+                      {filterSummary({
+                        pickedCount: providerFilter.pickedCount,
+                        shownCount: providerFilter.shown.length,
+                        total: availableServers.length,
+                      })}
+                    </span>
+                    {providerFilter.hiddenPicked ? (
+                      <>
+                        <StatusBadge
+                          state="info"
+                          label={hiddenPickedNote(providerFilter.hiddenPicked)}
+                        />
+                        <Button3
+                          title="Show all"
+                          size="xs"
+                          onClick={clearProviderFilters}
+                        />
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+                <span className="text-xs opacity-50">
+                  Each tool call follows the approval policy below.
+                </span>
+              </div>
+            </>
+          )}
+
+          {showAccess && (
+            <>
+              <SelectInput
+                label="Approval policy"
+                value={approvalPolicy}
+                onChange={setApprovalPolicy}
+                options={APPROVAL_OPTIONS}
+              />
+              {approvalHint ? (
+                <span className="text-xs opacity-50">{approvalHint}</span>
+              ) : null}
+              {/* A saved bot's monthly limit and spending (US-019 AC2). */}
+              {showBudget && !isCreating && bot && bot.id && !isTeamRole ? (
+                <BotBudgetSection
+                  bot={bot}
+                  defaultLimit={
+                    ai && job === "bots" ? ai.limits.perBot || null : null
+                  }
                 />
               ) : null}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Results</span>
-              {publishes.length ? (
-                <div className="flex flex-col gap-2">
-                  {publishes.map((p) => (
-                    <div key={p.name} className="flex flex-col gap-1">
-                      <div className="flex flex-row items-center gap-2">
-                        <InputText
-                          value={p.label || ""}
-                          onChange={(v) => relabelResult(p.name, v)}
-                          placeholder={p.name}
-                        />
-                        <span className="text-xs opacity-50">{p.name}</span>
-                        <Button3
-                          title="Remove"
-                          size="xs"
-                          ariaLabel={`Remove result ${p.label || p.name}`}
-                          onClick={() => removeResult(p.name)}
-                        />
-                      </div>
-                      {p.description ? (
-                        <span className="text-xs opacity-60">
-                          {p.description}
-                        </span>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-xs opacity-50">
-                  This bot doesn&apos;t report any results yet.
+              <div className="flex flex-col gap-2" data-testid="bot-run-limits">
+                <span className="text-sm font-medium">Run limits</span>
+                <span className="text-xs opacity-50" role="status">
+                  {[
+                    [stepsLimit, false],
+                    [costLimit, true],
+                    [minutesLimit, false],
+                  ].some(
+                    ([t, decimal]) =>
+                      String(t || "").trim() &&
+                      limitValue(t, decimal) === undefined,
+                  )
+                    ? "Steps and minutes are whole numbers; cost is an amount like 1 or 2.50. A field that isn't uses the default."
+                    : "Stops one run that goes on too long. Leave a field empty to use the default from Settings › AI."}
                 </span>
-              )}
-              <InputText
-                value={newResultLabel}
-                onChange={setNewResultLabel}
-                placeholder="Result, e.g. Important emails"
-              />
-              <InputText
-                value={newResultDescription}
-                onChange={setNewResultDescription}
-                placeholder="What it holds (optional)"
-              />
-              <Button
-                title="Add result"
-                onClick={addResult}
-                size="sm"
-                disabled={!newResultLabel.trim()}
-              />
-              <span className="text-xs opacity-50">
-                Lists this bot reports to its dashboard, like the important
-                emails it found. Widgets on the dashboard can show them
-                (Configure › Listeners), and other bots can run when one
-                arrives.
-              </span>
-            </div>
-          </>
-        )}
+                <div className="flex flex-row flex-wrap gap-3">
+                  <div className="w-40">
+                    <InputText
+                      label="Steps"
+                      value={stepsLimit}
+                      onChange={setStepsLimit}
+                      placeholder={defaultHint(
+                        runDefaults && runDefaults.steps,
+                      )}
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div className="w-40">
+                    <InputText
+                      label="Cost per run (API key)"
+                      value={costLimit}
+                      onChange={setCostLimit}
+                      placeholder={defaultHint(
+                        runDefaults && runDefaults.cost,
+                        "$",
+                      )}
+                      inputMode="decimal"
+                    />
+                  </div>
+                  <div className="w-40">
+                    <InputText
+                      label="Minutes"
+                      value={minutesLimit}
+                      onChange={setMinutesLimit}
+                      placeholder={defaultHint(
+                        runDefaults && runDefaults.minutes,
+                      )}
+                      inputMode="numeric"
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {showInstructions && !isTeamRole && (
+            <>
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">Schedule</span>
+
+                {!advanced ? (
+                  <>
+                    <SelectInput
+                      label="Runs"
+                      value={frequency}
+                      onChange={setFrequency}
+                      options={FREQUENCIES}
+                    />
+                    {frequency !== "off" && frequency !== "hourly" ? (
+                      <SelectInput
+                        label="Time"
+                        value={time}
+                        onChange={setTime}
+                        options={TIME_OPTIONS}
+                      />
+                    ) : null}
+                    {frequency === "weekly" ? (
+                      <SelectInput
+                        label="Day of week"
+                        value={dayOfWeek}
+                        onChange={setDayOfWeek}
+                        options={DAYS_OF_WEEK}
+                      />
+                    ) : null}
+                    {frequency === "monthly" ? (
+                      <SelectInput
+                        label="Day of month"
+                        value={dayOfMonth}
+                        onChange={setDayOfMonth}
+                        options={DAYS_OF_MONTH}
+                      />
+                    ) : null}
+                  </>
+                ) : (
+                  <InputText
+                    label="Cron expression"
+                    value={advancedCron}
+                    onChange={setAdvancedCron}
+                    placeholder="Cron, e.g. 0 7 * * 1-5"
+                  />
+                )}
+
+                {scheduleOn ? (
+                  <InputText
+                    value={schedulePrompt}
+                    onChange={setSchedulePrompt}
+                    placeholder="Task prompt for the scheduled run"
+                  />
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => setAdvanced((v) => !v)}
+                  className="text-xs opacity-60 hover:opacity-100 self-start"
+                >
+                  {advanced ? "Use simple schedule" : "Advanced (cron)"}
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">Run on events</span>
+                {subscriptions.length ? (
+                  <div className="flex flex-col gap-1">
+                    {subscriptions.map((sub) => {
+                      const { label, missing, kind } = describeSubscription(
+                        sub,
+                        eventCatalog,
+                        botCatalog,
+                      );
+                      return (
+                        <div
+                          key={sub.eventType}
+                          className="flex flex-row items-center justify-between gap-2"
+                        >
+                          <span className="text-sm flex flex-col">
+                            <span>
+                              {label}
+                              {missing ? (
+                                <span className="text-xs opacity-60">
+                                  {" "}
+                                  ({kind === "bot" ? "bot" : "widget"} missing)
+                                </span>
+                              ) : null}
+                            </span>
+                            {/* The owner's note for this trigger (TEAM-014) —
+                          edited from the team diagram. */}
+                            {sub.note ? (
+                              <span
+                                data-testid="trigger-note"
+                                className="text-xs opacity-60"
+                              >
+                                {`Then: ${sub.note}`}
+                              </span>
+                            ) : null}
+                          </span>
+                          <Button3
+                            title="Remove"
+                            size="xs"
+                            ariaLabel={`Remove ${label}`}
+                            onClick={() => removeSubscription(sub.eventType)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <span className="text-xs opacity-50">
+                    This bot doesn&apos;t run on any events yet.
+                  </span>
+                )}
+                {triggerOptions.length ? (
+                  <div className="flex flex-col gap-2">
+                    <SelectInput
+                      label="Runs when…"
+                      value={pickTrigger}
+                      onChange={setPickTrigger}
+                      placeholder="Choose what triggers this bot…"
+                      options={triggerOptions.map((o) => ({
+                        value: o.value,
+                        label: o.label,
+                        group: o.group,
+                      }))}
+                    />
+                    <Button
+                      title="Add trigger"
+                      onClick={addSubscription}
+                      size="sm"
+                      disabled={!pickedTrigger}
+                    />
+                    {triggerAdded && dirty ? (
+                      <span className="text-xs opacity-70">
+                        Save to keep this trigger.
+                      </span>
+                    ) : null}
+                  </div>
+                ) : (
+                  <span className="text-xs opacity-50">
+                    {team
+                      ? "Nothing can trigger this bot yet. Add a widget that publishes events to this dashboard, or another bot to its team."
+                      : "Nothing can trigger this bot yet. Add a widget that publishes events to a dashboard, or create another bot."}
+                  </span>
+                )}
+                <span className="text-xs opacity-50">
+                  The bot runs automatically when one of these events fires.
+                </span>
+                {subscriptions.length ? (
+                  <SelectInput
+                    label="While paused"
+                    value={whilePaused}
+                    onChange={setWhilePaused}
+                    options={WHILE_PAUSED_OPTIONS}
+                  />
+                ) : null}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">Results</span>
+                {publishes.length ? (
+                  <div className="flex flex-col gap-2">
+                    {publishes.map((p) => (
+                      <div key={p.name} className="flex flex-col gap-1">
+                        <div className="flex flex-row items-center gap-2">
+                          <InputText
+                            value={p.label || ""}
+                            onChange={(v) => relabelResult(p.name, v)}
+                            placeholder={p.name}
+                          />
+                          <span className="text-xs opacity-50">{p.name}</span>
+                          <Button3
+                            title="Remove"
+                            size="xs"
+                            ariaLabel={`Remove result ${p.label || p.name}`}
+                            onClick={() => removeResult(p.name)}
+                          />
+                        </div>
+                        {p.description ? (
+                          <span className="text-xs opacity-60">
+                            {p.description}
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-xs opacity-50">
+                    This bot doesn&apos;t report any results yet.
+                  </span>
+                )}
+                <InputText
+                  value={newResultLabel}
+                  onChange={setNewResultLabel}
+                  placeholder="Result, e.g. Important emails"
+                />
+                <InputText
+                  value={newResultDescription}
+                  onChange={setNewResultDescription}
+                  placeholder="What it holds (optional)"
+                />
+                <Button
+                  title="Add result"
+                  onClick={addResult}
+                  size="sm"
+                  disabled={!newResultLabel.trim()}
+                />
+                <span className="text-xs opacity-50">
+                  Lists this bot reports to its dashboard, like the important
+                  emails it found. Widgets on the dashboard can show them
+                  (Configure › Listeners), and other bots can run when one
+                  arrives.
+                </span>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {!stageChanges && (

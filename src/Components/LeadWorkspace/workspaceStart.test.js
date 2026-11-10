@@ -7,6 +7,7 @@ import {
   makingAbout,
   registryDashboards,
   registrySeed,
+  waysFor,
 } from "./workspaceStart";
 import { seedConversation } from "./workspacePlan";
 
@@ -102,5 +103,65 @@ describe("registrySeed", () => {
     const msgs = seedConversation({ plan: { summary: "A plan", pieces: [] } });
     expect(msgs[0]).toMatchObject({ bot: "the Planner" });
     expect(msgs[1].text).toMatch(/your chat with the Planner/);
+  });
+});
+
+describe("making a bot or a dashboard: one way to start at a time", () => {
+  test("a bot: Ask AI, then the registry, a copy, a blank form, a file", () => {
+    const w = waysFor("bot");
+    expect(w.title).toBe("How do you want to make the bot?");
+    expect(w.ai.title).toBe("Ask AI");
+    expect(w.from.map((s) => [s.way, s.title])).toEqual([
+      ["registry", "A bot from the registry"],
+      ["copy", "Copy one of your bots"],
+      ["blank", "A blank bot"],
+      ["file", "A bot file"],
+    ]);
+  });
+  test("a dashboard: the same ways", () => {
+    const w = waysFor("dashboard");
+    expect(w.title).toBe("How do you want to make the dashboard?");
+    expect(w.from.map((s) => s.way)).toEqual([
+      "registry",
+      "copy",
+      "blank",
+      "file",
+    ]);
+  });
+  test("anything else starts in the box", () => {
+    expect(waysFor("widget")).toBeNull();
+    expect(waysFor("theme")).toBeNull();
+  });
+});
+
+describe("a bot's dashboard in the conversation", () => {
+  test("from a dashboard's Add bot: set, never asked", () => {
+    const m = makingStart({
+      kind: "bot",
+      from: "dashboard",
+      target: { id: "7", name: "Life HQ" },
+    });
+    expect(m.text).toBe("a bot — for the Life HQ dashboard");
+    expect(m.note).toBe(
+      '(The user wants to make a bot for their "Life HQ" dashboard — plan one bot with "dashboard": {"id": "7", "name": "Life HQ"}; don\'t ask which dashboard.)',
+    );
+  });
+  test("on no dashboard", () => {
+    const m = makingStart({
+      kind: "bot",
+      from: "bots",
+      target: { none: true },
+    });
+    expect(m.text).toBe("a bot — on no dashboard");
+    expect(m.note).toBe(
+      "(The user wants to make a bot on no dashboard — plan one bot and leave dashboard out; don't ask which dashboard.)",
+    );
+  });
+  test("not said yet: the Planner asks — one of theirs or none, never new", () => {
+    const m = makingStart({ kind: "bot", from: "bots" });
+    expect(m.text).toBe("a bot — from the Bots page");
+    expect(m.note).toBe(
+      "(The user wants to make a bot — plan a bot. Ask which of their dashboards it goes on, or no dashboard; a bot never makes a new dashboard.)",
+    );
   });
 });
