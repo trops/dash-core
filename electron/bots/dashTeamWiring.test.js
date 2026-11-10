@@ -491,3 +491,20 @@ describe("botController — a plan's registry install is kept under its scoped i
     );
   });
 });
+
+describe("a lead follows its dashboard's name", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "controller", "botController.js"),
+    "utf8",
+  );
+  it("ensureLead saves the new name, from the saved dashboard name", () => {
+    assert.match(
+      src,
+      /savedDashboardName: this\._dashboardName\(workspaceId\)/,
+    );
+    assert.match(
+      src,
+      /if \(plan\.lead && plan\.rename\) \{[\s\S]{0,120}this\._store\.update\(plan\.lead\.id, plan\.rename\)/,
+    );
+  });
+});

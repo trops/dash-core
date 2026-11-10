@@ -7,7 +7,8 @@
  *   { key, kind: "dashlead" | "lead" | "bot", name, sub, botId,
  *     recipient (what AskStep is given; null for a lone bot),
  *     members: [{ id, name, role? }] (the bots it hands work to),
- *     line (under its name at the top of the switcher) }
+ *     line (under its name at the top of the switcher: where and how many),
+ *     menuLine (under its name in the switcher's menu: where and who) }
  * `key` matches a conversation's `with` from Recent ("role:dashlead",
  * "lead:<botId>"); a lone bot's is "bot:<id>".
  */
@@ -48,7 +49,12 @@ export function contactGroups({ dashTeam = [], leads = [], bots = [] } = {}) {
         .map((b) => ({ id: b.id, name: b.name, role: b.role })),
     });
     const d = leadsGroup[0];
-    d.line = d.members.map((m) => m.name).join(" · ") || d.sub;
+    d.line = d.members.length
+      ? `Dash team · ${plural(d.members.length, "bot")}`
+      : d.sub;
+    d.menuLine = d.members.length
+      ? `Dash team · ${d.members.map((m) => m.name).join(" · ")}`
+      : d.sub;
   }
   for (const l of leads || []) {
     if (!l || !l.botId) continue;
@@ -57,15 +63,22 @@ export function contactGroups({ dashTeam = [], leads = [], bots = [] } = {}) {
         (b) => b && b.role !== "lead" && sameId(b.workspaceId, l.dashboardId),
       )
       .map((b) => ({ id: b.id, name: b.name }));
+    // Its dashboard first, so the line can't read as the lead's job.
+    const where = l.dashboardLabel || l.dashboardName || "Dashboard";
     leadsGroup.push({
       key: `lead:${l.botId}`,
       kind: "lead",
       name: l.leadName || "Team lead",
-      sub: `${l.dashboardLabel || l.dashboardName || "Dashboard"} · ${plural(members.length, "bot")}`,
+      sub: `${where} · ${plural(members.length, "bot")}`,
       botId: l.botId,
       recipient: l,
       members,
-      line: members.map((m) => m.name).join(" · ") || "Just the lead",
+      line: members.length
+        ? `${where} · ${plural(members.length, "bot")}`
+        : `${where} · no bots yet`,
+      menuLine: members.length
+        ? `${where} · Team: ${members.map((m) => m.name).join(" · ")}`
+        : `${where} · no bots yet`,
     });
   }
   const lone = (bots || [])
@@ -87,6 +100,7 @@ export function contactGroups({ dashTeam = [], leads = [], bots = [] } = {}) {
       recipient: null,
       members: [],
       line: "A bot on no dashboard",
+      menuLine: "A bot on no dashboard",
     }));
   return [
     { label: "Team leads", items: leadsGroup },

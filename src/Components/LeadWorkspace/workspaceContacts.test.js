@@ -72,14 +72,24 @@ describe("contactGroups", () => {
     expect(
       findContact(groups, "role:dashlead").members.map((m) => m.name),
     ).toEqual(["Scout", "Planner", "Builder", "Checker"]);
-    // Under its name at the top: who's on the team.
+    // Under its name at the top: where, and how many on the team.
     expect(findContact(groups, "role:dashlead").line).toBe(
-      "Scout · Planner · Builder · Checker",
+      "Dash team · 4 bots",
     );
     expect(findContact(groups, "lead:lead_7").line).toBe(
-      "Inbox Watch · Morning Briefer",
+      "Kitchen Sink · 2 bots",
     );
-    expect(findContact(groups, "lead:lead_9").line).toBe("Just the lead");
+    expect(findContact(groups, "lead:lead_9").line).toBe("Home · no bots yet");
+    // In the menu: where, and who.
+    expect(findContact(groups, "role:dashlead").menuLine).toBe(
+      "Dash team · Scout · Planner · Builder · Checker",
+    );
+    expect(findContact(groups, "lead:lead_7").menuLine).toBe(
+      "Kitchen Sink · Team: Inbox Watch · Morning Briefer",
+    );
+    expect(findContact(groups, "lead:lead_9").menuLine).toBe(
+      "Home · no bots yet",
+    );
     expect(findContact(groups, "role:dashlead").recipient).toEqual({
       role: "dashlead",
       roleName: "Dash Lead",

@@ -9,8 +9,20 @@ import {
   TextArea,
   SelectInput,
   Checkbox,
+  EmptyState,
+  SearchInput,
+  SegmentedControl,
+  StatusBadge,
   ThemeContext,
 } from "@trops/dash-react";
+import {
+  KIND_ALL,
+  FILTER_MIN_PROVIDERS,
+  filterBotProviders,
+  kindOptions,
+  filterSummary,
+  hiddenPickedNote,
+} from "./botProviderFilter";
 import {
   FREQUENCIES,
   DAYS_OF_WEEK,
@@ -284,6 +296,11 @@ export const BotDetail = ({
   );
   const [toolSources, setToolSources] = useState([]);
   const [sourcesLoaded, setSourcesLoaded] = useState(false);
+  // The list's filters — what shows, never what's picked.
+  const [providerQuery, setProviderQuery] = useState("");
+  const [providerKind, setProviderKind] = useState(KIND_ALL);
+  const [pickedOnly, setPickedOnly] = useState(false);
+  const [pickedOnlyNames, setPickedOnlyNames] = useState(null);
   // Remembered approvals ("Always allow") for a saved bot:
   // { [provider]: { tools: string[], folders: string[] } }.
   const [grants, setGrants] = useState({});
@@ -540,22 +557,50 @@ export const BotDetail = ({
     // null → every tool, list not known yet.
     tools: Array.isArray(s.tools) ? s.tools : null,
     connector: !!s.connector,
+    // No longer set up: its kind isn't known, so no tag.
+    missing: !!s.missing,
+    // The kind tag by the name says Claude connector; the status doesn't.
     status: s.missing
       ? "No longer set up on the Providers page"
       : s.connector
         ? s.status === "connected"
-          ? `Claude connector · ${s.toolCount ?? 0} tools`
+          ? `Connected · ${s.toolCount ?? 0} tools`
           : s.status === "needs-auth"
-            ? "Claude connector · sign in on claude.ai"
+            ? "Sign in on claude.ai"
             : s.status === "disabled"
-              ? "Claude connector · turned off in Claude Code"
+              ? "Turned off in Claude Code"
               : s.status
-                ? "Claude connector · not connected right now"
-                : "Claude connector"
+                ? "Not connected right now"
+                : ""
         : s.running
           ? `Running · ${s.toolCount ?? 0} tools`
           : "Starts when the bot runs",
   }));
+  const showProviderFilters = availableServers.length >= FILTER_MIN_PROVIDERS;
+  const providerKinds = kindOptions(availableServers);
+  const providerFilter = filterBotProviders(
+    availableServers,
+    showProviderFilters
+      ? {
+          query: providerQuery,
+          kind: providerKinds ? providerKind : KIND_ALL,
+          pickedOnly,
+          pickedOnlyNames,
+          picked: selectedServers,
+        }
+      : { picked: selectedServers },
+  );
+  // Picked only lists what was picked when it was turned on, so unticking
+  // one there leaves it in place to tick again.
+  const togglePickedOnly = (checked) => {
+    setPickedOnly(checked);
+    setPickedOnlyNames(checked ? [...selectedServers] : null);
+  };
+  const clearProviderFilters = () => {
+    setProviderQuery("");
+    setProviderKind(KIND_ALL);
+    togglePickedOnly(false);
+  };
   // Claude connectors only work on the Claude subscription (Claude Code CLI).
   const onSubscription = effectiveProvider === "claude-code";
   const pickedConnectors = availableServers.filter(
@@ -948,6 +993,33 @@ export const BotDetail = ({
                 Providers. The bot starts any that aren&apos;t running when it
                 runs.
               </span>
+              {showProviderFilters ? (
+                <div
+                  role="search"
+                  className="flex flex-row flex-wrap items-center gap-3"
+                >
+                  <div className="w-64">
+                    <SearchInput
+                      value={providerQuery}
+                      onChange={setProviderQuery}
+                      placeholder="Search providers…"
+                    />
+                  </div>
+                  {providerKinds ? (
+                    <SegmentedControl
+                      ariaLabel="Kind"
+                      options={providerKinds}
+                      value={providerKind}
+                      onChange={setProviderKind}
+                    />
+                  ) : null}
+                  <Checkbox
+                    label="Picked only"
+                    checked={pickedOnly}
+                    onChange={togglePickedOnly}
+                  />
+                </div>
+              ) : null}
               {connectorWarning ? (
                 <div className="flex flex-col gap-2">
                   <AlertBanner
@@ -970,22 +1042,45 @@ export const BotDetail = ({
                   </div>
                 </div>
               ) : null}
+              {availableServers.length && !providerFilter.shown.length ? (
+                <div role="status">
+                  <EmptyState
+                    testId="bot-providers-no-match"
+                    title="No providers match these filters."
+                  >
+                    <Button3
+                      title="Clear filters"
+                      size="xs"
+                      onClick={clearProviderFilters}
+                    />
+                  </EmptyState>
+                </div>
+              ) : null}
               {availableServers.length ? (
                 <div className="flex flex-col gap-1">
-                  {availableServers.map((s) => {
+                  {providerFilter.shown.map((s) => {
                     const on = selectedServers.includes(s.serverName);
                     return (
                       <div key={s.serverName} className="flex flex-col gap-1">
-                        <div className="flex flex-row items-center justify-between gap-3">
-                          <Checkbox
-                            label={s.label}
-                            checked={on}
-                            disabled={s.connector && !onSubscription && !on}
-                            onChange={() => toggleServer(s.serverName)}
-                          />
+                        <div className="flex flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                          <div className="flex flex-row items-center gap-2 min-w-0">
+                            <Checkbox
+                              label={s.label}
+                              checked={on}
+                              disabled={s.connector && !onSubscription && !on}
+                              onChange={() => toggleServer(s.serverName)}
+                            />
+                            {s.missing ? null : (
+                              <StatusBadge
+                                state={s.connector ? "info" : "neutral"}
+                                label={s.connector ? "Claude connector" : "MCP"}
+                                className="whitespace-nowrap flex-shrink-0"
+                              />
+                            )}
+                          </div>
                           <span className="text-xs opacity-50">
                             {s.connector && !onSubscription && !on
-                              ? "Claude connector · needs your Claude subscription"
+                              ? "Needs your Claude subscription"
                               : s.status}
                           </span>
                         </div>
@@ -1077,6 +1172,30 @@ export const BotDetail = ({
                   You haven&apos;t set up any MCP providers yet. Add one on the
                   Providers page, then it will appear here.
                 </span>
+              ) : null}
+              {showProviderFilters ? (
+                <div className="flex flex-row flex-wrap items-center gap-2">
+                  <span className="text-xs opacity-50">
+                    {filterSummary({
+                      pickedCount: providerFilter.pickedCount,
+                      shownCount: providerFilter.shown.length,
+                      total: availableServers.length,
+                    })}
+                  </span>
+                  {providerFilter.hiddenPicked ? (
+                    <>
+                      <StatusBadge
+                        state="info"
+                        label={hiddenPickedNote(providerFilter.hiddenPicked)}
+                      />
+                      <Button3
+                        title="Show all"
+                        size="xs"
+                        onClick={clearProviderFilters}
+                      />
+                    </>
+                  ) : null}
+                </div>
               ) : null}
               <span className="text-xs opacity-50">
                 Each tool call follows the approval policy below.

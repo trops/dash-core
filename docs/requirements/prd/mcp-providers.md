@@ -2,17 +2,17 @@
 
 ## Status & Metadata
 
-| Field              | Value                                                      |
-| ------------------ | ---------------------------------------------------------- |
+| Field              | Value                                                                                    |
+| ------------------ | ---------------------------------------------------------------------------------------- |
 | **Status**         | Phase 1-3: Complete, Phase 4: In Progress, Phase 5: Future, Phase 6 (OAuth): Implemented |
-| **Version**        | 1.3.0                                                      |
-| **Author**         | Product Team                                               |
-| **Created**        | 2026-02-17                                                 |
-| **Last Updated**   | 2026-06-24                                                 |
-| **Target Release** | Phase 1-2: Q2 2026, Phase 3-4: Q3 2026                     |
-| **Priority**       | P1 - High                                                  |
-| **Component**      | MCP Provider System                                        |
-| **Epic**           | External Service Integration via MCP                       |
+| **Version**        | 1.3.0                                                                                    |
+| **Author**         | Product Team                                                                             |
+| **Created**        | 2026-02-17                                                                               |
+| **Last Updated**   | 2026-06-24                                                                               |
+| **Target Release** | Phase 1-2: Q2 2026, Phase 3-4: Q3 2026                                                   |
+| **Priority**       | P1 - High                                                                                |
+| **Component**      | MCP Provider System                                                                      |
+| **Epic**           | External Service Integration via MCP                                                     |
 
 ---
 
@@ -22,17 +22,17 @@ MCP (Model Context Protocol) servers can serve as a new class of provider in Das
 
 **Key Goals:**
 
--   Extend the existing provider system with a new `providerClass: "mcp"` alongside credential providers
--   Ship a curated seed catalog of well-known MCP servers with pre-filled configs and credential schemas
--   Provide a `useMcpProvider` hook for widget developers with least-privilege tool scoping
--   Build Settings UI for browsing, configuring, and testing MCP servers
+- Extend the existing provider system with a new `providerClass: "mcp"` alongside credential providers
+- Ship a curated seed catalog of well-known MCP servers with pre-filled configs and credential schemas
+- Provide a `useMcpProvider` hook for widget developers with least-privilege tool scoping
+- Build Settings UI for browsing, configuring, and testing MCP servers
 
 **Success Criteria:**
 
--   Widget developers can use MCP tools without bundling API libraries
--   Users can add and configure MCP servers from a curated catalog in < 60 seconds
--   MCP providers coexist with credential providers in the same `providers.json` storage
--   Tool scoping enforces least-privilege access per widget
+- Widget developers can use MCP tools without bundling API libraries
+- Users can add and configure MCP servers from a curated catalog in < 60 seconds
+- MCP providers coexist with credential providers in the same `providers.json` storage
+- Tool scoping enforces least-privilege access per widget
 
 ---
 
@@ -42,10 +42,10 @@ MCP (Model Context Protocol) servers can serve as a new class of provider in Das
 
 Dash has a provider system where widgets access external services via encrypted API credentials:
 
--   **Storage:** `providers.json`, encrypted with Electron `safeStorage`
--   **Controller:** `providerController.js` handles CRUD operations and encryption
--   **Widget access:** Widget developers declare required providers with a `credentialSchema`, and access them at runtime via the `useWidgetProviders()` hook
--   **UI:** Settings > Providers section for managing credential providers
+- **Storage:** `providers.json`, encrypted with Electron `safeStorage`
+- **Controller:** `providerController.js` handles CRUD operations and encryption
+- **Widget access:** Widget developers declare required providers with a `credentialSchema`, and access them at runtime via the `useWidgetProviders()` hook
+- **UI:** Settings > Providers section for managing credential providers
 
 ### The MCP Opportunity
 
@@ -115,37 +115,37 @@ MCP providers live in the **same `providers.json`** alongside credential provide
 
 ```json
 {
-    "Algolia Production": {
-        "type": "algolia",
-        "providerClass": "credential",
-        "credentials": "<encrypted>",
-        "dateCreated": "...",
-        "dateUpdated": "..."
+  "Algolia Production": {
+    "type": "algolia",
+    "providerClass": "credential",
+    "credentials": "<encrypted>",
+    "dateCreated": "...",
+    "dateUpdated": "..."
+  },
+  "GitHub MCP": {
+    "type": "github",
+    "providerClass": "mcp",
+    "credentials": "<encrypted>",
+    "mcpConfig": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "envMapping": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "token"
+      }
     },
-    "GitHub MCP": {
-        "type": "github",
-        "providerClass": "mcp",
-        "credentials": "<encrypted>",
-        "mcpConfig": {
-            "transport": "stdio",
-            "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-github"],
-            "envMapping": {
-                "GITHUB_PERSONAL_ACCESS_TOKEN": "token"
-            }
-        },
-        "dateCreated": "...",
-        "dateUpdated": "..."
-    }
+    "dateCreated": "...",
+    "dateUpdated": "..."
+  }
 }
 ```
 
 **Field definitions:**
 
--   `providerClass`: `"credential"` (default/legacy) or `"mcp"`
--   `credentials`: Encrypted auth tokens the MCP server needs (e.g., API keys, access tokens)
--   `mcpConfig`: Unencrypted server connection config (transport, command, args)
--   `mcpConfig.envMapping`: Maps env var names to credential field names (MCP servers expect auth as env vars)
+- `providerClass`: `"credential"` (default/legacy) or `"mcp"`
+- `credentials`: Encrypted auth tokens the MCP server needs (e.g., API keys, access tokens)
+- `mcpConfig`: Unencrypted server connection config (transport, command, args)
+- `mcpConfig.envMapping`: Maps env var names to credential field names (MCP servers expect auth as env vars)
 
 **Backward compatible** -- Existing providers without `providerClass` default to `"credential"`.
 
@@ -157,16 +157,16 @@ MCP providers live in the **same `providers.json`** alongside credential provide
 
 A curated list of well-known MCP servers with pre-filled configs:
 
-| Service      | Package                                   | Transport | Auth Required         |
-| ------------ | ----------------------------------------- | --------- | --------------------- |
-| GitHub       | `@modelcontextprotocol/server-github`     | stdio     | Personal Access Token |
+| Service      | Package                                   | Transport | Auth Required                           |
+| ------------ | ----------------------------------------- | --------- | --------------------------------------- |
+| GitHub       | `@modelcontextprotocol/server-github`     | stdio     | Personal Access Token                   |
 | Slack        | `slack-mcp-server` (korotovsky)           | stdio     | Bot / User OAuth / Browser session pair |
-| Notion       | `@notionhq/notion-mcp-server`             | stdio     | API Key               |
-| Google Drive | `@anthropic/gdrive-mcp-server`            | stdio     | OAuth credentials     |
-| Brave Search | `@anthropic/brave-search-mcp-server`      | stdio     | API Key               |
-| Filesystem   | `@modelcontextprotocol/server-filesystem` | stdio     | None (path config)    |
-| Postgres     | `@anthropic/postgres-mcp-server`          | stdio     | Connection string     |
-| Linear       | `linear-mcp-server`                       | stdio     | API Key               |
+| Notion       | `@notionhq/notion-mcp-server`             | stdio     | API Key                                 |
+| Google Drive | `@anthropic/gdrive-mcp-server`            | stdio     | OAuth credentials                       |
+| Brave Search | `@anthropic/brave-search-mcp-server`      | stdio     | API Key                                 |
+| Filesystem   | `@modelcontextprotocol/server-filesystem` | stdio     | None (path config)                      |
+| Postgres     | `@anthropic/postgres-mcp-server`          | stdio     | Connection string                       |
+| Linear       | `linear-mcp-server`                       | stdio     | API Key                                 |
 
 Each catalog entry includes: `name`, `description`, `icon`, `mcpConfig`, `credentialSchema`, `tags`.
 
@@ -192,8 +192,8 @@ Uses `@modelcontextprotocol/sdk` for protocol handling:
 
 **Transport handling:**
 
--   **stdio** -- Spawns child process with credentials mapped to env vars via `envMapping`
--   **http** -- Connects via Streamable HTTP with auth headers
+- **stdio** -- Spawns child process with credentials mapped to env vars via `envMapping`
+- **http** -- Connects via Streamable HTTP with auth headers
 
 ---
 
@@ -207,13 +207,13 @@ Widget developers declare **which specific MCP tools** they need -- not blanket 
 
 ```javascript
 requiredProviders: [
-    {
-        type: "algolia",
-        providerClass: "mcp",
-        required: true,
-        allowedTools: ["search", "browse"], // Only these tools are accessible
-        // Omitting allowedTools = access to all tools (opt-in restriction)
-    },
+  {
+    type: "algolia",
+    providerClass: "mcp",
+    required: true,
+    allowedTools: ["search", "browse"], // Only these tools are accessible
+    // Omitting allowedTools = access to all tools (opt-in restriction)
+  },
 ];
 ```
 
@@ -228,11 +228,11 @@ requiredProviders: [
 ```javascript
 // Widget config
 requiredProviders: [
-    {
-        type: "algolia",
-        providerClass: "mcp",
-        allowedTools: ["search"], // Cannot call admin/settings tools
-    },
+  {
+    type: "algolia",
+    providerClass: "mcp",
+    allowedTools: ["search"], // Cannot call admin/settings tools
+  },
 ];
 
 // Widget code
@@ -242,9 +242,9 @@ requiredProviders: [
 
 **Benefits:**
 
--   Users can see exactly what a widget will do with an MCP server before adding it
--   Prevents a search widget from accidentally (or maliciously) calling destructive tools
--   Catalog entries can include `recommendedTools` per use case to guide widget developers
+- Users can see exactly what a widget will do with an MCP server before adding it
+- Prevents a search widget from accidentally (or maliciously) calling destructive tools
+- Catalog entries can include `recommendedTools` per use case to guide widget developers
 
 ### `useMcpProvider` Hook
 
@@ -257,15 +257,15 @@ const { callTool, tools, isConnected } = useMcpProvider("slack");
 // callTool rejects anything not in the widget's allowedTools list
 // NOTE: Tool names are server-specific — use the tools list to discover names
 const result = await callTool("conversations_add_message", {
-    channel_id: "C08HVFXHBR3",
-    payload: "Hello from Dash!",
+  channel_id: "C08HVFXHBR3",
+  payload: "Hello from Dash!",
 });
 ```
 
 **Returns:** `{ isConnected, isConnecting, error, tools, callTool, resources, readResource, connect, disconnect }`
 
--   `tools` -- Filtered to only the widget's `allowedTools` (if specified)
--   `callTool` -- Rejects calls to tools not in `allowedTools` with a clear error
+- `tools` -- Filtered to only the widget's `allowedTools` (if specified)
+- `callTool` -- Rejects calls to tools not in `allowedTools` with a clear error
 
 Works alongside existing `useWidgetProviders()` -- a widget can use both credential and MCP providers.
 
@@ -275,21 +275,21 @@ Works alongside existing `useWidgetProviders()` -- a widget can use both credent
 
 ### Settings > Providers
 
--   Sidebar shows all providers with an icon distinguishing credential vs MCP
--   "Add Provider" offers two paths: "API Credentials" (existing) or "MCP Server" (new)
+- Sidebar shows all providers with an icon distinguishing credential vs MCP
+- "Add Provider" offers two paths: "API Credentials" (existing) or "MCP Server" (new)
 
 ### MCP Server Picker (new component)
 
--   Searchable grid/list from the seed catalog
--   Select a server -> pre-filled credential form from catalog's `credentialSchema`
--   "Test Connection" button: starts server, lists tools, shows them, then stops
--   "Custom MCP Server" option for arbitrary servers not in catalog
+- Searchable grid/list from the seed catalog
+- Select a server -> pre-filled credential form from catalog's `credentialSchema`
+- "Test Connection" button: starts server, lists tools, shows them, then stops
+- "Custom MCP Server" option for arbitrary servers not in catalog
 
 ### Widget-Level
 
--   `ProviderErrorBoundary` / `MissingProviderPrompt` updated to handle `providerClass: "mcp"`
--   `ProviderSelector` "Create New" tab shows `McpServerPicker` when MCP provider needed
--   **Tool permissions display** -- When adding a widget that uses MCP, show which tools it will access (e.g., "This widget uses: search, browse" from the Algolia MCP server). Similar to mobile app permission prompts -- the user grants informed consent.
+- `ProviderErrorBoundary` / `MissingProviderPrompt` updated to handle `providerClass: "mcp"`
+- `ProviderSelector` "Create New" tab shows `McpServerPicker` when MCP provider needed
+- **Tool permissions display** -- When adding a widget that uses MCP, show which tools it will access (e.g., "This widget uses: search, browse" from the Algolia MCP server). Similar to mobile app permission prompts -- the user grants informed consent.
 
 ---
 
@@ -301,15 +301,15 @@ Works alongside existing `useWidgetProviders()` -- a widget can use both credent
 
 **Files:**
 
--   Modify `public/lib/controller/providerController.js` -- Accept `providerClass` and `mcpConfig` fields
--   New `public/lib/events/mcpEvents.js` -- MCP IPC event constants
--   New `src/Api/events/mcpEvents.js` -- Mirror event constants for renderer
+- Modify `public/lib/controller/providerController.js` -- Accept `providerClass` and `mcpConfig` fields
+- New `public/lib/events/mcpEvents.js` -- MCP IPC event constants
+- New `src/Api/events/mcpEvents.js` -- Mirror event constants for renderer
 
 **Verification:** PASSED
 
--   Save/load an MCP provider via IPC
--   `providers.json` contains `providerClass: "mcp"` and `mcpConfig`
--   Existing credential providers continue to work unchanged
+- Save/load an MCP provider via IPC
+- `providers.json` contains `providerClass: "mcp"` and `mcpConfig`
+- Existing credential providers continue to work unchanged
 
 ---
 
@@ -319,17 +319,17 @@ Works alongside existing `useWidgetProviders()` -- a widget can use both credent
 
 **Files:**
 
--   New `public/lib/controller/mcpController.js` -- MCP server lifecycle management
--   New `public/lib/api/mcpApi.js` -- Preload bridge for MCP IPC
--   New `public/lib/mcp/mcpServerCatalog.json` -- Static seed catalog (8 servers)
--   Modify `public/electron.js` -- Register MCP IPC handlers
--   Modify `public/lib/api/mainApi.js` -- Expose MCP API to renderer
--   Modify `package.json` -- Add `@modelcontextprotocol/sdk` dependency
+- New `public/lib/controller/mcpController.js` -- MCP server lifecycle management
+- New `public/lib/api/mcpApi.js` -- Preload bridge for MCP IPC
+- New `public/lib/mcp/mcpServerCatalog.json` -- Static seed catalog (8 servers)
+- Modify `public/electron.js` -- Register MCP IPC handlers
+- Modify `public/lib/api/mainApi.js` -- Expose MCP API to renderer
+- Modify `package.json` -- Add `@modelcontextprotocol/sdk` dependency
 
 **Verification:** PASSED
 
--   Started Slack MCP server from widget, listed tools, called tools, stopped cleanly
--   Stdio transport works end-to-end with credential-to-env-var mapping
+- Started Slack MCP server from widget, listed tools, called tools, stopped cleanly
+- Stdio transport works end-to-end with credential-to-env-var mapping
 
 ---
 
@@ -339,20 +339,20 @@ Works alongside existing `useWidgetProviders()` -- a widget can use both credent
 
 **Files:**
 
--   New `src/hooks/useMcpProvider.js` -- React hook for widget MCP access
--   Modify `src/Context/App/AppWrapper.js` -- Pass `providerClass` through provider loading
--   Modify `src/Widget/Widget.js` -- Include `selectedProviders` in WidgetContext
--   Modify `src/Components/Layout/Builder/LayoutBuilder.js` -- Read providers from AppContext, route MCP creation to McpServerPicker
--   Modify `src/Components/Layout/Builder/LayoutGridContainer.js` -- Read providers from AppContext
--   New `src/Widgets/McpTest/` -- Reference widget for testing MCP connectivity
+- New `src/hooks/useMcpProvider.js` -- React hook for widget MCP access
+- Modify `src/Context/App/AppWrapper.js` -- Pass `providerClass` through provider loading
+- Modify `src/Widget/Widget.js` -- Include `selectedProviders` in WidgetContext
+- Modify `src/Components/Layout/Builder/LayoutBuilder.js` -- Read providers from AppContext, route MCP creation to McpServerPicker
+- Modify `src/Components/Layout/Builder/LayoutGridContainer.js` -- Read providers from AppContext
+- New `src/Widgets/McpTest/` -- Reference widget for testing MCP connectivity
 
 **Verification:** PASSED
 
--   McpTest widget connects to Slack MCP server
--   Tool list populates with 8 Slack tools
--   `conversations_add_message` sends messages successfully
--   `allowedTools` scoping filters tools at hook level and rejects unauthorized calls
--   30-second timeout prevents indefinite hangs
+- McpTest widget connects to Slack MCP server
+- Tool list populates with 8 Slack tools
+- `conversations_add_message` sends messages successfully
+- `allowedTools` scoping filters tools at hook level and rejects unauthorized calls
+- 30-second timeout prevents indefinite hangs
 
 ---
 
@@ -362,18 +362,18 @@ Works alongside existing `useWidgetProviders()` -- a widget can use both credent
 
 **Files:**
 
--   New `src/Components/Provider/McpServerPicker.js` -- Catalog browser component
--   New `src/Components/Provider/McpProviderDetail.js` -- MCP provider detail/config view
--   Modify `src/Components/Settings/ProvidersSection.js` -- Add MCP provider path
--   Modify `src/Components/Provider/ProviderDetail.js` -- Handle MCP provider display
--   Modify `src/Components/Provider/ProviderSelector.js` -- Add MCP option to "Create New"
+- New `src/Components/Provider/McpServerPicker.js` -- Catalog browser component
+- New `src/Components/Provider/McpProviderDetail.js` -- MCP provider detail/config view
+- Modify `src/Components/Settings/ProvidersSection.js` -- Add MCP provider path
+- Modify `src/Components/Provider/ProviderDetail.js` -- Handle MCP provider display
+- Modify `src/Components/Provider/ProviderSelector.js` -- Add MCP option to "Create New"
 
 **Verification:**
 
--   Open Settings > Providers
--   Add an MCP server from catalog
--   Test connection, verify tools listed
--   Create a widget that uses the MCP provider
+- Open Settings > Providers
+- Add an MCP server from catalog
+- Test connection, verify tools listed
+- Create a widget that uses the MCP provider
 
 ---
 
@@ -383,15 +383,15 @@ Works alongside existing `useWidgetProviders()` -- a widget can use both credent
 
 **Files:**
 
--   New `src/Components/Provider/McpRegistryBrowser.js` -- Registry search/browse UI
--   Modify `public/lib/controller/mcpController.js` -- Add health monitoring and auto-reconnect
--   Modify `McpServerPicker.js` -- Add "Browse Registry" tab alongside catalog
+- New `src/Components/Provider/McpRegistryBrowser.js` -- Registry search/browse UI
+- Modify `public/lib/controller/mcpController.js` -- Add health monitoring and auto-reconnect
+- Modify `McpServerPicker.js` -- Add "Browse Registry" tab alongside catalog
 
 **Verification:**
 
--   Browse registry, install a server not in the catalog
--   Verify auto-detected credential schema works
--   Verify server health monitoring reconnects after transient failures
+- Browse registry, install a server not in the catalog
+- Verify auto-detected credential schema works
+- Verify server health monitoring reconnects after transient failures
 
 ---
 
@@ -418,7 +418,11 @@ token storage.
   "transport": "streamable_http",
   "url": "https://mcp.example.com",
   "auth": "oauth",
-  "oauth": { "scopes": "read write", "clientId": "optional", "clientSecret": "optional" }
+  "oauth": {
+    "scopes": "read write",
+    "clientId": "optional",
+    "clientSecret": "optional"
+  }
 }
 ```
 
@@ -426,39 +430,39 @@ token storage.
 
 **Files:**
 
--   New `electron/mcp/mcpOAuthProvider.js` — `OAuthClientProvider`
-    implementation: loopback HTTP server on `127.0.0.1:<ephemeral>/callback`,
-    `shell.openExternal` browser launch, PKCE/DCR/token persistence.
--   Modify `electron/controller/mcpController.js` — `connectStreamableHttpWithOAuth`
-    (connect → `UnauthorizedError` → `finishAuth` → reconnect with a fresh
-    transport), OAuth branch in `startServer`, new `authorizeServer` method,
-    `appId` threaded into `startServer`.
--   Modify `electron/controller/providerController.js` — `saveOAuthState` /
-    `getOAuthState` (encrypted, in the same `providers.json`, never returned to
-    the renderer); `saveProvider` preserves the `oauth` blob across edits.
--   Modify `electron/events/mcpEvents.js`, `electron/api/mcpApi.js` —
-    `MCP_AUTHORIZE` channel + `authorize` bridge.
--   Modify `src/Api/ElectronDashboardApi.ts` (+ `IDashboardApi.ts`,
-    `WebDashboardApi.ts`) — `mcpAuthorize`, `appId` on `mcpStartServer`.
--   Modify `src/Components/Settings/details/CustomMcpServerForm.js` — auth-type
-    selector (None / API key / OAuth 2.0), scopes + advanced client fields,
-    Authorize wizard step.
--   Modify `src/hooks/useMcpProvider.js` — pass `appId` so the widget start
-    path reuses stored tokens.
--   dash-electron: `public/electron.js` `MCP_AUTHORIZE` handler + `appId`;
-    `McpReauthBanner` generalized to re-authorize OAuth servers.
+- New `electron/mcp/mcpOAuthProvider.js` — `OAuthClientProvider`
+  implementation: loopback HTTP server on `127.0.0.1:<ephemeral>/callback`,
+  `shell.openExternal` browser launch, PKCE/DCR/token persistence.
+- Modify `electron/controller/mcpController.js` — `connectStreamableHttpWithOAuth`
+  (connect → `UnauthorizedError` → `finishAuth` → reconnect with a fresh
+  transport), OAuth branch in `startServer`, new `authorizeServer` method,
+  `appId` threaded into `startServer`.
+- Modify `electron/controller/providerController.js` — `saveOAuthState` /
+  `getOAuthState` (encrypted, in the same `providers.json`, never returned to
+  the renderer); `saveProvider` preserves the `oauth` blob across edits.
+- Modify `electron/events/mcpEvents.js`, `electron/api/mcpApi.js` —
+  `MCP_AUTHORIZE` channel + `authorize` bridge.
+- Modify `src/Api/ElectronDashboardApi.ts` (+ `IDashboardApi.ts`,
+  `WebDashboardApi.ts`) — `mcpAuthorize`, `appId` on `mcpStartServer`.
+- Modify `src/Components/Settings/details/CustomMcpServerForm.js` — auth-type
+  selector (None / API key / OAuth 2.0), scopes + advanced client fields,
+  Authorize wizard step.
+- Modify `src/hooks/useMcpProvider.js` — pass `appId` so the widget start
+  path reuses stored tokens.
+- dash-electron: `public/electron.js` `MCP_AUTHORIZE` handler + `appId`;
+  `McpReauthBanner` generalized to re-authorize OAuth servers.
 
 **Notes & decisions:**
 
--   The authorized reconnect uses a **fresh transport** — the first transport
-    already called `start()` and cannot be restarted; `finishAuth` runs on the
-    original transport to reuse its discovery state.
--   Tokens auto-refresh via the SDK (`saveTokens`); a hard refresh failure
-    surfaces `UnauthorizedError`, caught by the generalized re-auth banner.
--   Loopback binds to `127.0.0.1` only; 120s authorization timeout.
--   **Verification:** 12 new unit tests (`mcpOAuthProvider.test.js`) + OAuth
-    state round-trip tests in `providerController.test.js` +
-    `connectStreamableHttpWithOAuth` dance tests in `mcpController.test.js`.
+- The authorized reconnect uses a **fresh transport** — the first transport
+  already called `start()` and cannot be restarted; `finishAuth` runs on the
+  original transport to reuse its discovery state.
+- Tokens auto-refresh via the SDK (`saveTokens`); a hard refresh failure
+  surfaces `UnauthorizedError`, caught by the generalized re-auth banner.
+- Loopback binds to `127.0.0.1` only; 120s authorization timeout.
+- **Verification:** 12 new unit tests (`mcpOAuthProvider.test.js`) + OAuth
+  state round-trip tests in `providerController.test.js` +
+  `connectStreamableHttpWithOAuth` dance tests in `mcpController.test.js`.
 
 ### Phase 7: Claude connector providers (bots) — Implemented 2026-11-07
 
@@ -500,26 +504,34 @@ Google project or an MCP server in Dash.
 9. ✅ Bots are told today's date (date only, so the cached prompt holds):
    their instructions replace Claude Code's own prompt, and without it a bot
    asked about "today" asked to run `date`.
+10. ✅ (2026-11-09) The bot form's Providers list tags each provider **MCP**
+    or **Claude connector** beside its name. With 6 or more providers it
+    has a search, an **All · MCP · Claude connectors** switch with counts
+    (only when both kinds are there) and **Picked only**. Filters change
+    what shows, never what's picked: a line under the list says
+    "N picked · showing X of Y", notes picked providers the filters hide
+    (with **Show all**), and nothing matching shows **Clear filters**
+    (`src/Components/Settings/details/botProviderFilter.js`).
 
 **How it works:**
 
--   `electron/bots/claudeConnectors.js` lists the connectors with the Agent
-    SDK's `mcpServerStatus()` on a session that never sends a message (no
-    model call, no cost), `ENABLE_CLAUDEAI_MCP_SERVERS=true`, no settings,
-    and waits for ones still connecting. `claude auth status` says whether
-    the CLI is signed in with a Claude account. Cached in the main process
-    (`bots.listClaudeConnectors({ refresh })`).
--   Provider shape: `providerClass: "connector"`, `type: "claude-connector"`,
-    no credentials, `mcpConfig: { transport: "claude-connector", server:
-    "claude.ai Gmail" }`, `allowedTools` as the ceiling.
--   `toolSources.resolveBotConnectors` gives the run its granted connectors
-    and their tools by the CLI's names (`mcp__claude_ai_Gmail__<tool>`);
-    `ensureBotServers` never starts one.
--   `claudeAgentEngine`: with connectors, `ENABLE_CLAUDEAI_MCP_SERVERS=true`,
-    `strictMcpConfig: false` (strict mode also drops the account's
-    connectors), `settingSources: []` still, `disallowedTools` hides every
-    connector not granted, and `canUseTool` lets a connector tool through
-    only for a granted connector and an allowed tool, then the Dash gate.
+- `electron/bots/claudeConnectors.js` lists the connectors with the Agent
+  SDK's `mcpServerStatus()` on a session that never sends a message (no
+  model call, no cost), `ENABLE_CLAUDEAI_MCP_SERVERS=true`, no settings,
+  and waits for ones still connecting. `claude auth status` says whether
+  the CLI is signed in with a Claude account. Cached in the main process
+  (`bots.listClaudeConnectors({ refresh })`).
+- Provider shape: `providerClass: "connector"`, `type: "claude-connector"`,
+  no credentials, `mcpConfig: { transport: "claude-connector", server:
+"claude.ai Gmail" }`, `allowedTools` as the ceiling.
+- `toolSources.resolveBotConnectors` gives the run its granted connectors
+  and their tools by the CLI's names (`mcp__claude_ai_Gmail__<tool>`);
+  `ensureBotServers` never starts one.
+- `claudeAgentEngine`: with connectors, `ENABLE_CLAUDEAI_MCP_SERVERS=true`,
+  `strictMcpConfig: false` (strict mode also drops the account's
+  connectors), `settingSources: []` still, `disallowedTools` hides every
+  connector not granted, and `canUseTool` lets a connector tool through
+  only for a granted connector and an allowed tool, then the Dash gate.
 
 **Tested live (2026-11-07, this Mac's Claude login):** the listing returned
 Gmail (30 tools), Google Calendar (9), Slack (13), Atlassian (41), Claude
@@ -540,9 +552,9 @@ Notes captured during Phase 1-3 implementation and end-to-end testing with the S
 
 **Affected files and fixes applied:**
 
--   `LayoutGridContainer.js` — reads providers from `AppContext` directly
--   `LayoutBuilder.js` — reads providers from `AppContext` directly
--   `useMcpProvider.js` — reads provider data from `AppContext.providers` (not `dashboard.providers`)
+- `LayoutGridContainer.js` — reads providers from `AppContext` directly
+- `LayoutBuilder.js` — reads providers from `AppContext` directly
+- `useMcpProvider.js` — reads provider data from `AppContext.providers` (not `dashboard.providers`)
 
 ### Widget selectedProviders Must Be Explicit in WidgetContext
 
@@ -567,26 +579,26 @@ Notes captured during Phase 1-3 implementation and end-to-end testing with the S
 
 MCP tool names are defined by each server implementation. They are **not standardized** across servers of the same type. For example, the `slack-mcp-server` (korotovsky) server uses:
 
-| Tool Name                       | Purpose                                                |
-| ------------------------------- | ------------------------------------------------------ |
-| `channels_list`                 | List channels                                          |
-| `conversations_add_message`     | Post a message (channel_id, payload, optional thread_ts) |
-| `conversations_history`         | Read channel messages                                  |
-| `conversations_replies`         | Read thread replies                                    |
-| `conversations_search_messages` | Search messages workspace-wide                         |
-| `users_search`                  | Find users by name / email                             |
-| `reactions_add` / `reactions_remove` | Manage emoji reactions                            |
-| `conversations_unreads`         | List unread messages                                   |
+| Tool Name                            | Purpose                                                  |
+| ------------------------------------ | -------------------------------------------------------- |
+| `channels_list`                      | List channels                                            |
+| `conversations_add_message`          | Post a message (channel_id, payload, optional thread_ts) |
+| `conversations_history`              | Read channel messages                                    |
+| `conversations_replies`              | Read thread replies                                      |
+| `conversations_search_messages`      | Search messages workspace-wide                           |
+| `users_search`                       | Find users by name / email                               |
+| `reactions_add` / `reactions_remove` | Manage emoji reactions                                   |
+| `conversations_unreads`              | List unread messages                                     |
 
 **Best practice:** Always use the `tools` list returned by `useMcpProvider` to discover actual tool names and their `inputSchema`, rather than hardcoding names.
 
 ### Slack Auth Modes (3 options, pick one)
 
-| Mode             | Env Var                                  | Notes                                                       |
-| ---------------- | ---------------------------------------- | ----------------------------------------------------------- |
-| Bot              | `SLACK_MCP_XOXB_TOKEN` (xoxb-)           | Same as old setup. Bot only sees channels it's invited to; no search. |
-| User OAuth       | `SLACK_MCP_XOXP_TOKEN` (xoxp-)           | Sees everything the user can see, limited search.           |
-| Browser session  | `SLACK_MCP_XOXC_TOKEN` + `SLACK_MCP_XOXD_TOKEN` | Full visibility + full search. No admin approval needed.    |
+| Mode            | Env Var                                         | Notes                                                                 |
+| --------------- | ----------------------------------------------- | --------------------------------------------------------------------- |
+| Bot             | `SLACK_MCP_XOXB_TOKEN` (xoxb-)                  | Same as old setup. Bot only sees channels it's invited to; no search. |
+| User OAuth      | `SLACK_MCP_XOXP_TOKEN` (xoxp-)                  | Sees everything the user can see, limited search.                     |
+| Browser session | `SLACK_MCP_XOXC_TOKEN` + `SLACK_MCP_XOXD_TOKEN` | Full visibility + full search. No admin approval needed.              |
 
 Posting (`conversations_add_message`) is gated by `SLACK_MCP_ADD_MESSAGE_TOOL=true` — the catalog sets this via `staticEnv` so widgets that depend on posting work out of the box.
 
@@ -620,41 +632,40 @@ When multiple widgets on the same dashboard use the same MCP provider (e.g., 4 w
 **Fix: Deduplication at two levels:**
 
 1. **Main process (`mcpController.js`)** — `pendingStarts` Map tracks in-flight start promises per server name. Three-way branch in `startServer`:
+   - Already connected (`activeServers` has a `CONNECTED` entry) → return cached result immediately
+   - Already starting (`pendingStarts` has an entry) → return the same promise (all callers share one result)
+   - Fresh start → wrap in a tracked promise, clean up in `finally`
 
-    - Already connected (`activeServers` has a `CONNECTED` entry) → return cached result immediately
-    - Already starting (`pendingStarts` has an entry) → return the same promise (all callers share one result)
-    - Fresh start → wrap in a tracked promise, clean up in `finally`
-
-    `stopServer` awaits any in-flight `pendingStarts` entry before stopping, preventing a stop from racing a start. `stopAllServers` waits for all pending starts to settle before shutdown.
+   `stopServer` awaits any in-flight `pendingStarts` entry before stopping, preventing a stop from racing a start. `stopAllServers` waits for all pending starts to settle before shutdown.
 
 2. **Renderer (`useMcpProvider.js`)** — Module-level `serverStates` and `pendingConnects` Maps shared across all hook instances:
-    - `serverStates` caches connection results + `consumerCount` per server
-    - `pendingConnects` deduplicates in-flight IPC calls (only the first hook instance fires IPC; others `await` the same promise)
+   - `serverStates` caches connection results + `consumerCount` per server
+   - `pendingConnects` deduplicates in-flight IPC calls (only the first hook instance fires IPC; others `await` the same promise)
 
 **Reference counting** prevents one widget's unmount from killing the server for other widgets:
 
--   On successful connect: `consumerCount++`
--   On disconnect/unmount: `consumerCount--`; only calls `mcpStopServer` when count reaches 0
+- On successful connect: `consumerCount++`
+- On disconnect/unmount: `consumerCount--`; only calls `mcpStopServer` when count reaches 0
 
 **Dashboard switching behavior:** When switching dashboards, React unmounts all widgets (layout key changes). Each cleanup decrements `consumerCount`. When the last widget unmounts, `consumerCount` hits 0 → `mcpStopServer` fires → server stops. New dashboard's widgets mount → auto-connect fires → server starts fresh. No stray servers left running.
 
 **Verification:**
 
--   Open a workspace with 4 widgets using the same MCP server
--   Electron logs show exactly ONE "Starting server: Slack" / "Server connected: Slack"
--   Disconnect/reconnect from one widget → one stop, one start
--   Close one widget while others remain → server stays running (`consumerCount > 0`)
--   Switch workspace tabs → one stop on leave, one start on return
+- Open a workspace with 4 widgets using the same MCP server
+- Electron logs show exactly ONE "Starting server: Slack" / "Server connected: Slack"
+- Disconnect/reconnect from one widget → one stop, one start
+- Close one widget while others remain → server stays running (`consumerCount > 0`)
+- Switch workspace tabs → one stop on leave, one start on return
 
 ### McpTest Reference Widget
 
 The `McpTest` widget (`src/Widgets/McpTest/`) serves as a **reference implementation** and debugging tool for MCP connectivity. It provides:
 
--   Connection status with connect/disconnect controls
--   Full tools list (click any tool to open the tester)
--   Interactive tool tester with JSON args editor pre-populated from `inputSchema`
--   Result/error display
--   Quick Send shortcut for `slack_post_message`
+- Connection status with connect/disconnect controls
+- Full tools list (click any tool to open the tester)
+- Interactive tool tester with JSON args editor pre-populated from `inputSchema`
+- Result/error display
+- Quick Send shortcut for `slack_post_message`
 
 This widget declares no `allowedTools`, giving it access to all tools on the server — intentional for testing purposes.
 
@@ -679,9 +690,9 @@ This widget declares no `allowedTools`, giving it access to all tools on the ser
 
 ### Open Questions
 
-| Question                                                 | Impact                                               | Decision Needed By |
-| -------------------------------------------------------- | ---------------------------------------------------- | ------------------ |
-| Should the catalog be updatable without app updates?     | Low - could fetch catalog from remote periodically   | Phase 4 planning   |
+| Question                                             | Impact                                             | Decision Needed By |
+| ---------------------------------------------------- | -------------------------------------------------- | ------------------ |
+| Should the catalog be updatable without app updates? | Low - could fetch catalog from remote periodically | Phase 4 planning   |
 
 **Resolved:** _OAuth flow support for MCP servers_ — see Phase 6 below.
 Resolved 2026-06-24: custom remote (streamable_http) servers now support
@@ -707,7 +718,8 @@ interactive OAuth 2.0 via the SDK's native `OAuthClientProvider`.
 | 1.1.0   | 2026-02-19 | Product Team | Phase 1-3 complete; added Implementation Notes & Lessons Learned section; resolved open questions (server start strategy, tool scoping layers); corrected Slack package name; updated architecture diagram re: AppContext |
 | 1.2.0   | 2026-02-19 | Product Team | Added multi-widget server deduplication & reference counting (mcpController pendingStarts + useMcpProvider module-level state); fixes restart loop when multiple widgets share an MCP server                              |
 | 1.3.0   | 2026-06-24 | Product Team | Phase 6: interactive OAuth 2.0 for custom streamable_http MCP servers via the SDK-native OAuthClientProvider (browser + loopback + DCR + encrypted token storage + auto-refresh). Resolves the OAuth open question.       |
-| 1.4.0   | 2026-11-07 | Product Team | Phase 7: Claude connector providers — bots use the connectors in the user's own Claude account through their signed-in Claude Code CLI (subscription only; widgets in a later round). |
+| 1.4.0   | 2026-11-07 | Product Team | Phase 7: Claude connector providers — bots use the connectors in the user's own Claude account through their signed-in Claude Code CLI (subscription only; widgets in a later round).                                     |
+| 1.4.1   | 2026-11-09 | Product Team | Phase 7 AC10: the bot form's Providers list gets kind tags, search, an All / MCP / Claude connectors switch and Picked only.                                                                                              |
 
 ---
 

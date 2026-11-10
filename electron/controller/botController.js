@@ -1397,6 +1397,8 @@ const botController = {
       bots: this._store.list(),
       workspaceId,
       dashboardName,
+      // A lead renames from the saved name only — never one being typed.
+      savedDashboardName: this._dashboardName(workspaceId),
       teamSettings: this._store.getTeamSettings(workspaceId),
       settings: this._store.getSettings(),
       providers,
@@ -1406,6 +1408,14 @@ const botController = {
       // A lead from a profile or an older Dash may still hold a copy of its
       // built-in instructions.
       if (plan.lead) this.layerInstructionsOnce();
+      // Its dashboard was renamed: a lead with Dash's own name follows it.
+      if (plan.lead && plan.rename) {
+        try {
+          plan.lead = this._store.update(plan.lead.id, plan.rename);
+        } catch (_e) {
+          // Tried again the next time the dashboard opens or is saved.
+        }
+      }
       // Opening a dashboard in a profile brings its lead along.
       if (plan.lead && this._appId) {
         profileMembership.addToActive(this._appId, "bots", plan.lead.id);
