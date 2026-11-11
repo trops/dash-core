@@ -1,7 +1,7 @@
 # PRD: Team Dashboards — Bots, Widgets and Dashboards Built to Work Together
 
-**Status:** Implemented
-**Last Updated:** 2026-10-22
+**Status:** Implemented (TD-009 in progress)
+**Last Updated:** 2026-11-10
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; Widget Builder guidance and app wiring in dash-electron)
 **Related PRDs:** [bot-teams.md](./bot-teams.md) (teams, leads, TEAM-012 bot widgets), [bot-factory.md](./bot-factory.md) (bot events US-010/US-011, dashboard packages US-027), dash-electron `docs/requirements/prd/ai-assistant.md` (Widget Builder)
@@ -137,6 +137,23 @@ The Dash team's **Planner** writes the plan, in Create (dash-electron create-ent
 - [x] AC2: Anything that needs the user (provider sign-in, grants) is listed, never done for them. _(Built, 2026-10-14: Before building (connect / install / approve) in Create's checklist; a step whose provider isn't connected waits for it ("needs a provider") and resumes once it is, as in AC1 and create-entry CRE-004 AC5)_
 - [x] AC3 (create-entry 4d-1): Widget generation runs without opening the Widget Builder window, with progress shown.
 
+### TD-009: Drag a bot to a widget to show what it sends (P1)
+
+**Status:** In progress (2026-11-10, from the approved mockup: canvas page "Bot → widget", frames 1–11)
+
+As a user, I drag a line from a bot to a widget on the Bots diagram and say what the widget should do with what the bot sends, so a widget can show a bot's answer (a shopping list with pictures and links) without connecting the widget to the bot's providers.
+
+**Acceptance Criteria:**
+
+- [x] AC1: Bots › Diagram shows the dashboard's widgets (beside the team when there's room, below it otherwise; each named with its page when the dashboard has several), with a line from a bot to each widget that listens for it, and from a bot to a Bot results widget that shows it. Lines only go from a bot to a widget.
+- [x] AC2: Dropping a bot on a widget opens a dialog with the bot→bot dialog's "When <bot>…" choices (finishes a run, fails, uses a tool, each declared result). A widget that already listens: pick which listener, Connect — saved right away, no AI. A Bot results widget: Show here. Saving is refused, with the reason, while the dashboard is being edited or has unsaved edits.
+- [x] AC3: A widget with no listener: "What should the widget do with it?" and Ask the Dash team opens Create on a change to that widget, asking the user's words at once. A widget that isn't the user's to change: Make my own copy — the copy takes the widget's place.
+- [x] AC4: Nothing about the bot's format is assumed. The Planner, Builder and Checker read the bot's last answers whole (`bot_answers`); the plan says the format found and asks the user when answers differ in shape. A bot that hasn't answered yet is run first (Run it now).
+- [x] AC5: The widget reads an answer with `readBotAnswer` (dash-core: Markdown lists, tables, JSON, headings, images, links, bare URLs; http(s) only) and shows the text when it finds nothing usable. `check_widget` fails a change whose `.dash.js` doesn't declare the listener or whose code never listens with it.
+- [x] AC6: The preview runs the widget with the bot's last message; once the change is saved, Dash adds the listener to the dashboard (with the edit's Save when a copy was put in the widget's place) and the line appears.
+- [x] AC7: When a dashboard opens, a widget listening for a bot's `completed` event gets the bot's last finished answer (marked `replay: true`), as a declared result is replayed (TD-002).
+- [x] AC8: Clicking a widget line's label opens the dialog to change the event or listener, or Remove it.
+
 ---
 
 ## Design Considerations
@@ -149,6 +166,9 @@ The Dash team's **Planner** writes the plan, in Create (dash-electron create-ent
 ## Known Limitations
 
 - A widget can only start a bot while its dashboard is open (bot-factory Known Limitations).
+- TD-009: a bot's answer can change shape when its instructions change. The widget then shows the answer as text; drag the line again (or Change with AI) to make it show the new shape.
+- TD-009: widgets in a dashboard's sidebar aren't on the diagram yet.
+- TD-009: a widget wired to a bot's `completed` before TD-009 now also gets the bot's last answer once when its dashboard opens (`replay: true`), like a result. A widget that acts on an answer (rather than showing it) should check the flag.
 - Providers a bot needs (Gmail, Slack…) are always set up by the user.
 
 ## Out of Scope
@@ -180,6 +200,21 @@ The Dash team's **Planner** writes the plan, in Create (dash-electron create-ent
 
 **Wording:** results are labelled "<label> (result)" and the form section "Results" — never "sends", which reads like the bot sending a message.
 
+### TD-009 (2026-11-10)
+
+- `electron/bots/lastAnswers.js`: a bot's last finished answers (`lastAnswers`, `latestCompleted`, `describeAnswers`); `getLatestResult` answers for `….completed` too; the `bot_answers` role tool (Planner, Builder, Checker), fenced as data.
+- `electron/bots/widgetWire.js`: the change's `wire` (bot, event, listener name, the user's words) → the Builder's and Checker's lines, and `withWireProblems` on `check_widget`. Carried on the edit target (`_editTarget`), so the build's own rules hold it.
+- `electron/bots/dashTeam.js`: the Planner's `SHOW_A_BOT` rule (previous text kept in its history).
+- `src/DashboardPublisher.js`: replays `completed` like results — once per widget and event in a window, however often the widget re-subscribes.
+- Connecting the listener after the change (review fix): changed in place, the main process wires it when the change installs (`_wireEditedWidget`, with `placeWidget.addWidgetListener`), so Create needn't stay open; a copy is wired by the editor on every try that puts it in the widget's place, never the original widget.
+- Where the team reads samples depends on the event: answers (`bot_answers`) for `completed`, the latest result (`bot_results`, now also the Builder's and Checker's) for `result.<name>`, nothing for `failed` / `tool.*` (plain text).
+- Hardening (review): the data fence strips any spelling of the `dash_data` tag; `readBotAnswer` accepts ASCII hosts only (no look-alike characters).
+- `src/utils/readBotAnswer.js`: the answer reader widgets use.
+- `src/Components/Bots/widgetDiagram.js`, `WidgetWirePopover.js`, `TeamChart.js`, `BotsView.js`; `TriggerPopover.js` shares `WhenChoices`.
+- `src/Components/Dashboard/DashboardStage.js`: `changeFromDiagram` (saved right away, refused while editing), `dash:wire-bot-to-widget`, and `wire` on `dash:edit-widget-with-ai`.
+- `src/Components/LeadWorkspace/`: `widgetWire`/`widgetStart` (the conversation and the lead's note), the ask sent at once, the wire sent when the change is done (after the swap for a copy); `useWidgetTarget.findWidgetTarget` shared with the dialog; `CellPreview` previews with the bot's last message.
+- dash-electron: `public/widget-preview-shell.js` delivers `widgetData.previewEvents` to the widget's listeners; `.claude/skills/dash-widget-builder/SKILL.md` "Showing a bot's answer".
+
 ### Follow-ups found in Release 1
 
 - ~~Team export (teamManifest) and bot packages don't carry `publishes` or result wiring yet.~~ Done in create-entry 5a-1: members keep `publishes`; wiring may be on `result.<name>`; teams exported with a dashboard carry `triggers` (widget event → role) and `listeners` (role's result → widget handler), re-pointed on import.
@@ -194,6 +229,7 @@ The Dash team's **Planner** writes the plan, in Create (dash-electron create-ent
 | ------- | ---------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1.0     | 2026-10-10 | John Giatropoulos | Initial PRD; Release 1 (TD-001 – TD-003) in progress                                                                                                                |
 | 1.1     | 2026-10-22 | John Giatropoulos | Consolidation Phase 5: status Implemented; TD-006 superseded (ACs moved to the Appendix); TD-007 names the Planner; TD-008 AC2: a missing provider waits, not fails |
+| 1.2     | 2026-11-10 | John Giatropoulos | Added TD-009: drag a bot to a widget to show what it sends (built; user test pending)                                                                               |
 
 ---
 

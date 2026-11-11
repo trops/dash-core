@@ -751,7 +751,7 @@ export const CheckReportOutput = ({ state }) => {
  * build waits on it — Looks good, or Change something (back to the
  * Builder).
  */
-export const PreviewOutput = ({ state, pb }) => {
+export const PreviewOutput = ({ state, pb, wire = null }) => {
   const [deciding, setDeciding] = useState(false);
   const steps = (state && state.steps) || [];
   const at = steps.find(
@@ -777,6 +777,7 @@ export const PreviewOutput = ({ state, pb }) => {
         cellLabel="your widgets"
         approveLabel="Looks good — add it to my widgets"
         inputsNote="Only for trying it here."
+        wire={wire}
         deciding={deciding}
         checked={steps.some(
           (x) => x.id === `check:${at.piece}` && x.status === "done",

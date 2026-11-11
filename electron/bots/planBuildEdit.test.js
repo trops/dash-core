@@ -291,3 +291,38 @@ describe("a change to a widget — the build", () => {
     assert.equal(state.made[0].component, "jg.inbox.Inbox");
   });
 });
+
+describe("a change that shows what a bot sends (TD-009)", () => {
+  const wire = {
+    botId: "bot_shop1",
+    botName: "Shopping Helper",
+    event: "completed",
+    eventLabel: "Finishes a run",
+    handlerName: "showShoppingHelperAnswer",
+    ask: "Show each item with its picture.",
+  };
+  it("the Builder reads the bot's answers and adds the listener", () => {
+    const text = buildRequest(updatePlan, updatePlan.pieces[0], null, {
+      edit: { ...update, wire },
+    });
+    assert.match(text, /bot_answers with bot "bot_shop1"/);
+    assert.match(text, /named exactly showShoppingHelperAnswer/);
+    assert.match(text, /readBotAnswer/);
+  });
+  it("the Checker tries each answer", () => {
+    const text = checkRequest(
+      updatePlan,
+      updatePlan.pieces[0],
+      { draft: "draft:Inbox" },
+      { edit: { ...update, wire } },
+    );
+    assert.match(text, /listener named exactly showShoppingHelperAnswer/);
+    assert.match(text, /for each one/);
+  });
+  it("a change without one says nothing about bots", () => {
+    const text = buildRequest(updatePlan, updatePlan.pieces[0], null, {
+      edit: update,
+    });
+    assert.doesNotMatch(text, /bot_answers/);
+  });
+});

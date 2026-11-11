@@ -64,6 +64,7 @@ const { buildDraft } = require("./botDrafts");
 const { eventNames, settingsOf } = require("./configDiff");
 const { parseDashConfig } = require("../utils/dashConfigParser");
 const { planPages, planTarget } = require("./teamPlan");
+const { wireBuildLines, wireCheckLines } = require("./widgetWire");
 const { removeWidgets } = require("../utils/placeWidget");
 
 const AI_BUILT = /@ai-built\/[a-z0-9][a-z0-9-]*/gi;
@@ -592,6 +593,7 @@ function editBuildRequest(plan, piece, fix, edit) {
       : []),
     "Keep every setting, its connection and the events it sends, unless the plan says to drop one.",
     ...wiringLines(plan, piece),
+    ...wireBuildLines(edit.wire),
     update
       ? `Keep the name ${name} and change only widgets/${name}.js and widgets/${name}.dash.js — not its other files. Read widget_guide, then build_widget with name "${name}" and update: true; it's built inside a copy of its package, so the other files come along.`
       : `Give it a new PascalCase name based on "${piece.name}" (not ${name}) and change only its component and .dash.js — it's built inside a copy of the package, so it can keep importing the package's other files. Read widget_guide, then build_widget with that name (no update).`,
@@ -638,6 +640,7 @@ function checkRequest(plan, piece, made = {}, { edit = null } = {}) {
     if (isStr(piece.adds) && piece.adds.trim()) {
       lines.push(`The change it should make: ${piece.adds.trim()}`);
     }
+    lines.push(...wireCheckLines(edit.wire));
   }
   if (isStr(piece.notes) && piece.notes.trim()) {
     lines.push(`What the plan says it does: ${piece.notes.trim()}`);

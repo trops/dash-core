@@ -226,6 +226,22 @@ const TOOL_DEFS = {
       },
     },
   },
+  bot_answers: {
+    name: "bot_answers",
+    description:
+      "Read one bot's last finished answers (up to 3, newest first), whole and exactly as a widget listening for its 'completed' event receives them. Use it before planning, building or checking a widget that shows a bot's answers: find the format the bot really uses (a Markdown list, a table, JSON, images, links…) instead of guessing, and notice when answers differ in shape.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        bot: { type: "string", description: "The bot's name or id." },
+        count: {
+          type: "number",
+          description: "How many answers, 1 to 3 (default 3).",
+        },
+      },
+      required: ["bot"],
+    },
+  },
   list_dashboards: {
     name: "list_dashboards",
     description:
@@ -276,6 +292,7 @@ const ROLE_TOOL_NAMES = {
     "ask_role",
     "bot_results",
     "bot_runs",
+    "bot_answers",
   ],
   scout: ["search_library", "read_widget", "list_providers"],
   builder: [
@@ -285,8 +302,16 @@ const ROLE_TOOL_NAMES = {
     "read_widget",
     "list_providers",
     "list_dashboards",
+    "bot_answers",
+    "bot_results",
   ],
-  checker: ["check_widget", "read_widget", "list_providers"],
+  checker: [
+    "check_widget",
+    "read_widget",
+    "list_providers",
+    "bot_answers",
+    "bot_results",
+  ],
 };
 
 /** A saved theme for list_themes: its name, whose it is, colors, where used. */
@@ -337,7 +362,7 @@ function roleToolsFor(role) {
 
 function fence(text) {
   const safe = String(text).replace(
-    /<\/?dash_data>/gi,
+    /<\s*\/?\s*dash_data[^>]*>/gi,
     "[dash_data tag removed]",
   );
   return (
@@ -949,6 +974,11 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
             filterRuns(runs, { bot: args.bot, sinceHours: args.since_hours }),
           ),
         );
+      }
+      case "bot_answers": {
+        if (!deps.botAnswers) return fail("Bot answers aren't available here.");
+        const res = deps.botAnswers({ bot: a.bot, count: a.count }) || {};
+        return res.error ? fail(res.error) : ok(res.text);
       }
       case "list_dashboards": {
         const dashboards = (deps.listDashboards && deps.listDashboards()) || [];

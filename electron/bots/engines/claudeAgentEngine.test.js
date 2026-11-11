@@ -212,6 +212,42 @@ describe("claudeAgentEngine", () => {
     ]);
   });
 
+  it("a run with a connector sends its task only once the connector has connected", async () => {
+    const order = [];
+    let statusCalls = 0;
+    claudeAgentEngine.__setQueryForTest((args) => {
+      captured = args;
+      return {
+        async mcpServerStatus() {
+          statusCalls++;
+          order.push("status");
+          return statusCalls < 2
+            ? []
+            : [{ name: "claude.ai Google Calendar", status: "connected" }];
+        },
+        async *[Symbol.asyncIterator]() {
+          for await (const m of args.prompt) {
+            order.push("task");
+            assert.equal(m.type, "user");
+            assert.equal(m.message.content, "do the thing");
+          }
+          yield { type: "result", subtype: "success", usage: {} };
+        },
+        interrupt() {},
+        close() {},
+      };
+    });
+    await collect(claudeAgentEngine.run(withConnector()));
+    assert.equal(typeof captured.prompt, "object");
+    assert.deepEqual(order, ["status", "status", "task"]);
+  });
+
+  it("a run without connectors sends its task as before", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(ctx()));
+    assert.equal(captured.prompt, "do the thing");
+  });
+
   it("connector tools: only the allowed ones, through the Dash gate", async () => {
     stubQuery([{ type: "result", subtype: "success", usage: {} }]);
     const asked = [];

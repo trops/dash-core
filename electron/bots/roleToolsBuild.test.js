@@ -81,11 +81,19 @@ describe("tools and servers", () => {
         "read_widget",
         "list_providers",
         "list_dashboards",
+        "bot_answers",
+        "bot_results",
       ],
     );
     assert.deepEqual(
       roleToolsFor("checker").map((t) => t.name),
-      ["check_widget", "read_widget", "list_providers"],
+      [
+        "check_widget",
+        "read_widget",
+        "list_providers",
+        "bot_answers",
+        "bot_results",
+      ],
     );
     assert.equal(serverForTool("build_widget"), ROLE_BUILD_SERVER);
     assert.equal(serverForTool("place_widget"), ROLE_BUILD_SERVER);

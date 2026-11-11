@@ -74,6 +74,9 @@ export const CellPreview = ({
   discardLabel = "Discard — leave the cell empty",
   inputsNote = "Filled in from the plan · they go into the cell with the widget.",
   original = null,
+  // A widget that shows what a bot sends (TD-009): { botId, botName, ref,
+  // event, handlerName } — it's previewed with the bot's last message.
+  wire = null,
 }) => {
   const app = useContext(AppContext) || {};
   const appProviders = app.providers || {};
@@ -127,6 +130,41 @@ export const CellPreview = ({
       alive = false;
     };
   }, [showsCode, made.draft]);
+
+  // The bot's last message, handed to the widget's listener in the
+  // preview as it is when the dashboard opens.
+  const wireEvent =
+    wire && wire.ref && wire.botId && wire.event && wire.handlerName
+      ? `bot:${wire.ref}[${wire.botId}].${wire.event}`
+      : null;
+  const [botMessage, setBotMessage] = useState({ status: "none" });
+  useEffect(() => {
+    if (!wireEvent) return undefined;
+    const bots = window.mainApi && window.mainApi.bots;
+    if (!bots || !bots.getLatestResult) return undefined;
+    let alive = true;
+    setBotMessage({ status: "loading" });
+    Promise.resolve(bots.getLatestResult(wireEvent))
+      .then(
+        (message) =>
+          alive &&
+          setBotMessage(
+            message ? { status: "ready", message } : { status: "none" },
+          ),
+      )
+      .catch(() => alive && setBotMessage({ status: "none" }));
+    return () => {
+      alive = false;
+    };
+  }, [wireEvent]);
+  const wireData =
+    wireEvent && botMessage.status === "ready"
+      ? {
+          uuid: `cell-preview-${preview.componentName || name}`,
+          listeners: { [wire.handlerName]: [wireEvent] },
+          previewEvents: { [wireEvent]: botMessage.message },
+        }
+      : {};
 
   const Renderer = getWidgetPreviewRenderer();
   const { needs, selected, missing, unchosen } = previewProviders(
@@ -374,6 +412,22 @@ export const CellPreview = ({
             data-testid="cell-preview-stage"
             style={{ height: 440 }}
           >
+            {wireEvent ? (
+              <span
+                data-testid="cell-preview-bot-message"
+                className={`px-3 py-1.5 text-xs border-b ${hairline} ${muted}`}
+              >
+                {botMessage.status === "ready"
+                  ? `With ${wire.botName || "the bot"}'s last message${
+                      botMessage.message && botMessage.message.at
+                        ? ` · ${new Date(botMessage.message.at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}`
+                        : ""
+                    }`
+                  : botMessage.status === "loading"
+                    ? `Getting ${wire.botName || "the bot"}'s last message…`
+                    : `${wire.botName || "The bot"} has no message yet to preview with — it shows once it runs.`}
+              </span>
+            ) : null}
             {running ? (
               <div data-testid="cell-preview-frame" className="flex-1 min-h-0">
                 <Renderer
@@ -386,6 +440,7 @@ export const CellPreview = ({
                     selectedProviders: selected,
                     userPrefs: settings,
                     uuidString: `cell-preview-${preview.componentName || name}`,
+                    ...wireData,
                   }}
                   props={settings}
                   onMounted={() => {

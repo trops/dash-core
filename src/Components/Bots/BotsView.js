@@ -31,10 +31,15 @@ import { ComponentManager } from "../../ComponentManager";
 import { STATUS_DOT, triggerSummary } from "./teamUtils";
 import {
   addTrigger,
+  botRefOf,
   eventChoices,
   removeTrigger,
   updateTrigger,
 } from "./teamDiagram";
+import { diagramWidgets, unwireChange, wireChange } from "./widgetDiagram";
+import { applyWiringChanges } from "../../utils/listenerResolution";
+import { applyBulkUserPrefs } from "../../utils/applyBulkUserPrefs";
+import { findWidgetTarget } from "../LeadWorkspace/useWidgetTarget";
 
 /**
  * BotsView — a dashboard's team, full stage (bot-teams PRD TEAM-011).
@@ -147,6 +152,10 @@ export const BotsView = ({
   // A new bot's form request was used (its seq): the host lets it go, so
   // coming back to this view never opens it again.
   onFocusApplied = null,
+  // A change to this dashboard made from the diagram (a line from a bot to
+  // a widget, TD-009): (change(ws) => ws, what) => Promise — saved right
+  // away, or refused with the reason (unsaved edits).
+  onChangeDashboard = null,
 }) => {
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const appContext = useContext(AppContext);
@@ -446,6 +455,108 @@ export const BotsView = ({
     });
     afterChange();
   };
+  // Lines from a bot to a widget (TD-009): a listener on the widget, or
+  // which bot a Bot results widget shows — saved on the dashboard right
+  // away. A widget that can't receive it yet goes to the Dash team.
+  const widgets = useMemo(
+    () =>
+      diagramWidgets(workspace, (component, item) =>
+        ComponentManager.config(component, item),
+      ),
+    [workspace],
+  );
+  const teamNameOf = (id) => {
+    const b = findBot(id);
+    return b ? b.name : null;
+  };
+  const changeDashboard = async (change, what) => {
+    if (!onChangeDashboard)
+      throw new Error("this dashboard can't be changed here");
+    await onChangeDashboard(change, what);
+  };
+  const connectWidget = async ({
+    widget,
+    sourceId,
+    event,
+    handlerName,
+    edge,
+  }) => {
+    const source = findBot(sourceId);
+    if (!source) throw new Error("bot not found");
+    await changeDashboard(
+      (ws) =>
+        applyWiringChanges(ws, {
+          adds: [wireChange(widget, source, event, handlerName)],
+          removes: edge && edge.raw ? [unwireChange(widget, edge)] : [],
+        }),
+      "listener",
+    );
+  };
+  const removeWidgetLine = async ({ widget, edge }) => {
+    if (!edge || !edge.raw) return;
+    await changeDashboard(
+      (ws) => applyWiringChanges(ws, { removes: [unwireChange(widget, edge)] }),
+      "listener",
+    );
+  };
+  const showHere = async ({ widget, botId }) => {
+    await changeDashboard(
+      (ws) =>
+        applyBulkUserPrefs(ws, [
+          { widgetId: widget.itemId, key: "botId", value: botId || "" },
+        ]),
+      "widget settings",
+    );
+  };
+  // The Dash team changes the widget (Create, a change to that widget),
+  // with what to connect once it's saved.
+  const askAboutWidget = ({
+    widget,
+    sourceId,
+    event,
+    label,
+    ask,
+    handlerName,
+  }) => {
+    const source = findBot(sourceId);
+    if (!source || !workspace) return;
+    guarded(() =>
+      window.dispatchEvent(
+        new CustomEvent("dash:edit-widget-with-ai", {
+          detail: {
+            widgetComponentName: widget.component,
+            sourcePackage: widget.sourcePackage,
+            widgetId: widget.itemId,
+            gridItemId: widget.gridItemId,
+            cellNumber: widget.cellNumber,
+            workspaceId: workspace.id,
+            pageId: widget.pageId,
+            scope: "main",
+            userPrefs: widget.settings,
+            selectedProviders: widget.providers,
+            wire: {
+              botId: source.id,
+              botName: source.name,
+              ref: botRefOf(source),
+              event,
+              eventLabel: label,
+              handlerName,
+              ask,
+            },
+          },
+        }),
+      ),
+    );
+  };
+  const targetFor = (widget) =>
+    findWidgetTarget(
+      { component: widget.component, sourcePackage: widget.sourcePackage },
+      {
+        api: window.mainApi || {},
+        appId: appContext?.credentials?.appId,
+      },
+    );
+
   // The bot as saved right now (the view's copy can be behind a save made
   // elsewhere); falls back to the view's copy.
   const latestBot = async (id) => {
@@ -772,6 +883,13 @@ export const BotsView = ({
           choicesFor={(id) => eventChoices(findBot(id), toolSources)}
           onSaveTrigger={saveTrigger}
           onRemoveTrigger={removeTriggerFrom}
+          widgets={widgets}
+          nameOf={teamNameOf}
+          onConnectWidget={connectWidget}
+          onShowHere={showHere}
+          onAskWidget={askAboutWidget}
+          onRemoveWidgetLine={removeWidgetLine}
+          findWidgetTarget={targetFor}
         />
       </div>
       <div className={`px-4 py-3 border-t ${hairline}`}>{teamActions}</div>

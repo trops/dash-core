@@ -94,9 +94,11 @@ let replayEnabled = false;
 // A bot's results (`bot:<ref>[<botId>].result.<name>`, team-dashboards
 // TD-002) are state, not commands: every window replays the latest saved one
 // to a widget that subscribes, so a dashboard opened after the bot ran still
-// shows it. When each result last arrived live, so a fetch that resolves late
-// never overwrites a newer live result.
-const BOT_RESULT_EVENT = /^bot:.+\]\.result\.[A-Za-z][A-Za-z0-9_]*$/;
+// shows it. A bot's last finished answer (`….completed`, TD-009) replays the
+// same way to a widget showing its answers. When each one last arrived live,
+// so a fetch that resolves late never overwrites a newer live one.
+const BOT_RESULT_EVENT =
+  /^bot:.+\]\.(result\.[A-Za-z][A-Za-z0-9_]*|completed)$/;
 const resultSeenAt = new Map();
 
 function noteLiveResult(eventType) {
@@ -109,9 +111,19 @@ function isSubscribed(eventType, action, uuid) {
   );
 }
 
+// A bot's last answer replays once per widget and event in this window
+// (TD-009): a widget's listen effect re-subscribes as it re-renders, and a
+// widget that acts on an answer shouldn't act again each time.
+const answersReplayed = new Set();
+const BOT_ANSWER_EVENT = /\]\.completed$/;
+
 function replayLatestResult(eventType, action, uuid) {
   const getLatestResult = window.mainApi?.bots?.getLatestResult;
   if (typeof getLatestResult !== "function") return;
+  const onceKey = BOT_ANSWER_EVENT.test(eventType)
+    ? `${uuid}|${eventType}`
+    : null;
+  if (onceKey && answersReplayed.has(onceKey)) return;
   const subscribedAt = Date.now();
   Promise.resolve()
     .then(() => getLatestResult(eventType))
@@ -119,6 +131,10 @@ function replayLatestResult(eventType, action, uuid) {
       if (!content) return;
       if ((resultSeenAt.get(eventType) || 0) >= subscribedAt) return;
       if (!isSubscribed(eventType, action, uuid)) return;
+      if (onceKey) {
+        if (answersReplayed.has(onceKey)) return;
+        answersReplayed.add(onceKey);
+      }
       action({ message: content, event: eventType, uuid, replay: true });
     })
     .catch(() => {

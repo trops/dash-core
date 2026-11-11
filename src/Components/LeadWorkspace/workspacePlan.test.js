@@ -10,6 +10,7 @@ import {
   stillAnswering,
   latestPlanStep,
   planLine,
+  planForWidget,
   planName,
   planRows,
   planStatus,
@@ -197,4 +198,55 @@ test("the opened plan: a line, one row per widget or bot, what still needs conne
     "Home Assistant · connected",
   );
   expect(providersLine([])).toBe("none needed");
+});
+
+describe("planForWidget — showing what a bot sends (TD-009)", () => {
+  const widget = {
+    component: "a.b.List",
+    mode: "update",
+    wire: { botName: "Shopping Helper" },
+  };
+  test("a listens for the wired bot goes; others stay", () => {
+    const plan = {
+      summary: "x",
+      pieces: [
+        {
+          kind: "widget",
+          name: "List",
+          listens: [
+            {
+              bot: "shopping helper",
+              result: "completed",
+              handler: "showShoppingHelperAnswer",
+            },
+            { bot: "Planned Bot", result: "list", handler: "showList" },
+          ],
+        },
+        {
+          kind: "widget",
+          name: "Other",
+          listens: [
+            { bot: "Shopping Helper", result: "completed", handler: "h" },
+          ],
+        },
+      ],
+    };
+    const next = planForWidget(plan, widget);
+    expect(next.pieces[0].listens).toEqual([
+      { bot: "Planned Bot", result: "list", handler: "showList" },
+    ]);
+    expect(next.pieces[1]).not.toHaveProperty("listens");
+    expect(plan.pieces[0].listens).toHaveLength(2);
+  });
+  test("without a wire nothing changes", () => {
+    const plan = {
+      summary: "x",
+      pieces: [
+        { kind: "widget", name: "List", listens: [{ bot: "Shopping Helper" }] },
+      ],
+    };
+    expect(
+      planForWidget(plan, { component: "a.b.List" }).pieces[0].listens,
+    ).toHaveLength(1);
+  });
 });

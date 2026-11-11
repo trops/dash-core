@@ -8,6 +8,9 @@ import {
   registryDashboards,
   registrySeed,
   waysFor,
+  widgetStart,
+  widgetWire,
+  wireSamples,
 } from "./workspaceStart";
 import { seedConversation } from "./workspacePlan";
 
@@ -162,6 +165,84 @@ describe("a bot's dashboard in the conversation", () => {
     expect(m.text).toBe("a bot — from the Bots page");
     expect(m.note).toBe(
       "(The user wants to make a bot — plan a bot. Ask which of their dashboards it goes on, or no dashboard; a bot never makes a new dashboard.)",
+    );
+  });
+});
+
+describe("a widget that shows what a bot sends (TD-009)", () => {
+  const wire = {
+    botId: "bot_shop",
+    botName: "Shopping Helper",
+    ref: "local/shopping-helper",
+    event: "completed",
+    eventLabel: "Completed",
+    handlerName: "showShoppingHelperAnswer",
+    ask: "Show each item with its picture.",
+  };
+  const target = {
+    component: "ai-built.shoppinglist.ShoppingList",
+    componentName: "ShoppingList",
+    displayName: "Shopping List",
+    package: "@ai-built/shoppinglist",
+    config: { userConfig: { title: { type: "text" } } },
+  };
+  const door = {
+    component: target.component,
+    itemId: "11",
+    workspaceId: "7",
+    wire,
+  };
+
+  test("widgetWire keeps a whole wire, else null", () => {
+    expect(widgetWire(wire)).toEqual(wire);
+    expect(widgetWire({ ...wire, handlerName: "" })).toBeNull();
+    expect(widgetWire(null)).toBeNull();
+  });
+  test("the conversation is about showing the bot, with no starters", () => {
+    const s = widgetStart(door, {
+      target,
+      mode: "update",
+      dashboardName: "Life HQ",
+    });
+    expect(s.text).toBe(
+      "Shopping List on Life HQ — to show what Shopping Helper sends",
+    );
+    expect(s.title).toBe(
+      "What should Shopping List show from Shopping Helper?",
+    );
+    expect(s.starters).toEqual([]);
+    expect(s.widget.wire).toEqual(wire);
+  });
+  test("the lead's note: real answers, the listener's name, never a settings change or an id check", () => {
+    const { note } = widgetStart(door, {
+      target,
+      mode: "update",
+      dashboardName: "Life HQ",
+    });
+    expect(note).toMatch(/bot_answers/);
+    expect(note).toMatch(/listener named showShoppingHelperAnswer/);
+    expect(note).toMatch(
+      /don't look it up, check its id or ask the user about it/,
+    );
+    expect(note).toMatch(/not a settings change/);
+    expect(note).not.toMatch(/source "settings"/);
+  });
+  test("not on a dashboard: an ordinary change", () => {
+    const s = widgetStart(
+      { ...door, itemId: null },
+      { target, mode: "update" },
+    );
+    expect(s.widget.wire).toBeUndefined();
+    expect(s.title).toBe("What should change in Shopping List?");
+  });
+  test("where the samples are, by event", () => {
+    expect(wireSamples(wire)).toMatch(/bot_answers/);
+    expect(wireSamples({ ...wire, event: "result.list" })).toMatch(
+      /bot_results/,
+    );
+    expect(wireSamples({ ...wire, event: "failed" })).toMatch(/message\.error/);
+    expect(wireSamples({ ...wire, event: "tool.notes.write" })).toMatch(
+      /message\.result/,
     );
   });
 });

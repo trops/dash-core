@@ -39,6 +39,7 @@ const {
   connectorForTool,
   connectorDisallowList,
   connectorNeedsSubscriptionMessage,
+  waitForConnectors,
 } = require("../claudeConnectors");
 
 // The SDK names bridged tools "mcp__<server>__<tool>".
@@ -358,7 +359,34 @@ async function _runAgent(ctx, stream) {
     }
   }
 
-  const q = query({ prompt: ctx.prompt || "", options });
+  // A run with Claude connectors sends its task once they've connected:
+  // Claude Code loads them a second or so after it starts, and a task sent
+  // sooner meets a model without their tools.
+  let prompt = ctx.prompt || "";
+  let sendTask = null;
+  if (linked) {
+    const text = prompt;
+    const ready = new Promise((resolve) => {
+      sendTask = resolve;
+    });
+    prompt = (async function* () {
+      await ready;
+      yield {
+        type: "user",
+        message: { role: "user", content: text },
+        parent_tool_use_id: null,
+        session_id: "",
+      };
+    })();
+  }
+  const q = query({ prompt, options });
+  if (sendTask) {
+    await waitForConnectors(
+      q,
+      ctx.connectors.map((c) => c.server),
+    );
+    sendTask();
+  }
 
   // Cooperative cancellation → SDK interrupt.
   if (ctx.signal) {

@@ -67,7 +67,7 @@ describe("a change to a widget in the bot controller", () => {
     );
     assert.match(
       src,
-      /return this\._widgetTools\.installDraft\(\{ name: draft, edit: target \}\);/,
+      /const res = await this\._widgetTools\.installDraft\(\{\s*name: draft,\s*edit: target,\s*\}\);[\s\S]{0,800}return res;/,
     );
   });
 

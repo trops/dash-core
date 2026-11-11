@@ -340,6 +340,44 @@ export const shownSetting = (v) => {
 };
 
 /**
+ * What a widget should show from a bot (team-dashboards TD-009), from the
+ * Bots diagram's line: the bot, its event, the listener Dash named and the
+ * user's words — or null.
+ */
+export function widgetWire(w) {
+  if (!w || typeof w !== "object") return null;
+  const s = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const wire = {
+    botId: s(w.botId, 80),
+    botName: s(w.botName, 80),
+    ref: s(w.ref, 200),
+    event: s(w.event, 160),
+    eventLabel: s(w.eventLabel, 80),
+    handlerName: s(w.handlerName, 60),
+    ask: s(w.ask, 1000),
+  };
+  return wire.botId && wire.ref && wire.event && wire.handlerName ? wire : null;
+}
+
+/**
+ * Where the team finds what the bot really sends, by event: its answers
+ * (completed), its latest result (result.<name>), or nothing to read (a
+ * failure's or a tool's text).
+ */
+export function wireSamples(wire) {
+  const bot = wire.botName || "the bot";
+  if (wire.event === "completed") {
+    return `Read ${bot}'s real answers with bot_answers (bot "${bot}") first and plan from the format it really uses — never guess it; if its answers differ in shape or there are none yet, ask the user.`;
+  }
+  if (String(wire.event).startsWith("result.")) {
+    return `It's ${bot}'s "${wire.event.slice(7)}" result: a list of items (message.items). Read the latest one with bot_results first and plan from the fields its items really have — never guess them.`;
+  }
+  return wire.event === "failed"
+    ? "Its message is the error text (message.error): show it as text."
+    : "Its message is what the tool returned, as text (message.result): show it as text.";
+}
+
+/**
  * A widget's "Change with AI" (release 6c, frame 40): the conversation's
  * "Changing:" line, greeting and starters, and what the lead is told — that
  * widget only; on a dashboard, a change to only its settings is a
@@ -411,11 +449,17 @@ export function widgetStart(
         String(widget.error).replace(/\s+/g, " ").trim().slice(0, 400),
       )}.`
     : "";
+  const wire = onDashboard ? widgetWire(widget.wire) : null;
+  const wireRule = wire
+    ? ` It should show what their bot ${wire.botName || "the bot"} sends when it ${(
+        wire.eventLabel || wire.event
+      ).toLowerCase()} (event ${wire.event}). Dash already knows which bot it is: don't look it up, check its id or ask the user about it. ${wireSamples(wire)} The change adds a listener named ${wire.handlerName} and the display, and keeps the rest; Dash connects the bot to it after the user saves — that's not a step of the plan, and the widget piece has no "listens" for it. It's not a settings change, and the widget needs no provider for this.`
+    : "";
   const settingsRule =
-    onDashboard && settingsList
+    !wire && onDashboard && settingsList
       ? `If the change is only to its settings — ${settingsList} — plan one widget piece {"kind": "widget", "name": "${name}", "source": "settings", "settings": {only the settings that change, by those names}}: nothing is built, and only this copy changes. Otherwise `
       : "";
-  return {
+  const out = {
     label: "Changing",
     text: onDashboard ? `${name} — on ${dash}` : name,
     title: `What should change in ${name}?`,
@@ -473,6 +517,17 @@ export function widgetStart(
           ? widget.providers
           : null,
     },
+  };
+  if (!wire) return out;
+  const bot = wire.botName || "the bot";
+  return {
+    ...out,
+    text: `${name} on ${dash} — to show what ${bot} sends`,
+    title: `What should ${name} show from ${bot}?`,
+    greeting: `The Dash team reads ${bot}'s answers, plans how ${name} shows them, and you preview it with ${bot}'s last answer before anything is saved. Once it's saved, Dash connects ${bot} to it.`,
+    starters: [],
+    note: `(The user wants their widget ${target.componentName} — package ${target.package}, component ${target.component}, the copy on ${dash} — to show what one of their bots sends. Read it with read_widget first.${wireRule} ${where.charAt(0).toUpperCase()}${where.slice(1)} Plan only that widget — no other widgets, bots, theme, layout or dashboard — and say what the change adds and what it keeps. When you bring in the Dash team, tell the Planner all of this.)`,
+    widget: { ...out.widget, wire },
   };
 }
 
