@@ -19,6 +19,11 @@ import { MountTokenWrapper } from "./MountTokenWrapper";
 import { buildWidgetData } from "./buildWidgetData";
 import { canFixWithAi, fixRequestDetail } from "./canFixWithAi";
 import {
+  noteWidgetCrashed,
+  setWidgetNamer,
+  widgetFacts,
+} from "../utils/issues";
+import {
   LayoutPageContext,
   WorkspaceScopeContext,
 } from "../Components/Layout/Builder/WorkspaceScopeContext";
@@ -37,6 +42,14 @@ import { installPictureWatch } from "./pictureProblems";
 // start (widgetGuard.js). A picture one couldn't show is kept with why, for
 // its side panel (pictureProblems.js).
 installWidgetGuard();
+// Issues name a widget as its card does (its config's name, not its code).
+setWidgetNamer((item) => {
+  const cfg = ComponentManager.config(item.component);
+  return pickWidgetDisplayName(
+    item,
+    cfg && cfg.name === "My Workspace" ? { ...cfg, name: null } : cfg,
+  );
+});
 installPictureWatch();
 
 /**
@@ -56,6 +69,18 @@ class WidgetErrorBoundary extends Component {
   componentDidCatch(error, errorInfo) {
     // A widget that keeps crashing (Try again, again) is stopped.
     noteFailure(guardKey(this.props.widgetName), "render");
+    // Issues (issues PRD): what it showed, against this copy of it.
+    noteWidgetCrashed(
+      {
+        ...widgetFacts(
+          { ...(this.props.item || {}), scope: this.props.scope },
+          null,
+        ),
+        component: this.props.widgetName,
+        widgetName: this.props.label || "",
+      },
+      { message: (error && error.message) || "It hit an error." },
+    );
     console.error("[WidgetErrorBoundary] Widget rendering error:", {
       widget: this.props.widgetName,
       error: error.message,

@@ -2,6 +2,12 @@ import { useContext, useState, useCallback, useEffect, useRef } from "react";
 import { AppContext } from "../Context/App/AppContext";
 import { WorkspaceContext } from "../Context/WorkspaceContext";
 import { WidgetContext } from "../Context/WidgetContext";
+import {
+  noteWidgetCallFailed,
+  noteWidgetCallWorked,
+  toolErrorText,
+  widgetFacts,
+} from "../utils/issues";
 
 /**
  * Module-level shared state for MCP server connections.
@@ -542,14 +548,39 @@ export const useMcpProvider = (providerType, options = {}) => {
               `[useMcpProvider] Tool result for ${toolName}:`,
               result,
             );
+            // Issues (issues PRD): a failed call is recorded against this
+            // widget on this dashboard — even when the widget only shows
+            // its own message — and a call that works again resolves it.
+            const facts = widgetFacts(widgetData, workspace);
+            const call = { provider: selectedProviderName, tool: toolName };
             if (result.error) {
+              noteWidgetCallFailed(facts, {
+                ...call,
+                args,
+                error: result.message,
+              });
               reject(new Error(result.message));
             } else {
+              if (result.result && result.result.isError) {
+                noteWidgetCallFailed(facts, {
+                  ...call,
+                  args,
+                  error: toolErrorText(result.result),
+                });
+              } else {
+                noteWidgetCallWorked(facts, call);
+              }
               resolve(result.result);
             }
           },
           (event, err) => {
             clearTimeout(timeout);
+            noteWidgetCallFailed(widgetFacts(widgetData, workspace), {
+              provider: selectedProviderName,
+              tool: toolName,
+              args,
+              error: err?.message || "Failed to call MCP tool",
+            });
             reject(new Error(err?.message || "Failed to call MCP tool"));
           },
           workspaceId,
@@ -566,6 +597,22 @@ export const useMcpProvider = (providerType, options = {}) => {
       workspace,
     ],
   );
+
+  // Issues (issues PRD): a widget whose provider can't connect shows its
+  // own message ("… aren't available right now") and never gets to call —
+  // so the failed connection is recorded against this widget too, and
+  // connecting again resolves it.
+  useEffect(() => {
+    if (!selectedProviderName) return;
+    const facts = widgetFacts(widgetData, workspace);
+    const call = { provider: selectedProviderName, tool: "connect" };
+    if (status === "error" && error) {
+      noteWidgetCallFailed(facts, { ...call, args: null, error });
+    } else if (status === "connected") {
+      noteWidgetCallWorked(facts, call);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, error, selectedProviderName]);
 
   /**
    * Read a resource from the MCP server

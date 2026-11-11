@@ -80,6 +80,14 @@ jest.mock("@trops/dash-react", () => {
       </button>
     ),
     ConfirmationModal: () => null,
+    useStatusTokens: () => {
+      const make = (c) => ({
+        text: `text-${c}-200`,
+        icon: `text-${c}-400`,
+        solidBg: `bg-${c}-500`,
+      });
+      return { error: make("red"), warning: make("amber") };
+    },
   };
 });
 
@@ -124,7 +132,7 @@ function setup(props = {}, { collapsed = false } = {}) {
 const manage = () => screen.getByRole("region", { name: "Manage" });
 
 describe("DashSidebar — Manage group", () => {
-  it("lists Dashboards, Bots, Providers, Widgets, Themes and opens a page", () => {
+  it("lists Dashboards, Bots, Providers, Widgets, Issues, Themes and opens a page", () => {
     const { onOpenPage } = setup();
     const items = within(manage()).getAllByRole("button");
     expect(items.map((b) => b.textContent)).toEqual([
@@ -132,6 +140,7 @@ describe("DashSidebar — Manage group", () => {
       "Bots",
       "Providers",
       "Widgets",
+      "Issues",
       "Themes",
     ]);
     fireEvent.click(within(manage()).getByText("Providers"));

@@ -4,6 +4,7 @@ import { ComponentManager } from "../../ComponentManager";
 import { getAllProviderBindings } from "../../utils/providerResolution";
 import { classOf, providerStatus, providerUsage } from "./providerSummary";
 import { useClaudeConnectors } from "../Settings/details/useClaudeConnectors";
+import { useOpenIssues } from "../../hooks/useIssues";
 
 export const getWidgetRequirements = (name) =>
   (name && ComponentManager.config(name)?.providers) || [];
@@ -63,6 +64,18 @@ export function useProviderStatus({
     (p) => classOf(p) === "connector",
   );
   const claude = useClaudeConnectors(hasConnectors);
+  // Open provider issues (issues PRD): it couldn't start, or its sign-in
+  // expired — the row says so.
+  const openIssues = useOpenIssues();
+  const providerIssues = useMemo(() => {
+    const out = {};
+    for (const i of openIssues || []) {
+      const a = i && i.asset;
+      if (a && a.kind === "provider" && a.provider && !out[a.provider])
+        out[a.provider] = i;
+    }
+    return out;
+  }, [openIssues]);
 
   // Only re-render when a server's state actually changed.
   const mark = (name, value) =>
@@ -145,6 +158,7 @@ export function useProviderStatus({
             p && classOf(p) === "connector"
               ? claude.statusOf(p.mcpConfig && p.mcpConfig.server)
               : null,
+          issue: providerIssues[name] || null,
         });
       },
       usageOf: (name) => providerUsage(name, { workspaces, bots, bindingsFor }),
@@ -158,6 +172,7 @@ export function useProviderStatus({
     [
       claude,
       providers,
+      providerIssues,
       running,
       catalog,
       workspaces,

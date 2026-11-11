@@ -1,5 +1,10 @@
 import React, { useCallback, useContext, useEffect, useState } from "react";
-import { Button3, ThemeContext } from "@trops/dash-react";
+import {
+  Button3,
+  StatusBadge,
+  ThemeContext,
+  useStatusTokens,
+} from "@trops/dash-react";
 import {
   INTERRUPTED_TEXT,
   askedText,
@@ -11,6 +16,8 @@ import {
 } from "./botConversation";
 import { runCostLabel, runCostShort } from "../../utils/runCostLabel";
 import { openRunConversation, runConversation } from "./runConversation";
+import { openProvider } from "../Issues/issueActions";
+import { quotedError } from "../Issues/issueText";
 
 /**
  * BotRunHistory — a bot's runs, newest first (Bots view › Activity,
@@ -34,13 +41,11 @@ function api() {
     ? window.mainApi.bots
     : null;
 }
-const STATUS_DOT = {
-  completed: "bg-green-400",
-  failed: "bg-red-400",
-  running: "bg-indigo-400",
-  skipped: "bg-gray-500",
-  stopped: "bg-gray-500",
-  interrupted: "bg-gray-500",
+// A run's status as a pill (StatusBadge state).
+const STATUS_STATE = {
+  completed: "success",
+  failed: "error",
+  running: "info",
 };
 
 const TRIGGER_LABELS = {
@@ -70,15 +75,213 @@ function statusLabel(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "Unknown";
 }
 
+/**
+ * A run's warnings (issues PRD): [{ message, provider, detail }]. The store
+ * keeps them sealed as a JSON string; older runs have an array (strings
+ * allowed).
+ */
+export function runWarningList(run) {
+  let list = run && run.warnings;
+  if (typeof list === "string") {
+    try {
+      list = list ? JSON.parse(list) : [];
+    } catch (_e) {
+      list = [];
+    }
+  }
+  return (Array.isArray(list) ? list : [])
+    .map((w) =>
+      typeof w === "string"
+        ? { message: w, provider: "", detail: "" }
+        : w && typeof w === "object" && w.message
+          ? {
+              message: String(w.message),
+              provider: w.provider ? String(w.provider) : "",
+              detail: w.detail ? String(w.detail) : "",
+            }
+          : null,
+    )
+    .filter(Boolean);
+}
+
+/** A run's warnings, as their messages. */
+export function runWarnings(run) {
+  return runWarningList(run).map((w) => w.message);
+}
+
+/** The pill's state: a completed run with warnings is a warning. */
+export function runStatusState(run) {
+  const s = run && run.status;
+  if (s === "completed" && runWarningList(run).length) return "warning";
+  return STATUS_STATE[s] || "neutral";
+}
+
+/**
+ * Why each failed tool call failed: run.toolErrors (a JSON string, or an
+ * array) → { [index into run.toolCalls]: { args, error } }.
+ */
+export function runToolErrors(run) {
+  let list = run && run.toolErrors;
+  if (typeof list === "string") {
+    try {
+      list = JSON.parse(list);
+    } catch (_e) {
+      list = [];
+    }
+  }
+  const out = {};
+  for (const e of Array.isArray(list) ? list : []) {
+    if (e && Number.isInteger(e.call)) {
+      out[e.call] = { args: e.args, error: e.error ? String(e.error) : "" };
+    }
+  }
+  return out;
+}
+
+/** What a call was asked with, compact — or "". */
+function askedWith(args) {
+  if (args == null || args === "") return "";
+  let v = args;
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch (_e) {
+      return v;
+    }
+  }
+  if (v && typeof v === "object" && !Object.keys(v).length) return "";
+  try {
+    return JSON.stringify(v);
+  } catch (_e) {
+    return "";
+  }
+}
+
+/** Fix with AI: Ask AI, with what went wrong in this run. */
+function fixRunWithAi(bot, run, problem) {
+  if (typeof window === "undefined" || !bot) return;
+  const what = problem || readableError(run && run.error) || "";
+  // The error is quoted and clipped: what it said, for the AI to read as data.
+  const said = what
+    ? ` The error said: ${quotedError(String(what).replace(/[.\s]+$/, ""))}.`
+    : "";
+  window.dispatchEvent(
+    new CustomEvent("dash:open-workspace", {
+      detail: {
+        key: "role:dashlead",
+        draft: `${bot.name || "A bot"} had a problem in a run.${said} Help me fix it.`,
+      },
+    }),
+  );
+}
+
+/** "Completed", or "Completed · 1 warning". */
+export function runStatusLabel(run) {
+  const base = statusLabel(run && run.status);
+  const n = runWarnings(run).length;
+  return n ? `${base} · ${n} warning${n === 1 ? "" : "s"}` : base;
+}
+
 // What started it: a task via MCP (TEAM-016) says so, not just "Asked".
 function startedBy(run) {
   if (mcpViaLabel(run.via)) return "via MCP";
   return TRIGGER_LABELS[run.trigger] || statusLabel(run.trigger);
 }
 
-function dotFor(status) {
-  return STATUS_DOT[status] || "bg-gray-500";
-}
+/**
+ * What went wrong in a run, shown on its row (not only when opened): a
+ * warning box — each warning, "Check <provider>" for one about a provider,
+ * Run again, Fix with AI — and each failed call with why and what it was
+ * asked with.
+ */
+export const RunProblems = ({ run, bot, onRunAgain = null }) => {
+  const status = useStatusTokens();
+  const { currentTheme = {} } = useContext(ThemeContext) || {};
+  const muted = currentTheme["text-neutral-medium"] || "";
+  const warnings = runWarningList(run);
+  const toolErrors = runToolErrors(run);
+  const failed = (Array.isArray(run && run.toolCalls) ? run.toolCalls : [])
+    .map((c, j) => ({ c, j, why: toolErrors[j] || null }))
+    .filter((x) => x.c && x.c.ok === false);
+  if (!warnings.length && !failed.length) return null;
+  const providers = [
+    ...new Set(warnings.map((w) => w.provider).filter(Boolean)),
+  ];
+  return (
+    <div className="flex flex-col gap-1.5 pb-2.5 text-xs">
+      {warnings.length ? (
+        <div
+          role="note"
+          data-testid="run-warnings"
+          className={`flex flex-col gap-1 px-3 py-2 rounded-lg border ${status.warning.border} ${status.warning.bg} ${status.warning.text}`}
+        >
+          {warnings.map((w, j) => (
+            <span key={j} className="flex flex-col gap-0.5">
+              <span>{w.message}</span>
+              {w.detail && w.detail !== w.message ? (
+                <span className="font-mono break-all">{w.detail}</span>
+              ) : null}
+            </span>
+          ))}
+          {bot ? (
+            <span className="flex flex-row flex-wrap gap-2 pt-0.5">
+              {providers.map((p) => (
+                <Button3
+                  key={p}
+                  title={`Check ${p}`}
+                  size="xs"
+                  onClick={() => openProvider(p)}
+                />
+              ))}
+              {onRunAgain ? (
+                <Button3
+                  title="Run again"
+                  size="xs"
+                  onClick={() => onRunAgain(run.prompt)}
+                />
+              ) : null}
+              <Button3
+                title="Fix with AI"
+                size="xs"
+                onClick={() => fixRunWithAi(bot, run, warnings[0].message)}
+              />
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      {failed.map(({ c, j, why }) => {
+        const asked = why ? askedWith(why.args) : "";
+        return (
+          <span
+            key={j}
+            data-testid="run-failed-call"
+            className="flex flex-col gap-0.5"
+          >
+            <span className={`font-mono ${status.error.text}`}>
+              {[c.tool, c.provider, "failed"].filter(Boolean).join(" · ")}
+            </span>
+            {why && why.error ? (
+              <span
+                data-testid="tool-call-error"
+                className={`pl-3 ${status.error.text}`}
+              >
+                {why.error}
+              </span>
+            ) : null}
+            {asked ? (
+              <span
+                data-testid="tool-call-args"
+                className={`pl-3 font-mono break-all ${muted}`}
+              >
+                {`Asked with ${asked}`}
+              </span>
+            ) : null}
+          </span>
+        );
+      })}
+    </div>
+  );
+};
 
 function firstLine(run) {
   if (run.status === "failed" && run.error) return readableError(run.error);
@@ -100,9 +303,12 @@ export const RunDetails = ({
   onOpenSettings = null,
   onChangeModel = null,
   compact = false,
+  // Its warnings and failed calls; off where the row already shows them.
+  showProblems = true,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
+  const status = useStatusTokens();
   const convo = runConversation(run, bot, nameOf);
   const runAgain = (prompt) => {
     const bots = api();
@@ -112,6 +318,9 @@ export const RunDetails = ({
   };
   return (
     <div className="flex flex-col gap-2 pb-3 text-sm">
+      {showProblems ? (
+        <RunProblems run={run} bot={bot} onRunAgain={runAgain} />
+      ) : null}
       {runCostLabel(run) ? (
         <div className={`text-xs ${muted}`} data-testid="run-cost">
           {runCostLabel(run)}
@@ -151,6 +360,7 @@ export const RunDetails = ({
       ) : null}
       {Array.isArray(run.toolCalls) && run.toolCalls.length ? (
         <div className={`text-xs ${muted} flex flex-col gap-0.5`}>
+          {/* Every call; why a failed one failed is above (RunProblems). */}
           {run.toolCalls.map((c, j) => (
             <span key={j} className="font-mono">
               {[
@@ -174,7 +384,7 @@ export const RunDetails = ({
         </div>
       ) : null}
       {run.error ? (
-        <div className="text-red-300">{readableError(run.error)}</div>
+        <div className={status.error.text}>{readableError(run.error)}</div>
       ) : null}
       {run.status === "failed" ? (
         <div className="flex flex-row flex-wrap gap-2">
@@ -206,6 +416,13 @@ export const RunDetails = ({
               />
             ) : null,
           )}
+          {bot ? (
+            <Button3
+              title="Fix with AI"
+              size="xs"
+              onClick={() => fixRunWithAi(bot, run)}
+            />
+          ) : null}
         </div>
       ) : null}
       {run.outputUnavailable ? (
@@ -307,10 +524,10 @@ export const BotRunHistory = ({
                 {compact ? (
                   <>
                     <span className="flex flex-row items-center gap-1.5 text-xs">
-                      <span
-                        className={`h-2 w-2 rounded-full ${dotFor(r.status)}`}
+                      <StatusBadge
+                        state={runStatusState(r)}
+                        label={runStatusLabel(r)}
                       />
-                      <span>{statusLabel(r.status)}</span>
                       <span className={muted}>· {when(r)}</span>
                       <span className="flex-1" />
                       {runCostShort(r) ? (
@@ -330,11 +547,15 @@ export const BotRunHistory = ({
                     <span className={`w-20 flex-shrink-0 ${muted}`}>
                       {startedBy(r)}
                     </span>
-                    <span className="w-24 flex-shrink-0 flex flex-row items-center gap-1.5 text-xs">
-                      <span
-                        className={`h-2 w-2 rounded-full ${dotFor(r.status)}`}
+                    <span
+                      className={`${
+                        runWarnings(r).length ? "w-40" : "w-28"
+                      } flex-shrink-0 flex flex-row items-center text-xs`}
+                    >
+                      <StatusBadge
+                        state={runStatusState(r)}
+                        label={runStatusLabel(r)}
                       />
-                      {statusLabel(r.status)}
                     </span>
                     <span className="flex-1 min-w-0 truncate">
                       {firstLine(r)}
@@ -364,8 +585,10 @@ export const BotRunHistory = ({
                 />
               ) : null}
             </div>
+            <RunProblems run={r} bot={bot} onRunAgain={runAgain} />
             {open === i ? (
               <RunDetails
+                showProblems={false}
                 run={r}
                 bot={bot}
                 isLead={isLead}

@@ -31,6 +31,7 @@ const profileStore = require("./profile/profileStore");
 // Auto-save to the account (dash-profiles v3): started once the window exists.
 const profileAutoSave = require("./profile/profileAutoSave");
 const notificationController = require("./controller/notificationController");
+const issueController = require("./controller/issueController");
 const schedulerController = require("./controller/schedulerController");
 const themeRegistryController = require("./controller/themeRegistryController");
 const themeFromUrlController = require("./controller/themeFromUrlController");
@@ -77,6 +78,7 @@ const onboardingApi = require("./api/onboardingApi");
 const exportApi = require("./api/exportApi");
 const profileApi = require("./api/profileApi");
 const notificationApi = require("./api/notificationApi");
+const issuesApi = require("./api/issuesApi");
 const schedulerApi = require("./api/schedulerApi");
 const themeFromUrlApi = require("./api/themeFromUrlApi");
 const webSocketApi = require("./api/webSocketApi");
@@ -150,6 +152,7 @@ module.exports = {
   profileStore,
   profileAutoSave,
   notificationController,
+  issueController,
   schedulerController,
   themeRegistryController,
   themeFromUrlController,
@@ -188,6 +191,7 @@ module.exports = {
   exportApi,
   profileApi,
   notificationApi,
+  issuesApi,
   schedulerApi,
   themeFromUrlApi,
   webSocketApi,

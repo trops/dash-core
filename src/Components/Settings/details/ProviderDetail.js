@@ -8,6 +8,7 @@ import {
   SubHeading3,
   Tag,
   FontAwesomeIcon,
+  useStatusTokens,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
 import { connectionErrorText } from "../../../utils/connectionErrorText";
@@ -19,6 +20,11 @@ import {
   isBuiltinMcpConfig,
 } from "../../../utils/mcpUtils";
 import { ToolSelector } from "./ToolSelector";
+import {
+  reconnectProvider,
+  signsInWithCommand,
+} from "../../Issues/issueActions";
+import { withoutProvidersPageTip } from "../../Issues/issueText";
 
 export const ProviderDetail = ({
   providerName = null,
@@ -54,12 +60,18 @@ export const ProviderDetail = ({
   onApproveRun = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
+  const statusTokens = useStatusTokens();
   const appContext = useContext(AppContext);
   const dashApi = appContext?.dashApi;
   const isMcp = provider?.providerClass === "mcp";
   const isWs = provider?.providerClass === "websocket";
 
   const [approveError, setApproveError] = useState(null);
+  // Reconnect from its health banner (issues PRD): { busy, note }.
+  const [reconnectState, setReconnectState] = useState({
+    busy: false,
+    note: "",
+  });
   // A held provider from a profile runs a program here, or reaches an address.
   const runsProgram = !!(provider?.mcpConfig && provider.mcpConfig.command);
   // MCP test connection state
@@ -462,7 +474,7 @@ export const ProviderDetail = ({
                     </button>
                     <button
                       onClick={() => handleRemoveField(field.id)}
-                      className="p-2 rounded hover:bg-red-500/20 transition-colors opacity-50 hover:opacity-100 text-red-400"
+                      className={`p-2 rounded transition-colors opacity-50 hover:opacity-100 ${statusTokens.error.icon} ${statusTokens.error.hoverBg}`}
                       title="Remove field"
                     >
                       <FontAwesomeIcon icon="trash" className="h-3.5 w-3.5" />
@@ -602,9 +614,10 @@ export const ProviderDetail = ({
       ? "MCP server"
       : "API credentials";
   const STATUS_DOT = {
-    needsSetup: "bg-amber-400",
-    connected: "bg-green-400",
+    needsSetup: statusTokens.warning.solidBg,
+    connected: statusTokens.success.solidBg,
     ready: "bg-gray-500",
+    problem: statusTokens.error.solidBg,
   };
   const statusDot = (status && STATUS_DOT[status.key]) || STATUS_DOT.ready;
   const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
@@ -615,8 +628,8 @@ export const ProviderDetail = ({
       <div
         className={`p-3 rounded-lg border text-sm ${
           result.success
-            ? "border-green-700 text-green-300"
-            : "border-red-700 text-red-300"
+            ? `${statusTokens.success.border} ${statusTokens.success.text}`
+            : `${statusTokens.error.border} ${statusTokens.error.text}`
         }`}
       >
         <div className="flex items-center gap-2">
@@ -653,7 +666,13 @@ export const ProviderDetail = ({
                 className={`inline-block h-2 w-2 rounded-full ${statusDot}`}
               />
               <span
-                className={status.key === "needsSetup" ? "text-amber-400" : ""}
+                className={
+                  status.key === "needsSetup"
+                    ? statusTokens.warning.icon
+                    : status.key === "problem"
+                      ? statusTokens.error.icon
+                      : ""
+                }
               >
                 {status.label}
               </span>
@@ -706,6 +725,60 @@ export const ProviderDetail = ({
           />
         </div>
       </div>
+
+      {/* Its open issue (issues PRD): it couldn't start, or its sign-in
+          expired — the error, and Reconnect / Sign in. */}
+      {status && status.key === "problem" ? (
+        <AlertBanner
+          variant="error"
+          size="compact"
+          title={status.label}
+          message={status.detail || ""}
+        >
+          <span className="flex flex-col gap-2" data-testid="provider-health">
+            {status.issue && status.issue.hint ? (
+              <span>{status.issue.hint}</span>
+            ) : null}
+            {isMcp ? (
+              <span className="flex flex-row flex-wrap items-center gap-2">
+                {status.signIn &&
+                signsInWithCommand(provider, resolvedAuthCommand) ? (
+                  <Button
+                    title={isAuthorizing ? "Signing in…" : "Sign in"}
+                    size="sm"
+                    onClick={handleAuthorize}
+                  />
+                ) : (
+                  <Button
+                    title={reconnectState.busy ? "Reconnecting…" : "Reconnect"}
+                    size="sm"
+                    disabled={reconnectState.busy}
+                    onClick={async () => {
+                      setReconnectState({ busy: true, note: "" });
+                      const res = await reconnectProvider(
+                        dashApi,
+                        providerName,
+                        provider,
+                      );
+                      setReconnectState({
+                        busy: false,
+                        note: res.ok
+                          ? "It started again."
+                          : `It didn't start: ${withoutProvidersPageTip(
+                              res.message,
+                            )}`,
+                      });
+                    }}
+                  />
+                )}
+                {reconnectState.note ? (
+                  <span role="status">{reconnectState.note}</span>
+                ) : null}
+              </span>
+            ) : null}
+          </span>
+        </AlertBanner>
+      ) : null}
 
       {/* From a loaded profile (dash-profiles): where it came from, and a
           program it runs waits for the user's OK. */}

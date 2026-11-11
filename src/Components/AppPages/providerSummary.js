@@ -5,6 +5,7 @@
  * Pure.
  */
 import { deriveFormFields, formatFieldName } from "../../utils/mcpUtils";
+import { isSignInIssue, withoutProvidersPageTip } from "../Issues/issueText";
 
 export function classOf(provider) {
   return (provider && provider.providerClass) || "credential";
@@ -88,7 +89,29 @@ export function missingFields(
 }
 
 /**
- * @returns {{ key: "needsSetup"|"connected"|"ready", label, missing }}
+ * A provider's health from its open issue (issues PRD): "Couldn't start"
+ * or "Sign-in expired", the error line, and what to do — or null. Sign-in
+ * comes from the issue's cause, never from guessing at the error text.
+ * The error's "Check its settings on the Providers page." is dropped: this
+ * is shown on that page.
+ */
+export function providerHealth(issue) {
+  if (!issue || issue.status === "resolved") return null;
+  const signIn = isSignInIssue(issue);
+  return {
+    key: "problem",
+    label: signIn ? "Sign-in expired" : "Couldn't start",
+    detail: withoutProvidersPageTip(
+      issue.message || (issue.call && issue.call.error) || "",
+    ),
+    action: signIn ? "Sign in" : "Reconnect",
+    signIn,
+    issue,
+  };
+}
+
+/**
+ * @returns {{ key: "needsSetup"|"connected"|"ready"|"problem", label, missing }}
  */
 export function providerStatus(
   provider,
@@ -100,6 +123,8 @@ export function providerStatus(
     // A Claude connector: its status in the user's Claude account
     // ("connected", "needs-auth", …), or null when not read yet.
     connectorStatus = null,
+    // Its open issue (issues PRD): it couldn't start, or its sign-in expired.
+    issue = null,
   } = {},
 ) {
   if (classOf(provider) === "connector") {
@@ -146,6 +171,8 @@ export function providerStatus(
   }
   if (missing.length)
     return { key: "needsSetup", label: "Needs setup", missing };
+  const health = providerHealth(issue);
+  if (health) return { ...health, missing };
   const cls = classOf(provider);
   if (cls === "mcp") {
     return running
@@ -193,6 +220,20 @@ const nameList = (names) =>
   names.length > MAX_NAMES
     ? `${names.slice(0, MAX_NAMES).join(", ")} and ${names.length - MAX_NAMES} more`
     : names.join(", ");
+
+/**
+ * A list row's short "used by": what uses it by name — "used by Shopping
+ * List", "used by Shopping List and 1 more" — or "" when unused.
+ */
+export function providerUsedByShort(usage) {
+  const names = [
+    ...((usage && usage.dashboards) || []).map((d) => d.workspaceName),
+    ...((usage && usage.bots) || []).map((b) => b && b.name),
+  ].filter(Boolean);
+  if (!names.length) return "";
+  const more = names.length - 1;
+  return more ? `used by ${names[0]} and ${more} more` : `used by ${names[0]}`;
+}
 
 /** "1 dashboard (Sales) and 2 bots (Digest, Loose)", or "" when unused. */
 export function providerUsedByText(usage) {

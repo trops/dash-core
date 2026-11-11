@@ -82,6 +82,7 @@ function fake(listing) {
     _claudeConnectors: botController._claudeConnectors,
     _connectedServers: () => [],
     _broadcast: (_ch, msg) => sent.push(msg),
+    _runWarning: botController._runWarning,
     sent,
   };
 }
@@ -138,6 +139,20 @@ describe("a bot's Claude connectors for one run", () => {
       self.sent[0].event.message,
       /isn't connected in your Claude account/,
     );
+  });
+
+  it("during a run, the warning goes through the run (so it's kept on it)", async () => {
+    const self = fake({
+      state: "ready",
+      connectors: [{ ...CALENDAR, status: "needs-auth", tools: [] }],
+    });
+    const emitted = [];
+    await botController._resolveConnectors.call(self, bot, {
+      emit: (e) => emitted.push(e),
+    });
+    assert.equal(self.sent.length, 0);
+    assert.equal(emitted[0].type, "warning");
+    assert.match(emitted[0].message, /isn't connected in your Claude account/);
   });
 
   it("the account couldn't be read: the run doesn't start, and says why", async () => {

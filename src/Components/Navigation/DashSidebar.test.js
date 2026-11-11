@@ -81,6 +81,14 @@ jest.mock("@trops/dash-react", () => {
       </button>
     ),
     ConfirmationModal: () => null,
+    useStatusTokens: () => {
+      const make = (c) => ({
+        text: `text-${c}-200`,
+        icon: `text-${c}-400`,
+        solidBg: `bg-${c}-500`,
+      });
+      return { error: make("red"), warning: make("amber") };
+    },
   };
 });
 

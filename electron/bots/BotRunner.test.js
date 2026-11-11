@@ -1157,3 +1157,83 @@ describe("BotRunner.run — Claude connectors", () => {
     ]);
   });
 });
+
+describe("BotRunner — what went wrong is kept on the run (issues PRD)", () => {
+  it("keeps warnings sent while its tools resolve, and still shows them", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const seen = [];
+    const { runner } = makeRunner(engine, {
+      deps: {
+        resolveTools: async (bot, opts) => {
+          opts.emit({
+            type: "warning",
+            message:
+              "Notes MCP couldn't start, so its tools aren't available this run: ENOENT",
+          });
+          return { tools: [], resolveServer: () => null };
+        },
+      },
+    });
+    const record = await runner.run("bot_1", {
+      prompt: "go",
+      emit: (e) => seen.push(e),
+    });
+    // Kept as JSON so the store seals it (a server error can echo anything).
+    assert.deepEqual(JSON.parse(record.warnings), [
+      {
+        message:
+          "Notes MCP couldn't start, so its tools aren't available this run: ENOENT",
+      },
+    ]);
+    assert.ok(seen.some((e) => e.type === "warning"));
+  });
+
+  it("a failed call keeps what it was asked (secrets hidden) and why — apart from the plain summary", async () => {
+    const engine = mockEngine([
+      {
+        type: "tool_call",
+        id: "t1",
+        name: "get_thread",
+        input: { id: "abc", apiKey: "SECRET" },
+      },
+      {
+        type: "tool_result",
+        id: "t1",
+        output: "429 rate limited",
+        isError: true,
+      },
+      {
+        type: "tool_call",
+        id: "t2",
+        name: "search_threads",
+        input: { q: "fine" },
+      },
+      { type: "tool_result", id: "t2", output: "ok", isError: false },
+      { type: "done", stopReason: "end_turn" },
+    ]);
+    const { runner } = makeRunner(engine, {
+      deps: {
+        resolveTools: async () => ({ tools: [], resolveServer: () => "Gmail" }),
+      },
+    });
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.deepEqual(record.toolCalls, [
+      { tool: "get_thread", provider: "Gmail", ok: false },
+      { tool: "search_threads", provider: "Gmail", ok: true },
+    ]);
+    const errors = JSON.parse(record.toolErrors);
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0].call, 0);
+    assert.equal(errors[0].error, "429 rate limited");
+    assert.match(errors[0].args, /"apiKey":"\(hidden\)"/);
+    assert.doesNotMatch(record.toolErrors, /SECRET/);
+  });
+
+  it("a clean run has neither", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine);
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.equal(record.warnings, undefined);
+    assert.equal(record.toolErrors, undefined);
+  });
+});

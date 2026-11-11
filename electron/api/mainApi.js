@@ -35,6 +35,7 @@ const dashboardRatingsApi = require("./dashboardRatingsApi");
 const registryAuthApi = require("./registryAuthApi");
 const sessionApi = require("./sessionApi");
 const notificationApi = require("./notificationApi");
+const issuesApi = require("./issuesApi");
 const schedulerApi = require("./schedulerApi");
 const themeFromUrlApi = require("./themeFromUrlApi");
 const webSocketApi = require("./webSocketApi");
@@ -145,6 +146,7 @@ function createMainApi(extensions = {}) {
     profiles: profileApi,
     session: sessionApi,
     notifications: notificationApi,
+    issues: issuesApi,
     scheduler: schedulerApi,
     themeFromUrl: themeFromUrlApi,
     webSocket: webSocketApi,

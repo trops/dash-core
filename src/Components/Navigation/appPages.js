@@ -40,6 +40,14 @@ export const APP_PAGES = [
     settingsSections: ["widgets"],
   },
   {
+    key: "issues",
+    label: "Issues",
+    icon: "triangle-exclamation",
+    description:
+      "What went wrong in your widgets, bots and providers — newest first.",
+    settingsSections: [],
+  },
+  {
     key: "themes",
     label: "Themes",
     icon: "palette",

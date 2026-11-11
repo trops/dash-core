@@ -10,6 +10,15 @@ const {
 const { emitWorkspaceDeleted } = require("../utils/workspaceEvents");
 const { keepRegistryRef } = require("../registry/packageRef");
 
+// Issues (issues PRD): a saved or deleted dashboard updates them. Best effort.
+function noteIssues(fn) {
+  try {
+    fn(require("./issueController"));
+  } catch (_e) {
+    // Issues never get in the way of saving.
+  }
+}
+
 const configFilename = "workspaces.json";
 
 const workspaceController = {
@@ -85,6 +94,9 @@ const workspaceController = {
 
       // write the new pages configuration back to the file
       writeFileSync(filename, JSON.stringify(workspacesArray, null, 2));
+
+      // Issues of widgets no longer on it go (issues PRD).
+      noteIssues((issues) => issues.sweepWorkspace(workspaceObject));
 
       console.log("[workspaceController] Workspace saved successfully");
 
@@ -174,6 +186,8 @@ const workspaceController = {
       if (filtered.length < workspacesArray.length) {
         removeEverywhere(appId, "dashboards", workspaceId);
         emitWorkspaceDeleted(workspaceId);
+        // Its widgets' issues go with it (issues PRD).
+        noteIssues((issues) => issues.forgetWorkspace(workspaceId));
       }
 
       console.log(

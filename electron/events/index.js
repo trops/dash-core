@@ -22,6 +22,7 @@ const dashboardRatingsEvents = require("./dashboardRatingsEvents");
 const registryAuthEvents = require("./registryAuthEvents");
 const sessionEvents = require("./sessionEvents");
 const notificationEvents = require("./notificationEvents");
+const issueEvents = require("./issueEvents");
 const schedulerEvents = require("./schedulerEvents");
 const themeFromUrlEvents = require("./themeFromUrlEvents");
 const webSocketEvents = require("./webSocketEvents");
@@ -53,6 +54,7 @@ const API_GROUPS = {
   mcp: [...Object.values(mcpEvents), ...Object.values(mcpDashServerEvents)],
   menu: Object.values(menuItemEvents),
   notifications: Object.values(notificationEvents),
+  issues: Object.values(issueEvents),
   openai: Object.values(openaiEvents),
   providers: Object.values(providerEvents),
   "publisher-key": Object.values(publisherKeyEvents),
@@ -93,6 +95,7 @@ module.exports = {
   ...registryAuthEvents,
   ...sessionEvents,
   ...notificationEvents,
+  ...issueEvents,
   ...schedulerEvents,
   ...themeFromUrlEvents,
   ...webSocketEvents,

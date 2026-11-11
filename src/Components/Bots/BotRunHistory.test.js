@@ -5,9 +5,16 @@ import {
   screen,
   fireEvent,
   waitFor,
+  within,
   act,
 } from "@testing-library/react";
-import { BotRunHistory } from "./BotRunHistory";
+import {
+  BotRunHistory,
+  RunDetails,
+  runStatusLabel,
+  runToolErrors,
+  runWarningList,
+} from "./BotRunHistory";
 
 const bot = { id: "b1", name: "Inbox Watch" };
 const runs = [
@@ -308,5 +315,151 @@ test("a run its lead asked for opens that conversation; scheduled runs have no l
   expect(opened.mock.calls[0][0].detail).toEqual({
     key: "lead:lead7",
     recentId: "q_42",
+  });
+});
+
+describe("RunDetails — warnings and why calls failed (issues PRD)", () => {
+  const warned = {
+    trigger: "manual",
+    status: "completed",
+    startedAt: "2026-11-11T07:36:00.000Z",
+    output: "I couldn't check your email.",
+    warnings: [
+      {
+        message:
+          "Gmail (Claude connector) wasn't connected when the run started, so it answered without it.",
+      },
+    ],
+    toolCalls: [],
+  };
+  const failed = {
+    trigger: "schedule",
+    status: "failed",
+    startedAt: "2026-11-10T07:00:00.000Z",
+    error: "Rate limited",
+    toolCalls: [
+      { tool: "search_threads", provider: "Gmail", ok: true },
+      { tool: "get_thread", provider: "Gmail", ok: false },
+    ],
+    toolErrors: JSON.stringify([
+      {
+        call: 1,
+        args: JSON.stringify({ id: "t-42" }),
+        error: "Error: 429 — rate limited by Gmail, try again in a minute",
+      },
+    ]),
+  };
+
+  afterEach(() => {
+    delete window.mainApi;
+  });
+
+  it("a run with a warning: the status says so and a box shows it", () => {
+    expect(runStatusLabel(warned)).toBe("Completed · 1 warning");
+    expect(runStatusLabel({ status: "completed" })).toBe("Completed");
+    const run = jest.fn();
+    window.mainApi = { bots: { run } };
+    render(<RunDetails run={warned} bot={bot} />);
+    const box = screen.getByTestId("run-warnings");
+    expect(box).toHaveTextContent(
+      "Gmail (Claude connector) wasn't connected when the run started",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run again" }));
+    expect(run).toHaveBeenCalledWith("b1", "", false);
+  });
+
+  it("a failed call says why, and what it was asked with", () => {
+    render(<RunDetails run={failed} bot={bot} />);
+    expect(screen.getByTestId("tool-call-error")).toHaveTextContent(
+      "Error: 429 — rate limited by Gmail, try again in a minute",
+    );
+    expect(screen.getByTestId("tool-call-args")).toHaveTextContent(
+      `Asked with {"id":"t-42"}`,
+    );
+    expect(screen.getAllByTestId("tool-call-error")).toHaveLength(1);
+  });
+
+  it("Fix with AI opens Ask AI with what went wrong", () => {
+    const events = [];
+    const keep = (e) => events.push(e);
+    window.addEventListener("dash:open-workspace", keep);
+    render(<RunDetails run={warned} bot={bot} />);
+    fireEvent.click(screen.getByRole("button", { name: "Fix with AI" }));
+    window.removeEventListener("dash:open-workspace", keep);
+    expect(events[0].detail.key).toBe("role:dashlead");
+    // The error quoted, as data for the AI.
+    expect(events[0].detail.draft).toBe(
+      'Inbox Watch had a problem in a run. The error said: "Gmail (Claude connector) wasn\'t connected when the run started, so it answered without it". Help me fix it.',
+    );
+  });
+
+  it("warnings sealed as a JSON string are read; one about a provider offers Check <provider>", () => {
+    const sealed = {
+      ...warned,
+      warnings: JSON.stringify([
+        {
+          message: "Notes MCP wasn't available, so it answered without it.",
+          provider: "Notes MCP",
+        },
+      ]),
+    };
+    expect(runStatusLabel(sealed)).toBe("Completed · 1 warning");
+    expect(runWarningList(sealed)[0].provider).toBe("Notes MCP");
+    expect(runWarningList({ warnings: "{bad" })).toEqual([]);
+    const opened = jest.fn();
+    window.addEventListener("dash:open-page", opened);
+    render(<RunDetails run={sealed} bot={bot} />);
+    expect(screen.getByTestId("run-warnings")).toHaveTextContent(
+      "Notes MCP wasn't available",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Check Notes MCP" }));
+    window.removeEventListener("dash:open-page", opened);
+    expect(opened.mock.calls[0][0].detail).toEqual({
+      page: "providers",
+      providerName: "Notes MCP",
+    });
+  });
+
+  it("toolErrors that aren't JSON are ignored", () => {
+    expect(runToolErrors({ toolErrors: "{bad" })).toEqual({});
+    expect(runToolErrors({})).toEqual({});
+  });
+});
+
+describe("BotRunHistory — problems on the run row (issues PRD)", () => {
+  it("shows the warning box and failed calls without opening the run, and the status as a pill", async () => {
+    setup([
+      {
+        trigger: "schedule",
+        status: "completed",
+        startedAt: "2026-11-11T07:00:00.000Z",
+        output: "Done.",
+        warnings: JSON.stringify([
+          { message: "Gmail wasn't available, so it answered without it." },
+        ]),
+        toolCalls: [{ tool: "get_thread", provider: "Gmail", ok: false }],
+        toolErrors: JSON.stringify([
+          { call: 0, args: "{}", error: "429 rate limited" },
+        ]),
+      },
+    ]);
+    const row = await screen.findByTestId("run-row");
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    const pill = within(row).getByTestId("status-badge");
+    expect(pill).toHaveTextContent("Completed · 1 warning");
+    expect(pill).toHaveAttribute("data-state", "warning");
+    expect(screen.getByTestId("run-warnings")).toHaveTextContent(
+      "Gmail wasn't available",
+    );
+    expect(screen.getByTestId("run-failed-call")).toHaveTextContent(
+      "get_thread · Gmail · failed",
+    );
+    expect(screen.getByTestId("tool-call-error")).toHaveTextContent(
+      "429 rate limited",
+    );
+    // Opening it doesn't show them twice.
+    fireEvent.click(row);
+    expect(screen.getAllByTestId("run-warnings")).toHaveLength(1);
+    expect(screen.getAllByTestId("tool-call-error")).toHaveLength(1);
   });
 });

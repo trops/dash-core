@@ -1,9 +1,12 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   FontAwesomeIcon,
   ThemeContext,
   useStatusTokens,
 } from "@trops/dash-react";
+import { useWidgetIssues, isIssueOfWidget } from "../../../hooks/useIssues";
+import { WidgetIssueChip } from "../../Issues/WidgetIssueChip";
+import { RETRY_WIDGET_EVENT } from "../../Issues/issueActions";
 
 /**
  * GridCellFrame — the frame around an occupied grid cell's widget, in BOTH
@@ -22,6 +25,13 @@ import {
  * @param {React.ReactNode} header  edit-mode header (WidgetCard.Header)
  * @param {React.ReactNode} footer  edit-mode footer (WidgetCard.Footer)
  * @param {Function} [onPopout]     view mode: pop the widget out
+ * @param {React.ReactNode} [badge] view mode: shown at the top right
+ * @param {object} [issueTarget]    this copy — { component, itemId,
+ *   workspaceId } (itemId = widgetItemId(item)) — for its open issues
+ *   (issues PRD): a problem-coloured border, its problems chip at the top
+ *   right in view mode (the card header has it while editing), and Retry
+ *   from the Issues screens remounts just this copy.
+ * @param {Function} [onSeeIssue]   view mode: the chip's "See what went wrong"
  * @param {React.ReactNode} children the cell body wrapping the widget — the
  *   same component type in both modes
  * @param {Function} [onSelect]     edit mode: select this widget (phase 1c)
@@ -35,6 +45,9 @@ export function GridCellFrame({
   header = null,
   footer = null,
   onPopout = null,
+  badge = null,
+  issueTarget = null,
+  onSeeIssue = null,
   onSelect = null,
   label = "",
   selected = false,
@@ -43,6 +56,43 @@ export function GridCellFrame({
   children,
 }) {
   const [hovered, setHovered] = useState(false);
+  const target = issueTarget || {};
+  const issues = useWidgetIssues(
+    target.component || null,
+    target.itemId ?? null,
+    target.workspaceId ?? null,
+  );
+  const hasIssues = issues.length > 0;
+  // Retry (Issues screens): this copy alone remounts — its error boundary
+  // and its calls start over.
+  const [retryCount, setRetryCount] = useState(0);
+  const targetRef = useRef(target);
+  targetRef.current = target;
+  useEffect(() => {
+    if (!target.component || typeof window === "undefined") return undefined;
+    const onRetry = (e) => {
+      const d = (e && e.detail) || {};
+      const t = targetRef.current;
+      const mine = isIssueOfWidget(
+        {
+          asset: {
+            kind: "widget",
+            component: d.component,
+            itemId: d.itemId,
+            workspaceId: d.workspaceId,
+          },
+        },
+        t.component,
+        t.itemId ?? null,
+        t.workspaceId ?? null,
+      );
+      if (!mine) return;
+      d.handled = true;
+      setRetryCount((n) => n + 1);
+    };
+    window.addEventListener(RETRY_WIDGET_EVENT, onRetry);
+    return () => window.removeEventListener(RETRY_WIDGET_EVENT, onRetry);
+  }, [target.component]);
   const showPopout = !editing && typeof onPopout === "function";
   const canSelect = editing && typeof onSelect === "function";
   const state = !editing
@@ -66,14 +116,18 @@ export function GridCellFrame({
       ? `border-2 ${currentTheme["border-primary-medium"] || ""}`
       : state === "related"
         ? `border-2 ${status.success.accentBorder}`
-        : `border ${hairline}`;
+        : hasIssues
+          ? `border-2 ${status.error.accentBorder}`
+          : `border ${hairline}`;
   const fadeClass = state === "dimmed" ? "opacity-50" : "";
   return (
     <div
       className={
         editing
           ? `flex flex-col w-full h-full min-h-0 overflow-hidden rounded-lg ${borderClass} ${fadeClass}`
-          : "relative w-full h-full"
+          : hasIssues
+            ? `relative w-full h-full rounded-lg border-2 ${status.error.accentBorder}`
+            : "relative w-full h-full"
       }
       data-state={state}
       role={canSelect ? "group" : undefined}
@@ -95,26 +149,42 @@ export function GridCellFrame({
       onMouseLeave={() => setHovered(false)}
     >
       {editing ? header : null}
-      {children}
+      <React.Fragment key={`retry-${retryCount}`}>{children}</React.Fragment>
       {editing ? footer : null}
-      {showPopout ? (
-        <button
-          type="button"
-          aria-label="Pop out widget"
-          title="Pop out widget"
-          className={`absolute top-1 right-1 p-1 rounded transition-opacity bg-black/60 hover:bg-black/80 text-gray-300 hover:text-white z-10 ${
-            hovered ? "opacity-100" : "opacity-0 pointer-events-none"
-          }`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onPopout();
-          }}
-        >
-          <FontAwesomeIcon
-            icon="arrow-up-right-from-square"
-            className="h-3 w-3"
-          />
-        </button>
+      {/* View mode: its problems chip, then the popout, in one row at the
+          top right — never over the widget's own title at the left. */}
+      {!editing && (badge || hasIssues || showPopout) ? (
+        <span className="absolute top-1 right-1 z-10 flex flex-row items-center gap-1">
+          {badge}
+          {hasIssues ? (
+            <WidgetIssueChip
+              align="right"
+              component={target.component}
+              itemId={target.itemId ?? null}
+              workspaceId={target.workspaceId ?? null}
+              onSee={onSeeIssue}
+            />
+          ) : null}
+          {showPopout ? (
+            <button
+              type="button"
+              aria-label="Pop out widget"
+              title="Pop out widget"
+              className={`p-1 rounded transition-opacity bg-black/60 hover:bg-black/80 text-gray-300 hover:text-white z-10 ${
+                hovered ? "opacity-100" : "opacity-0 pointer-events-none"
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPopout();
+              }}
+            >
+              <FontAwesomeIcon
+                icon="arrow-up-right-from-square"
+                className="h-3 w-3"
+              />
+            </button>
+          ) : null}
+        </span>
       ) : null}
     </div>
   );

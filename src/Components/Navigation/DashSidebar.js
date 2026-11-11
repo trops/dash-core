@@ -9,6 +9,7 @@ import {
   getStylesForItem,
   themeObjects,
   useSidebar,
+  useStatusTokens,
 } from "@trops/dash-react";
 
 const CollapsibleContent = ({ children }) => {
@@ -21,15 +22,16 @@ import { APP_PAGES } from "./appPages";
 
 /**
  * A Manage page's icon. With something waiting (e.g. bot approvals) it gets
- * an amber dot — on the icon, so it shows when the sidebar is collapsed too.
+ * a dot in the status colour (`tone`) — on the icon, so it shows when the
+ * sidebar is collapsed too.
  */
-const PageIcon = ({ icon, attention }) => (
+const PageIcon = ({ icon, attention, tone = "" }) => (
   <span className="relative inline-flex">
     <FontAwesomeIcon icon={icon} className="h-3.5 w-3.5" />
     {attention > 0 ? (
       <span
         data-testid="nav-attention-dot"
-        className="absolute top-0 right-0 h-1.5 w-1.5 rounded-full bg-amber-400"
+        className={`absolute top-0 right-0 h-1.5 w-1.5 rounded-full ${tone}`}
       />
     ) : null}
   </span>
@@ -58,6 +60,11 @@ export const DashSidebar = ({
 }) => {
   const { themeVariant, changeThemeVariant, currentTheme } =
     useContext(ThemeContext);
+  // Attention colours: problems (Issues) in the error colour, things
+  // waiting (approvals, setup) in the warning colour.
+  const statusTokens = useStatusTokens();
+  const toneOf = (key) =>
+    key === "issues" ? statusTokens.error : statusTokens.warning;
 
   const workspacesForFolder = (folderId) =>
     workspaces.filter((ws) => ws.menuId === folderId);
@@ -148,12 +155,19 @@ export const DashSidebar = ({
             return (
               <Sidebar.Item
                 key={page.key}
-                icon={<PageIcon icon={page.icon} attention={attention} />}
+                icon={
+                  <PageIcon
+                    icon={page.icon}
+                    attention={attention}
+                    // Issues are problems: red, not the amber of setup.
+                    tone={toneOf(page.key).solidBg}
+                  />
+                }
                 active={page.key === activePageKey}
                 onClick={() => onOpenPage && onOpenPage(page.key)}
                 badge={
                   attention > 0 ? (
-                    <span className="text-amber-400">{attention}</span>
+                    <span className={toneOf(page.key).icon}>{attention}</span>
                   ) : null
                 }
               >
@@ -576,16 +590,23 @@ const PopoverItem = ({
   onClick,
   active = false,
   current = false,
-}) => (
-  <ListRow
-    icon={<FontAwesomeIcon icon={icon} className="h-3.5 w-3.5 flex-shrink-0" />}
-    title={label}
-    selected={current}
-    onClick={onClick}
-    trailing={
-      active ? (
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0 mr-2" />
-      ) : null
-    }
-  />
-);
+}) => {
+  const statusTokens = useStatusTokens();
+  return (
+    <ListRow
+      icon={
+        <FontAwesomeIcon icon={icon} className="h-3.5 w-3.5 flex-shrink-0" />
+      }
+      title={label}
+      selected={current}
+      onClick={onClick}
+      trailing={
+        active ? (
+          <span
+            className={`h-1.5 w-1.5 rounded-full flex-shrink-0 mr-2 ${statusTokens.warning.solidBg}`}
+          />
+        ) : null
+      }
+    />
+  );
+};

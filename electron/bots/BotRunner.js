@@ -35,6 +35,7 @@ const {
 } = require("./claudeConnectors");
 
 const { MAX_ATTEMPTS, classifyError, retryDelay } = require("./retryPolicy");
+const { redactArgs } = require("../issues/issueStore");
 
 const QUIT = Symbol("quit");
 
@@ -225,7 +226,25 @@ class BotRunner {
    * @returns {Promise<object>} the appended run record (or a skip marker)
    */
   async run(botId, opts = {}) {
-    const emit = typeof opts.emit === "function" ? opts.emit : () => {};
+    const sendEvent = typeof opts.emit === "function" ? opts.emit : () => {};
+    // What went wrong along the way (a server that couldn't start, a
+    // connector that wasn't connected) — kept on the run (issues PRD), not
+    // only shown while it runs.
+    const warnings = [];
+    const emit = (event) => {
+      if (event && event.type === "warning" && event.message) {
+        if (warnings.length < 20) {
+          warnings.push({
+            message: String(event.message).slice(0, 500),
+            ...(event.provider ? { provider: String(event.provider) } : {}),
+            ...(event.detail
+              ? { detail: String(event.detail).slice(0, 500) }
+              : {}),
+          });
+        }
+      }
+      sendEvent(event);
+    };
 
     if (this._active.has(botId)) {
       const skip = {
@@ -307,6 +326,9 @@ class BotRunner {
     // never arguments or results (they can hold email content).
     const toolCalls = [];
     const callIndex = new Map();
+    // Each call's input, by id — only kept on the run when the call fails.
+    const callInputs = new Map();
+    const toolErrors = [];
     let providerOf = () => null;
     // This run's granted Claude connectors (set once its tools resolve).
     let linkedConnectors = [];
@@ -354,7 +376,7 @@ class BotRunner {
         connectors = [],
         connectorServers = [],
         readOnlyTools = [],
-      } = await this._resolveTools(bot, opts);
+      } = await this._resolveTools(bot, { ...opts, emit });
       providerOf = (name) => {
         try {
           return resolveServer(name) || null;
@@ -547,8 +569,24 @@ class BotRunner {
               provider: linked ? linked.connector.provider : providerOf(tool),
               ok: null,
             });
+            callInputs.set(event.id, event.input);
           } else if (event.type === "tool_result" && callIndex.has(event.id)) {
-            toolCalls[callIndex.get(event.id)].ok = !event.isError;
+            const at = callIndex.get(event.id);
+            toolCalls[at].ok = !event.isError;
+            // A failed call: what it was asked with (secrets hidden,
+            // clipped) and the error — so the run says why (issues PRD).
+            // Kept apart from the plain summary and sealed at rest.
+            if (event.isError && toolErrors.length < 20) {
+              toolErrors.push({
+                call: at,
+                args: redactArgs(callInputs.get(event.id)),
+                error: String(
+                  typeof event.output === "string"
+                    ? event.output
+                    : JSON.stringify(event.output || ""),
+                ).slice(0, 500),
+              });
+            }
           }
           if (event.type === "session") {
             this._store.saveSession(
@@ -666,6 +704,9 @@ class BotRunner {
     };
     // Tried more than once (US-023): how many attempts it took.
     if (attempts > 1) runRecord.attempts = attempts;
+    // Sealed at rest like the answer: a server's error can echo anything.
+    if (warnings.length) runRecord.warnings = JSON.stringify(warnings);
+    if (toolErrors.length) runRecord.toolErrors = JSON.stringify(toolErrors);
     // What triggered an event run (event label, publishing bot, chain).
     if (opts.source) runRecord.source = opts.source;
     // Who asked, when not the user directly (e.g. "assistant" — TEAM-004).
