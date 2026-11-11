@@ -940,14 +940,13 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
           manifest,
         };
       }
-
-      // Clean up the temp zip on success.
-      try {
-        fs.unlinkSync(zipPath);
-      } catch {
-        /* ignore */
-      }
     } finally {
+      // The temp zip goes whether the publish worked, failed or threw.
+      try {
+        fs.rmSync(zipPath, { force: true });
+      } catch {
+        /* best effort */
+      }
       if (stagedDir) {
         try {
           fs.rmSync(stagedDir, { recursive: true, force: true });

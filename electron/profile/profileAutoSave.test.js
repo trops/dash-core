@@ -8,6 +8,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { tempDir } = require("../testUtils/tempDir");
 
 const {
   getSettings,
@@ -27,7 +28,7 @@ const {
 const appId = "@test/app";
 
 function deps(over = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dash-autosave-"));
+  const dir = tempDir("dash-autosave-");
   const calls = [];
   let now = over.now || new Date("2026-10-28T10:00:00");
   const d = {

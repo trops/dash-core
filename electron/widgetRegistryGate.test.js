@@ -9,10 +9,11 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { tempDir } = require("./testUtils/tempDir");
 
 // widgetRegistry requires "electron"; stub it so the test runs in node.
 const Module = require("node:module");
-const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "zz-electron-"));
+const stubDir = tempDir("zz-electron-");
 const originalResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, parent, ...rest) {
   if (request === "electron") return "__stub_electron_gate__";
@@ -37,14 +38,14 @@ process.env.DASH_LOCAL_INSTALL_LAX = "true";
 const WidgetRegistry = require("./widgetRegistry");
 const { setInstallGate } = require("./widgetRegistry");
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), "zz-registry-"));
+const root = tempDir("zz-registry-");
 WidgetRegistry.initialize(root);
 const registry = new WidgetRegistry(null);
 // Signed out: a package's unscoped name goes under @local.
 WidgetRegistry._setScopeUsernameForTest(null);
 
 function makePackage(marker, name = "@zz/gated") {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "zz-src-"));
+  const dir = tempDir("zz-src-");
   fs.mkdirSync(path.join(dir, "widgets"));
   fs.writeFileSync(
     path.join(dir, "dash.json"),
@@ -173,7 +174,7 @@ describe("the install gate", () => {
   });
 
   it("a folder of packages loads only those that pass, and says why the others didn't", async () => {
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
+    const parent = tempDir("zz-folder-");
     fs.cpSync(makePackage("good", "@zz/good"), path.join(parent, "good"), {
       recursive: true,
     });

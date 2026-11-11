@@ -9,6 +9,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { tempDir } = require("../testUtils/tempDir");
 const {
   callsBots,
   scanWidgetBotCalls,
@@ -16,7 +17,7 @@ const {
 } = require("./scanWidgetBotCalls");
 
 function pkg(files) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "botscan-"));
+  const dir = tempDir("botscan-");
   for (const [rel, content] of Object.entries(files)) {
     const full = path.join(dir, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });

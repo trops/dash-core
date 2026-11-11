@@ -8,10 +8,11 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { tempDir } = require("../testUtils/tempDir");
 
 // The store requires "electron"; stub it so the test runs in node.
 const Module = require("node:module");
-const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "zz-electron-profiles-"));
+const stubDir = tempDir("zz-electron-profiles-");
 const originalResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, parent, ...rest) {
   if (request === "electron") return "__stub_electron_profiles__";

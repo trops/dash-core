@@ -18,11 +18,12 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { tempDir } = require("../testUtils/tempDir");
 
 // Stub electron BEFORE require — fsGate's containment check uses
 // safePath which calls app.getPath("userData") through electron.
 const Module = require("node:module");
-const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fs-gate-test-"));
+const tmpRoot = tempDir("fs-gate-test-");
 const fakeElectron = {
   app: {
     getPath: (key) => {

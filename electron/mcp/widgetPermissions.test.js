@@ -14,12 +14,13 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { tempDir } = require("../testUtils/tempDir");
 
 // widgetPermissions.js calls require("electron") for app.getPath. We
 // mock that before requiring the module so the test runs without an
 // Electron host. Same pattern as electron/utils/safePath.test.js.
 const Module = require("node:module");
-const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "widget-perms-test-"));
+const tmpRoot = tempDir("widget-perms-test-");
 const fakeElectron = {
   app: {
     getPath: (key) => {

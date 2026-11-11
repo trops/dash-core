@@ -8,6 +8,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { tempDir } = require("../testUtils/tempDir");
 
 const {
   planSave,
@@ -238,10 +239,7 @@ describe("planning a save", () => {
 describe("saving", () => {
   it("a file: the setup as it is, widgets by version, no approvals", async () => {
     const { d, calls } = deps();
-    const file = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "dash-save-v3-")),
-      "p.dashprofile",
-    );
+    const file = path.join(tempDir("dash-save-v3-"), "p.dashprofile");
     const res = await executeSave(null, appId, "mm", {}, { filePath: file }, d);
     assert.equal(res.success, true, res.error);
     assert.equal(res.revision, 3);
@@ -386,10 +384,7 @@ describe("include keys and passwords", () => {
   it("locks them with the phrase; only the phrase opens them; nothing readable", async () => {
     const keys = keysStore("purple otter river");
     const { d } = deps({ deps: { gather: withBundle, keys: () => keys } });
-    const file = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "dash-save-keys-")),
-      "p.dashprofile",
-    );
+    const file = path.join(tempDir("dash-save-keys-"), "p.dashprofile");
     const res = await executeSave(
       null,
       appId,

@@ -2,6 +2,7 @@ const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+const { tempDir } = require("../testUtils/tempDir");
 
 // refreshGoogleOAuthToken is defined in mcpController.js but that file
 // requires @modelcontextprotocol/sdk which isn't installed in dash-core
@@ -34,7 +35,7 @@ const testModule = new Function(
 const { refreshGoogleOAuthToken } = testModule;
 
 describe("refreshGoogleOAuthToken", () => {
-  const tmpDir = path.join(require("os").tmpdir(), "mcp-test-" + Date.now());
+  const tmpDir = tempDir("mcp-test-");
   const credPath = path.join(tmpDir, "credentials.json");
   const keysPath = path.join(tmpDir, "gcp-oauth.keys.json");
 
