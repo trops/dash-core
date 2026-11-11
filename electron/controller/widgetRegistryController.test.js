@@ -231,3 +231,15 @@ test("malformed dash.json is skipped best-effort; package.json still bumps", () 
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("the publish temp zip is removed in a finally — failed or thrown publishes leave nothing in temp", () => {
+  const write = controllerSource.indexOf("zip.writeZip(zipPath);");
+  assert.ok(write > 0, "publish writes the zip to zipPath");
+  const fin = controllerSource.indexOf("} finally {", write);
+  assert.ok(fin > write, "the zip write is inside a try/finally");
+  const tryBody = controllerSource.slice(write, fin);
+  const finBody = controllerSource.slice(fin, fin + 400);
+  assert.match(finBody, /fs\.rmSync\(zipPath, \{ force: true \}\)/);
+  // No success-only unlink left behind in the try body.
+  assert.doesNotMatch(tryBody, /unlinkSync\(zipPath\)/);
+});

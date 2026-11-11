@@ -10,10 +10,11 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { tempDir } = require("./testUtils/tempDir");
 
 // widgetRegistry requires "electron"; stub it so the test runs in node.
 const Module = require("node:module");
-const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "zz-electron-scope-"));
+const stubDir = tempDir("zz-electron-scope-");
 const originalResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, parent, ...rest) {
   if (request === "electron") return "__stub_electron_scope__";
@@ -70,7 +71,7 @@ function makePackage(parent, folder, name, pkgName = null) {
   return dir;
 }
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "zz-scope-src-"));
+const tmp = () => tempDir("zz-scope-src-");
 
 setInstallGate(async () => ({ ok: true, problems: [] }));
 

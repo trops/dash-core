@@ -9,11 +9,12 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { tempDir } = require("../testUtils/tempDir");
 const phrases = require("./profileKeysPhrase");
 const { lockKeys } = require("./profileKeys");
 
 function deps() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dash-keys-phrase-"));
+  const dir = tempDir("dash-keys-phrase-");
   return {
     file: path.join(dir, "profile-keys.json"),
     d: {

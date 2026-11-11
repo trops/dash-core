@@ -15,6 +15,7 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { tempDir } = require("../electron/testUtils/tempDir");
 const { spawnSync } = require("node:child_process");
 
 const CLI = path.join(__dirname, "scanWidgetManifestCli.js");
@@ -26,7 +27,7 @@ const WIDGET_SRC = [
 ].join("\n");
 
 function makePackage(permissions) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scan-cli-"));
+  const dir = tempDir("scan-cli-");
   fs.mkdirSync(path.join(dir, "widgets"));
   fs.writeFileSync(path.join(dir, "widgets", "Search.js"), WIDGET_SRC);
   const pkg = { name: "@test/search", version: "1.0.0" };

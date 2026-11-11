@@ -9,10 +9,11 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { tempDir } = require("./testUtils/tempDir");
 
 // widgetRegistry requires "electron"; stub it so the test runs in node.
 const Module = require("node:module");
-const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "zz-electron-uninst-"));
+const stubDir = tempDir("zz-electron-uninst-");
 const originalResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, parent, ...rest) {
   if (request === "electron") return "__stub_electron_uninstall__";
@@ -55,7 +56,7 @@ function registered(name) {
 
 describe("uninstallWidget", () => {
   it("forgets a widget loaded from the user's folder and keeps the folder", () => {
-    const userFolder = fs.mkdtempSync(path.join(os.tmpdir(), "zz-my-widgets-"));
+    const userFolder = tempDir("zz-my-widgets-");
     const widgetPath = makeWidget(path.join(userFolder, "clock"));
     registry.registerWidget("clock", { name: "clock" }, widgetPath, false);
 
@@ -80,7 +81,7 @@ describe("uninstallWidget", () => {
   });
 
   it("doesn't follow a link in the widgets folder to the user's folder", () => {
-    const userFolder = fs.mkdtempSync(path.join(os.tmpdir(), "zz-linked-"));
+    const userFolder = tempDir("zz-linked-");
     const target = makeWidget(path.join(userFolder, "notes"));
     const link = path.join(widgetsDir, "notes");
     fs.symlinkSync(target, link, "dir");
@@ -109,7 +110,7 @@ describe("isInsideWidgetsDir", () => {
 
 describe("listWidgets", () => {
   it("marks a widget that runs from the user's folder (Uninstall keeps it)", () => {
-    const userFolder = fs.mkdtempSync(path.join(os.tmpdir(), "zz-list-"));
+    const userFolder = tempDir("zz-list-");
     const mine = makeWidget(path.join(userFolder, "dial"));
     const installed = makeWidget(path.join(widgetsDir, "@me", "gauge"));
     registry.registerWidget("dial", { name: "dial" }, mine, false);

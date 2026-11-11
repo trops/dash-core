@@ -14,11 +14,12 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { tempDir } = require("../testUtils/tempDir");
 
 // Mock electron's `app.getPath` to point at a tmp dir before requiring
 // the module under test.
 const Module = require("node:module");
-const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "granted-perms-test-"));
+const tmpRoot = tempDir("granted-perms-test-");
 const fakeElectron = {
   app: {
     getPath: (key) => {

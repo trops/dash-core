@@ -17,11 +17,12 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { tempDir } = require("./testUtils/tempDir");
 const AdmZip = require("adm-zip");
 
 // widgetRegistry requires "electron"; stub it so the test runs in node.
 const Module = require("node:module");
-const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "zz-electron-"));
+const stubDir = tempDir("zz-electron-");
 const originalResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, parent, ...rest) {
   if (request === "electron") return "__stub_electron_checks__";
@@ -46,7 +47,7 @@ process.env.DASH_LOCAL_INSTALL_LAX = "true";
 const WidgetRegistry = require("./widgetRegistry");
 const { setInstallGate, findBundlePath } = require("./widgetRegistry");
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), "zz-registry-checks-"));
+const root = tempDir("zz-registry-checks-");
 WidgetRegistry.initialize(root);
 const WIDGETS = path.join(root, "widgets");
 const registry = new WidgetRegistry(null);
@@ -54,7 +55,7 @@ const registry = new WidgetRegistry(null);
 WidgetRegistry._setScopeUsernameForTest(null);
 
 function makePackage(marker, { name = "@zz/checked", bundle = true } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "zz-src-"));
+  const dir = tempDir("zz-src-");
   fs.mkdirSync(path.join(dir, "widgets"));
   fs.writeFileSync(
     path.join(dir, "dash.json"),
@@ -77,7 +78,9 @@ function makePackage(marker, { name = "@zz/checked", bundle = true } = {}) {
 function zipOf(dir, file) {
   const zip = new AdmZip();
   zip.addLocalFolder(dir);
-  const out = path.join(os.tmpdir(), file);
+  // Keep the fixed file name (some tests read it) but inside its own temp
+  // folder, so nothing lands directly in os.tmpdir().
+  const out = path.join(tempDir("zz-zip-"), file);
   zip.writeZip(out);
   return out;
 }
@@ -114,7 +117,7 @@ describe("an install records who built it and what it passed", () => {
   });
 
   it("a folder loaded in place records the same", async () => {
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
+    const parent = tempDir("zz-folder-");
     fs.cpSync(
       makePackage("f1", { name: "@zz/own-build" }),
       path.join(parent, "zz-own-build"),
@@ -393,7 +396,7 @@ describe("a check never deletes the folder it checks", () => {
 
   it("Load a widget from a folder keeps the developer's folder", async () => {
     passAll();
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
+    const parent = tempDir("zz-folder-");
     fs.cpSync(botCalling(), path.join(parent, "zz-starts-bots"), {
       recursive: true,
     });
@@ -424,7 +427,7 @@ describe("a folder loaded in place runs its current source", () => {
   after(() => setInstallGate(null));
 
   it("uninstalling a folder loaded in place removes Dash's build; the folder stays", async () => {
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
+    const parent = tempDir("zz-folder-");
     const dev = path.join(parent, "zz-gone");
     fs.cpSync(makePackage("bye", { bundle: false, name: "@zz/gone" }), dev, {
       recursive: true,
@@ -438,7 +441,7 @@ describe("a folder loaded in place runs its current source", () => {
   });
 
   it("a build the developer makes later wins over Dash's", async () => {
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
+    const parent = tempDir("zz-folder-");
     const dev = path.join(parent, "zz-later");
     fs.cpSync(
       makePackage("dash-made", { bundle: false, name: "@zz/later" }),
@@ -462,7 +465,7 @@ describe("a folder loaded in place runs its current source", () => {
   });
 
   it("a build in widget-builds without its mark is still Dash's (rebuilt)", async () => {
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
+    const parent = tempDir("zz-folder-");
     const dev = path.join(parent, "zz-nomark");
     fs.cpSync(makePackage("one", { bundle: false, name: "@zz/nomark" }), dev, {
       recursive: true,
@@ -480,7 +483,7 @@ describe("a folder loaded in place runs its current source", () => {
   });
 
   it("Dash's build is marked and rebuilt on each load; the developer's own isn't", async () => {
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "zz-folder-"));
+    const parent = tempDir("zz-folder-");
     const dev = path.join(parent, "zz-dev");
     fs.cpSync(makePackage("first", { bundle: false, name: "@zz/dev" }), dev, {
       recursive: true,

@@ -8,10 +8,11 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { tempDir } = require("./testUtils/tempDir");
 
 // widgetRegistry requires "electron"; stub it so the test runs in node.
 const Module = require("node:module");
-const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), "zz-electron-files-"));
+const stubDir = tempDir("zz-electron-files-");
 const originalResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, parent, ...rest) {
   if (request === "electron") return "__stub_electron_files__";
@@ -35,7 +36,7 @@ require.cache["__stub_electron_files__"] = {
 const { packageFiles } = require("./widgetRegistry");
 
 function makePackage() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "zz-files-"));
+  const dir = tempDir("zz-files-");
   const write = (rel, text = "x") => {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
     fs.writeFileSync(path.join(dir, rel), text);

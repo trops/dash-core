@@ -16,11 +16,12 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { tempDir } = require("../testUtils/tempDir");
 
 // safePath.js calls require("electron") for app.getPath. We mock that
 // before requiring the module so the test runs without an Electron host.
 const Module = require("node:module");
-const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "safe-path-test-"));
+const tmpRoot = tempDir("safe-path-test-");
 const fakeElectron = {
   app: {
     getPath: (key) => {
