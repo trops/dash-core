@@ -492,11 +492,48 @@ describe("DashboardPublisher — latest bot results (team-dashboards TD-002)", (
     expect(handler).not.toHaveBeenCalled();
   });
 
+  test("a widget showing a bot's answers gets its last one (TD-009)", async () => {
+    const COMPLETED = "bot:local/triage[bot_a].completed";
+    const answer = { botId: "bot_a", output: "- Oat milk" };
+    const getLatestResult = jest.fn().mockResolvedValue(answer);
+    window.mainApi = { bots: { getLatestResult } };
+    const handler = jest.fn();
+    DashboardPublisher.sub(COMPLETED, handler, "w1");
+    await flush();
+    expect(getLatestResult).toHaveBeenCalledWith(COMPLETED);
+    expect(handler.mock.calls[0][0]).toEqual({
+      message: answer,
+      event: COMPLETED,
+      uuid: "w1",
+      replay: true,
+    });
+  });
+
+  test("a bot's last answer replays once per widget, however often it re-subscribes", async () => {
+    const COMPLETED = "bot:local/once[bot_once].completed";
+    const getLatestResult = jest.fn().mockResolvedValue({ output: "x" });
+    window.mainApi = { bots: { getLatestResult } };
+    const first = jest.fn();
+    DashboardPublisher.sub(COMPLETED, first, "w-once");
+    await flush();
+    const again = jest.fn();
+    DashboardPublisher.sub(COMPLETED, again, "w-once");
+    await flush();
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(again).not.toHaveBeenCalled();
+    // Another widget still gets it.
+    const other = jest.fn();
+    DashboardPublisher.sub(COMPLETED, other, "w-other");
+    await flush();
+    expect(other).toHaveBeenCalledTimes(1);
+  });
+
   test("other events are never fetched", async () => {
     const getLatestResult = jest.fn().mockResolvedValue(saved);
     window.mainApi = { bots: { getLatestResult } };
+    DashboardPublisher.sub("bot:local/triage[bot_a].failed", jest.fn(), "w1");
     DashboardPublisher.sub(
-      "bot:local/triage[bot_a].completed",
+      "bot:local/triage[bot_a].tool.gmail.search",
       jest.fn(),
       "w1",
     );

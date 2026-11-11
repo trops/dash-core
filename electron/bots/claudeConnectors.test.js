@@ -18,6 +18,7 @@ const {
   runsOnClaudeLogin,
   connectorNeedsSubscriptionMessage,
   createConnectorLister,
+  waitForConnectors,
 } = require("./claudeConnectors");
 
 const STATUS = [
@@ -284,5 +285,74 @@ describe("createConnectorLister", () => {
     const r = await lister.list();
     assert.equal(r.state, "error");
     assert.equal(r.message, "boom");
+  });
+});
+
+describe("waitForConnectors — a run's task waits for its connectors", () => {
+  // A fake query whose status list changes on each call; a fake clock.
+  const fake = (lists) => {
+    let i = 0;
+    return {
+      calls: () => i,
+      mcpServerStatus: async () => lists[Math.min(i++, lists.length - 1)],
+    };
+  };
+  const clock = () => {
+    let t = 0;
+    return {
+      now: () => t,
+      sleep: async (ms) => {
+        t += ms;
+      },
+    };
+  };
+  const gmail = (status) => ({ name: "claude.ai Gmail", status });
+
+  it("waits while the connector isn't there yet or is pending, then goes", async () => {
+    const q = fake([[], [gmail("pending")], [gmail("connected")]]);
+    const r = await waitForConnectors(q, ["claude.ai Gmail"], clock());
+    assert.deepEqual(r, {
+      ready: true,
+      statuses: { "claude.ai Gmail": "connected" },
+    });
+    assert.equal(q.calls(), 3);
+  });
+
+  it("a connector that settles another way doesn't hold the run", async () => {
+    const q = fake([[gmail("needs-auth")]]);
+    const r = await waitForConnectors(q, ["claude.ai Gmail"], clock());
+    assert.equal(r.ready, false);
+    assert.equal(r.statuses["claude.ai Gmail"], "needs-auth");
+  });
+
+  it("gives up after the time limit", async () => {
+    const q = fake([[gmail("pending")]]);
+    const r = await waitForConnectors(q, ["claude.ai Gmail"], {
+      ...clock(),
+      timeoutMs: 1000,
+      pollMs: 250,
+    });
+    assert.equal(r.ready, false);
+    assert.ok(q.calls() >= 4 && q.calls() <= 6, String(q.calls()));
+  });
+
+  it("nothing to wait for, no status call, or a failing one: goes at once", async () => {
+    assert.equal(
+      (await waitForConnectors(fake([[]]), [], clock())).ready,
+      true,
+    );
+    assert.equal(
+      (await waitForConnectors({}, ["claude.ai Gmail"], clock())).ready,
+      true,
+    );
+    const broken = {
+      mcpServerStatus: async () => {
+        throw new Error("gone");
+      },
+    };
+    assert.equal(
+      (await waitForConnectors(broken, ["claude.ai Gmail"], clock())).ready,
+      false,
+    );
   });
 });

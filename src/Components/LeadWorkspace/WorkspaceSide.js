@@ -392,7 +392,20 @@ export const WorkspaceSide = ({
   }
   // The preview, while it waits for a look — once it's past, Outputs.
   if (open === "preview" && build && pb && previewStep) {
-    return opened(<PreviewOutput state={buildState} pb={pb} />);
+    return opened(
+      <PreviewOutput
+        state={buildState}
+        pb={pb}
+        // Showing what a bot sends (TD-009): previewed with its last one.
+        wire={
+          (wp &&
+            wp.plan &&
+            wp.plan.widgetChange &&
+            wp.plan.widgetChange.wire) ||
+          null
+        }
+      />,
+    );
   }
   // An earlier plan, from its card in the chat.
   const earlierStep =

@@ -11,9 +11,16 @@ import {
   parseBotEventType,
 } from "./teamDiagram";
 import { TriggerPopover } from "./TriggerPopover";
+import { WidgetWirePopover } from "./WidgetWirePopover";
+import { widgetEdges, widgetLayout, widgetSub } from "./widgetDiagram";
 
 const CARD_H = 80;
 const POP_W = 320;
+// Widget cards (TD-009): in a column right of the team when it's this wide.
+const W_CARD_H = 64;
+const W_COL = 260;
+const W_SIDE_MIN = 900;
+const W_POP_W = 384;
 // Line colours: after failed → red, otherwise indigo (classes in the prebuilt CSS).
 const lineClass = (kind) =>
   kind === "failed" ? "text-red-400" : "text-indigo-400";
@@ -47,6 +54,14 @@ function useWidth(ref, fixed) {
  * line's label to change or remove it. Saving goes through `onSaveTrigger` /
  * `onRemoveTrigger` (the host saves the bot).
  *
+ * Widgets (team-dashboards TD-009, when `widgets` are given): the
+ * dashboard's widgets, beside the team or below it, with a line from a bot
+ * to each widget that shows what it sends. Drag a bot onto a widget to
+ * connect it (`onConnectWidget`, `onShowHere`) or to ask the Dash team to
+ * make the widget show it (`onAskWidget`); click such a line's label to
+ * change or remove it (`onRemoveWidgetLine`). Lines only go from a bot to a
+ * widget.
+ *
  * Card positions come from the measured width (inline styles — the prebuilt
  * CSS has no arbitrary sizes); colours from theme tokens and colour classes.
  * (Named TeamChart: teamDiagram.js holds the pure helpers, and macOS file
@@ -64,6 +79,13 @@ export const TeamChart = ({
   choicesFor = () => [],
   onSaveTrigger = null,
   onRemoveTrigger = null,
+  widgets = [],
+  nameOf = () => null,
+  onConnectWidget = null,
+  onShowHere = null,
+  onAskWidget = null,
+  onRemoveWidgetLine = null,
+  findWidgetTarget = null,
   width: fixedWidth = 0,
 }) => {
   const { muted, strong, hairline, selectedBg, selectedBorder, fieldBg } =
@@ -77,9 +99,13 @@ export const TeamChart = ({
   const [pop, setPop] = useState(null);
   const [popError, setPopError] = useState(null);
   const [saving, setSaving] = useState(false);
+  // The open bot → widget dialog: { mode, from, widget (key), edge }.
+  const [wpop, setWpop] = useState(null);
 
+  const hasWidgets = widgets.length > 0;
+  const side = hasWidgets && width >= W_SIDE_MIN;
   const layout = diagramLayout({
-    width,
+    width: side ? width - W_COL - 40 : width,
     count: members.length,
     cardH: CARD_H,
   });
@@ -140,8 +166,55 @@ export const TeamChart = ({
     }
   }
 
+  // ── Widgets (TD-009) ────────────────────────────────────────────────
+  const fullW = Math.max(width || 0, layout.width);
+  const wl = widgetLayout({
+    width: fullW,
+    count: widgets.length,
+    top: layout.height - 60,
+    side,
+    colW: W_COL,
+    cardH: W_CARD_H,
+  });
+  const wpos = {};
+  widgets.forEach((w, i) => {
+    wpos[w.key] = wl.cards[i];
+  });
+  const widgetByKey = new Map(widgets.map((w) => [w.key, w]));
+  // A curve from a bot's handle to a widget's near edge; its label sits
+  // half way along it.
+  const wDrawn = (hasWidgets ? widgetEdges(widgets, members) : [])
+    .filter((e) => pos[e.from] && wpos[e.widget])
+    .map((e) => {
+      const a = pos[e.from];
+      const b = wpos[e.widget];
+      const sx = a.x + a.w / 2;
+      const sy = a.y + CARD_H;
+      const [tx, ty, c1, c2] = side
+        ? [
+            b.x,
+            b.y + W_CARD_H / 2,
+            [sx, sy + 70],
+            [b.x - 90, b.y + W_CARD_H / 2],
+          ]
+        : [b.x + b.w / 2, b.y, [sx, sy + 70], [b.x + b.w / 2, b.y - 70]];
+      const mid = (i) =>
+        0.125 * [sx, sy][i] +
+        0.375 * c1[i] +
+        0.375 * c2[i] +
+        0.125 * [tx, ty][i];
+      return {
+        ...e,
+        d: `M${sx},${sy} C${c1[0]},${c1[1]} ${c2[0]},${c2[1]} ${tx},${ty}`,
+        mx: mid(0),
+        my: mid(1),
+      };
+    });
+  const wFocus = (e) => !focusId || e.from === focusId;
+
   // ── Wiring ────────────────────────────────────────────────────────────
   const canDrop = (id) => !!drag && id !== drag.from && isMember(id);
+  const canDropWidget = () => !!drag && isMember(drag.from);
   const pointIn = (e) => {
     const r = ref.current ? ref.current.getBoundingClientRect() : null;
     return r ? { x: e.clientX - r.left, y: e.clientY - r.top } : null;
@@ -165,6 +238,7 @@ export const TeamChart = ({
 
   const openPop = (next) => {
     setPopError(null);
+    setWpop(null);
     setPop(next);
   };
   const dropOn = (id) => {
@@ -222,6 +296,58 @@ export const TeamChart = ({
       setSaving(false);
     }
   };
+  // A bot dropped on a widget, or a widget line's label clicked.
+  const openWpop = (next) => {
+    setPopError(null);
+    setPop(null);
+    setWpop(next);
+  };
+  const dropOnWidget = (key) => {
+    if (!canDropWidget()) return;
+    openWpop({ mode: "add", from: drag.from, widget: key, edge: null });
+    setDrag(null);
+  };
+  const editWidgetLine = (e) => {
+    if (!canWire) return;
+    openWpop({ mode: "edit", from: e.from, widget: e.widget, edge: e });
+  };
+  // Saves through the host; the dialog stays open with the reason if it
+  // can't.
+  const wsave = async (fn) => {
+    setSaving(true);
+    try {
+      await fn();
+      setWpop(null);
+    } catch (err) {
+      setPopError(
+        err && err.refused
+          ? err.message
+          : `Couldn't save: ${(err && err.message) || String(err)}`,
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+  const wWidget = wpop ? widgetByKey.get(wpop.widget) : null;
+  const wSource = wpop ? byId.get(wpop.from) : null;
+  const wpopStyle = (() => {
+    if (!wpop || !wpos[wpop.widget]) return null;
+    const b = wpos[wpop.widget];
+    if (side) {
+      return {
+        left: Math.max(8, b.x - W_POP_W - 16),
+        top: Math.max(8, b.y - 8),
+      };
+    }
+    return {
+      left: Math.max(
+        8,
+        Math.min(b.x + b.w / 2 - W_POP_W / 2, fullW - W_POP_W - 8),
+      ),
+      top: b.y + W_CARD_H + 12,
+    };
+  })();
+
   // Would the new / changed trigger close a loop?
   const popLoop = (() => {
     if (!pop) return false;
@@ -238,7 +364,7 @@ export const TeamChart = ({
     const t = pos[pop.to];
     const left = Math.max(
       8,
-      Math.min(t.x + t.w / 2 - POP_W / 2, layout.width - POP_W - 8),
+      Math.min(t.x + t.w / 2 - POP_W / 2, fullW - POP_W - 8),
     );
     return { left, top: t.y + CARD_H + 16 };
   })();
@@ -355,6 +481,7 @@ export const TeamChart = ({
               e.preventDefault();
               e.stopPropagation();
               setPop(null);
+              setWpop(null);
               const pt = pointIn(e) || {
                 x: p.x + p.w / 2,
                 y: p.y + CARD_H,
@@ -377,18 +504,55 @@ export const TeamChart = ({
     return `M${sx},${sy} C${sx},${sy + 80} ${tx},${ty + 80} ${tx},${ty}`;
   })();
 
+  // A widget card: a drop target for a bot's line (TD-009).
+  const widgetCard = (w) => {
+    const p = wpos[w.key];
+    if (!p) return null;
+    const droppable = canDropWidget();
+    const hot = droppable && hovered === `w:${w.key}`;
+    return (
+      <div
+        key={w.key}
+        data-testid={`diagram-widget-${w.itemId}`}
+        className={`absolute rounded-xl border border-dashed px-3 py-2 flex flex-col justify-center ${
+          hot ? "border-green-400" : droppable ? selectedBorder : hairline
+        } ${hot ? selectedBg : fieldBg}`}
+        style={{
+          left: p.x,
+          top: p.y,
+          width: p.w,
+          height: W_CARD_H,
+          opacity: drag && !droppable ? 0.45 : 1,
+        }}
+        onPointerEnter={() => setHovered(`w:${w.key}`)}
+        onPointerLeave={() =>
+          setHovered((h) => (h === `w:${w.key}` ? null : h))
+        }
+        onPointerUp={() => dropOnWidget(w.key)}
+      >
+        <span className={`text-sm font-semibold truncate ${strong}`}>
+          {w.label}
+        </span>
+        <span className={`text-xs truncate ${muted}`}>
+          {`${w.page ? `${w.page} · ` : ""}${widgetSub(w, nameOf)}`}
+        </span>
+      </div>
+    );
+  };
+
   // An open popover makes room for itself below the cards (the view scrolls).
   const POP_ROOM = 480;
-  const height = popStyle
-    ? Math.max(layout.height, popStyle.top + POP_ROOM)
-    : layout.height;
+  const contentH = Math.max(layout.height, hasWidgets ? wl.bottom + 24 : 0);
+  const openTop = popStyle ? popStyle.top : wpopStyle ? wpopStyle.top : null;
+  const height =
+    openTop !== null ? Math.max(contentH, openTop + POP_ROOM) : contentH;
 
   return (
     <div ref={ref} className="relative w-full select-none" style={{ height }}>
       <svg
         className="absolute inset-0 pointer-events-none"
-        width={layout.width}
-        height={layout.height}
+        width={fullW}
+        height={contentH}
         aria-hidden="true"
       >
         {teamLines.map((d) => (
@@ -412,6 +576,26 @@ export const TeamChart = ({
             strokeWidth={touches(e) && focusId ? 2.5 : 1.75}
             strokeOpacity={touches(e) ? 1 : 0.3}
             strokeDasharray={e.kind === "failed" ? "6 5" : undefined}
+            fill="none"
+          />
+        ))}
+        {wDrawn.map((e) => (
+          <path
+            key={e.key}
+            data-testid="diagram-widget-edge"
+            data-kind={e.kind}
+            d={e.d}
+            className={lineClass(e.kind)}
+            stroke="currentColor"
+            strokeWidth={wFocus(e) && focusId ? 2.5 : 1.75}
+            strokeOpacity={wFocus(e) ? 1 : 0.3}
+            strokeDasharray={
+              e.kind === "failed"
+                ? "6 5"
+                : e.kind === "results"
+                  ? "2 4"
+                  : undefined
+            }
             fill="none"
           />
         ))}
@@ -453,6 +637,36 @@ export const TeamChart = ({
           </button>
         );
       })}
+      {wDrawn.map((e) => (
+        <button
+          type="button"
+          key={`label-${e.key}`}
+          data-testid={`widget-edge-label-${e.key}`}
+          onClick={() => editWidgetLine(e)}
+          disabled={!canWire}
+          className={`absolute rounded-full border px-2 py-0.5 text-xs whitespace-nowrap ${fieldBg} ${hairline} ${
+            wFocus(e) ? strong : muted
+          }`}
+          style={{
+            left: e.mx,
+            top: e.my,
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          {e.kind === "results" ? "shows answers" : eventText(e.event)}
+        </button>
+      ))}
+      {hasWidgets ? (
+        <div
+          className={`absolute text-xs font-semibold ${muted}`}
+          style={{ left: wl.x, top: wl.labelY }}
+        >
+          {canWire
+            ? "Widgets · drag a bot here to show what it sends"
+            : "Widgets"}
+        </div>
+      ) : null}
+      {widgets.map(widgetCard)}
       {lead ? card(lead) : null}
       {members.map(card)}
       {!members.length ? (
@@ -483,6 +697,49 @@ export const TeamChart = ({
           onSave={savePop}
           onRemove={removePop}
           onCancel={() => setPop(null)}
+        />
+      ) : null}
+      {wpop && wWidget && wSource ? (
+        <WidgetWirePopover
+          key={`${wpop.mode}-${wpop.from}-${wpop.widget}-${
+            wpop.edge ? wpop.edge.key : ""
+          }`}
+          source={wSource}
+          widget={wWidget}
+          choices={choicesFor(wpop.from)}
+          mode={wpop.mode}
+          edge={wpop.edge}
+          error={popError}
+          saving={saving}
+          style={wpopStyle}
+          onConnect={(c) =>
+            wsave(() =>
+              onConnectWidget({
+                ...c,
+                widget: wWidget,
+                sourceId: wpop.from,
+                edge: wpop.edge,
+              }),
+            )
+          }
+          onShowHere={(botId) =>
+            wsave(() => onShowHere({ widget: wWidget, botId }))
+          }
+          onAsk={(a) => {
+            setWpop(null);
+            if (onAskWidget) {
+              onAskWidget({ ...a, widget: wWidget, sourceId: wpop.from });
+            }
+          }}
+          onRemove={() =>
+            wsave(() =>
+              wpop.edge && wpop.edge.kind === "results"
+                ? onShowHere({ widget: wWidget, botId: null })
+                : onRemoveWidgetLine({ widget: wWidget, edge: wpop.edge }),
+            )
+          }
+          onCancel={() => setWpop(null)}
+          findTarget={findWidgetTarget}
         />
       ) : null}
     </div>

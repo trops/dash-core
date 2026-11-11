@@ -280,6 +280,23 @@ export function planForWidget(plan, widget) {
   if (!plan || !widget) return plan;
   const { dashboard: _d, ...rest } = plan;
   const next = { ...rest, widgetChange: widget };
+  // Showing what a bot sends (TD-009): Dash connects the user's bot after
+  // the change is saved, so a `listens` the Planner adds for it (meant for
+  // bots the plan makes) goes.
+  const wired = widget.wire && widget.wire.botName;
+  if (wired && Array.isArray(next.pieces)) {
+    const same = (b) =>
+      String(b || "")
+        .trim()
+        .toLowerCase() === wired.trim().toLowerCase();
+    next.pieces = next.pieces.map((p) => {
+      if (!p || !Array.isArray(p.listens)) return p;
+      const listens = p.listens.filter((l) => !l || !same(l.bot));
+      if (listens.length === p.listens.length) return p;
+      const { listens: _l, ...piece } = p;
+      return listens.length ? { ...piece, listens } : piece;
+    });
+  }
   if (
     widget.onDashboard &&
     isSettingsChange(next) &&

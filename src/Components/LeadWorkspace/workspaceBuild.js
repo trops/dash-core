@@ -72,6 +72,8 @@ export function buildOptions(kind, plan = null) {
         settings: w.settingsNow || null,
         providers: w.providers || null,
         workspaceId: w.workspaceId ?? null,
+        // Showing what a bot sends (TD-009): the listener it must have.
+        ...(w.wire ? { wire: w.wire, itemId: w.itemId ?? null } : {}),
       },
     };
   }

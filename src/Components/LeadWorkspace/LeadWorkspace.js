@@ -806,6 +806,17 @@ export const LeadWorkspace = ({
     });
   };
 
+  // From the Bots diagram (TD-009): what the user said the widget should
+  // show from a bot is asked straight away, once.
+  const wireAsked = useRef(false);
+  useEffect(() => {
+    const w = making && making.widget && making.widget.wire;
+    if (!w || !w.ask || wireAsked.current || loading || !contact) return;
+    wireAsked.current = true;
+    ask(w.ask);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [making, loading, contact]);
+
   // The plan's build, live (release 3b) — from how it last ended until the
   // main process says more.
   const pb = usePlanBuild(
@@ -1042,6 +1053,11 @@ export const LeadWorkspace = ({
       answered = true;
       if (timer) clearTimeout(timer);
       set(result === true ? true : String(result || "failed"));
+      // The copy is in the widget's place: now its listener (TD-009),
+      // once the editor has the swap — on every try that places it.
+      if (result === true && w.wire && w.onDashboard && w.itemId != null) {
+        setTimeout(wireWidget(w), 50);
+      }
     };
     timer = setTimeout(() => answer("no-answer"), 8000);
     window.dispatchEvent(
@@ -1058,6 +1074,15 @@ export const LeadWorkspace = ({
     );
   };
   const sawChanging = useRef(null);
+  // A change from the Bots diagram (TD-009) made as a copy: the editor
+  // connects the bot to it once it's in the widget's place (changed in
+  // place, the main process wires it when it installs).
+  const wireWidget = (w) => () =>
+    window.dispatchEvent(
+      new CustomEvent("dash:wire-bot-to-widget", {
+        detail: { ...w.wire, workspaceId: w.workspaceId, itemId: w.itemId },
+      }),
+    );
   useEffect(() => {
     if (!changeBuildId || !changeStatus) return;
     if (!changeDone) {

@@ -24,6 +24,70 @@ const POLL_MS = 500;
 // How long an account with no connectors yet is given for them to show up.
 const APPEAR_MS = 5000;
 
+// How long a run waits for its connectors to connect before it starts.
+const CONNECT_WAIT_MS = 15000;
+const CONNECT_POLL_MS = 250;
+
+/**
+ * Wait until a run's granted connectors have connected (or settled another
+ * way: failed, needs-auth) before its task is sent. Claude Code loads the
+ * account's connectors in the background, a second or so after it starts;
+ * a task sent at once meets a model that has none of their tools (seen
+ * live: "I have no Gmail tool"). Never throws; gives up after `timeoutMs`.
+ *
+ * @param {object} q  the SDK query (its mcpServerStatus)
+ * @param {string[]} servers  the granted connectors ("claude.ai Gmail")
+ * @returns {Promise<{ ready: boolean, statuses: {[server]: string} }>}
+ */
+async function waitForConnectors(
+  q,
+  servers,
+  {
+    timeoutMs = CONNECT_WAIT_MS,
+    pollMs = CONNECT_POLL_MS,
+    now = () => Date.now(),
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  } = {},
+) {
+  const want = (Array.isArray(servers) ? servers : []).filter(Boolean);
+  if (!want.length || !q || typeof q.mcpServerStatus !== "function") {
+    return { ready: true, statuses: {} };
+  }
+  const started = now();
+  let statuses = {};
+  for (;;) {
+    let list = null;
+    try {
+      let timer = null;
+      list = await Promise.race([
+        q.mcpServerStatus(),
+        new Promise((resolve) => {
+          timer = setTimeout(
+            () => resolve(null),
+            Math.max(0, timeoutMs - (now() - started)) + pollMs,
+          );
+        }),
+      ]).finally(() => clearTimeout(timer));
+    } catch (_e) {
+      list = null;
+    }
+    if (!Array.isArray(list)) break;
+    statuses = {};
+    for (const s of list) {
+      if (s && want.includes(s.name)) statuses[s.name] = s.status;
+    }
+    if (want.every((n) => statuses[n] && statuses[n] !== "pending")) {
+      return {
+        ready: want.every((n) => statuses[n] === "connected"),
+        statuses,
+      };
+    }
+    if (now() - started >= timeoutMs) break;
+    await sleep(pollMs);
+  }
+  return { ready: false, statuses };
+}
+
 /** The CLI's server key for a connector: "claude.ai Gmail" → "claude_ai_Gmail". */
 function connectorServerKey(server) {
   return String(server || "").replace(/[^A-Za-z0-9_-]/g, "_");
@@ -306,4 +370,6 @@ module.exports = {
   connectorDisallowList,
   connectorForTool,
   createConnectorLister,
+  waitForConnectors,
+  CONNECT_WAIT_MS,
 };

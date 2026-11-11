@@ -19,6 +19,83 @@ const toolLabel = (c) => {
   return tool ? `${tool} (${provider})` : c.label;
 };
 
+/** The event choices in the order both dialogs show them. */
+const kindsOf = (choices) => {
+  const tools = choices.filter((c) => isTool(c.event));
+  const plain = choices.filter((c) => !isTool(c.event));
+  return {
+    tools,
+    plain,
+    kinds: [
+      ...plain.map((c) => ({ value: c.event, label: c.label })),
+      ...(tools.length ? [{ value: TOOL, label: "Uses a tool…" }] : []),
+    ],
+  };
+};
+
+/** The first event a dialog picks: the one it was opened on, else the first plain one. */
+export const firstEvent = (choices, initialEvent = null) => {
+  const { plain } = kindsOf(choices);
+  return choices.some((c) => c.event === initialEvent)
+    ? initialEvent
+    : (plain[0] && plain[0].event) || "completed";
+};
+
+/**
+ * WhenChoices — "When <bot>…": Completed, Failed, its results, or "Uses a
+ * tool…" then which tool (a bot can have dozens). Shared by the bot→bot
+ * and bot→widget dialogs.
+ */
+export const WhenChoices = ({
+  name,
+  source,
+  choices = [],
+  event,
+  onChange,
+}) => {
+  const { tools, kinds } = kindsOf(choices);
+  // The tool picked under "Uses a tool…" (kept while switching back and forth).
+  const [tool, setTool] = useState(
+    isTool(event) && choices.some((c) => c.event === event)
+      ? event
+      : (tools[0] && tools[0].event) || null,
+  );
+  const kind = isTool(event) ? TOOL : event;
+  const pickKind = (v) => {
+    if (v === TOOL) {
+      if (tool) onChange(tool);
+    } else {
+      onChange(v);
+    }
+  };
+  const pickTool = (v) => {
+    setTool(v);
+    onChange(v);
+  };
+  return (
+    <>
+      <SectionLabel text={`When ${source.name}…`} />
+      <RadioGroup
+        name={name}
+        value={kind}
+        onChange={pickKind}
+        options={kinds}
+      />
+      {kind === TOOL ? (
+        <SelectInput
+          label="Tool"
+          value={tool || ""}
+          onChange={pickTool}
+          options={tools.map((c) => ({
+            value: c.event,
+            label: toolLabel(c),
+          }))}
+        />
+      ) : null}
+    </>
+  );
+};
+
 /**
  * TriggerPopover — add or edit one trigger between two team bots on the
  * diagram (bot-teams PRD TEAM-014 AC8/AC9): which of the source bot's events
@@ -46,42 +123,13 @@ export const TriggerPopover = ({
   style = null,
 }) => {
   const { muted, strong, hairline, fieldBg } = useConfigTokens();
-  const tools = choices.filter((c) => isTool(c.event));
-  const plain = choices.filter((c) => !isTool(c.event));
-  const known = choices.some((c) => c.event === initialEvent);
-  const [event, setEvent] = useState(
-    known ? initialEvent : (plain[0] && plain[0].event) || "completed",
-  );
-  // The tool picked under "Uses a tool…" (kept while switching back and forth).
-  const [tool, setTool] = useState(
-    isTool(initialEvent) && known
-      ? initialEvent
-      : (tools[0] && tools[0].event) || null,
-  );
+  const [event, setEvent] = useState(firstEvent(choices, initialEvent));
   const [note, setNote] = useState(initialNote || "");
-  const kind = isTool(event) ? TOOL : event;
   const chosen = choices.find((c) => c.event === event) || null;
-
-  const pickKind = (v) => {
-    if (v === TOOL) {
-      if (tool) setEvent(tool);
-    } else {
-      setEvent(v);
-    }
-  };
-  const pickTool = (v) => {
-    setTool(v);
-    setEvent(v);
-  };
   const save = () =>
     chosen &&
     onSave &&
     onSave({ event: chosen.event, label: chosen.label, note });
-
-  const kinds = [
-    ...plain.map((c) => ({ value: c.event, label: c.label })),
-    ...(tools.length ? [{ value: TOOL, label: "Uses a tool…" }] : []),
-  ];
 
   return (
     <div
@@ -98,24 +146,13 @@ export const TriggerPopover = ({
         <div className={`text-xs ${muted}`}>{`after ${source.name}`}</div>
       </div>
       <div className="px-4 py-3 flex flex-col gap-3">
-        <SectionLabel text={`When ${source.name}…`} />
-        <RadioGroup
+        <WhenChoices
           name={`trigger-${source.id}-${target.id}`}
-          value={kind}
-          onChange={pickKind}
-          options={kinds}
+          source={source}
+          choices={choices}
+          event={event}
+          onChange={setEvent}
         />
-        {kind === TOOL ? (
-          <SelectInput
-            label="Tool"
-            value={tool || ""}
-            onChange={pickTool}
-            options={tools.map((c) => ({
-              value: c.event,
-              label: toolLabel(c),
-            }))}
-          />
-        ) : null}
         <SectionLabel text="Then ask it to (optional)" />
         <TextArea
           value={note}

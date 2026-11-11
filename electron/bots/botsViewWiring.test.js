@@ -197,10 +197,10 @@ describe("botController — results (team-dashboards TD-001/TD-002)", () => {
     );
   });
 
-  it("serves the latest result by event type", () => {
+  it("serves the latest result by event type — or a bot's last answer (TD-009)", () => {
     assert.match(
       ctrl,
-      /getLatestResult\(eventType\) \{\s*return latestResult\(this\._store, eventType\);/,
+      /getLatestResult\(eventType\) \{\s*return \(\s*latestResult\(this\._store, eventType\) \|\|\s*latestCompleted\(this\._store, eventType\)\s*\);/,
     );
   });
 });

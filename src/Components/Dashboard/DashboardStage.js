@@ -662,6 +662,9 @@ const DashboardStageInner = ({
               ? d.selectedProviders
               : null,
           error: typeof d.error === "string" ? d.error : "",
+          // From the Bots diagram (TD-009): it should show what a bot
+          // sends — connected once the change is saved.
+          wire: d.wire && typeof d.wire === "object" ? d.wire : null,
         },
       });
     };
@@ -2048,6 +2051,102 @@ const DashboardStageInner = ({
     saveRightAway(reconciled, "listener");
   }
 
+  // ─── A line from a bot to a widget (team-dashboards TD-009) ──────
+  // From the Bots diagram: saved right away — never over unsaved edits or
+  // while the dashboard is being edited (it says why instead).
+  function changeFromDiagram(change, what) {
+    return new Promise((resolve, reject) => {
+      const before = workspaceSelected;
+      if (!before || !dashApi || !credentials?.appId) {
+        reject(new Error("the dashboard isn't open"));
+        return;
+      }
+      if (!previewModeRef.current || isDirty) {
+        const refused = new Error(
+          `Save or cancel your edits to ${before.name || "this dashboard"} first, then try again.`,
+        );
+        refused.refused = true;
+        reject(refused);
+        return;
+      }
+      const next = reconcileWorkspaceAfterLayoutChange(change(before));
+      updateTabWorkspace(next);
+      const failed = (_e, error) => {
+        updateTabWorkspace(before);
+        reject(
+          new Error(saveErrorText(error) || `the ${what} change didn't save`),
+        );
+      };
+      try {
+        dashApi.saveWorkspace(credentials.appId, next, () => resolve(), failed);
+      } catch (e) {
+        failed(null, e);
+      }
+    });
+  }
+
+  // A widget the Dash team just changed to show what a bot sends: its
+  // listener goes in now. While the dashboard is being edited (a copy was
+  // put in the widget's place) it waits for the edit's Save; otherwise it's
+  // saved right away. detail: { workspaceId, itemId, botId, ref, event,
+  // handlerName, botName }
+  const wireRef = useRef(null);
+  wireRef.current = (d) => {
+    if (!d || d.itemId == null || !d.handlerName || !d.botId || !d.event) {
+      return;
+    }
+    const ws = (workspaceConfig || []).find(
+      (w) => w && String(w.id) === String(d.workspaceId),
+    );
+    if (!ws || !dashApi || !credentials?.appId) return;
+    const change = {
+      adds: [
+        {
+          receiverItemId: String(d.itemId),
+          handlerName: d.handlerName,
+          sourceComponent: `bot:${d.ref}`,
+          sourceItemId: d.botId,
+          eventName: d.event,
+        },
+      ],
+    };
+    const here =
+      workspaceSelected && String(workspaceSelected.id) === String(ws.id);
+    if (here) {
+      const next = reconcileWorkspaceAfterLayoutChange(
+        applyWiringChanges(workspaceSelected, change),
+      );
+      if (!previewModeRef.current) {
+        stageWorkspaceEdit(next);
+        return;
+      }
+      saveRightAway(next, "listener");
+      return;
+    }
+    try {
+      // Not the dashboard on screen: its saved copy changes, and the
+      // reload refreshes any tab that has it open.
+      dashApi.saveWorkspace(
+        credentials.appId,
+        reconcileWorkspaceAfterLayoutChange(applyWiringChanges(ws, change)),
+        () => loadWorkspaces(),
+        (_e, error) =>
+          notifySaveError(
+            `Couldn't connect ${d.botName || "the bot"} to the widget`,
+            error,
+            "Drag the line again on the Bots diagram.",
+          ),
+      );
+    } catch (e) {
+      notifySaveError("Couldn't connect the bot to the widget", e);
+    }
+  };
+  useEffect(() => {
+    const handler = (e) => wireRef.current(e && e.detail);
+    window.addEventListener("dash:wire-bot-to-widget", handler);
+    return () => window.removeEventListener("dash:wire-bot-to-widget", handler);
+  }, []);
+
   // ─── Unresolved providers + listener orphans (modal + auto-open) ─
   const unresolvedProviders = useMemo(
     () =>
@@ -3265,6 +3364,7 @@ const DashboardStageInner = ({
                           botsDirtyRef.current = d;
                         }}
                         onOpenSettings={(section) => openAppSettings(section)}
+                        onChangeDashboard={changeFromDiagram}
                       />
                     ) : (
                       <>

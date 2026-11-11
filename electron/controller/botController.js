@@ -233,6 +233,12 @@ const {
   latestResult,
 } = require("../bots/resultTools");
 const {
+  lastAnswers,
+  latestCompleted,
+  describeAnswers,
+} = require("../bots/lastAnswers");
+const { cleanWire, withWireProblems } = require("../bots/widgetWire");
+const {
   listToolSources,
   ensureBotServers,
   resolveBotTools,
@@ -1350,10 +1356,14 @@ const botController = {
 
   /**
    * The latest result a bot sent, by its event type, so a widget that opens
-   * later still shows it (TD-002).
+   * later still shows it (TD-002) — or, for its `completed` event, its last
+   * finished answer (TD-009).
    */
   getLatestResult(eventType) {
-    return latestResult(this._store, eventType);
+    return (
+      latestResult(this._store, eventType) ||
+      latestCompleted(this._store, eventType)
+    );
   },
 
   /**
@@ -3571,6 +3581,17 @@ const botController = {
       displayName: text(edit.displayName) || t.componentName,
       settings: obj(edit.settings),
       providers: obj(edit.providers),
+      // Showing what a bot sends (TD-009): the listener it must have, and
+      // the widget's copy on its dashboard that gets it.
+      wire: cleanWire(edit.wire),
+      workspaceId:
+        edit.workspaceId !== undefined && edit.workspaceId !== null
+          ? String(edit.workspaceId)
+          : null,
+      itemId:
+        edit.itemId !== undefined && edit.itemId !== null
+          ? String(edit.itemId)
+          : null,
     };
   },
 
@@ -3595,6 +3616,31 @@ const botController = {
       this._cellRoleRuns -= 1;
       if (this._editRun === target) this._editRun = null;
     }
+  },
+
+  /**
+   * The listener a change from the Bots diagram asked for (TD-009): the
+   * bot's event → the widget's new handler, on its copy on the dashboard.
+   * Saved like a plan's wiring (the dashboard reloads on workspace:saved);
+   * adding one it already has changes nothing.
+   */
+  _wireEditedWidget(target) {
+    const wire = target && target.wire;
+    if (!wire || target.workspaceId == null || target.itemId == null) {
+      return { error: "no widget on a dashboard to connect" };
+    }
+    const bot = this._store.get(wire.botId);
+    if (!bot) return { error: `${wire.botName} isn't there any more` };
+    const workspace = this._loadWorkspace(target.workspaceId);
+    if (!workspace) return { error: "that dashboard wasn't found" };
+    const next = addWidgetListener(
+      workspace,
+      target.itemId,
+      wire.handlerName,
+      botEventType(bot, wire.event),
+    );
+    if (!next) return { error: "that widget isn't on the dashboard any more" };
+    return this._saveWorkspace(next);
   },
 
   /**
@@ -3628,7 +3674,24 @@ const botController = {
         };
       }
     }
-    return this._widgetTools.installDraft({ name: draft, edit: target });
+    const res = await this._widgetTools.installDraft({
+      name: draft,
+      edit: target,
+    });
+    // Showing what a bot sends (TD-009): changed in place, the widget's copy
+    // on its dashboard gets its listener now — whether or not Create is
+    // still open. (A copy is wired by the editor once it's in its place.)
+    if (
+      res &&
+      res.success !== false &&
+      !res.error &&
+      target.wire &&
+      target.mode === "update"
+    ) {
+      const wired = this._wireEditedWidget(target);
+      if (wired && wired.error) res.wireError = wired.error;
+    }
+    return res;
   },
 
   /** Providers were connected: the steps waiting for them run (AC5). */
@@ -4599,7 +4662,12 @@ const botController = {
                 provider: this._providerPick(req.provider),
                 edit: this._editRun || null,
               }),
-            checkWidget: (req) => this._widgetTools.check(req),
+            // A change that shows what a bot sends must have its listener.
+            checkWidget: async (req) =>
+              withWireProblems(
+                await this._widgetTools.check(req),
+                this._editRun ? this._editRun.wire : null,
+              ),
           }
         : {}),
       compareConfigs,
@@ -4607,6 +4675,7 @@ const botController = {
       listThemes: () => this._themeDetails(),
       botResults: () => this._botResultsForTeam(),
       botRuns: () => this._botRunsForTeam(),
+      botAnswers: (req) => this._botAnswersForTeam(req),
       // Not during a cell build (Phase 2b): the editor places that widget,
       // and a save here would overwrite the user's unsaved edits.
       placeWidget: (req) =>
@@ -4683,6 +4752,51 @@ const botController = {
       ...r,
       dashboard: r.workspaceId ? names.get(r.workspaceId) || null : null,
     }));
+  },
+
+  /**
+   * One of the user's bots' last finished answers, whole (bot_answers,
+   * TD-009): what a widget listening for its `completed` event receives.
+   * Found by id, else by name; the Dash team's own bots are left out.
+   */
+  _botAnswersForTeam({ bot, count } = {}) {
+    const q = String(bot || "").trim();
+    if (!q) return { error: "bot_answers needs the bot's name or id." };
+    const bots = this._store.list().filter((b) => !isDashTeam(b));
+    const lower = q.toLowerCase();
+    const found =
+      bots.find((b) => b.id === q) ||
+      bots.find((b) => String(b.name || "").toLowerCase() === lower) ||
+      bots.filter((b) =>
+        String(b.name || "")
+          .toLowerCase()
+          .includes(lower),
+      );
+    const match = Array.isArray(found) ? null : found;
+    if (!match) {
+      const some = Array.isArray(found) ? found : [];
+      if (some.length > 1) {
+        return {
+          error: `More than one bot matches "${q}": ${some
+            .map((b) => `${b.name} (id ${b.id})`)
+            .join(", ")}. Give its id.`,
+        };
+      }
+      if (some.length === 1)
+        return this._botAnswersForTeam({ bot: some[0].id, count });
+      return {
+        error: `No bot named "${q}". list_dashboards shows the bots on each dashboard.`,
+      };
+    }
+    let runs = [];
+    try {
+      runs = this._store.getRuns(match.id) || [];
+    } catch (_e) {
+      runs = [];
+    }
+    return {
+      text: describeAnswers(match.name || match.id, lastAnswers(runs, count)),
+    };
   },
 
   /** The user's dashboards with their bots' names (list_dashboards). */

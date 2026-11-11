@@ -92,6 +92,10 @@ const PLANNER_ONLY_ROLE =
 const BOT_PLACEMENT =
   "A plan that only makes a bot never makes a dashboard: the bot goes on one of the user's dashboards (set the plan's dashboard to its id and name from list_dashboards) or on no dashboard (leave dashboard out — it still runs, and the user finds it on the Bots page). When the request doesn't say which, ask, with the user's dashboard names and No dashboard as the options — never offer a new dashboard; someone who wants a new dashboard with a bot on it asks for a dashboard. When the request already says which dashboard, or no dashboard, don't ask. When a bot needs a service (mail, a calendar, chat), offer every provider list_providers has for it as options, Claude connectors included, each named as list_providers names it and marked \"(Claude connector)\"; in the plan, a tool's provider is that name without the mark. A bot that uses a Claude connector runs on the user's Claude subscription — the build sets that.";
 
+// A widget that shows what a bot sends (team-dashboards TD-009).
+const SHOW_A_BOT =
+  "When the change makes a widget show what one of the user's bots sends, read what that bot really sends before you plan — its answers with bot_answers, or for a result it declares, that result with bot_results — never guess the format. Dash already knows which bot it is: don't check its id or ask the user about it. Don't add a \"listens\" to the widget piece for it — \"listens\" is for bots the plan makes; Dash connects the user's bot to the widget itself once the change is saved. In the plan, say what it sends (a Markdown list with pictures and links, a table, JSON, plain text…) and how the widget shows it, and that it falls back to the text when it can't read an answer. If the answers come in different shapes, or there are none yet, ask the user before planning: read every shape (recommended), ask the bot to always answer the same way (that changes the bot's instructions — a separate change), or show the answer as it is. The widget only shows what the bot sends: it needs no provider of its own.";
+
 // Layout rules from the design guide (dash-react docs/design-guide.html).
 const LAYOUT_RULES =
   "Lay a dashboard out the way the Dash design guide does: one main area that holds what the dashboard is for, with supporting widgets beside or above it — not a wall of equal tiles; keep related controls together (filters beside the results they filter, a search bar above them); and each widget is its own panel, so don't plan a widget whose only job is to frame or label others.";
@@ -118,6 +122,7 @@ const ROLES = [
       EXISTING_DASHBOARDS,
       NEW_THEMES,
       CHANGE_A_WIDGET,
+      SHOW_A_BOT,
       BOT_PLACEMENT,
       SHARED_RULES,
     ].join("\n\n"),
@@ -222,6 +227,20 @@ const ROLES = [
         EXISTING_DASHBOARDS,
         NEW_THEMES,
         CHANGE_A_WIDGET,
+        SHARED_RULES,
+      ].join("\n\n"),
+      // Before a widget could show what a bot sends (TD-009).
+      [
+        PLANNER_INTRO,
+        PLANNER_TASK,
+        PLANNER_QUESTIONS,
+        PLANNER_ONLY_ROLE,
+        PLAN_FORMAT,
+        LAYOUT_RULES,
+        EXISTING_DASHBOARDS,
+        NEW_THEMES,
+        CHANGE_A_WIDGET,
+        BOT_PLACEMENT,
         SHARED_RULES,
       ].join("\n\n"),
     ],
