@@ -19,6 +19,7 @@ import { EditSelectionContext } from "../../Dashboard/editSelection";
 import { AppContext } from "../../../Context/App/AppContext";
 
 import { WidgetCard } from "./Enhanced/WidgetCard";
+import { widgetItemId } from "../../../utils/issues";
 import { renderComponent } from "../../../utils/layout";
 import { ProviderNeedsSetupNotice } from "../../Provider/ProviderNeedsSetupNotice";
 import { providerSetupNeeds } from "../../Provider/providerSetupNeeds";
@@ -1261,7 +1262,21 @@ export const LayoutGridContainer = memo(
       // Same frame and body types as edit mode (renderEditCell), so the
       // widget stays mounted across view ↔ edit (phase 1c).
       return (
-        <GridCellFrame editing={false} onPopout={onPopout}>
+        <GridCellFrame
+          editing={false}
+          onPopout={onPopout}
+          // Its open issues (issues PRD): the chip at the top right and a
+          // problem border; the id is the one issues are recorded with.
+          issueTarget={
+            cellComponent.component
+              ? {
+                  component: cellComponent.component,
+                  itemId: widgetItemId(cellComponent),
+                  workspaceId: workspace?.id ?? null,
+                }
+              : null
+          }
+        >
           <DraggableDroppableCellBody
             enabled={false}
             cellNumber={cellNumber}
@@ -1437,6 +1452,7 @@ export const LayoutGridContainer = memo(
         <WidgetCard.Header
           item={cellComponent}
           cellNumber={cellNumber}
+          workspaceId={workspace?.id ?? null}
           providers={cellComponent ? availableProviders || [] : []}
           // Its picks the way the widget resolves them (providerResolution):
           // the dashboard's for this widget, then its own — so the header's
@@ -1548,6 +1564,11 @@ export const LayoutGridContainer = memo(
           <GridCellFrame
             editing
             header={header}
+            issueTarget={{
+              component: cellComponent.component,
+              itemId: widgetItemId(cellComponent),
+              workspaceId: workspace?.id ?? null,
+            }}
             label={pickWidgetDisplayName(
               cellComponent,
               ComponentManager.config(cellComponent.component, cellComponent),

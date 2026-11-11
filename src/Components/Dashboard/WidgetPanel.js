@@ -39,6 +39,9 @@ import { useConfigTokens } from "./ConfigListRow";
 import { ListensFor } from "./ListensFor";
 import { WidgetCodeModal } from "./WidgetCodeModal";
 import { versionLine } from "./useWidgetSources";
+import { useWidgetIssues } from "../../hooks/useIssues";
+import { widgetItemId } from "../../utils/issues";
+import { WidgetProblems } from "../Issues/IssueParts";
 
 // Which section a request names (the card's menu, a footer badge, Dashboard
 // Config's hand-off) — the keys the old Configure sections used.
@@ -49,6 +52,8 @@ const SECTION_OF = {
   notifications: "notifications",
   schedule: "schedule",
   code: "advanced",
+  // Its open issues (issues PRD): the card's problems chip.
+  problems: "problems",
 };
 
 const MODAL_NAV = [
@@ -162,6 +167,7 @@ export const WidgetPanel = ({
     notifications: useRef(null),
     schedule: useRef(null),
     advanced: useRef(null),
+    problems: useRef(null),
   };
 
   // Something else changed this page — start from what the dashboard has.
@@ -222,6 +228,22 @@ export const WidgetPanel = ({
     : null;
   const userConfig = (config && config.userConfig) || {};
   const has = panelSections(local.item, config);
+  // What went wrong in this copy (issues PRD) — a section only while open.
+  const issues = useWidgetIssues(
+    local.item ? local.item.component : null,
+    widgetItemId(local.item),
+    (local.workspace && local.workspace.id) ?? null,
+  );
+  // Asked for Problems before they had loaded: go there once they have.
+  const hasIssues = issues.length > 0;
+  useEffect(() => {
+    if (!hasIssues || !focus || focus.section !== "problems") return;
+    const el = refs.problems.current;
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasIssues]);
   const props = { item: local.item, workspace: local.workspace, onUpdate };
   const empty = (text) => <span className={`text-sm ${muted}`}>{text}</span>;
 
@@ -341,6 +363,21 @@ export const WidgetPanel = ({
       )}
     </section>
   );
+
+  const problemsSection = issues.length ? (
+    <section
+      ref={refs.problems}
+      aria-label="Problems"
+      className="flex flex-col gap-2"
+    >
+      <SectionLabel>{`Problems · ${issues.length}`}</SectionLabel>
+      <WidgetProblems issues={issues} />
+    </section>
+  ) : null;
+
+  const modalNav = issues.length
+    ? [...MODAL_NAV, ["problems", `Problems · ${issues.length}`]]
+    : MODAL_NAV;
 
   const restSections = (
     <>
@@ -521,6 +558,7 @@ export const WidgetPanel = ({
           <span className={`text-sm ${muted}`}>Open in the larger view.</span>
         ) : (
           <>
+            {problemsSection}
             {settingsSection}
             {restSections}
           </>
@@ -558,7 +596,7 @@ export const WidgetPanel = ({
               aria-label="Sections"
               className={`flex-shrink-0 w-44 flex flex-col gap-1 p-3 border-r ${hairline}`}
             >
-              {MODAL_NAV.map(([key, label]) => (
+              {modalNav.map(([key, label]) => (
                 <Button3
                   key={key}
                   title={label}
@@ -575,6 +613,7 @@ export const WidgetPanel = ({
             </nav>
             <div className="flex flex-col flex-1 min-h-0 overflow-y-auto gap-6 px-6 py-5">
               {problemsLine}
+              {problemsSection}
               {settingsSection}
               {restSections}
             </div>

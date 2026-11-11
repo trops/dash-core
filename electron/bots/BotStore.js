@@ -37,7 +37,7 @@ const { botRef } = require("./botEvents");
 const MAX_RUNS_PER_BOT = 100;
 
 // Run fields that can hold sensitive text — sealed at rest via secretBox.
-const SEALED_RUN_FIELDS = ["output", "prompt"];
+const SEALED_RUN_FIELDS = ["output", "prompt", "toolErrors", "warnings"];
 
 class BotStore {
   /**

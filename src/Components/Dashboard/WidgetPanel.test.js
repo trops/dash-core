@@ -2,6 +2,8 @@ import React from "react";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { WidgetPanel } from "./WidgetPanel";
+import { __resetIssuesStore } from "../../hooks/useIssues";
+import { mockIssuesApi } from "../../__mocks__/mockIssuesApi";
 import {
   notePictureFailed,
   _resetPictures,
@@ -375,5 +377,77 @@ describe("review fixes", () => {
         userPrefs: { title: "My Counter" },
       }),
     );
+  });
+});
+
+describe("Problems (issues PRD)", () => {
+  const problem = {
+    id: "i1",
+    status: "open",
+    severity: "problem",
+    title: "Counter: Notes MCP › search_notes failed",
+    message: "connect ECONNREFUSED 127.0.0.1:3845",
+    call: {
+      provider: "Notes MCP",
+      tool: "search_notes",
+      args: "{}",
+      error: "connect ECONNREFUSED 127.0.0.1:3845",
+    },
+    firstAt: new Date().toISOString(),
+    lastAt: new Date().toISOString(),
+    count: 1,
+    recent: [],
+    asset: {
+      kind: "widget",
+      component: "ai-built.counter.Counter",
+      itemId: "7-c-3",
+      workspaceId: "7",
+    },
+  };
+  afterEach(() => {
+    __resetIssuesStore();
+    delete window.mainApi;
+  });
+
+  test("no open issues: no Problems section", () => {
+    mockIssuesApi([]);
+    render(<WidgetPanel item={item} workspace={workspace} name="Counter" />);
+    expect(screen.queryByRole("region", { name: "Problems" })).toBeNull();
+  });
+
+  test("open issues on this copy: a Problems section says what went wrong", async () => {
+    mockIssuesApi([problem]);
+    render(
+      <WidgetPanel
+        item={item}
+        workspace={workspace}
+        name="Counter"
+        focus={{ section: "problems", request: 1 }}
+      />,
+    );
+    const section = await screen.findByRole("region", { name: "Problems" });
+    expect(section).toHaveTextContent("Problems · 1");
+    expect(section).toHaveTextContent("What went wrong");
+    expect(section).toHaveTextContent("Notes MCP › search_notes");
+    expect(section).toHaveTextContent("connect ECONNREFUSED 127.0.0.1:3845");
+  });
+
+  test("finds this copy's issues by uuid, else id — not a made-up uuidString", async () => {
+    mockIssuesApi([
+      {
+        ...problem,
+        asset: { ...problem.asset, itemId: String(item.uuid ?? item.id) },
+      },
+    ]);
+    render(
+      <WidgetPanel
+        item={{ ...item, uuidString: "d-9999" }}
+        workspace={workspace}
+        name="Counter"
+      />,
+    );
+    expect(
+      await screen.findByRole("region", { name: "Problems" }),
+    ).toBeInTheDocument();
   });
 });

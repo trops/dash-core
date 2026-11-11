@@ -41,7 +41,14 @@ describe("DashCommandPalette — Go to", () => {
       within(goTo)
         .getAllByRole("button")
         .map((b) => b.textContent),
-    ).toEqual(["Dashboards", "Bots", "Providers", "Widgets", "Themes"]);
+    ).toEqual([
+      "Dashboards",
+      "Bots",
+      "Providers",
+      "Widgets",
+      "Issues",
+      "Themes",
+    ]);
     fireEvent.click(within(goTo).getByText("Providers"));
     expect(onOpenPage).toHaveBeenCalledWith("providers");
     expect(setIsOpen).toHaveBeenCalledWith(false);

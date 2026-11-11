@@ -8,6 +8,7 @@ import { WidgetsPage } from "./WidgetsPage";
 import { ThemesPage } from "./ThemesPage";
 import { FoldersSection } from "../Settings/sections/FoldersSection";
 import { ProvidersSection } from "../Settings/sections/ProvidersSection";
+import { IssuesPage } from "../Issues/IssuesPage";
 
 // New Dashboard, New Widget and New Bot open a new Dash Lead conversation
 // about making one (lead-workspace release 6c, frame 41); the other pages
@@ -48,6 +49,8 @@ export const AppPage = ({
   providerLink = null,
   // Widgets install deep link { action, nonce } — a new nonce re-applies it.
   widgetLink = null,
+  // Issues deep link { issueId, nonce } (a widget's problems chip).
+  issueLink = null,
   workspaces = [],
   menuItems = [],
   dashApi = null,
@@ -158,6 +161,15 @@ export const AppPage = ({
         {...createProps}
       />
     );
+  } else if (section === "issues") {
+    body = (
+      <IssuesPage
+        workspaces={workspaces}
+        dashApi={dashApi}
+        onOpenWorkspace={onOpenWorkspace}
+        issueLink={issueLink}
+      />
+    );
   } else if (section === "themes") {
     body = (
       <ThemesPage
@@ -197,25 +209,27 @@ export const AppPage = ({
               onChange={setSub}
             />
           ) : null}
-          <Button
-            title={CREATE_LABEL[section]}
-            size="sm"
-            onClick={() =>
-              OPENS_WORKSPACE[section]
-                ? window.dispatchEvent(
-                    new CustomEvent("dash:open-workspace", {
-                      detail: {
-                        key: "role:dashlead",
-                        making: {
-                          kind: OPENS_WORKSPACE[section],
-                          from: section,
+          {CREATE_LABEL[section] ? (
+            <Button
+              title={CREATE_LABEL[section]}
+              size="sm"
+              onClick={() =>
+                OPENS_WORKSPACE[section]
+                  ? window.dispatchEvent(
+                      new CustomEvent("dash:open-workspace", {
+                        detail: {
+                          key: "role:dashlead",
+                          making: {
+                            kind: OPENS_WORKSPACE[section],
+                            from: section,
+                          },
                         },
-                      },
-                    }),
-                  )
-                : setCreateRequested(true)
-            }
-          />
+                      }),
+                    )
+                  : setCreateRequested(true)
+              }
+            />
+          ) : null}
         </div>
       </div>
       <div className="flex flex-col flex-1 min-h-0">{body}</div>

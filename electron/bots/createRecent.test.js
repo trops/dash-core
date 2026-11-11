@@ -342,7 +342,11 @@ describe("botController — Recent and build memory are wired", () => {
       /: cell\s*\?[\s\S]{0,220}?return await this\._planAskRole\(role, request, planId\);[\s\S]{0,160}?: \(role, request\) => this\._planAskRole\(role, request, planId\)/,
     );
     assert.match(ctrl, /planId && isDashTeam\(this\._store\.get\(botId\)\)/);
-    assert.match(runner, /await this\._resolveTools\(bot, opts\)/);
+    // The run's options (planId) reach its tools, with its own event path.
+    assert.match(
+      runner,
+      /await this\._resolveTools\(bot, \{ \.\.\.opts, emit \}\)/,
+    );
     assert.match(
       runner,
       /\.\.\.\(opts\.planId \? \{ planId: opts\.planId \} : \{\}\)/,

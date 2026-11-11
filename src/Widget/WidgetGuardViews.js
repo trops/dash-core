@@ -8,6 +8,10 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Components/Dashboard/ConfigListRow";
+import { noteWidgetCrashed } from "../utils/issues";
+
+// Stops already recorded as issues (widget copy → when it was stopped).
+const recordedStops = new Map();
 import {
   WINDOW,
   isPaused,
@@ -60,9 +64,33 @@ export const WidgetGuardGate = ({
   children,
 }) => {
   useGuard();
-  if (off) return children;
   const key = widgetKey(component);
-  const stopped = stoppedInfo(key);
+  const stopped = off ? null : stoppedInfo(key);
+  // Issues (issues PRD): a widget stopped for failing again and again.
+  const stoppedAt = stopped ? stopped.at : null;
+  useEffect(() => {
+    if (!stoppedAt || !stopped) return;
+    // Once per stop: remounting (a page switch, Edit) isn't a new failure.
+    const seen = `${key}#${uuid ?? ""}`;
+    if (recordedStops.get(seen) === stoppedAt) return;
+    recordedStops.set(seen, stoppedAt);
+    noteWidgetCrashed(
+      {
+        component,
+        itemId: uuid,
+        workspaceId: dashboardId,
+        widgetName: label || "",
+      },
+      {
+        message: `It failed ${stopped.count} times in a few seconds${
+          stopped.why === "load" ? " while loading" : ""
+        }, so Dash stopped it.`,
+        stopped: true,
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stoppedAt]);
+  if (off) return children;
   const box = (body) => (
     <div
       className="flex flex-col h-full w-full min-h-0"

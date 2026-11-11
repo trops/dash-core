@@ -2,10 +2,12 @@ import {
   classOf,
   missingFields,
   providerStatus,
+  providerHealth,
   providerUsage,
   groupProviders,
   providerDeleteMessage,
   providerRenameMessage,
+  providerUsedByShort,
 } from "./providerSummary";
 
 const slack = {
@@ -452,5 +454,104 @@ describe("providerStatus — from a loaded profile (dash-profiles)", () => {
       label: "Needs your OK to run",
       runApproval: true,
     });
+  });
+});
+
+describe("providerHealth / providerStatus with an open issue (issues PRD)", () => {
+  const mcp = {
+    type: "notes",
+    providerClass: "mcp",
+    mcpConfig: { transport: "stdio", command: "notes" },
+    credentials: {},
+  };
+  it("couldn't start: the error line and Reconnect", () => {
+    const issue = {
+      status: "open",
+      title: "Notes MCP couldn't start",
+      message: "spawn notes ENOENT",
+    };
+    expect(providerStatus(mcp, { issue })).toMatchObject({
+      key: "problem",
+      label: "Couldn't start",
+      detail: "spawn notes ENOENT",
+      action: "Reconnect",
+      signIn: false,
+    });
+  });
+  it("sign-in expired: Sign in", () => {
+    const h = providerHealth({
+      status: "open",
+      title: "Home Assistant MCP: sign-in expired",
+      message: "",
+    });
+    expect(h).toMatchObject({ label: "Sign-in expired", action: "Sign in" });
+  });
+  it("sign-in comes from the issue's cause, not from its text", () => {
+    expect(
+      providerHealth({ status: "open", cause: "sign-in", title: "x" }).signIn,
+    ).toBe(true);
+    // A start failure whose error mentions 401 / expired is still that.
+    expect(
+      providerHealth({
+        status: "open",
+        cause: "start",
+        title: "GitHub couldn't start",
+        message: "401 Unauthorized: token expired",
+      }).label,
+    ).toBe("Couldn't start");
+    // Older issues (no cause): only the sign-in title counts.
+    expect(
+      providerHealth({
+        status: "open",
+        title: "GitHub couldn't start",
+        message: "token expired",
+      }).signIn,
+    ).toBe(false);
+  });
+  it("drops the error's \"Check its settings on the Providers page\" — it's shown there", () => {
+    expect(
+      providerHealth({
+        status: "open",
+        cause: "start",
+        title: "Slack couldn't start",
+        message:
+          "Slack couldn't start: Authentication required. Check its settings on the Providers page.",
+      }).detail,
+    ).toBe("Slack couldn't start: Authentication required.");
+  });
+  it("no issue, or a resolved one: the usual status", () => {
+    expect(providerStatus(mcp, {}).key).toBe("ready");
+    expect(providerHealth({ status: "resolved", title: "x" })).toBeNull();
+  });
+  it("setup still comes first", () => {
+    const needs = {
+      ...mcp,
+      mcpConfig: { transport: "stdio", envMapping: { T: "token" } },
+      credentials: { token: "" },
+    };
+    expect(
+      providerStatus(needs, {
+        issue: { status: "open", title: "x couldn't start" },
+      }).key,
+    ).toBe("needsSetup");
+  });
+});
+
+describe("providerUsedByShort — the list row names what uses it", () => {
+  it("one, several, none", () => {
+    expect(
+      providerUsedByShort({
+        dashboards: [{ workspaceName: "Shopping List" }],
+        bots: [],
+      }),
+    ).toBe("used by Shopping List");
+    expect(
+      providerUsedByShort({
+        dashboards: [{ workspaceName: "Shopping List" }],
+        bots: [{ name: "Digest" }],
+      }),
+    ).toBe("used by Shopping List and 1 more");
+    expect(providerUsedByShort({ dashboards: [], bots: [] })).toBe("");
+    expect(providerUsedByShort(null)).toBe("");
   });
 });

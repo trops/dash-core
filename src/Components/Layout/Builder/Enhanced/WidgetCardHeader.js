@@ -30,6 +30,8 @@ import { cardFixPill } from "../../../Dashboard/widgetPanelText";
 import { providerLabel } from "../../../Create/planChecklist";
 import { EditSelectionContext } from "../../../Dashboard/editSelection";
 import { LayoutPageContext } from "../WorkspaceScopeContext";
+import { WidgetIssueChip } from "../../../Issues/WidgetIssueChip";
+import { widgetItemId } from "../../../../utils/issues";
 
 // ComponentConfigModel's fallback `name` for a config that sets none.
 const DEFAULT_CONFIG_NAME = "My Workspace";
@@ -63,6 +65,8 @@ export const WidgetCardHeader = ({
   isSelected = false,
   isSelectable = true,
   onToggleSelect = null,
+  // Its dashboard, for its open issues (issues PRD); else the item's own.
+  workspaceId = null,
 }) => {
   // One overflow menu holds both provider pickers AND action items,
   // so the widget title always gets the full header width regardless
@@ -396,6 +400,19 @@ export const WidgetCardHeader = ({
             </button>
           ) : null}
         </div>
+        {/* Its open issues (issues PRD): beside the title; the card's
+            border turns the problem colour (GridCellFrame). */}
+        {widgetItem && widgetItem.component ? (
+          <WidgetIssueChip
+            className="flex-shrink-0"
+            component={widgetItem.component}
+            itemId={widgetItemId(widgetItem)}
+            workspaceId={workspaceId ?? widgetItem.dashboardId ?? null}
+            onSee={
+              onConfigure ? () => onConfigure(widgetItem, "problems") : null
+            }
+          />
+        ) : null}
       </div>
 
       {/* One ⋮ for the whole header, so the title gets the full width; a

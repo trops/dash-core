@@ -824,6 +824,15 @@ const providerController = {
    * @param {string} providerName the provider name to delete
    */
   deleteProvider: (win, appId, providerName) => {
+    // Its issues go with it (issues PRD). Best effort.
+    try {
+      require("./issueController").forgetAsset({
+        kind: "provider",
+        provider: providerName,
+      });
+    } catch (_e) {
+      // Issues never get in the way of deleting.
+    }
     try {
       const filename = path.join(
         app.getPath("userData"),

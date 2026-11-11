@@ -13,7 +13,7 @@ describe("DashboardStage — Manage pages", () => {
     expect(src).toMatch(/import \{ AppPage \} from "\.\.\/AppPages\/AppPage"/);
     expect(src).toMatch(/openPageTab\(/);
     expect(src).toMatch(
-      /<DashSidebar[\s\S]*?activePageKey=\{activePageKey\}[\s\S]*?onOpenPage=\{handleOpenPageGuarded\}[\s\S]*?pageAttention=\{\{\s*bots: pendingApprovals,\s*providers: providersNeedingSetup,?\s*\}\}/,
+      /<DashSidebar[\s\S]*?activePageKey=\{activePageKey\}[\s\S]*?onOpenPage=\{handleOpenPageGuarded\}[\s\S]*?pageAttention=\{\{\s*bots: pendingApprovals,\s*providers: providersNeedingSetup,\s*issues: issueCounts\.total,?\s*\}\}/,
     );
     expect(src).toMatch(/usePendingApprovalCount\(\)/);
     expect(src).toMatch(

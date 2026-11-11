@@ -327,6 +327,31 @@ describe("BotStore — encrypted run answers", () => {
     assert.equal(run.output, "2 found");
   });
 
+  it("seals a failed call's details too (what it was asked, why it failed)", () => {
+    const { store, persistence } = boxedStore();
+    const bot = store.create(validDef);
+    const toolErrors = JSON.stringify([
+      { call: 0, args: '{"q":"from:acme"}', error: "429" },
+    ]);
+    store.appendRun(bot.id, {
+      status: "failed",
+      toolCalls: [{ tool: "search_emails", provider: "Gmail", ok: false }],
+      toolErrors,
+      warnings: JSON.stringify([{ message: "Gmail couldn't start" }]),
+    });
+    const raw = persistence._blob().runs[bot.id][0];
+    assert.ok(raw.toolErrors.startsWith("enc:v1:"));
+    assert.ok(!raw.toolErrors.includes("acme"));
+    // Warnings are sealed too: a server's error can echo paths or tokens.
+    assert.ok(raw.warnings.startsWith("enc:v1:"));
+    assert.ok(!raw.warnings.includes("Gmail"));
+    assert.equal(
+      JSON.parse(store.getRuns(bot.id)[0].warnings)[0].message,
+      "Gmail couldn't start",
+    );
+    assert.equal(store.getRuns(bot.id)[0].toolErrors, toolErrors);
+  });
+
   it("without a secretBox, outputs stay plain (plain-Node host)", () => {
     const { store, persistence } = freshStore();
     const bot = store.create(validDef);

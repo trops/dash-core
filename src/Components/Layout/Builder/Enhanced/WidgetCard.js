@@ -54,6 +54,8 @@ const WidgetCardHeader_Component = ({
   isSelected = false,
   isSelectable = true,
   onToggleSelect = null,
+  // Its dashboard — the header's problems chip (issues PRD).
+  workspaceId = null,
 }) => {
   const { preview } = React.useContext(WidgetCardContext);
 
@@ -79,6 +81,7 @@ const WidgetCardHeader_Component = ({
       isSelected={isSelected}
       isSelectable={isSelectable}
       onToggleSelect={onToggleSelect}
+      workspaceId={workspaceId}
     />
   );
 };

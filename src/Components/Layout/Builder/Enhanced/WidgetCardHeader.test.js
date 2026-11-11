@@ -3,6 +3,8 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ThemeContext } from "@trops/dash-react";
 import { WidgetCardHeader } from "./WidgetCardHeader";
+import { __resetIssuesStore } from "../../../../hooks/useIssues";
+import { mockIssuesApi } from "../../../../__mocks__/mockIssuesApi";
 
 jest.mock("../../../../ComponentManager", () => ({
   ComponentManager: {
@@ -285,5 +287,75 @@ describe("Move to page ▸ (move a widget to another page, frame 1)", () => {
       screen.getByRole("button", { name: "Composed Widget 3 options" }),
     );
     expect(screen.queryByRole("menuitem", { name: "Move to page" })).toBeNull();
+  });
+});
+
+describe("WidgetCardHeader — problems chip (issues PRD)", () => {
+  afterEach(() => {
+    __resetIssuesStore();
+    delete window.mainApi;
+  });
+
+  test("a copy with open issues shows a red chip; See what went wrong opens Problems", async () => {
+    mockIssuesApi([
+      {
+        id: "i1",
+        status: "open",
+        severity: "problem",
+        title: "Feed: Notes MCP › search_notes failed",
+        message: "connect ECONNREFUSED",
+        call: null,
+        lastAt: new Date().toISOString(),
+        count: 1,
+        asset: {
+          kind: "widget",
+          component: "trops.feed.Feed",
+          itemId: "5-f-2",
+          workspaceId: "5",
+        },
+      },
+    ]);
+    const onConfigure = jest.fn();
+    const item = { component: "trops.feed.Feed", uuid: "5-f-2", id: 2 };
+    renderHeader({ item, onConfigure, workspaceId: 5 });
+    const chip = await screen.findByTestId("widget-issue-chip");
+    expect(chip).toHaveTextContent("1 problem");
+    fireEvent.click(chip);
+    fireEvent.click(
+      screen.getByRole("button", { name: "See what went wrong" }),
+    );
+    expect(onConfigure).toHaveBeenCalledWith(item, "problems");
+  });
+
+  test("finds its issues by the id they are recorded with (uuid, else id — never uuidString)", async () => {
+    mockIssuesApi([
+      {
+        id: "i2",
+        status: "open",
+        severity: "problem",
+        title: "Feed crashed",
+        message: "boom",
+        lastAt: new Date().toISOString(),
+        count: 1,
+        asset: {
+          kind: "widget",
+          component: "trops.feed.Feed",
+          itemId: "2",
+          workspaceId: "5",
+        },
+      },
+    ]);
+    // No uuid: a made-up uuidString must not hide the chip.
+    const item = { component: "trops.feed.Feed", uuidString: "d-4821", id: 2 };
+    renderHeader({ item, workspaceId: 5 });
+    expect(await screen.findByTestId("widget-issue-chip")).toHaveTextContent(
+      "1 problem",
+    );
+  });
+
+  test("no open issues: no chip", () => {
+    mockIssuesApi([]);
+    renderHeader({ item: { component: "trops.feed.Feed", uuid: "5-f-2" } });
+    expect(screen.queryByTestId("widget-issue-chip")).toBeNull();
   });
 });

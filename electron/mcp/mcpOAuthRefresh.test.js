@@ -270,20 +270,34 @@ describe("mcpController on an expired sign-in", () => {
         active.delete(`${workspaceId}::${name}`);
       },
     };
+    // Issues (issues PRD): what it would record, kept for the checks.
+    const recorded = [];
+    const noteProvider = (fn) =>
+      fn({ record: (input) => recorded.push(input), resolveAsset: () => 0 });
+    const providerIssue = (input) => input;
     const signInExpired = new Function(
       "require",
       "mcpController",
       "activeServers",
       "serverKey",
+      "noteProvider",
+      "providerIssue",
       `${fnSource}; return signInExpired;`,
-    )(require, mcpController, active, (ws, name) => `${ws}::${name}`);
-    return { signInExpired, stopped };
+    )(
+      require,
+      mcpController,
+      active,
+      (ws, name) => `${ws}::${name}`,
+      noteProvider,
+      providerIssue,
+    );
+    return { signInExpired, stopped, recorded };
   }
 
   it("disconnects the server that failed and says to sign in again", async () => {
     const failed = { client: {} };
     const active = new Map([["ws1::Fake", failed]]);
-    const { signInExpired, stopped } = load(active);
+    const { signInExpired, stopped, recorded } = load(active);
 
     const message = await signInExpired(
       new UnauthorizedError(),
@@ -295,6 +309,10 @@ describe("mcpController on an expired sign-in", () => {
 
     assert.match(message, /^Fake's sign-in has expired/);
     assert.deepEqual(stopped, [["Fake", "ws1"]]);
+    // It's in Issues too, as the provider's sign-in.
+    assert.equal(recorded.length, 1);
+    assert.equal(recorded[0].provider, "Fake");
+    assert.equal(recorded[0].signIn, true);
   });
 
   it("leaves a connection that has since reconnected alone", async () => {

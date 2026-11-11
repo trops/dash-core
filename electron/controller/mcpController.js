@@ -40,6 +40,30 @@ const {
   createBuiltinTransport,
 } = require("../mcp/builtinServers");
 const { app } = require("electron");
+const { providerIssue } = require("../issues/issueSources");
+
+// Issues (issues PRD): a provider that couldn't start or whose sign-in
+// expired is recorded; one that starts again resolves it. Best effort.
+function noteProvider(fn) {
+  try {
+    fn(require("./issueController"));
+  } catch (_e) {
+    // Issues never get in the way of a connection.
+  }
+}
+
+// Only a provider the user saved gets an issue — not a test start from the
+// new-provider form under a name that may never be saved.
+function isSavedProvider(win, appId, name) {
+  if (!appId || !name) return false;
+  try {
+    const { providers = [] } =
+      require("./providerController").listProviders(win, appId) || {};
+    return providers.some((p) => p && p.name === name);
+  } catch (_e) {
+    return false;
+  }
+}
 
 /**
  * Load the user's settings.json (or null on absence/parse error). The
@@ -576,9 +600,15 @@ async function signInExpired(error, win, serverName, workspaceId, server) {
       // Already gone — nothing to disconnect.
     }
   }
-  return expired
+  const message = expired
     ? `${serverName}'s sign-in has expired and couldn't be renewed, so Dash disconnected it. You'll be asked to sign in again the next time it connects.`
     : `${serverName} turned down Dash's sign-in even after renewing it, so Dash disconnected it. Check that your account can use this server, then connect again.`;
+  noteProvider((issues) =>
+    issues.record(
+      providerIssue({ provider: serverName, error: message, signIn: true }),
+    ),
+  );
+  return message;
 }
 
 const mcpController = {
@@ -911,6 +941,9 @@ const mcpController = {
         console.log(
           `[mcpController] Server connected: ${key} (${tools.length} tools, ${resources.length} resources)`,
         );
+        noteProvider((issues) =>
+          issues.resolveAsset({ kind: "provider", provider: serverName }),
+        );
 
         return {
           success: true,
@@ -953,6 +986,13 @@ const mcpController = {
           });
         }
 
+        if (isSavedProvider(win, appId, serverName)) {
+          noteProvider((issues) =>
+            issues.record(
+              providerIssue({ provider: serverName, error: errorMessage }),
+            ),
+          );
+        }
         // Mark as error state
         activeServers.set(key, {
           client: null,

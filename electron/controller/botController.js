@@ -238,6 +238,8 @@ const {
   describeAnswers,
 } = require("../bots/lastAnswers");
 const { cleanWire, withWireProblems } = require("../bots/widgetWire");
+const issueController = require("./issueController");
+const { botRunIssues } = require("../issues/issueSources");
 const {
   listToolSources,
   ensureBotServers,
@@ -1156,6 +1158,8 @@ const botController = {
     if (bot) this._logAudit({ type: "bot-deleted", botId });
     // A deleted bot's remembered approvals go with it.
     grantStore.revokeGrant(botId);
+    // Its issues too — there's nothing left to fix (issues PRD).
+    issueController.forgetAsset({ kind: "bot", botId });
     // Deleting a lead counts as turning it off for that dashboard, so it isn't
     // silently re-created the next time the dashboard opens (TEAM-002).
     if (isLead(bot) && bot.workspaceId) {
@@ -2982,6 +2986,8 @@ const botController = {
         }
         // A failed run notifies (US-018 AC5).
         this._sendNotice(failureNotice(this._store.get(botId), record));
+        // What went wrong goes in Issues; a clean run resolves the bot's.
+        this._recordRunIssues(this._store.get(botId), record);
       })
       .catch(() => {})
       .finally(() => {
@@ -5172,12 +5178,12 @@ const botController = {
           ),
       });
       for (const f of failed) {
-        this._broadcast(BOT_STREAM, {
-          botId: bot.id,
-          event: {
-            type: "warning",
-            message: `${f.serverName} couldn't start, so its tools aren't available this run: ${f.message}`,
-          },
+        this._runWarning(bot, runOpts, {
+          type: "warning",
+          // Short; the server's own error is the detail (shown under it).
+          message: `${f.serverName} couldn't start, so its tools aren't available this run.`,
+          provider: f.serverName,
+          detail: f.message,
         });
       }
     }
@@ -5190,7 +5196,7 @@ const botController = {
     });
     // Claude connectors from the user's Claude account: the bot's Claude
     // Code run reaches them itself; Dash says which and gates each call.
-    const linked = await this._resolveConnectors(bot);
+    const linked = await this._resolveConnectors(bot, runOpts);
     Object.assign(toolServer, linked.toolServer);
     // Remembered per bot so _callTool can hard-enforce the same whitelist.
     this._allowedByBot.set(bot.id, { ...allowedFor, ...linked.allowedFor });
@@ -5214,11 +5220,57 @@ const botController = {
   },
 
   /**
+   * A finished run's issues (issues PRD): a failure and each warning are
+   * recorded; a run that finished cleanly resolves the bot's open ones.
+   * Skipped, stopped and interrupted runs change nothing.
+   */
+  _recordRunIssues(bot, record) {
+    if (!bot || !record || record.skipped || isDashTeam(bot)) return;
+    try {
+      let toolErrors = [];
+      try {
+        toolErrors = record.toolErrors ? JSON.parse(record.toolErrors) : [];
+      } catch (_e) {
+        toolErrors = [];
+      }
+      const toolCalls = (record.toolCalls || []).map((c, i) => {
+        const e = toolErrors.find((x) => x && x.call === i);
+        return e ? { ...c, args: e.args, error: e.error } : c;
+      });
+      const inputs = botRunIssues({ bot, run: { ...record, toolCalls } });
+      const asset = { kind: "bot", botId: bot.id };
+      // A completed run clears an earlier failure; a clean one, warnings too.
+      if (record.status === "completed") {
+        issueController.resolveAsset(
+          asset,
+          inputs.length ? { severity: "problem" } : {},
+        );
+      }
+      for (const input of inputs) issueController.record(input);
+    } catch (_e) {
+      // Issues are a convenience: never a reason a run fails.
+    }
+  },
+
+  /**
+   * A warning during a run: through the run's own events, so it's kept on
+   * the run (issues PRD) as well as shown — or straight to the window when
+   * there's no run.
+   */
+  _runWarning(bot, runOpts, event) {
+    if (runOpts && typeof runOpts.emit === "function") {
+      runOpts.emit(event);
+      return;
+    }
+    this._broadcast(BOT_STREAM, { botId: bot.id, event });
+  },
+
+  /**
    * The bot's granted Claude connectors for one run (resolveBotConnectors),
    * with every connector in the account so the run can hide the rest. Reads
    * the account's list when the bot has any and it's older than 10 minutes.
    */
-  async _resolveConnectors(bot) {
+  async _resolveConnectors(bot, runOpts = {}) {
     const none = {
       connectors: [],
       connectorServers: [],
@@ -5265,12 +5317,10 @@ const botController = {
       connectors: all,
     });
     for (const name of resolved.missing) {
-      this._broadcast(BOT_STREAM, {
-        botId: bot.id,
-        event: {
-          type: "warning",
-          message: `${name} isn't connected in your Claude account right now, so its tools may not be available this run. Check it on claude.ai › Settings › Connectors.`,
-        },
+      this._runWarning(bot, runOpts, {
+        type: "warning",
+        message: `${name} isn't connected in your Claude account right now, so its tools may not be available this run. Check it on claude.ai › Settings › Connectors.`,
+        provider: name,
       });
     }
     return {

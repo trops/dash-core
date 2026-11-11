@@ -90,6 +90,7 @@ import { dashboardCopy } from "../../utils/dashboardCopy";
 import { LeadWorkspace } from "../LeadWorkspace/LeadWorkspace";
 import { usePendingApprovalCount } from "../Bots/usePendingApprovalCount";
 import { useProvidersNeedingSetup } from "../AppPages/useProviderStatus";
+import { useIssueCounts } from "../../hooks/useIssues";
 import { ProviderSetupHost } from "../Provider/ProviderSetupHost";
 import { AppPage } from "../AppPages/AppPage";
 import {
@@ -301,6 +302,8 @@ const DashboardStageInner = ({
   const [providerLink, setProviderLink] = useState(null);
   // Widgets page install deep link { action, nonce }.
   const [widgetLink, setWidgetLink] = useState(null);
+  // Issues page deep link { issueId, nonce } (a widget's problems chip).
+  const [issueLink, setIssueLink] = useState(null);
   // The widget panel's "apply what's typed" — Save calls it first.
   const panelFlushRef = useRef(null);
   // The widget panel's settings check: Save waits while one fails.
@@ -312,6 +315,8 @@ const DashboardStageInner = ({
   const pendingApprovals = usePendingApprovalCount();
   // Providers that still need a credential — the Providers item's dot.
   const providersNeedingSetup = useProvidersNeedingSetup();
+  // Open issues anywhere — the Issues item's count (issues PRD).
+  const issueCounts = useIssueCounts();
 
   /**
    * @param {Boolean} previewMode this is a toggle telling the dash we are editing
@@ -791,6 +796,10 @@ const DashboardStageInner = ({
   openPageRef.current = (d) => {
     if (d.page === "providers")
       openAppSettings("providers", d.providerName || null);
+    else if (d.page === "issues")
+      handleOpenPageGuarded("issues", {
+        issueLink: d.issueId ? { issueId: d.issueId, nonce: Date.now() } : null,
+      });
     else if (d.page) handleOpenPageGuarded(d.page);
   };
   useEffect(() => {
@@ -1569,6 +1578,7 @@ const DashboardStageInner = ({
     setPageSubsection(opts.subsection || null);
     if (opts.providerLink) setProviderLink(opts.providerLink);
     if (opts.widgetLink) setWidgetLink(opts.widgetLink);
+    if (opts.issueLink) setIssueLink(opts.issueLink);
   }
 
   function handleOpenPageGuarded(key, opts = {}) {
@@ -3225,6 +3235,7 @@ const DashboardStageInner = ({
                 pageAttention={{
                   bots: pendingApprovals,
                   providers: providersNeedingSetup,
+                  issues: issueCounts.total,
                 }}
               />
             )}
@@ -3433,6 +3444,7 @@ const DashboardStageInner = ({
                   subsection={pageSubsection}
                   providerLink={providerLink}
                   widgetLink={widgetLink}
+                  issueLink={issueLink}
                   workspaces={workspaceConfig}
                   menuItems={menuItems}
                   dashApi={dashApi}

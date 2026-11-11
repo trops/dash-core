@@ -1,7 +1,10 @@
 import React, { useEffect } from "react";
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { GridCellFrame } from "./GridCellFrame";
+import { __resetIssuesStore } from "../../../hooks/useIssues";
+import { mockIssuesApi } from "../../../__mocks__/mockIssuesApi";
+import { retryWidget } from "../../Issues/issueActions";
 
 /**
  * A grid cell's widget must stay mounted when the dashboard switches
@@ -139,5 +142,88 @@ describe("GridCellFrame — one themed card while editing (design audit)", () =>
   test("view mode is untouched", () => {
     const { container } = render(themed(false));
     expect(container.firstChild.className).toBe("relative w-full h-full");
+  });
+});
+
+describe("GridCellFrame — a copy with open issues (issues PRD)", () => {
+  const issue = {
+    id: "i1",
+    status: "open",
+    severity: "problem",
+    title: "Shopping List: Notes MCP › search_notes failed",
+    message: "connect ECONNREFUSED",
+    count: 1,
+    lastAt: new Date().toISOString(),
+    asset: {
+      kind: "widget",
+      component: "acme.notes.ShoppingList",
+      itemId: "uuid-3",
+      workspaceId: "7",
+    },
+  };
+  const target = {
+    component: "acme.notes.ShoppingList",
+    itemId: "uuid-3",
+    workspaceId: 7,
+  };
+  afterEach(() => {
+    __resetIssuesStore();
+    delete window.mainApi;
+  });
+
+  test("view mode: the chip sits in the top-right corner (with the popout), and the cell gets the problem border", async () => {
+    mockIssuesApi([issue]);
+    const { container } = render(
+      frame(false, { issueTarget: target, onPopout: () => {} }),
+    );
+    const chip = await screen.findByTestId("widget-issue-chip");
+    const corner = chip.closest("span.absolute");
+    expect(corner.className).toMatch(/top-1 right-1/);
+    expect(corner.className).not.toMatch(/right-8|left-/);
+    expect(within(corner).getByLabelText("Pop out widget")).toBeInTheDocument();
+    expect(container.firstChild.className).toMatch(/border-2 border-red-500/);
+  });
+
+  test("edit mode: no chip in the frame (the header has it), but a problem border", async () => {
+    mockIssuesApi([issue]);
+    const { container } = render(frame(true, { issueTarget: target }));
+    await act(async () => {});
+    expect(screen.queryByTestId("widget-issue-chip")).toBeNull();
+    expect(container.firstChild.className).toMatch(/border-2 border-red-500/);
+  });
+
+  test("no open issues: no chip, no problem border", async () => {
+    mockIssuesApi([]);
+    const { container } = render(frame(false, { issueTarget: target }));
+    await act(async () => {});
+    expect(screen.queryByTestId("widget-issue-chip")).toBeNull();
+    expect(container.firstChild.className).toBe("relative w-full h-full");
+  });
+
+  test("Retry remounts only the matching copy", async () => {
+    mockIssuesApi([]);
+    render(
+      <>
+        {frame(false, { issueTarget: target })}
+        {frame(false, { issueTarget: { ...target, itemId: "uuid-9" } })}
+      </>,
+    );
+    expect(mounts).toBe(2);
+    let res;
+    act(() => {
+      res = retryWidget(issue);
+    });
+    expect(res.state).toBe("retrying");
+    expect(res.message).toBe("Retrying…");
+    expect(mounts).toBe(3);
+  });
+
+  test("Retry with no matching copy on screen opens its dashboard", () => {
+    const opened = jest.fn();
+    window.addEventListener("dash:open-built-dashboard", opened);
+    const res = retryWidget(issue);
+    window.removeEventListener("dash:open-built-dashboard", opened);
+    expect(res.state).toBe("opening");
+    expect(opened.mock.calls[0][0].detail).toEqual({ id: "7" });
   });
 });

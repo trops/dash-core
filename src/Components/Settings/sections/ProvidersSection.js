@@ -8,6 +8,7 @@ import {
   SearchInput,
   SegmentedControl,
   StatusBadge,
+  useStatusTokens,
 } from "@trops/dash-react";
 import { AppContext } from "../../../Context/App/AppContext";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
@@ -20,6 +21,7 @@ import {
   groupProviders,
   providerDeleteMessage,
   providerRenameMessage,
+  providerUsedByShort,
 } from "../../AppPages/providerSummary";
 import { ListGroupLabel, ManageLayout } from "../../AppPages/ManageLayout";
 import {
@@ -41,6 +43,10 @@ import {
 } from "../details/ClaudeConnectorDetail";
 import { saveMcpProvider } from "../../../utils/saveMcpProvider";
 import {
+  reconnectProvider,
+  signsInWithCommand,
+} from "../../Issues/issueActions";
+import {
   envMappingToRows,
   headerTemplateToRows,
 } from "../../../utils/mcpUtils";
@@ -60,11 +66,14 @@ const CLS_OF_TAB = {
   websocket: "websocket",
   connector: "connector",
 };
-const STATUS_DOT = {
-  needsSetup: "bg-amber-400",
-  connected: "bg-green-400",
-  ready: "bg-gray-500",
-};
+// A status's dot, in the status colours (useStatusTokens).
+const statusDotOf = (key, tokens) =>
+  ({
+    needsSetup: tokens.warning.solidBg,
+    connected: tokens.success.solidBg,
+    // An open issue: it couldn't start, or its sign-in expired.
+    problem: tokens.error.solidBg,
+  })[key] || "bg-gray-500";
 const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /**
@@ -809,6 +818,43 @@ export const ProvidersSection = ({
     resetForm();
   };
 
+  // Reconnect (issues PRD): stop its server and start it again; the row
+  // then reads how it stands.
+  const [reconnecting, setReconnecting] = useState({});
+  const statusTokens = useStatusTokens();
+  const reconnect = async (name) => {
+    setReconnecting((r) => ({ ...r, [name]: true }));
+    await reconnectProvider(dashApi, name, providers[name]);
+    setReconnecting((r) => ({ ...r, [name]: false }));
+    status.refresh && status.refresh();
+  };
+  // Sign in where it has its own sign-in command (its detail runs it);
+  // otherwise (an OAuth server) Reconnect asks for the sign-in again.
+  const signsInHere = (name) => {
+    const p = providers[name];
+    const entry = p && catalog.find((e) => e.id === p.type);
+    return signsInWithCommand(p, (entry && entry.authCommand) || null);
+  };
+  const healthAction = (name, st, cls) => {
+    if (st.key !== "problem" || cls !== "mcp") return null;
+    const signIn = st.signIn && signsInHere(name);
+    return (
+      <Button
+        title={
+          signIn
+            ? "Sign in"
+            : reconnecting[name]
+              ? "Reconnecting…"
+              : "Reconnect"
+        }
+        size="sm"
+        ariaLabel={`${signIn ? "Sign in to" : "Reconnect"} ${name}`}
+        disabled={!!reconnecting[name]}
+        onClick={() => (signIn ? selectProvider(name) : reconnect(name))}
+      />
+    );
+  };
+
   const listContent = (
     <>
       {groups.map((g) => (
@@ -817,58 +863,70 @@ export const ProvidersSection = ({
           {g.items.map(({ name, provider, cls }) => {
             const active = !isFlowOpen && name === shownName;
             const st = status.statusOf(name);
-            const dot = STATUS_DOT[st.key] || STATUS_DOT.ready;
-            const used = status.usageOf(name).count;
+            const dot = statusDotOf(st.key, statusTokens);
+            const used = providerUsedByShort(status.usageOf(name));
+            const action = healthAction(name, st, cls);
             return (
-              <button
-                key={name}
-                type="button"
-                aria-current={active ? "true" : undefined}
-                onClick={() => selectProvider(name)}
-                className={`w-full text-left rounded-lg px-2 py-2 border flex flex-row items-center gap-3 ${
-                  active
-                    ? `${selectedBg} ${selectedBorder}`
-                    : "border-transparent"
-                }`}
-              >
-                <FontAwesomeIcon
-                  icon={iconForClass(cls)}
-                  className={`flex-shrink-0 ${muted}`}
-                />
-                <span className="flex-1 min-w-0 flex flex-col">
-                  <span
-                    data-name
-                    className={`text-sm font-medium truncate ${strong}`}
-                  >
-                    {cls === "connector"
-                      ? connectorLabel(name, provider)
-                      : name}
-                  </span>
-                  {cls === "connector" ? (
-                    <span className="flex flex-row items-center gap-2 min-w-0">
-                      <StatusBadge state="info" label="Claude connector" />
-                      {used ? (
-                        <span className={`text-xs truncate ${muted}`}>
-                          used by {used}
-                        </span>
-                      ) : null}
-                    </span>
-                  ) : (
-                    <span className={`text-xs truncate ${muted}`}>
-                      {provider.type || cls}
-                      {used ? ` · used by ${used}` : ""}
-                    </span>
-                  )}
-                </span>
-                <span
-                  className={`flex flex-row items-center gap-1.5 text-xs flex-shrink-0 ${muted}`}
+              <div key={name} className="flex flex-row items-center gap-2">
+                <button
+                  type="button"
+                  aria-current={active ? "true" : undefined}
+                  onClick={() => selectProvider(name)}
+                  className={`flex-1 min-w-0 text-left rounded-lg px-2 py-2 border flex flex-row items-center gap-3 ${
+                    active
+                      ? `${selectedBg} ${selectedBorder}`
+                      : "border-transparent"
+                  }`}
                 >
-                  <span
-                    className={`inline-block h-2 w-2 rounded-full ${dot}`}
+                  <FontAwesomeIcon
+                    icon={iconForClass(cls)}
+                    className={`flex-shrink-0 ${muted}`}
                   />
-                  {st.label}
-                </span>
-              </button>
+                  <span className="flex-1 min-w-0 flex flex-col">
+                    <span
+                      data-name
+                      className={`text-sm font-medium truncate ${strong}`}
+                    >
+                      {cls === "connector"
+                        ? connectorLabel(name, provider)
+                        : name}
+                    </span>
+                    {cls === "connector" ? (
+                      <span className="flex flex-row items-center gap-2 min-w-0">
+                        <StatusBadge state="info" label="Claude connector" />
+                        {used ? (
+                          <span className={`text-xs truncate ${muted}`}>
+                            {used}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className={`text-xs truncate ${muted}`}>
+                        {provider.type || cls}
+                        {used ? ` · ${used}` : ""}
+                      </span>
+                    )}
+                    {st.key === "problem" && st.detail ? (
+                      <span
+                        data-testid="provider-health-detail"
+                        className={`text-xs truncate ${statusTokens.error.text}`}
+                        title={st.detail}
+                      >
+                        {st.detail}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span
+                    className={`flex flex-row items-center gap-1.5 text-xs flex-shrink-0 ${muted}`}
+                  >
+                    <span
+                      className={`inline-block h-2 w-2 rounded-full ${dot}`}
+                    />
+                    {st.label}
+                  </span>
+                </button>
+                {action}
+              </div>
             );
           })}
         </div>
