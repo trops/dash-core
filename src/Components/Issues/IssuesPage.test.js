@@ -499,3 +499,70 @@ test("a provider's JSON error reads plainly; Show raw shows all of it", async ()
   fireEvent.click(screen.getByRole("button", { name: "Hide raw" }));
   expect(screen.queryByTestId("issue-raw-error")).toBeNull();
 });
+
+test("Mute errors like this: says exactly what it mutes, then it moves to Muted", async () => {
+  renderPage();
+  await waitFor(() => expect(rows()).toHaveLength(3));
+  fireEvent.click(
+    within(screen.getByTestId("issue-detail")).getByRole("button", {
+      name: "Mute errors like this",
+    }),
+  );
+  const confirm = await screen.findByTestId("mute-confirm");
+  expect(confirm.textContent).toContain(
+    "Mutes only this widget, this call, and this error",
+  );
+  expect(confirm.textContent).toContain("Shopping List (Life HQ)");
+  expect(confirm.textContent).toContain("Notes MCP › search_notes");
+  expect(confirm.textContent).toContain("connect ECONNREFUSED 127.0.0.1:3845");
+  fireEvent.click(screen.getByRole("button", { name: "Mute" }));
+  await waitFor(() => expect(t.api.mute).toHaveBeenCalledWith("i1"));
+  await waitFor(() => expect(rows()).toHaveLength(2));
+  expect(screen.getByText("1 muted error is hidden.")).toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "Muted · 1" })).toBeInTheDocument();
+});
+
+test("Muted: the muted issue, how often since, and Unmute", async () => {
+  t = mockIssuesApi([
+    {
+      ...widgetIssue,
+      status: "muted",
+      mutedAt: today(0, 40),
+      mutedCount: 214,
+    },
+    botIssue,
+  ]);
+  renderPage();
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  fireEvent.click(screen.getByRole("radio", { name: "Muted · 1" }));
+  await waitFor(() =>
+    expect(within(rows()[0]).getByText("Shopping List")).toBeInTheDocument(),
+  );
+  const detail = screen.getByTestId("issue-detail");
+  expect(within(detail).getByText("Muted")).toBeInTheDocument();
+  expect(screen.getByTestId("issue-muted").textContent).toContain(
+    "214 times since you muted it",
+  );
+  // Newest first: it happened at 0:45, after it was muted at 0:40.
+  const said = within(screen.getByTestId("issue-timeline"))
+    .getAllByText(/./)
+    .map((n) => n.textContent);
+  expect(said.indexOf("You muted it")).toBeGreaterThan(
+    said.indexOf("search_notes failed"),
+  );
+  expect(
+    within(detail).queryByRole("button", { name: "Mark resolved" }),
+  ).toBeNull();
+  fireEvent.click(within(detail).getByRole("button", { name: "Unmute" }));
+  await waitFor(() => expect(t.api.unmute).toHaveBeenCalledWith("i1"));
+  // It happened since it was muted: shown back in Open.
+  await waitFor(() =>
+    expect(screen.getByRole("radio", { name: /^Open/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    ),
+  );
+  await waitFor(() =>
+    expect(within(rows()[0]).getByText("Shopping List")).toBeInTheDocument(),
+  );
+});

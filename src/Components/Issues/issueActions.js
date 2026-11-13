@@ -10,6 +10,7 @@ import {
   restart as restartGuarded,
   widgetKey as guardKey,
 } from "../../Widget/widgetGuard";
+import { noteIssueOpenAgain } from "../../utils/issues";
 
 const fire = (name, detail) => {
   if (typeof window === "undefined") return;
@@ -203,6 +204,35 @@ export async function resolveIssue(issue) {
   } catch (_e) {
     // it stays open; the list says so
   }
+}
+
+/** Mute errors like this one: still counted, never shown as open. */
+export async function muteIssue(issue) {
+  const api = issuesApi();
+  if (!api || !issue || typeof api.mute !== "function") return false;
+  try {
+    return !!(await api.mute(issue.id));
+  } catch (_e) {
+    return false;
+  }
+}
+
+/**
+ * Unmute: back in Open if it happened since, else resolved.
+ * → "open" | "resolved" | null (it didn't change).
+ */
+export async function unmuteIssue(issue) {
+  const api = issuesApi();
+  if (!api || !issue || typeof api.unmute !== "function") return null;
+  try {
+    if (!(await api.unmute(issue.id))) return null;
+  } catch (_e) {
+    return null;
+  }
+  if (!issue.mutedCount) return "resolved";
+  // Open again: its call working next resolves it.
+  noteIssueOpenAgain(issue);
+  return "open";
 }
 
 /** Forget resolved issues. */

@@ -14,6 +14,8 @@ const {
   ISSUES_RESOLVE,
   ISSUES_RESOLVE_ASSET,
   ISSUES_CLEAR_RESOLVED,
+  ISSUES_MUTE,
+  ISSUES_UNMUTE,
 } = require("../events");
 
 const issuesApi = {
@@ -30,7 +32,7 @@ const issuesApi = {
   /** @param {{ status?, kind?, workspaceId?, asset? }} filter */
   list: (filter = {}) => ipcRenderer.invoke(ISSUES_LIST, filter),
 
-  /** Open issues: { total, widget, bot, provider }. */
+  /** Open issues: { total, widget, bot, provider }, and muted. */
   counts: () => ipcRenderer.invoke(ISSUES_COUNTS),
 
   resolve: (id) => ipcRenderer.invoke(ISSUES_RESOLVE, { id }),
@@ -38,6 +40,12 @@ const issuesApi = {
   resolveAsset: (asset) => ipcRenderer.invoke(ISSUES_RESOLVE_ASSET, asset),
 
   clearResolved: () => ipcRenderer.invoke(ISSUES_CLEAR_RESOLVED),
+
+  /** Mute errors like this one: counted, never shown as open. */
+  mute: (id) => ipcRenderer.invoke(ISSUES_MUTE, { id }),
+
+  /** Unmute: back in Open if it happened since, else resolved. */
+  unmute: (id) => ipcRenderer.invoke(ISSUES_UNMUTE, { id }),
 };
 
 module.exports = issuesApi;

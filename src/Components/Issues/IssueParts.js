@@ -1,11 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Button2, Button3, useStatusTokens } from "@trops/dash-react";
+import {
+  Button,
+  Button2,
+  Button3,
+  ConfirmationModal,
+  useStatusTokens,
+} from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import {
   argsText,
+  assetName,
   callText,
   countText,
   errorText,
+  kindLabel,
+  mutedCountText,
   rawErrorText,
   whenLongText,
   whenText,
@@ -13,10 +22,12 @@ import {
 import {
   fixWithAi,
   hasDebugConsole,
+  muteIssue,
   openDebugConsole,
   openProvider,
   providerOf,
   retryWidget,
+  unmuteIssue,
 } from "./issueActions";
 
 /**
@@ -38,9 +49,21 @@ export function useRetryWidget(issue, { workspaces = [], onOpen = null } = {}) {
   return { retry, note };
 }
 
-/** A severity dot: red for a problem, amber for a warning, green for fine. */
+/**
+ * A severity dot: red for a problem, amber for a warning, green for fine,
+ * a hollow ring for muted.
+ */
 export const IssueDot = ({ severity = "problem", className = "" }) => {
   const status = useStatusTokens();
+  const { hairline } = useConfigTokens();
+  if (severity === "muted") {
+    return (
+      <span
+        aria-hidden="true"
+        className={`inline-block flex-shrink-0 h-2 w-2 rounded-full border-2 ${hairline} ${className}`}
+      />
+    );
+  }
   const tone =
     severity === "warning"
       ? status.warning.solidBg
@@ -57,7 +80,7 @@ export const IssueDot = ({ severity = "problem", className = "" }) => {
 
 /** Label / value lines (Call, Asked with, Error, …). */
 export const IssueFacts = ({ rows = [] }) => {
-  const { muted } = useConfigTokens();
+  const { muted, strong } = useConfigTokens();
   const status = useStatusTokens();
   const shown = rows.filter((r) => r && r.value);
   if (!shown.length) return null;
@@ -69,7 +92,7 @@ export const IssueFacts = ({ rows = [] }) => {
           <dd
             className={`flex-1 min-w-0 break-words ${
               r.mono ? "font-mono" : ""
-            } ${r.bad ? status.error.text : ""}`}
+            } ${r.bad ? status.error.text : strong}`}
           >
             {r.value}
             {r.raw ? <RawToggle raw={r.raw} /> : null}
@@ -130,6 +153,108 @@ export function callRows(issue, { withProvider = false, now } = {}) {
     },
   ].filter(Boolean);
 }
+
+/**
+ * "Mute errors like this": asks first, saying exactly what gets muted —
+ * this widget (or bot, or provider), this call, this error.
+ */
+export const MuteButton = ({ issue, size }) => {
+  const [open, setOpen] = useState(false);
+  const { muted, hairline } = useConfigTokens();
+  if (!issue || issue.status === "muted") return null;
+  const a = issue.asset || {};
+  const who = a.dashboardName
+    ? `${assetName(issue)} (${a.dashboardName})`
+    : assetName(issue);
+  const close = () => setOpen(false);
+  return (
+    <>
+      <Button3
+        title="Mute errors like this"
+        size={size}
+        onClick={() => setOpen(true)}
+      />
+      {open ? (
+        <ConfirmationModal
+          isOpen
+          setIsOpen={close}
+          title="Mute errors like this?"
+          confirmLabel="Mute"
+          onCancel={close}
+          onConfirm={() => {
+            close();
+            muteIssue(issue);
+          }}
+        >
+          <div className="flex flex-col gap-3" data-testid="mute-confirm">
+            <span className={`text-sm ${muted}`}>
+              {issue.call
+                ? `Mutes only this ${kindLabel(a.kind).toLowerCase()}, this call, and this error:`
+                : `Mutes only this ${kindLabel(a.kind).toLowerCase()} and this error:`}
+            </span>
+            <div className={`p-3 rounded-lg border ${hairline}`}>
+              <IssueFacts
+                rows={[
+                  { label: kindLabel(a.kind), value: who },
+                  issue.call
+                    ? { label: "Call", value: callText(issue.call), mono: true }
+                    : null,
+                  {
+                    label: "Error",
+                    value: errorText(issue),
+                    mono: true,
+                    bad: true,
+                  },
+                ]}
+              />
+            </div>
+            <span className={`text-sm ${muted}`}>
+              It stops showing on cards, in the menu count and in Open. Dash
+              keeps counting it under Muted, and you can unmute it there any
+              time. Other errors still show.
+            </span>
+          </div>
+        </ConfirmationModal>
+      ) : null}
+    </>
+  );
+};
+
+/**
+ * Muted errors of one widget, in its panel: what each was, how often it
+ * happened since, and Unmute.
+ */
+export const MutedList = ({ issues = [], now = new Date() }) => {
+  const { muted, strong, hairline } = useConfigTokens();
+  if (!issues.length) return null;
+  return (
+    <div className="flex flex-col gap-2" data-testid="widget-muted">
+      <span className={`text-xs font-semibold ${muted}`}>Muted</span>
+      {issues.map((i) => (
+        <div
+          key={i.id}
+          className={`flex flex-row items-center gap-3 p-3 rounded-lg border ${hairline}`}
+        >
+          <span className="flex-1 min-w-0 flex flex-col gap-0.5 text-xs">
+            {i.call && i.call.tool ? (
+              <span className={`font-mono ${strong}`}>{i.call.tool}</span>
+            ) : null}
+            <span className={`break-words ${muted}`}>{errorText(i)}</span>
+            <span className={muted}>
+              {[
+                mutedCountText(i),
+                i.mutedCount ? `last ${whenText(i.lastAt, now)}` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </span>
+          <Button2 title="Unmute" size="sm" onClick={() => unmuteIssue(i)} />
+        </div>
+      ))}
+    </div>
+  );
+};
 
 /**
  * A widget's open issues, in its panel (the "Problems" section): what went
@@ -209,6 +334,7 @@ export const WidgetProblems = ({ issues = [], now = new Date() }) => {
               onClick={() => openDebugConsole()}
             />
           ) : null}
+          <MuteButton issue={issue} size="sm" />
         </span>
         {note ? (
           <span role="status" className={`text-xs ${muted}`}>

@@ -11,6 +11,8 @@ const ISSUES_COUNTS = "issues-counts";
 const ISSUES_RESOLVE = "issues-resolve";
 const ISSUES_RESOLVE_ASSET = "issues-resolve-asset";
 const ISSUES_CLEAR_RESOLVED = "issues-clear-resolved";
+const ISSUES_MUTE = "issues-mute";
+const ISSUES_UNMUTE = "issues-unmute";
 
 // Main → every window: { counts, issue? }
 const ISSUES_CHANGED = "issues:changed";
@@ -23,5 +25,7 @@ module.exports = {
   ISSUES_RESOLVE,
   ISSUES_RESOLVE_ASSET,
   ISSUES_CLEAR_RESOLVED,
+  ISSUES_MUTE,
+  ISSUES_UNMUTE,
   ISSUES_CHANGED,
 };

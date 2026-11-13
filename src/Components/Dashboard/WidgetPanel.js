@@ -39,9 +39,9 @@ import { useConfigTokens } from "./ConfigListRow";
 import { ListensFor } from "./ListensFor";
 import { WidgetCodeModal } from "./WidgetCodeModal";
 import { versionLine } from "./useWidgetSources";
-import { useWidgetIssues } from "../../hooks/useIssues";
+import { useWidgetIssues, useWidgetMutedIssues } from "../../hooks/useIssues";
 import { widgetItemId } from "../../utils/issues";
-import { WidgetProblems } from "../Issues/IssueParts";
+import { MutedList, WidgetProblems } from "../Issues/IssueParts";
 
 // Which section a request names (the card's menu, a footer badge, Dashboard
 // Config's hand-off) — the keys the old Configure sections used.
@@ -234,6 +234,12 @@ export const WidgetPanel = ({
     widgetItemId(local.item),
     (local.workspace && local.workspace.id) ?? null,
   );
+  // Its muted errors ("Mute errors like this"): listed, with Unmute.
+  const mutedIssues = useWidgetMutedIssues(
+    local.item ? local.item.component : null,
+    widgetItemId(local.item),
+    (local.workspace && local.workspace.id) ?? null,
+  );
   // Asked for Problems before they had loaded: go there once they have.
   const hasIssues = issues.length > 0;
   useEffect(() => {
@@ -364,20 +370,30 @@ export const WidgetPanel = ({
     </section>
   );
 
-  const problemsSection = issues.length ? (
-    <section
-      ref={refs.problems}
-      aria-label="Problems"
-      className="flex flex-col gap-2"
-    >
-      <SectionLabel>{`Problems · ${issues.length}`}</SectionLabel>
-      <WidgetProblems issues={issues} />
-    </section>
-  ) : null;
+  const problemsLabel = issues.length
+    ? `Problems · ${issues.length}`
+    : "Problems";
+  const problemsSection =
+    issues.length || mutedIssues.length ? (
+      <section
+        ref={refs.problems}
+        aria-label="Problems"
+        className="flex flex-col gap-2"
+      >
+        <SectionLabel>{problemsLabel}</SectionLabel>
+        {issues.length ? (
+          <WidgetProblems issues={issues} />
+        ) : (
+          empty("No problems.")
+        )}
+        <MutedList issues={mutedIssues} />
+      </section>
+    ) : null;
 
-  const modalNav = issues.length
-    ? [...MODAL_NAV, ["problems", `Problems · ${issues.length}`]]
-    : MODAL_NAV;
+  const modalNav =
+    issues.length || mutedIssues.length
+      ? [...MODAL_NAV, ["problems", problemsLabel]]
+      : MODAL_NAV;
 
   const restSections = (
     <>

@@ -23,12 +23,13 @@ const KINDS = [
 const STATUSES = [
   { value: "open", label: "Open" },
   { value: "resolved", label: "Resolved" },
+  { value: "muted", label: "Muted" },
 ];
 
 /**
  * IssuesPage — the Issues Manage page (issues PRD): what went wrong in
  * widgets, bots and providers, newest first. Filters: kind, dashboard,
- * Open / Resolved. A row opens its detail beside the list.
+ * Open / Resolved / Muted. A row opens its detail beside the list.
  *
  * @param {object} issueLink  { issueId, nonce } — open on that issue.
  */
@@ -55,6 +56,9 @@ export const IssuesPage = ({
     kind: kind === "all" ? null : kind,
     workspaceId: dashboards.length === 1 ? dashboards[0] : null,
   });
+  // How many are muted, for the Status label and the note under Open.
+  const { issues: mutedIssues } = useIssues({ status: "muted" });
+  const mutedCount = mutedIssues.length;
   // Several dashboards picked: keep the issues on any of them.
   const issues =
     dashboards.length > 1
@@ -118,7 +122,11 @@ export const IssuesPage = ({
       ) : null}
       <SegmentedControl
         ariaLabel="Status"
-        options={STATUSES}
+        options={STATUSES.map((s) =>
+          s.value === "muted" && mutedCount
+            ? { ...s, label: `Muted · ${mutedCount}` }
+            : s,
+        )}
         value={status}
         onChange={setStatus}
       />
@@ -137,17 +145,39 @@ export const IssuesPage = ({
       ? kind === "all" && !dashboards.length
         ? "Nothing has gone wrong. Problems in your widgets, bots and providers show here."
         : "No open issues match these filters."
-      : "No resolved issues.";
+      : status === "muted"
+        ? "Nothing is muted. Mute an error that keeps coming back and doesn't matter, and it shows here instead."
+        : "No resolved issues.";
 
   const list = issues.length ? (
-    issues.map((i) => (
-      <IssueRow
-        key={i.id}
-        issue={i}
-        active={shown && shown.id === i.id}
-        onClick={() => setSelectedId(i.id)}
-      />
-    ))
+    <>
+      {issues.map((i) => (
+        <IssueRow
+          key={i.id}
+          issue={i}
+          active={shown && shown.id === i.id}
+          onClick={() => setSelectedId(i.id)}
+        />
+      ))}
+      {status === "muted" ? (
+        <span className={`text-xs px-2 py-1 ${muted}`}>
+          Muted errors never show on a card, in the menu count or in Open. One
+          that stops happening for 30 days is removed from here.
+        </span>
+      ) : null}
+      {status === "open" && mutedCount ? (
+        <span
+          className={`text-xs px-2 py-1 flex flex-row items-center gap-2 ${muted}`}
+        >
+          {`${mutedCount} muted ${mutedCount === 1 ? "error is" : "errors are"} hidden.`}
+          <Button3
+            title="See muted"
+            size="xs"
+            onClick={() => setStatus("muted")}
+          />
+        </span>
+      ) : null}
+    </>
   ) : loading ? null : (
     <span className={`text-sm px-2 py-1 ${muted}`}>{nothing}</span>
   );
@@ -174,6 +204,11 @@ export const IssuesPage = ({
             dashApi={dashApi}
             workspaces={workspaces}
             onOpenWorkspace={onOpenWorkspace}
+            onUnmuted={(issue, where) => {
+              // Show it where it went: back in Open, or Resolved.
+              setStatus(where);
+              setSelectedId(issue.id);
+            }}
           />
         ) : (
           <span className={`text-sm ${muted}`}>
@@ -186,13 +221,26 @@ export const IssuesPage = ({
           <EmptyState
             icon={<FontAwesomeIcon icon="circle-check" className="h-10 w-10" />}
             title="No problems"
-            description={nothing}
+            description={
+              mutedCount
+                ? `Nothing open. ${mutedCount} muted ${
+                    mutedCount === 1 ? "error is" : "errors are"
+                  } still counted under Muted.`
+                : nothing
+            }
           >
             <Button3
               title="See resolved issues"
               size="sm"
               onClick={() => setStatus("resolved")}
             />
+            {mutedCount ? (
+              <Button3
+                title={`See muted · ${mutedCount}`}
+                size="sm"
+                onClick={() => setStatus("muted")}
+              />
+            ) : null}
           </EmptyState>
         ) : null
       }

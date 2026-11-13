@@ -1,6 +1,12 @@
 import React from "react";
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  waitFor,
+} from "@testing-library/react";
 import { WidgetPanel } from "./WidgetPanel";
 import { __resetIssuesStore } from "../../hooks/useIssues";
 import { mockIssuesApi } from "../../__mocks__/mockIssuesApi";
@@ -449,5 +455,43 @@ describe("Problems (issues PRD)", () => {
     expect(
       await screen.findByRole("region", { name: "Problems" }),
     ).toBeInTheDocument();
+  });
+
+  test("a muted error: No problems, the muted one listed, and Unmute", async () => {
+    const t = mockIssuesApi([
+      {
+        ...problem,
+        status: "muted",
+        mutedAt: new Date().toISOString(),
+        mutedCount: 214,
+        asset: { ...problem.asset, itemId: String(item.uuid ?? item.id) },
+      },
+    ]);
+    render(<WidgetPanel item={item} workspace={workspace} name="Counter" />);
+    const section = await screen.findByRole("region", { name: "Problems" });
+    expect(section).toHaveTextContent("No problems.");
+    expect(section).not.toHaveTextContent("Problems · ");
+    const list = screen.getByTestId("widget-muted");
+    expect(list).toHaveTextContent("search_notes");
+    expect(list).toHaveTextContent("214 times since you muted it");
+    fireEvent.click(screen.getByRole("button", { name: "Unmute" }));
+    await waitFor(() => expect(t.api.unmute).toHaveBeenCalledWith("i1"));
+  });
+
+  test("an open problem can be muted from the panel", async () => {
+    mockIssuesApi([
+      {
+        ...problem,
+        asset: { ...problem.asset, itemId: String(item.uuid ?? item.id) },
+      },
+    ]);
+    render(<WidgetPanel item={item} workspace={workspace} name="Counter" />);
+    await screen.findByRole("region", { name: "Problems" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Mute errors like this" }),
+    );
+    expect(await screen.findByTestId("mute-confirm")).toHaveTextContent(
+      "Notes MCP › search_notes",
+    );
   });
 });

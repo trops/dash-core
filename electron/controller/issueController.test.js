@@ -40,6 +40,7 @@ describe("issueController", () => {
       widget: 0,
       bot: 0,
       provider: 1,
+      muted: 0,
     });
     issueController.flush();
     const saved = JSON.parse(
@@ -223,5 +224,33 @@ describe("issueController — things that are gone, and a file it can't read", (
     issueController.record(failed);
     issueController.flush();
     assert.equal(fs.readFileSync(file, "utf8"), sealed);
+  });
+});
+
+describe("issueController — muting", () => {
+  beforeEach(() => issueController._reset());
+
+  it("mute and unmute tell every window; a muted repeat isn't open, and it's saved", () => {
+    const dir = tempDir("zz-issues-");
+    const w = windows();
+    issueController.init({ dataDir: dir, getWindows: w.getWindows });
+    const issue = issueController.record(failed);
+    assert.equal(issueController.mute(issue.id), true);
+    assert.equal(w.sent.at(-1)[1].counts.muted, 1);
+    assert.equal(w.sent.at(-1)[1].counts.total, 0);
+    const before = w.sent.length;
+    issueController.record(failed);
+    assert.equal(issueController.counts().total, 0);
+    // Counted quietly: no window is told (nothing to reload).
+    assert.equal(w.sent.length, before);
+    issueController.flush();
+
+    issueController._reset();
+    issueController.init({ dataDir: dir });
+    const [m] = issueController.list({ status: "muted" });
+    assert.equal(m.mutedCount, 1);
+    assert.equal(issueController.unmute(m.id), true);
+    assert.equal(issueController.counts().total, 1);
+    assert.equal(issueController.unmute(m.id), false);
   });
 });

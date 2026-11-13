@@ -261,3 +261,18 @@ export function fixErrorText(issue) {
 
 /** "1 problem", "3 problems". */
 export const problemsText = (n) => `${n} problem${n === 1 ? "" : "s"}`;
+
+/** "Muted since today 9:04 AM" — or "Muted". */
+export function mutedSinceText(issue, now = new Date()) {
+  const at = whenLongText(issue && issue.mutedAt, now);
+  return at
+    ? `Muted since ${at.charAt(0).toLowerCase()}${at.slice(1)}`
+    : "Muted";
+}
+
+/** "214 times since you muted it", or that it hasn't happened since. */
+export function mutedCountText(issue) {
+  const n = (issue && issue.mutedCount) || 0;
+  if (!n) return "It hasn't happened since you muted it.";
+  return `${n} time${n === 1 ? "" : "s"} since you muted it`;
+}

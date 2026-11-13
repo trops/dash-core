@@ -87,6 +87,12 @@ describe("WidgetIssueChip (issues PRD)", () => {
         /connect ECONNREFUSED 127\.0\.0\.1:3845\. 12 times since/,
       ),
     ).toBeInTheDocument();
+    // Hover, then click: the card stays open (pinned); leaving keeps it.
+    fireEvent.click(chip);
+    fireEvent.mouseLeave(chip.parentElement);
+    expect(screen.getByTestId("widget-issue-card")).toBeInTheDocument();
+    fireEvent.click(chip);
+    expect(screen.queryByTestId("widget-issue-card")).toBeNull();
   });
 
   it("See what went wrong opens the panel at Problems; Retry runs this copy again", async () => {
