@@ -17,8 +17,10 @@ import {
 import { CellPreview } from "../Create/CellPreview";
 import { ChooseProviderDialog } from "../Create/ProviderPick";
 import { RemoveSummary, TryBots } from "./BuildParts";
+import { ModelTag, RanOn } from "./ModelInfo";
 import { OutputCard } from "./PlanViews";
 import { TextLink } from "./WidgetWizard/TextLink";
+import { AnswerPart, WizardAnswer } from "./WidgetWizard/WizardAnswer";
 import { usePlanBuild } from "./usePlanBuild";
 import {
   buildChat,
@@ -28,7 +30,9 @@ import {
   buildLogRows,
   checkLine,
   checkRows,
+  heldRows,
   pieceKey,
+  withRuns,
 } from "./workspaceBuild";
 
 /**
@@ -113,8 +117,12 @@ export const BuildWalk = ({ wp, onReady, onCancel }) => {
 };
 
 /** A quiet line in the chat for the build ("Builder is building 2 widgets"). */
-const BuildStepLine = ({ step }) => {
-  const { muted, strong } = useConfigTokens();
+const BuildStepLine = ({ step, onLink = null }) => {
+  const { muted, strong, hairline } = useConfigTokens();
+  // Which model ran it (withRuns): a role's run opens to its details.
+  const [open, setOpen] = useState(false);
+  const run = step.run || null;
+  const canOpen = !!(run && run.model);
   const icon =
     step.status === "asking"
       ? "spinner"
@@ -124,16 +132,120 @@ const BuildStepLine = ({ step }) => {
           ? "circle-stop"
           : "check";
   return (
-    <div
-      className={`flex flex-row items-center gap-2 text-sm ${muted}`}
-      data-testid="workspace-build-step"
-    >
-      <FontAwesomeIcon
-        icon={icon}
-        className={`h-3 w-3 ${step.status === "asking" ? "animate-spin" : ""}`}
-      />
-      <span className={`font-medium ${strong}`}>{step.label}</span>
+    <div className="flex flex-col gap-2">
+      <div
+        className={`flex flex-row items-center gap-2 text-sm ${muted}`}
+        data-testid="workspace-build-step"
+      >
+        <FontAwesomeIcon
+          icon={icon}
+          className={`h-3 w-3 ${step.status === "asking" ? "animate-spin" : ""}`}
+        />
+        <span className={`font-medium ${strong}`}>{step.label}</span>
+        <ModelTag run={run} />
+        {canOpen ? (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-label={open ? "Hide which model ran it" : "Which model ran it"}
+            className={muted}
+          >
+            <FontAwesomeIcon
+              icon={open ? "chevron-down" : "chevron-right"}
+              className="h-2.5 w-2.5"
+            />
+          </button>
+        ) : null}
+        {step.link === "check" && onLink ? (
+          <TextLink title="See the check" onClick={onLink} />
+        ) : null}
+      </div>
+      {open && canOpen ? (
+        <div className={`ml-5 border-l pl-3 ${hairline}`}>
+          <RanOn run={run} />
+        </div>
+      ) : null}
     </div>
+  );
+};
+
+/**
+ * What doesn't match what the user chose (held to your choices): one row
+ * each — what the widget does, and what they chose.
+ */
+export const OffRows = ({ off = [] }) => {
+  const { muted, strong, hairline } = useConfigTokens();
+  const statusTokens = useStatusTokens();
+  if (!off.length) return null;
+  return (
+    <div
+      className={`dr-chat-card self-start w-full flex flex-col rounded-xl border overflow-hidden ${hairline}`}
+      data-testid="workspace-build-off"
+    >
+      {off.map((o, i) => (
+        <div
+          key={i}
+          className={`flex flex-row items-start gap-3 px-4 py-3 text-sm ${i ? `border-t ${hairline}` : ""}`}
+        >
+          <span role="img" aria-label="Doesn't match">
+            <FontAwesomeIcon
+              icon="xmark"
+              className={`h-3 w-3 mt-1 ${statusTokens.error.icon}`}
+            />
+          </span>
+          <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+            <span className={strong}>{o.main}</span>
+            {o.chose ? (
+              <span className={`text-xs ${muted}`}>You chose: {o.chose}</span>
+            ) : null}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * The end of the line: no try can make it match — the closest that works,
+ * when there is one, or stop here (nothing is installed).
+ */
+const EndOfLine = ({ chat, build, actions }) => {
+  const { muted } = useConfigTokens();
+  const step = chat.failed;
+  return (
+    <WizardAnswer
+      testId="workspace-build-end"
+      actions={
+        <>
+          {chat.closest && actions.fix ? (
+            <Button
+              title="Build it that way"
+              onClick={() => actions.fix(step)}
+            />
+          ) : null}
+          {actions.leaveOff ? (
+            <Button2
+              title="Stop here"
+              onClick={() => actions.leaveOff(build.buildId, pieceKey(step))}
+            />
+          ) : null}
+        </>
+      }
+    >
+      <AnswerPart first title="End of the line — what now?">
+        {chat.closest ? (
+          <span className="text-sm">
+            The closest that works: {chat.closest}. Everything else stays as you
+            chose.
+          </span>
+        ) : null}
+        <span className={`text-xs ${muted}`}>
+          Stop here and nothing is installed — your answers stay in this
+          conversation.
+        </span>
+      </AnswerPart>
+    </WizardAnswer>
   );
 };
 
@@ -177,10 +289,14 @@ export const BuildInChat = ({
   earlier = false,
 }) => {
   const { muted } = useConfigTokens();
-  const chat = fixChat(
-    chatOf(build, state, { actions, cell, change, restored }),
+  // Each step line with the model that ran it.
+  const chat = withRuns(
+    fixChat(
+      chatOf(build, state, { actions, cell, change, restored }),
+      state,
+      fix,
+    ),
     state,
-    fix,
   );
   const card = chat.card;
   // A fix came after it: what was built, as it was then — the rest is
@@ -222,7 +338,17 @@ export const BuildInChat = ({
       {fix ? null : <ChatMessage role="you">{yes}</ChatMessage>}
       {state ? (
         <>
-          <BuildStepLine step={chat.step} />
+          <BuildStepLine
+            step={chat.step}
+            onLink={actions.open ? () => actions.open("check") : null}
+          />
+          {(chat.lines || []).map((l, i) => (
+            <BuildStepLine
+              key={i}
+              step={l}
+              onLink={actions.open ? () => actions.open("check") : null}
+            />
+          ))}
           {card ? (
             <div className="self-start w-full max-w-md">
               <OutputCard
@@ -241,6 +367,17 @@ export const BuildInChat = ({
             role="reply"
             label={leadName}
             testId="workspace-build-reply"
+            footer={
+              (chat.off && chat.off.length) ||
+              (current && chat.choices === "endofline") ? (
+                <div className="flex flex-col gap-3">
+                  <OffRows off={chat.off || []} />
+                  {current && chat.choices === "endofline" ? (
+                    <EndOfLine chat={chat} build={build} actions={actions} />
+                  ) : null}
+                </div>
+              ) : null
+            }
           >
             <span className="whitespace-pre-wrap">{chat.reply}</span>
           </ChatMessage>
@@ -598,7 +735,8 @@ const BuildChoices = ({ chat, state, build, actions }) => {
           </span>
         ) : step.fixesUsedUp ? (
           <span className={`text-xs ${muted}`}>
-            The Builder tried twice — leave it off, or say what to change.
+            The Builder tried everything it could — leave it off, or say what to
+            change.
           </span>
         ) : null}
       </div>
@@ -804,6 +942,22 @@ export const CheckReportOutput = ({ state }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const rows = checkRows(state);
+  const chose = heldRows(state);
+  const tick = (ok) =>
+    ok === null ? (
+      <span
+        role="img"
+        aria-label="Not checked"
+        className={`inline-block flex-shrink-0 h-2.5 w-2.5 mt-1 rounded-full border ${hairline}`}
+      />
+    ) : (
+      <span role="img" aria-label={ok ? "Passed" : "Didn't pass"}>
+        <FontAwesomeIcon
+          icon={ok ? "check" : "xmark"}
+          className={`h-3 w-3 mt-1 ${ok ? statusTokens.success.icon : statusTokens.error.icon}`}
+        />
+      </span>
+    );
   return (
     <div className="flex flex-col gap-4" data-testid="workspace-check-report">
       <OutputHead
@@ -811,6 +965,45 @@ export const CheckReportOutput = ({ state }) => {
         title="Check report"
         sub={checkLine(state)}
       />
+      {chose.length ? (
+        <div
+          className="flex flex-col gap-2"
+          data-testid="workspace-held-report"
+        >
+          <span
+            className={`text-xs font-semibold uppercase tracking-wider ${muted}`}
+          >
+            What you chose
+          </span>
+          <div
+            className={`dr-chat-card flex flex-col rounded-xl border overflow-hidden ${hairline}`}
+          >
+            {chose.map((r, i) => (
+              <div
+                key={i}
+                className={`flex flex-row items-start gap-3 px-4 py-3 text-sm ${i ? `border-t ${hairline}` : ""}`}
+                data-testid="workspace-held-row"
+              >
+                {tick(r.ok)}
+                <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                  <span className={strong}>{r.main}</span>
+                  {r.sub ? (
+                    <span className={`text-xs ${muted}`}>{r.sub}</span>
+                  ) : null}
+                </span>
+              </div>
+            ))}
+          </div>
+          <span className={`text-xs ${muted}`}>
+            Dash checks these in the code itself, every time.
+          </span>
+          <span
+            className={`text-xs font-semibold uppercase tracking-wider pt-2 ${muted}`}
+          >
+            The Checker
+          </span>
+        </div>
+      ) : null}
       {rows.length ? (
         <div
           className={`dr-chat-card flex flex-col rounded-xl border overflow-hidden ${hairline}`}

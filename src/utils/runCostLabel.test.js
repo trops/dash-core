@@ -20,7 +20,7 @@ describe("runCostLabel — a run's model, tokens and cost (CRE-012)", () => {
       usage,
       cost: { usd: 0.0612, includedInPlan: false, estimated: false },
     };
-    expect(runCostLabel(run)).toBe("Sonnet · 14.2k tokens · $0.06");
+    expect(runCostLabel(run)).toBe("Sonnet 4.6 · 14.2k tokens · $0.06");
     expect(runCostShort(run)).toBe("$0.06");
   });
 
@@ -36,18 +36,24 @@ describe("runCostLabel — a run's model, tokens and cost (CRE-012)", () => {
       },
     };
     expect(runCostLabel(run)).toBe(
-      "Opus · 14.2k tokens · ≈ $0.30 at API prices · included in your plan",
+      "Opus 4.8 · 14.2k tokens · ≈ $0.30 at API prices · included in your plan",
     );
     expect(runCostShort(run)).toBe("14.2k tok");
     // A run kept before its API price was known: no price.
     expect(
       runCostLabel({ ...run, cost: { ...run.cost, equivalentUsd: null } }),
-    ).toBe("Opus · 14.2k tokens · included in your plan");
+    ).toBe("Opus 4.8 · 14.2k tokens · included in your plan");
     expect(
       runCostLabel({ ...run, cost: { ...run.cost, equivalentUsd: 0.004 } }),
     ).toBe(
-      "Opus · 14.2k tokens · ≈ $0.004 at API prices · included in your plan",
+      "Opus 4.8 · 14.2k tokens · ≈ $0.004 at API prices · included in your plan",
     );
+  });
+
+  test("with its style: which model ran it, and how hard it thought", () => {
+    expect(
+      runCostLabel({ model: "claude-opus-5-5", style: "thorough", usage }),
+    ).toBe("Opus 5.5 · Thorough · 14.2k tokens");
   });
 
   test("unknown price: tokens only", () => {

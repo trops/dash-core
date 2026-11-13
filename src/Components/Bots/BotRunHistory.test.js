@@ -235,7 +235,7 @@ describe("BotRunHistory — model and cost per run (CRE-012)", () => {
     expect(row).toHaveTextContent("14.2k tok");
     fireEvent.click(row);
     expect(screen.getByTestId("run-cost")).toHaveTextContent(
-      "Sonnet · 14.2k tokens · included in your plan",
+      "Sonnet 4.6 · 14.2k tokens · included in your plan",
     );
   });
 });

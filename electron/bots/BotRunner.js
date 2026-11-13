@@ -376,6 +376,9 @@ class BotRunner {
         connectors = [],
         connectorServers = [],
         readOnlyTools = [],
+        // What the bot should know about this run's tools ("Gmail was
+        // left out"), added to its instructions.
+        notes: toolNotes = [],
       } = await this._resolveTools(bot, { ...opts, emit });
       providerOf = (name) => {
         try {
@@ -478,6 +481,7 @@ class BotRunner {
             ? profile.instructions
             : bot.instructions,
           profile.styleLine,
+          ...(Array.isArray(toolNotes) ? toolNotes : []),
           dateLine(this._now()),
         ]
           .filter(Boolean)
@@ -685,6 +689,10 @@ class BotRunner {
       // Which model ran it and what it cost (CRE-012 AC4/AC5).
       provider: runProfile ? runProfile.providerId : null,
       model: runProfile ? runProfile.model : null,
+      // Its style ("thorough"): shown with the model (which model ran it).
+      style: runProfile ? runProfile.style || null : null,
+      // The user picked that model, rather than it being built in.
+      modelChosen: runProfile ? !!runProfile.modelChosen : false,
       cost:
         usage && runProfile && this._costOf
           ? this._costOf({

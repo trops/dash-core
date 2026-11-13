@@ -1004,6 +1004,7 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
           description: a.description || "",
           provider: a.provider || null,
           update: !!a.update,
+          role,
         });
         if (!res || !res.success) {
           const problems =
@@ -1015,6 +1016,15 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
           );
         }
         const draft = res.widgetName;
+        // What the user chose that it doesn't do yet (held to your choices).
+        const off = Array.isArray(res.choiceProblems) ? res.choiceProblems : [];
+        if (off.length) {
+          return ok(
+            `Wrote ${draft}, but it doesn't match what the user chose yet — change exactly these, keep the rest, then build_widget again:\n${off
+              .map((p) => `- ${p.main} — they chose: ${p.chose}`)
+              .join("\n")}`,
+          );
+        }
         return ok(
           `Wrote ${draft} — not installed. Ask the Checker to check ${draft}; once it passes, it's installed as ${res.package || "an AI-built widget"}.`,
         );

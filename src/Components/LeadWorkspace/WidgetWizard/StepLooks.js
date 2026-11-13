@@ -336,7 +336,12 @@ export const StepLooks = ({
   const limit = shownLimit(piece.settings);
   const items = limit ? all.slice(0, limit) : all;
   const roles = useMemo(() => fieldRoles(items), [items]);
-  const order = looksFor(roles);
+  // Checked before it's asked: with the real data read, only the looks it
+  // can fill (no Timeline for items without times).
+  const order =
+    real && items.length
+      ? looksFor(roles).filter((l) => l.fits(roles))
+      : looksFor(roles);
   const [shown, setShown] = useState(3);
   const [picked, setPicked] = useState(look ? look.id : null);
   const [options, setOptions] = useState(() => (look && look.options) || null);

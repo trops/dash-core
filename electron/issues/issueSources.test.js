@@ -303,3 +303,48 @@ describe("a path outside the provider's folders", () => {
     assert.equal(input.call.error, error);
   });
 });
+
+// A connector Claude says is connected, whose service turned the sign-in
+// down (connector details: the user's Google Calendar on the Mac mini).
+describe("botRunIssues — a finished run whose call couldn't sign in", () => {
+  const bot = { id: "b1", name: "Morning Brief", workspaceId: 7 };
+  it("is the provider's sign-in problem, once per provider", () => {
+    const issues = botRunIssues({
+      bot,
+      run: {
+        status: "completed",
+        toolCalls: [
+          {
+            tool: "list_events",
+            provider: "Google Calendar",
+            ok: false,
+            error: "401 invalid_grant",
+          },
+          {
+            tool: "get_event",
+            provider: "Google Calendar",
+            ok: false,
+            error: "401 invalid_grant",
+          },
+          { tool: "search", provider: "Gmail", ok: false, error: "No results" },
+        ],
+      },
+    });
+    assert.equal(issues.length, 1);
+    assert.equal(issues[0].cause, "sign-in");
+    assert.equal(issues[0].title, "Google Calendar couldn't sign in");
+    assert.deepEqual(issues[0].related, { provider: "Google Calendar" });
+    assert.equal(issues[0].call.tool, "list_events");
+  });
+  it("a failed run keeps its own failure", () => {
+    const issues = botRunIssues({
+      bot,
+      run: {
+        status: "failed",
+        error: "boom",
+        toolCalls: [{ tool: "x", provider: "P", ok: false, error: "401" }],
+      },
+    });
+    assert.equal(issues.filter((i) => i.cause === "sign-in").length, 0);
+  });
+});

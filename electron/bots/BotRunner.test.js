@@ -237,6 +237,24 @@ describe("BotRunner.run — happy path", () => {
     ]);
   });
 
+  it("tells the bot what its tools can't do this run (a connector left out)", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine, {
+      deps: {
+        resolveTools: async () => ({
+          tools: [],
+          resolveServer: () => null,
+          notes: ["Gmail isn't available this run."],
+        }),
+      },
+    });
+    await runner.run("bot_1", { prompt: "go" });
+    assert.match(
+      engine.lastCtx.systemPrompt,
+      /^do it\n\nGmail isn't available this run\.\n\nToday is /,
+    );
+  });
+
   it("passes the run prompt, model, and instructions into the engine ctx", async () => {
     const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
     const { runner } = makeRunner(engine);
@@ -748,6 +766,35 @@ describe("BotRunner.run — stopped runs", () => {
 });
 
 describe("BotRunner — model, provider and cost on the run (CRE-012)", () => {
+  it("keeps the style and whether the model was the user's choice (which model ran it)", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner, runs } = makeRunner(engine, {
+      deps: {
+        resolveRunProfile: async () => ({
+          providerId: "claude-code",
+          engineId: "tool-loop",
+          adapterId: "anthropic",
+          model: "claude-opus-5-5",
+          style: "thorough",
+          modelChosen: true,
+          credentials: {},
+        }),
+      },
+    });
+    await runner.run("bot_1", {});
+    assert.equal(runs[0].run.model, "claude-opus-5-5");
+    assert.equal(runs[0].run.style, "thorough");
+    assert.equal(runs[0].run.modelChosen, true);
+  });
+
+  it("no style saved: none recorded, and the model counts as built in", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner, runs } = makeRunner(engine);
+    await runner.run("bot_1", {});
+    assert.equal(runs[0].run.style, null);
+    assert.equal(runs[0].run.modelChosen, false);
+  });
+
   it("records the provider, model and the costOf result", async () => {
     const engine = mockEngine([
       {

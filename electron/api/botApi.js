@@ -31,6 +31,8 @@ const {
   BOTS_GET_PAUSE_STATE,
   BOTS_LIST_TOOL_SOURCES,
   BOTS_LIST_CLAUDE_CONNECTORS,
+  BOTS_USE_CLAUDE_CLI,
+  BOTS_CONNECTOR_GIVEN_UP,
   BOTS_GET_GRANTS,
   BOTS_REVOKE_GRANT,
   BOTS_ENSURE_LEAD,
@@ -217,7 +219,16 @@ const botApi = {
   listClaudeConnectors: (opts = {}) =>
     ipcRenderer.invoke(BOTS_LIST_CLAUDE_CONNECTORS, {
       refresh: !!(opts && opts.refresh),
+      // Reconnect: one connector by its server name, or true for every one
+      // not connected — a fresh check that waits longer.
+      ...(opts && opts.reconnect ? { reconnect: opts.reconnect } : {}),
     }),
+  /** Use this Claude Code from now on (null: the first on the PATH). */
+  useClaudeCli: (path = null) =>
+    ipcRenderer.invoke(BOTS_USE_CLAUDE_CLI, { path }),
+  /** Stop trying a connector for an hour (on), or try it now (off). */
+  setConnectorGivenUp: (server, on = true) =>
+    ipcRenderer.invoke(BOTS_CONNECTOR_GIVEN_UP, { server, on: !!on }),
 
   /** Remembered approvals ("Always allow"): { [provider]: { tools, folders } }. */
   getGrants: (botId) => ipcRenderer.invoke(BOTS_GET_GRANTS, { botId }),

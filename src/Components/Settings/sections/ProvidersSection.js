@@ -42,6 +42,7 @@ import {
   connectorProviderName,
 } from "../details/ClaudeConnectorDetail";
 import { saveMcpProvider } from "../../../utils/saveMcpProvider";
+import { useOpenIssues } from "../../../hooks/useIssues";
 import {
   reconnectProvider,
   signsInWithCommand,
@@ -121,6 +122,8 @@ export const ProvidersSection = ({
   const status = useProviderStatus({ providers, workspaces, dashApi, catalog });
   // The Claude account's connectors (Claude connector providers).
   const claude = status.claudeConnectors;
+  // Open issues: a connector a bot's call couldn't sign in to says so.
+  const openIssues = useOpenIssues();
   // Who uses a provider, or null while that isn't known.
   const knownUsage = (name) =>
     workspacesProp && status.botsLoaded ? status.usageOf(name) : null;
@@ -634,6 +637,63 @@ export const ProvidersSection = ({
   }
 
   // Which of a Claude connector's tools bots may use.
+  /**
+   * Use another of the account's connectors for this provider ("This is my
+   * Gmail"): its server, keeping the tools both have (else its read-only
+   * ones) — the provider's name, and the bots that use it, stay.
+   */
+  function handleRebindConnector(providerName, server) {
+    const prov = providers[providerName];
+    if (!dashApi || !appId || !prov) return Promise.resolve();
+    const next =
+      ((claude.result && claude.result.connectors) || []).find(
+        (c) => c.server === server,
+      ) || null;
+    // Its tools as they were, unless the new one says which it has: then
+    // the ones both have — else (none carried over) its read-only ones.
+    // "All tools" (no list) stays all tools.
+    const nextTools = next ? next.tools : [];
+    const was = prov.allowedTools;
+    let allowed = was;
+    if (Array.isArray(was) && was.length && nextTools.length) {
+      const names = nextTools.map((t) => t.name);
+      const kept = was.filter((n) => names.includes(n));
+      allowed = kept.length
+        ? kept
+        : nextTools.filter((t) => t.readOnly).map((t) => t.name);
+    }
+    setConnectorError(null);
+    return new Promise((resolve) =>
+      dashApi.saveProvider(
+        appId,
+        providerName,
+        {
+          providerType: prov.type || "claude-connector",
+          credentials: prov.credentials || {},
+          providerClass: "connector",
+          mcpConfig: { ...(prov.mcpConfig || {}), server },
+          ...(allowed !== undefined ? { allowedTools: allowed } : {}),
+        },
+        (event, result) => {
+          resolve();
+          if (result && result.error) {
+            setConnectorError(
+              `Couldn't switch it${result.message ? `: ${result.message}` : "."}`,
+            );
+            return;
+          }
+          refreshProviders && refreshProviders();
+        },
+        (e, err) => {
+          resolve();
+          setConnectorError(
+            `Couldn't switch it${err && err.message ? `: ${err.message}` : "."}`,
+          );
+        },
+      ),
+    );
+  }
+
   function handleSaveConnectorTools(providerName, allowedTools) {
     const prov = providers[providerName];
     if (!dashApi || !appId || !prov) return Promise.resolve();
@@ -1119,6 +1179,17 @@ export const ProvidersSection = ({
         error={connectorError}
         onSave={(allowed) => handleSaveConnectorTools(shownName, allowed)}
         onDelete={(name) => setDeleteTarget(name)}
+        claude={claude}
+        signInIssue={
+          (openIssues || []).find(
+            (i) =>
+              i &&
+              i.cause === "sign-in" &&
+              ((i.related && i.related.provider === shownName) ||
+                (i.call && i.call.provider === shownName)),
+          ) || null
+        }
+        onRebind={(next) => handleRebindConnector(shownName, next)}
       />
     );
   } else if (shownName && shownProvider) {

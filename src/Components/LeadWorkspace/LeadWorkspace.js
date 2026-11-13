@@ -106,7 +106,10 @@ import {
   stepAnswers,
   stepNotes,
   toolWords,
+  wizardPin,
 } from "./WidgetWizard/widgetSpec";
+import { askRows, preflight } from "./WidgetWizard/askChecks";
+import { useLiveTools } from "./WidgetWizard/useLiveTools";
 import { StepBar, StepReview } from "./WidgetWizard/StepReview";
 import { StepDoes, doesQuestion } from "./WidgetWizard/StepDoes";
 import { StepTalks, talksQuestion } from "./WidgetWizard/StepTalks";
@@ -131,6 +134,7 @@ import { providerLabel } from "../Create/planChecklist";
 import { ChooseProviderDialog } from "../Create/ProviderPick";
 import { cellPlace } from "./workspaceStart";
 import { StepTailContext } from "./HandoffStep";
+import { ModelInfoContext, stepRun } from "./ModelInfo";
 import { dirtyDashboardId } from "./dirtyDashboard";
 import { planTarget } from "../../utils/teamPlan";
 import { useRegistryUsername } from "../../hooks/useRegistryUsername";
@@ -300,6 +304,8 @@ export const LeadWorkspace = ({
   onStartWithoutAi = null,
   dashboards = EMPTY,
   onDuplicateDashboard = null,
+  // Settings at a section ("ai-assistant": Settings › AI) — which model ran it.
+  onOpenSettings = null,
 }) => {
   // rawThemes: whose a changed theme is (theme change round).
   // changeCurrentTheme: Use the remix for the app (theme change leftovers).
@@ -1636,7 +1642,16 @@ export const LeadWorkspace = ({
       ? wp.wizardStage
       : "does"
     : null;
+  // The provider's running tools: each step is checked against them before
+  // it's asked (the approved "held to your choices" frame 3).
+  const liveTools = useLiveTools(
+    wizardOn ? wizardPin(wp.wizard.piece, wp.providers) : null,
+  );
   const reviewing = wizardStage === "review";
+  // Before Yes, build it: the whole set, checked against them.
+  const preflightProblems = reviewing
+    ? preflight(wp.wizard.piece, wp.providers, liveTools)
+    : [];
   const reviewSet = reviewing
     ? (() => {
         const r = reviewRows(wp.plan, wp.wizard.piece, {
@@ -2023,7 +2038,7 @@ export const LeadWorkspace = ({
     const questions = !wizardOn
       ? {}
       : {
-          does: doesQuestion(wp.wizard.piece, wp.providers),
+          does: doesQuestion(wp.wizard.piece, wp.providers, liveTools),
           talks: talksQuestion(
             wp.plannedPiece || wp.wizard.piece,
             wp.choices.eventsOff || [],
@@ -2090,6 +2105,7 @@ export const LeadWorkspace = ({
             key={`does:${reviewKey}`}
             piece={wp.wizard.piece}
             providers={wp.providers}
+            live={liveTools}
             readOnly={answering}
             onNext={chooseDoes}
             onBack={() => setChoosingAt(wp.wizard.index)}
@@ -2149,20 +2165,34 @@ export const LeadWorkspace = ({
             onStep={toWizardStep}
             footer={
               !wp.build && !api.busy ? (
-                <PlanChoices
-                  plan={wp.plan}
-                  check={wp.check}
-                  sent={wp.sent}
-                  onSend={api.send}
-                  onBuild={starting || walking ? null : buildIt}
-                  onChange={api.focusReply}
-                  onAnswer={planActions.onAnswer}
-                  onDecide={planActions.onDecide}
-                  onFix={planActions.onFix}
-                  onPicked={planActions.onPicked}
-                  yesTitle="Yes, build it"
-                  yesDisabled={!reviewSet}
-                />
+                <>
+                  {preflightProblems.length ? (
+                    <div
+                      className="flex flex-col gap-1"
+                      data-testid="review-preflight"
+                    >
+                      {preflightProblems.map((p, i) => (
+                        <span key={i} className={`text-sm ${muted}`}>
+                          {p.text}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  <PlanChoices
+                    plan={wp.plan}
+                    check={wp.check}
+                    sent={wp.sent}
+                    onSend={api.send}
+                    onBuild={starting || walking ? null : buildIt}
+                    onChange={api.focusReply}
+                    onAnswer={planActions.onAnswer}
+                    onDecide={planActions.onDecide}
+                    onFix={planActions.onFix}
+                    onPicked={planActions.onPicked}
+                    yesTitle="Yes, build it"
+                    yesDisabled={!reviewSet || preflightProblems.length > 0}
+                  />
+                </>
               ) : null
             }
           />,
@@ -2725,6 +2755,23 @@ export const LeadWorkspace = ({
       );
     }
   }
+  // Which model ran it: the team and this conversation's lead, and where
+  // to change them.
+  const modelInfo = {
+    team: all.dashTeam || EMPTY,
+    lead:
+      contact && contact.kind === "lead"
+        ? (() => {
+            const l = (leads || []).find((x) => x && x.botId === contact.botId);
+            return l ? { ...l, name: l.leadName || contact.name } : null;
+          })()
+        : contact && contact.kind === "dashlead"
+          ? (all.dashTeam || []).find((b) => b && b.role === "dashlead") || null
+          : null,
+    openAiSettings: onOpenSettings
+      ? () => onOpenSettings("ai-assistant")
+      : null,
+  };
   const title = isBot
     ? `Your conversation with ${contact.name}`
     : open
@@ -2734,766 +2781,800 @@ export const LeadWorkspace = ({
       : "New conversation";
 
   return (
-    <Modal
-      isOpen
-      setIsOpen={(v) => {
-        if (!v) onClose();
-      }}
-      width="w-11/12"
-      height="h-5/6"
-    >
-      <div
-        className={`dr-chat-shell relative flex flex-row h-full w-full rounded-xl overflow-hidden border ${panel.backgroundColor || ""} ${panel.borderColor || ""} ${panel.textColor || ""}`}
-        data-testid="lead-workspace"
+    <ModelInfoContext.Provider value={modelInfo}>
+      <Modal
+        isOpen
+        setIsOpen={(v) => {
+          if (!v) onClose();
+        }}
+        width="w-11/12"
+        height="h-5/6"
       >
-        {/* A folded column open over the conversation (frames 35, 36):
+        <div
+          className={`dr-chat-shell relative flex flex-row h-full w-full rounded-xl overflow-hidden border ${panel.backgroundColor || ""} ${panel.borderColor || ""} ${panel.textColor || ""}`}
+          data-testid="lead-workspace"
+        >
+          {/* Asks the wizard's provider for its tools (draws nothing). */}
+          {liveTools.reader}
+          {/* A folded column open over the conversation (frames 35, 36):
             clicking beside it, or Escape, closes it. Under the header, so ☰
             and Outputs still toggle; the window's × waits until it closes. */}
-        {drawerOpen ? (
-          <button
-            type="button"
-            aria-label="Close panel"
-            tabIndex={-1}
-            data-testid="workspace-scrim"
-            // Classes the app's prebuilt CSS has (no inset-x-0 / bottom-0 / z-20).
-            className="absolute left-0 right-0 z-10 cursor-default"
-            style={{ top: headerH, bottom: 0 }}
-            onClick={() => {
-              setNavOpen(false);
-              setOutsOpen(false);
-            }}
-          />
-        ) : null}
-        {/* Left: who you're talking to, and their conversations */}
-        <nav
-          ref={navRef}
-          aria-label="Conversations"
-          onKeyDown={(e) => {
-            // Folded, the window-level Escape handles it (above).
-            if (e.key === "Escape" && !narrow) setSwitchOpen(false);
-          }}
-          className={
-            narrow
-              ? navOpen
-                ? `absolute left-0 z-30 w-64 flex flex-col gap-1 border-r p-3 min-h-0 shadow-lg ${hairline} ${panel.backgroundColor || ""}`
-                : "hidden"
-              : `dr-chat-shell-side relative w-64 flex-shrink-0 flex flex-col gap-1 border-r p-3 min-h-0 ${hairline}`
-          }
-          style={
-            narrow && navOpen
-              ? { top: headerH, bottom: 0, maxWidth: "100%" }
-              : undefined
-          }
-          data-testid="workspace-nav"
-        >
-          <button
-            type="button"
-            onClick={() => setSwitchOpen((v) => !v)}
-            aria-expanded={switchOpen}
-            aria-haspopup="menu"
-            className={`flex flex-row items-center gap-3 rounded-lg border p-2 text-left ${raised}`}
-            data-testid="workspace-switcher"
-          >
-            {contact ? (
-              <BotAvatar
-                bot={{ id: contact.botId, name: contact.name }}
-                icon={contact.kind === "dashlead" ? "people-group" : undefined}
-              />
-            ) : null}
-            <span className="flex-1 min-w-0 flex flex-col">
-              <span className={`text-sm font-semibold truncate ${strong}`}>
-                {contact ? contact.name : "No one to talk to yet"}
-              </span>
-              <span
-                className={`text-xs truncate ${muted}`}
-                title={contact ? contact.line || contact.sub : undefined}
-              >
-                {contact ? contact.line || contact.sub : ""}
-              </span>
-            </span>
-            <FontAwesomeIcon
-              icon="chevron-down"
-              className={`h-3 w-3 ${muted}`}
+          {drawerOpen ? (
+            <button
+              type="button"
+              aria-label="Close panel"
+              tabIndex={-1}
+              data-testid="workspace-scrim"
+              // Classes the app's prebuilt CSS has (no inset-x-0 / bottom-0 / z-20).
+              className="absolute left-0 right-0 z-10 cursor-default"
+              style={{ top: headerH, bottom: 0 }}
+              onClick={() => {
+                setNavOpen(false);
+                setOutsOpen(false);
+              }}
             />
-          </button>
-          {switchOpen ? (
-            <div
-              role="menu"
-              className={`absolute left-1 right-1 z-30 flex flex-col gap-1 rounded-lg border p-2 shadow-lg overflow-y-auto ${hairline} ${panel.backgroundColor || ""}`}
-              // Below the switcher, never over it; a long list scrolls
-              // inside the window.
-              style={{ top: 76, maxHeight: "calc(100% - 88px)" }}
-              data-testid="workspace-switcher-menu"
-            >
-              {groups.map((g) => (
-                <div key={g.label} className="flex flex-col gap-0.5">
-                  <span className={`px-2 pt-1 text-xs ${muted}`}>
-                    {g.label}
-                  </span>
-                  {g.items.map((c) => {
-                    const current = c.key === (contact && contact.key);
-                    return (
-                      <ListRow
-                        key={c.key}
-                        testId="workspace-switcher-item"
-                        icon={
-                          <BotAvatar
-                            bot={{ id: c.botId, name: c.name }}
-                            icon={
-                              c.kind === "dashlead" ? "people-group" : undefined
-                            }
-                          />
-                        }
-                        title={
-                          <span className="flex flex-row items-center gap-2">
-                            <span className="truncate">{c.name}</span>
-                            {current ? (
-                              <span
-                                role="img"
-                                aria-label="Current"
-                                className="flex-shrink-0"
-                              >
-                                <FontAwesomeIcon
-                                  icon="check"
-                                  className="h-3 w-3"
-                                />
-                              </span>
-                            ) : null}
-                          </span>
-                        }
-                        ariaLabel={current ? `${c.name} (current)` : c.name}
-                        // One line: its dashboard and its bots.
-                        meta={
-                          <span
-                            className="block truncate"
-                            // A long team is cut short: hover for all of it.
-                            title={c.menuLine || c.line || c.sub}
-                          >
-                            {c.menuLine || c.line || c.sub}
-                          </span>
-                        }
-                        // The one you are on, in the theme's colour (the
-                        // check mark says so too).
-                        className={current ? raised : ""}
-                        onClick={() => switchTo(c.key)}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
           ) : null}
-
-          {isBot ? null : (
-            <>
-              <div className="mt-2">
-                <Button3
-                  size="sm"
-                  title="+ New conversation"
-                  onClick={startNew}
-                />
-              </div>
-              <span className={`px-2 pt-3 pb-1 text-xs ${muted}`}>Recents</span>
-              <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
-                {/* A conversation not started yet is the first one (frame 13). */}
-                {open ? null : (
-                  <ListRow
-                    testId="workspace-thread-new"
-                    title="New conversation"
-                    selected
-                  />
-                )}
-                {threads.length ? (
-                  threads.map((t) => (
-                    <ListRow
-                      key={t.id}
-                      testId="workspace-thread"
-                      title={t.title}
-                      // Its age; "asked <this lead>" would repeat on every row.
-                      meta={[
-                        String(t.sub || "").split(" · ")[0],
-                        t.fromCreate
-                          ? `From Create${
-                              BUILT_TAG[t.fromCreate]
-                                ? ` · ${BUILT_TAG[t.fromCreate]}`
-                                : ""
-                            }`
-                          : t.id === selectedId && wp.waitingForPick
-                            ? "Waiting for you"
-                            : t.built
-                              ? BUILT_TAG[t.built] || null
-                              : t.planned
-                                ? "Plan"
-                                : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                      selected={t.id === selectedId}
-                      onClick={() => {
-                        setNavOpen(false);
-                        if (open && t.id === selectedId) return;
-                        // A Create plan being carried on: one at a time.
-                        if (carrying.current) return;
-                        setSelectedId(t.id);
-                        setMessages(EMPTY);
-                        setAskBusy(false);
-                        setSideOpen(null);
-                        setMakingOn(false);
-                        moveOn();
-                        // A plan from the Create window: carried on as a
-                        // conversation (release 6c).
-                        if (t.fromCreate) {
-                          // The start shows while it's carried (and says
-                          // so if it can't be).
-                          setOpen(null);
-                          carryOverCreatePlan(t.id);
-                          return;
-                        }
-                        setOpen({ key: t.id, recentId: t.id });
-                      }}
-                    />
-                  ))
-                ) : open ? (
-                  <span className={`px-2 py-2 text-xs ${muted}`}>
-                    Your conversations with {contact ? contact.name : "them"}{" "}
-                    show here.
-                  </span>
-                ) : null}
-              </div>
-            </>
-          )}
-        </nav>
-
-        {/* Middle: the conversation */}
-        <section
-          aria-label="Conversation"
-          // Lifted above the quiet sides: the conversation is the focus.
-          className={`dr-chat-stage flex-1 min-w-0 flex flex-col min-h-0 ${
-            narrow ? "" : "my-2 rounded-xl border overflow-hidden"
-          } ${hairline} ${panel.backgroundColor || ""}`}
-        >
-          <header
-            ref={headerRef}
-            className={`flex-shrink-0 flex flex-row items-center px-6 py-3 border-b ${hairline}`}
+          {/* Left: who you're talking to, and their conversations */}
+          <nav
+            ref={navRef}
+            aria-label="Conversations"
+            onKeyDown={(e) => {
+              // Folded, the window-level Escape handles it (above).
+              if (e.key === "Escape" && !narrow) setSwitchOpen(false);
+            }}
+            className={
+              narrow
+                ? navOpen
+                  ? `absolute left-0 z-30 w-64 flex flex-col gap-1 border-r p-3 min-h-0 shadow-lg ${hairline} ${panel.backgroundColor || ""}`
+                  : "hidden"
+                : `dr-chat-shell-side relative w-64 flex-shrink-0 flex flex-col gap-1 border-r p-3 min-h-0 ${hairline}`
+            }
+            style={
+              narrow && navOpen
+                ? { top: headerH, bottom: 0, maxWidth: "100%" }
+                : undefined
+            }
+            data-testid="workspace-nav"
           >
-            {/* Folded (frame 35): plain bordered toggles — Button3 can't
-                say it's open (aria-expanded). */}
-            {narrow ? (
-              <button
-                ref={navBtn}
-                type="button"
-                aria-label="Conversations and leads"
-                aria-expanded={navOpen}
-                onClick={() => {
-                  setOutsOpen(false);
-                  setNavOpen((v) => !v);
-                }}
-                className={`flex-shrink-0 mr-3 max-w-xs truncate rounded-lg border px-2.5 py-1 text-sm ${hairline} ${strong} ${navOpen ? selectedBg : ""}`}
-              >
-                {`☰ ${contact ? contact.name : "Conversations"}`}
-              </button>
-            ) : null}
-            <span
-              className={`flex-1 min-w-0 text-sm font-semibold truncate ${strong}`}
+            <button
+              type="button"
+              onClick={() => setSwitchOpen((v) => !v)}
+              aria-expanded={switchOpen}
+              aria-haspopup="menu"
+              className={`flex flex-row items-center gap-3 rounded-lg border p-2 text-left ${raised}`}
+              data-testid="workspace-switcher"
             >
-              {title}
-            </span>
-            {/* Where the widget's steps are, small (the chat asks them). */}
-            {!narrow && (pickCard || wizardOn || reuseOn) ? (
-              <span className="flex-shrink-0 ml-3">
-                <StepBar
-                  compact
-                  current={headerStep}
-                  done={headerDone}
-                  {...(headerSteps ? { steps: headerSteps } : {})}
+              {contact ? (
+                <BotAvatar
+                  bot={{ id: contact.botId, name: contact.name }}
+                  icon={
+                    contact.kind === "dashlead" ? "people-group" : undefined
+                  }
                 />
-              </span>
-            ) : null}
-            {/* Step 4 draws the looks across the window: no side column,
-                so the window's × is here. */}
-            {!narrow && wizardStage === "looks" ? (
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={onClose}
-                className={`flex-shrink-0 ml-3 flex items-center justify-center h-8 w-8 rounded-lg ${muted}`}
-              >
-                <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
-              </button>
-            ) : null}
-            {narrow ? (
-              <span className="flex-shrink-0 flex flex-row items-center gap-2 ml-3">
-                <button
-                  ref={outsBtn}
-                  type="button"
-                  aria-label={`Outputs ${sideSummary.count}${needsYou ? " — something needs you" : ""}`}
-                  aria-expanded={outsOpen}
-                  onClick={() => {
-                    setNavOpen(false);
-                    setOutsOpen((v) => !v);
-                  }}
-                  className={`flex flex-row items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm ${hairline} ${strong} ${outsOpen ? selectedBg : ""}`}
+              ) : null}
+              <span className="flex-1 min-w-0 flex flex-col">
+                <span className={`text-sm font-semibold truncate ${strong}`}>
+                  {contact ? contact.name : "No one to talk to yet"}
+                </span>
+                <span
+                  className={`text-xs truncate ${muted}`}
+                  title={contact ? contact.line || contact.sub : undefined}
                 >
-                  {`Outputs ${sideSummary.count}`}
-                  {/* Something needs you (frame 35). */}
-                  {needsYou ? (
-                    <span
-                      aria-hidden="true"
-                      data-testid="workspace-outputs-dot"
-                      className={`inline-block h-2 w-2 rounded-full ${statusTokens.warning.solidBg}`}
+                  {contact ? contact.line || contact.sub : ""}
+                </span>
+              </span>
+              <FontAwesomeIcon
+                icon="chevron-down"
+                className={`h-3 w-3 ${muted}`}
+              />
+            </button>
+            {switchOpen ? (
+              <div
+                role="menu"
+                className={`absolute left-1 right-1 z-30 flex flex-col gap-1 rounded-lg border p-2 shadow-lg overflow-y-auto ${hairline} ${panel.backgroundColor || ""}`}
+                // Below the switcher, never over it; a long list scrolls
+                // inside the window.
+                style={{ top: 76, maxHeight: "calc(100% - 88px)" }}
+                data-testid="workspace-switcher-menu"
+              >
+                {groups.map((g) => (
+                  <div key={g.label} className="flex flex-col gap-0.5">
+                    <span className={`px-2 pt-1 text-xs ${muted}`}>
+                      {g.label}
+                    </span>
+                    {g.items.map((c) => {
+                      const current = c.key === (contact && contact.key);
+                      return (
+                        <ListRow
+                          key={c.key}
+                          testId="workspace-switcher-item"
+                          icon={
+                            <BotAvatar
+                              bot={{ id: c.botId, name: c.name }}
+                              icon={
+                                c.kind === "dashlead"
+                                  ? "people-group"
+                                  : undefined
+                              }
+                            />
+                          }
+                          title={
+                            <span className="flex flex-row items-center gap-2">
+                              <span className="truncate">{c.name}</span>
+                              {current ? (
+                                <span
+                                  role="img"
+                                  aria-label="Current"
+                                  className="flex-shrink-0"
+                                >
+                                  <FontAwesomeIcon
+                                    icon="check"
+                                    className="h-3 w-3"
+                                  />
+                                </span>
+                              ) : null}
+                            </span>
+                          }
+                          ariaLabel={current ? `${c.name} (current)` : c.name}
+                          // One line: its dashboard and its bots.
+                          meta={
+                            <span
+                              className="block truncate"
+                              // A long team is cut short: hover for all of it.
+                              title={c.menuLine || c.line || c.sub}
+                            >
+                              {c.menuLine || c.line || c.sub}
+                            </span>
+                          }
+                          // The one you are on, in the theme's colour (the
+                          // check mark says so too).
+                          className={current ? raised : ""}
+                          onClick={() => switchTo(c.key)}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {isBot ? null : (
+              <>
+                <div className="mt-2">
+                  <Button3
+                    size="sm"
+                    title="+ New conversation"
+                    onClick={startNew}
+                  />
+                </div>
+                <span className={`px-2 pt-3 pb-1 text-xs ${muted}`}>
+                  Recents
+                </span>
+                <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+                  {/* A conversation not started yet is the first one (frame 13). */}
+                  {open ? null : (
+                    <ListRow
+                      testId="workspace-thread-new"
+                      title="New conversation"
+                      selected
                     />
+                  )}
+                  {threads.length ? (
+                    threads.map((t) => (
+                      <ListRow
+                        key={t.id}
+                        testId="workspace-thread"
+                        title={t.title}
+                        // Its age; "asked <this lead>" would repeat on every row.
+                        meta={[
+                          String(t.sub || "").split(" · ")[0],
+                          t.fromCreate
+                            ? `From Create${
+                                BUILT_TAG[t.fromCreate]
+                                  ? ` · ${BUILT_TAG[t.fromCreate]}`
+                                  : ""
+                              }`
+                            : t.id === selectedId && wp.waitingForPick
+                              ? "Waiting for you"
+                              : t.built
+                                ? BUILT_TAG[t.built] || null
+                                : t.planned
+                                  ? "Plan"
+                                  : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                        selected={t.id === selectedId}
+                        onClick={() => {
+                          setNavOpen(false);
+                          if (open && t.id === selectedId) return;
+                          // A Create plan being carried on: one at a time.
+                          if (carrying.current) return;
+                          setSelectedId(t.id);
+                          setMessages(EMPTY);
+                          setAskBusy(false);
+                          setSideOpen(null);
+                          setMakingOn(false);
+                          moveOn();
+                          // A plan from the Create window: carried on as a
+                          // conversation (release 6c).
+                          if (t.fromCreate) {
+                            // The start shows while it's carried (and says
+                            // so if it can't be).
+                            setOpen(null);
+                            carryOverCreatePlan(t.id);
+                            return;
+                          }
+                          setOpen({ key: t.id, recentId: t.id });
+                        }}
+                      />
+                    ))
+                  ) : open ? (
+                    <span className={`px-2 py-2 text-xs ${muted}`}>
+                      Your conversations with {contact ? contact.name : "them"}{" "}
+                      show here.
+                    </span>
                   ) : null}
+                </div>
+              </>
+            )}
+          </nav>
+
+          {/* Middle: the conversation */}
+          <section
+            aria-label="Conversation"
+            // Lifted above the quiet sides: the conversation is the focus.
+            className={`dr-chat-stage flex-1 min-w-0 flex flex-col min-h-0 ${
+              narrow ? "" : "my-2 rounded-xl border overflow-hidden"
+            } ${hairline} ${panel.backgroundColor || ""}`}
+          >
+            <header
+              ref={headerRef}
+              className={`flex-shrink-0 flex flex-row items-center px-6 py-3 border-b ${hairline}`}
+            >
+              {/* Folded (frame 35): plain bordered toggles — Button3 can't
+                say it's open (aria-expanded). */}
+              {narrow ? (
+                <button
+                  ref={navBtn}
+                  type="button"
+                  aria-label="Conversations and leads"
+                  aria-expanded={navOpen}
+                  onClick={() => {
+                    setOutsOpen(false);
+                    setNavOpen((v) => !v);
+                  }}
+                  className={`flex-shrink-0 mr-3 max-w-xs truncate rounded-lg border px-2.5 py-1 text-sm ${hairline} ${strong} ${navOpen ? selectedBg : ""}`}
+                >
+                  {`☰ ${contact ? contact.name : "Conversations"}`}
                 </button>
+              ) : null}
+              <span
+                className={`flex-1 min-w-0 text-sm font-semibold truncate ${strong}`}
+              >
+                {title}
+              </span>
+              {/* Where the widget's steps are, small (the chat asks them). */}
+              {!narrow && (pickCard || wizardOn || reuseOn) ? (
+                <span className="flex-shrink-0 ml-3">
+                  <StepBar
+                    compact
+                    current={headerStep}
+                    done={headerDone}
+                    {...(headerSteps ? { steps: headerSteps } : {})}
+                  />
+                </span>
+              ) : null}
+              {/* Step 4 draws the looks across the window: no side column,
+                so the window's × is here. */}
+              {!narrow && wizardStage === "looks" ? (
                 <button
                   type="button"
                   aria-label="Close"
                   onClick={onClose}
-                  className={`flex items-center justify-center h-8 w-8 rounded-lg ${muted}`}
+                  className={`flex-shrink-0 ml-3 flex items-center justify-center h-8 w-8 rounded-lg ${muted}`}
                 >
                   <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
                 </button>
-              </span>
-            ) : null}
-          </header>
-          {/* What this conversation is about (frame 41): a page's New —
-              also when it's reopened. */}
-          {aboutShown ? (
-            <div
-              className={`flex-shrink-0 flex flex-row px-6 pt-4 pb-3 border-b ${hairline}`}
-            >
-              <span
-                className={`rounded-full border px-3 py-1 text-sm ${hairline}`}
-                data-testid="workspace-about"
-              >
-                <span className={muted}>{aboutShown.label}:</span>{" "}
-                <span className={`font-semibold ${strong}`}>
-                  {aboutShown.text}
+              ) : null}
+              {narrow ? (
+                <span className="flex-shrink-0 flex flex-row items-center gap-2 ml-3">
+                  <button
+                    ref={outsBtn}
+                    type="button"
+                    aria-label={`Outputs ${sideSummary.count}${needsYou ? " — something needs you" : ""}`}
+                    aria-expanded={outsOpen}
+                    onClick={() => {
+                      setNavOpen(false);
+                      setOutsOpen((v) => !v);
+                    }}
+                    className={`flex flex-row items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm ${hairline} ${strong} ${outsOpen ? selectedBg : ""}`}
+                  >
+                    {`Outputs ${sideSummary.count}`}
+                    {/* Something needs you (frame 35). */}
+                    {needsYou ? (
+                      <span
+                        aria-hidden="true"
+                        data-testid="workspace-outputs-dot"
+                        className={`inline-block h-2 w-2 rounded-full ${statusTokens.warning.solidBg}`}
+                      />
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={onClose}
+                    className={`flex items-center justify-center h-8 w-8 rounded-lg ${muted}`}
+                  >
+                    <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
+                  </button>
                 </span>
-              </span>
-            </div>
-          ) : null}
-          {loading ? (
-            <div
-              className={`flex-1 flex items-center justify-center text-sm ${muted}`}
-              data-testid="workspace-loading"
-            >
-              Loading…
-            </div>
-          ) : missing ? (
-            <div
-              className={`flex-1 flex flex-col items-center justify-center gap-2 px-6 text-sm ${muted}`}
-              data-testid="workspace-missing"
-            >
-              <span>That lead or bot isn&apos;t available any more.</span>
-              <span>Pick who to talk to at the top left.</span>
-            </div>
-          ) : isBot && lone ? (
-            <BotChat key={lone.id} bot={lone} />
-          ) : !open && ways && way === null ? (
-            // Making a bot or a dashboard: its ways (frames 2 and 10).
-            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col px-6 py-6">
-              <div className="my-auto">
-                <WaysChooser
-                  ways={ways}
-                  onPick={pickWay}
-                  raised={raised}
-                  error={wayError}
-                />
-              </div>
-            </div>
-          ) : !open && wayView ? (
-            wayView
-          ) : open && contact ? (
-            <StepTailContext.Provider value={stepTail}>
-              <AskStep
-                // A new lead is a new conversation (never a carried-over one).
-                key={`${contact.key}:${open.key}`}
-                question={open.question || ""}
-                // A page's New: saved with it, and the Dash Lead is told
-                // what's being made.
-                about={open.making ? makingAbout(making) : null}
-                onAbout={setReopenedAbout}
-                recentId={open.recentId || null}
-                recipient={contact.recipient}
-                hideTo
-                approvalBots={[
-                  { id: contact.botId, name: contact.name },
-                  ...contact.members,
-                ]}
-                onStarted={setSelectedId}
-                onMessagesChange={setMessages}
-                onBusyChange={setAskBusy}
-                renderAfter={renderAfter}
-                hideMessage={hideMessage}
-                // A typed reply takes the plan (and the changes made to it on
-                // the right) along, so a change reaches the Planner whole.
-                prepareSend={(t) => withPlanContext(t, wp.plan, wp.takeEdits())}
-                // A typed "yes" to a plan that can be built builds it, as Yes;
-                // a reply while the plan has questions answers them — straight
-                // to the Planner.
-                controlRef={askCtl}
-                takeReply={(t) => {
-                  if (next === "question" || (next === "nothing" && wp.plan))
-                    return planActions.onAnswer(t);
-                  // The built widget is waiting on a look: a change is a fix
-                  // to it, for the Builder — unless the plan is to change.
-                  if (planChange) {
-                    setPlanChange(false);
-                    return false;
-                  }
-                  if (previewWaiting) {
-                    const say = askCtl.current && askCtl.current.say;
-                    // "Yes" / "looks good": Looks good.
-                    if (isPlainYes(t) || LOOKS_GOOD.test(t)) {
-                      if (say) say({ who: "you", text: t, local: true });
-                      pb.approve(previewWaiting.id, {});
-                      return true;
-                    }
-                    // "Thanks", "nice": not a change — no rebuild for it.
-                    if (PLEASANTRY.test(t)) {
-                      if (say) {
-                        say({ who: "you", text: t, local: true });
-                        say({
-                          who: "note",
-                          text: "Nothing sent to the Builder. Click Looks good to keep it, or say what to change.",
-                        });
-                      }
-                      return true;
-                    }
-                    // A widget the user already has: no Builder draft to fix —
-                    // a change goes to the Planner.
-                    if (!previewBuilt) return false;
-                    sendFix(previewWaiting.id, t);
-                    return true;
-                  }
-                  if (
-                    !isPlainYes(t) ||
-                    // The wizard's yes is its own button: a typed one goes
-                    // to the Planner, never lost.
-                    reviewHeld.current ||
-                    answering ||
-                    walking ||
-                    starting ||
-                    wp.sent ||
-                    (wp.build && !removed) ||
-                    !canBuild({ plan: wp.plan, check: wp.check })
-                  )
-                    return false;
-                  buildIt();
-                  return true;
-                }}
-                placeholder={
-                  planChange
-                    ? "Tell the Planner what to change in the plan"
-                    : previewWaiting && previewBuilt
-                      ? "Tell me what to change — it goes to the Builder as a fix"
-                      : "Reply"
-                }
-                hint={null}
-                // While it builds, the reply box says what's going on and Stop
-                // stops the build; the chat follows it as it goes.
-                working={
-                  building
-                    ? {
-                        text: pb.stopping
-                          ? "Stopping after this step…"
-                          : workingLine(pb.state),
-                        onStop: pb.stop,
-                      }
-                    : null
-                }
-                follow={
-                  pb.state
-                    ? `${pb.state.status}:${(pb.state.steps || []).filter((x) => x.status !== "waiting").length}`
-                    : null
-                }
-              />
-            </StepTailContext.Provider>
-          ) : (
-            <>
-              <div className="flex-1 min-h-0 overflow-y-auto flex flex-col px-6 py-6">
-                <div
-                  className="flex flex-col gap-4 max-w-5xl my-auto"
-                  data-testid="workspace-start"
+              ) : null}
+            </header>
+            {/* What this conversation is about (frame 41): a page's New —
+              also when it's reopened. */}
+            {aboutShown ? (
+              <div
+                className={`flex-shrink-0 flex flex-row px-6 pt-4 pb-3 border-b ${hairline}`}
+              >
+                <span
+                  className={`rounded-full border px-3 py-1 text-sm ${hairline}`}
+                  data-testid="workspace-about"
                 >
-                  {ways ? (
-                    <div>
-                      <Button3 size="sm" title="← Back" onClick={backToWays} />
-                    </div>
-                  ) : null}
-                  <span className={`text-2xl font-semibold ${strong}`}>
-                    {start.title}
+                  <span className={muted}>{aboutShown.label}:</span>{" "}
+                  <span className={`font-semibold ${strong}`}>
+                    {aboutShown.text}
                   </span>
-                  {ways ? goesOn : null}
-                  <span className={`text-sm ${muted}`}>{start.text}</span>
-                  {seedError ? (
-                    <span
-                      className={`text-sm ${muted}`}
-                      role="status"
-                      data-testid="workspace-seed-error"
-                    >
-                      {seedError}
-                    </span>
-                  ) : null}
-                  {start.starters.length ? (
-                    <div className="flex flex-row flex-wrap gap-2">
-                      {start.starters.map((s) => (
-                        <Button2
-                          key={s}
+                </span>
+              </div>
+            ) : null}
+            {loading ? (
+              <div
+                className={`flex-1 flex items-center justify-center text-sm ${muted}`}
+                data-testid="workspace-loading"
+              >
+                Loading…
+              </div>
+            ) : missing ? (
+              <div
+                className={`flex-1 flex flex-col items-center justify-center gap-2 px-6 text-sm ${muted}`}
+                data-testid="workspace-missing"
+              >
+                <span>That lead or bot isn&apos;t available any more.</span>
+                <span>Pick who to talk to at the top left.</span>
+              </div>
+            ) : isBot && lone ? (
+              <BotChat key={lone.id} bot={lone} />
+            ) : !open && ways && way === null ? (
+              // Making a bot or a dashboard: its ways (frames 2 and 10).
+              <div className="flex-1 min-h-0 overflow-y-auto flex flex-col px-6 py-6">
+                <div className="my-auto">
+                  <WaysChooser
+                    ways={ways}
+                    onPick={pickWay}
+                    raised={raised}
+                    error={wayError}
+                  />
+                </div>
+              </div>
+            ) : !open && wayView ? (
+              wayView
+            ) : open && contact ? (
+              <StepTailContext.Provider value={stepTail}>
+                <AskStep
+                  // A new lead is a new conversation (never a carried-over one).
+                  key={`${contact.key}:${open.key}`}
+                  question={open.question || ""}
+                  // A page's New: saved with it, and the Dash Lead is told
+                  // what's being made.
+                  about={open.making ? makingAbout(making) : null}
+                  onAbout={setReopenedAbout}
+                  recentId={open.recentId || null}
+                  recipient={contact.recipient}
+                  hideTo
+                  approvalBots={[
+                    { id: contact.botId, name: contact.name },
+                    ...contact.members,
+                  ]}
+                  onStarted={setSelectedId}
+                  onMessagesChange={setMessages}
+                  onBusyChange={setAskBusy}
+                  // Which model ran it: what each hand-off starts on.
+                  stepRun={(step) => stepRun(step, all.dashTeam)}
+                  renderAfter={renderAfter}
+                  hideMessage={hideMessage}
+                  // A typed reply takes the plan (and the changes made to it on
+                  // the right) along, so a change reaches the Planner whole.
+                  prepareSend={(t) =>
+                    withPlanContext(t, wp.plan, wp.takeEdits())
+                  }
+                  // A typed "yes" to a plan that can be built builds it, as Yes;
+                  // a reply while the plan has questions answers them — straight
+                  // to the Planner.
+                  controlRef={askCtl}
+                  takeReply={(t) => {
+                    if (next === "question" || (next === "nothing" && wp.plan))
+                      return planActions.onAnswer(t);
+                    // The built widget is waiting on a look: a change is a fix
+                    // to it, for the Builder — unless the plan is to change.
+                    if (planChange) {
+                      setPlanChange(false);
+                      return false;
+                    }
+                    if (previewWaiting) {
+                      const say = askCtl.current && askCtl.current.say;
+                      // "Yes" / "looks good": Looks good.
+                      if (isPlainYes(t) || LOOKS_GOOD.test(t)) {
+                        if (say) say({ who: "you", text: t, local: true });
+                        pb.approve(previewWaiting.id, {});
+                        return true;
+                      }
+                      // "Thanks", "nice": not a change — no rebuild for it.
+                      if (PLEASANTRY.test(t)) {
+                        if (say) {
+                          say({ who: "you", text: t, local: true });
+                          say({
+                            who: "note",
+                            text: "Nothing sent to the Builder. Click Looks good to keep it, or say what to change.",
+                          });
+                        }
+                        return true;
+                      }
+                      // A widget the user already has: no Builder draft to fix —
+                      // a change goes to the Planner.
+                      if (!previewBuilt) return false;
+                      sendFix(previewWaiting.id, t);
+                      return true;
+                    }
+                    if (
+                      !isPlainYes(t) ||
+                      // The wizard's yes is its own button: a typed one goes
+                      // to the Planner, never lost.
+                      reviewHeld.current ||
+                      answering ||
+                      walking ||
+                      starting ||
+                      wp.sent ||
+                      (wp.build && !removed) ||
+                      !canBuild({ plan: wp.plan, check: wp.check })
+                    )
+                      return false;
+                    buildIt();
+                    return true;
+                  }}
+                  placeholder={
+                    planChange
+                      ? "Tell the Planner what to change in the plan"
+                      : previewWaiting && previewBuilt
+                        ? "Tell me what to change — it goes to the Builder as a fix"
+                        : "Reply"
+                  }
+                  hint={null}
+                  // While it builds, the reply box says what's going on and Stop
+                  // stops the build; the chat follows it as it goes.
+                  working={
+                    building
+                      ? {
+                          text: pb.stopping
+                            ? "Stopping after this step…"
+                            : workingLine(pb.state),
+                          onStop: pb.stop,
+                        }
+                      : null
+                  }
+                  follow={
+                    pb.state
+                      ? `${pb.state.status}:${(pb.state.steps || []).filter((x) => x.status !== "waiting").length}`
+                      : null
+                  }
+                />
+              </StepTailContext.Provider>
+            ) : (
+              <>
+                <div className="flex-1 min-h-0 overflow-y-auto flex flex-col px-6 py-6">
+                  <div
+                    className="flex flex-col gap-4 max-w-5xl my-auto"
+                    data-testid="workspace-start"
+                  >
+                    {ways ? (
+                      <div>
+                        <Button3
                           size="sm"
-                          title={s}
-                          onClick={() => ask(s)}
+                          title="← Back"
+                          onClick={backToWays}
                         />
-                      ))}
-                    </div>
-                  ) : null}
-                  {/* What the team can make: its example goes in the box,
-                      to change before asking (one place to start, frame 1). */}
-                  {start.kinds ? (
-                    <div className="flex flex-col gap-2">
-                      <div
-                        className="flex flex-row flex-wrap gap-3"
-                        data-testid="workspace-make-kinds"
+                      </div>
+                    ) : null}
+                    <span className={`text-2xl font-semibold ${strong}`}>
+                      {start.title}
+                    </span>
+                    {ways ? goesOn : null}
+                    <span className={`text-sm ${muted}`}>{start.text}</span>
+                    {seedError ? (
+                      <span
+                        className={`text-sm ${muted}`}
+                        role="status"
+                        data-testid="workspace-seed-error"
                       >
-                        {start.kinds.map((k) => (
-                          <button
-                            key={k.kind}
-                            type="button"
-                            aria-label={
-                              waysFor(k.kind)
-                                ? `${k.title}. ${k.hint}`
-                                : `${k.title}. ${k.hint}. Example: ${k.example}`
-                            }
-                            onClick={() => {
-                              // A dashboard or a bot: its ways first.
-                              if (waysFor(k.kind)) {
-                                startMaking(k.kind);
-                                return;
-                              }
-                              setDraft(k.example);
-                              if (composer.current) composer.current.focus();
-                            }}
-                            className={`w-44 flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left ${hairline}`}
-                          >
-                            <span
-                              className={`flex items-center justify-center h-8 w-8 rounded-lg ${fieldBg} dr-role-well ${strong}`}
-                              aria-hidden="true"
-                            >
-                              <FontAwesomeIcon
-                                icon={k.icon}
-                                className="h-4 w-4"
-                              />
-                            </span>
-                            <span className={`text-sm font-semibold ${strong}`}>
-                              {k.title}
-                            </span>
-                            <span className={`text-xs ${muted}`}>{k.hint}</span>
-                            <span className={`text-xs ${link}`}>
-                              “{k.example}”
-                            </span>
-                          </button>
+                        {seedError}
+                      </span>
+                    ) : null}
+                    {start.starters.length ? (
+                      <div className="flex flex-row flex-wrap gap-2">
+                        {start.starters.map((s) => (
+                          <Button2
+                            key={s}
+                            size="sm"
+                            title={s}
+                            onClick={() => ask(s)}
+                          />
                         ))}
                       </div>
-                      <span className={`text-xs ${muted}`}>
-                        A dashboard or a bot shows the ways to make it; the
-                        others put their example in the box — then change it to
-                        what you want.
-                      </span>
-                    </div>
-                  ) : null}
-                  {/* Or start from (frame 13, in the middle since one place
-                      to start): New Dashboard keeps its own, no widget. */}
-                  {startsHere ? (
-                    <div
-                      className="flex flex-col gap-2 pt-2"
-                      data-testid="workspace-start-from"
-                    >
-                      <span className={`text-xs ${muted}`}>Or start from</span>
-                      <div className="flex flex-row flex-wrap gap-3">
-                        {START_FROM.map((s) => (
-                          <button
-                            key={s.kind}
-                            type="button"
-                            aria-label={`${s.title}. ${s.sub}`}
-                            onClick={() => startFrom(s.kind)}
-                            className={`w-60 flex flex-row items-start gap-3 rounded-xl border p-3 text-left ${hairline} ${selectedBg}`}
-                          >
-                            <span
-                              className={`flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg ${fieldBg} dr-role-well ${strong}`}
-                              aria-hidden="true"
+                    ) : null}
+                    {/* What the team can make: its example goes in the box,
+                      to change before asking (one place to start, frame 1). */}
+                    {start.kinds ? (
+                      <div className="flex flex-col gap-2">
+                        <div
+                          className="flex flex-row flex-wrap gap-3"
+                          data-testid="workspace-make-kinds"
+                        >
+                          {start.kinds.map((k) => (
+                            <button
+                              key={k.kind}
+                              type="button"
+                              aria-label={
+                                waysFor(k.kind)
+                                  ? `${k.title}. ${k.hint}`
+                                  : `${k.title}. ${k.hint}. Example: ${k.example}`
+                              }
+                              onClick={() => {
+                                // A dashboard or a bot: its ways first.
+                                if (waysFor(k.kind)) {
+                                  startMaking(k.kind);
+                                  return;
+                                }
+                                setDraft(k.example);
+                                if (composer.current) composer.current.focus();
+                              }}
+                              className={`w-44 flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left ${hairline}`}
                             >
-                              <FontAwesomeIcon
-                                icon={s.icon}
-                                className="h-4 w-4"
-                              />
-                            </span>
-                            <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                              <span
+                                className={`flex items-center justify-center h-8 w-8 rounded-lg ${fieldBg} dr-role-well ${strong}`}
+                                aria-hidden="true"
+                              >
+                                <FontAwesomeIcon
+                                  icon={k.icon}
+                                  className="h-4 w-4"
+                                />
+                              </span>
                               <span
                                 className={`text-sm font-semibold ${strong}`}
                               >
-                                {s.title}
+                                {k.title}
                               </span>
                               <span className={`text-xs ${muted}`}>
-                                {s.sub}
+                                {k.hint}
                               </span>
-                            </span>
-                          </button>
-                        ))}
+                              <span className={`text-xs ${link}`}>
+                                “{k.example}”
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        <span className={`text-xs ${muted}`}>
+                          A dashboard or a bot shows the ways to make it; the
+                          others put their example in the box — then change it
+                          to what you want.
+                        </span>
                       </div>
-                    </div>
-                  ) : null}
-                  {/* Change with AI (release 6c): the Widget Builder, by
+                    ) : null}
+                    {/* Or start from (frame 13, in the middle since one place
+                      to start): New Dashboard keeps its own, no widget. */}
+                    {startsHere ? (
+                      <div
+                        className="flex flex-col gap-2 pt-2"
+                        data-testid="workspace-start-from"
+                      >
+                        <span className={`text-xs ${muted}`}>
+                          Or start from
+                        </span>
+                        <div className="flex flex-row flex-wrap gap-3">
+                          {START_FROM.map((s) => (
+                            <button
+                              key={s.kind}
+                              type="button"
+                              aria-label={`${s.title}. ${s.sub}`}
+                              onClick={() => startFrom(s.kind)}
+                              className={`w-60 flex flex-row items-start gap-3 rounded-xl border p-3 text-left ${hairline} ${selectedBg}`}
+                            >
+                              <span
+                                className={`flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg ${fieldBg} dr-role-well ${strong}`}
+                                aria-hidden="true"
+                              >
+                                <FontAwesomeIcon
+                                  icon={s.icon}
+                                  className="h-4 w-4"
+                                />
+                              </span>
+                              <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                                <span
+                                  className={`text-sm font-semibold ${strong}`}
+                                >
+                                  {s.title}
+                                </span>
+                                <span className={`text-xs ${muted}`}>
+                                  {s.sub}
+                                </span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {/* Change with AI (release 6c): the Widget Builder, by
                       hand, as Create › Change offered. */}
-                  {makingShown && making.widget ? (
-                    <div>
-                      <Button3
-                        size="sm"
-                        title="Edit the code yourself"
-                        onClick={editByHand}
-                      />
-                    </div>
-                  ) : null}
+                    {makingShown && making.widget ? (
+                      <div>
+                        <Button3
+                          size="sm"
+                          title="Edit the code yourself"
+                          onClick={editByHand}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-              <ChatComposer
-                ref={composer}
-                ariaLabel={contact ? `Ask ${contact.name}` : "Ask"}
-                value={draft}
-                onChange={(v) => setDraft(v)}
-                onSend={() => ask()}
-                placeholder="Reply"
-                hint={null}
-                sendLabel="Ask"
-                className="flex-shrink-0"
-              />
-            </>
-          )}
-        </section>
+                <ChatComposer
+                  ref={composer}
+                  ariaLabel={contact ? `Ask ${contact.name}` : "Ask"}
+                  value={draft}
+                  onChange={(v) => setDraft(v)}
+                  onSend={() => ask()}
+                  placeholder="Reply"
+                  hint={null}
+                  sendLabel="Ask"
+                  className="flex-shrink-0"
+                />
+              </>
+            )}
+          </section>
 
-        {/* Right: outputs and the team, resizable */}
-        {narrow || wizardStage === "looks" ? null : (
-          <ResizeHandle {...handleProps} ariaLabel="Resize outputs" />
-        )}
-        <aside
-          ref={asideRef}
-          aria-label="Outputs"
-          // Folded (frame 36): it slides over the conversation; closed, it
-          // stays mounted (hidden) so its button keeps count.
-          className={
-            narrow
-              ? outsOpen
-                ? `absolute right-0 z-30 flex flex-col min-h-0 border-l shadow-lg ${hairline} ${panel.backgroundColor || ""}`
-                : "hidden"
-              : wizardStage === "looks"
-                ? // Step 4 draws the looks across the window: no strip left
-                  // over (mounted, so the Outputs count holds).
-                  "hidden"
-                : `dr-chat-shell-side flex-shrink-0 flex flex-col min-h-0 border-l ${hairline}`
-          }
-          style={
-            narrow
-              ? // Frame 36: 380 wide, under the header, never past the window.
-                { width: 380, maxWidth: "100%", top: headerH, bottom: 0 }
-              : wizardStage === "looks"
-                ? // Step 4 draws the looks across the window (the mockup):
-                  // only the window's close stays.
-                  {}
-                : {
-                    // Expanded (frame 37): 760 wide, and never more than half the
-                    // screen, so the conversation keeps room.
-                    width: wide
-                      ? Math.min(
-                          WIDE,
-                          Math.round(
-                            (typeof window !== "undefined"
-                              ? window.innerWidth
-                              : 1600) * 0.5,
-                          ),
-                        )
-                      : sideWidth,
-                  }
-          }
-        >
-          {/* The window's close, in its own row above the column. */}
-          <div
-            className={`flex-shrink-0 flex flex-row items-center justify-end px-3 py-2 border-b ${hairline}`}
+          {/* Right: outputs and the team, resizable */}
+          {narrow || wizardStage === "looks" ? null : (
+            <ResizeHandle {...handleProps} ariaLabel="Resize outputs" />
+          )}
+          <aside
+            ref={asideRef}
+            aria-label="Outputs"
+            // Folded (frame 36): it slides over the conversation; closed, it
+            // stays mounted (hidden) so its button keeps count.
+            className={
+              narrow
+                ? outsOpen
+                  ? `absolute right-0 z-30 flex flex-col min-h-0 border-l shadow-lg ${hairline} ${panel.backgroundColor || ""}`
+                  : "hidden"
+                : wizardStage === "looks"
+                  ? // Step 4 draws the looks across the window: no strip left
+                    // over (mounted, so the Outputs count holds).
+                    "hidden"
+                  : `dr-chat-shell-side flex-shrink-0 flex flex-col min-h-0 border-l ${hairline}`
+            }
+            style={
+              narrow
+                ? // Frame 36: 380 wide, under the header, never past the window.
+                  { width: 380, maxWidth: "100%", top: headerH, bottom: 0 }
+                : wizardStage === "looks"
+                  ? // Step 4 draws the looks across the window (the mockup):
+                    // only the window's close stays.
+                    {}
+                  : {
+                      // Expanded (frame 37): 760 wide, and never more than half the
+                      // screen, so the conversation keeps room.
+                      width: wide
+                        ? Math.min(
+                            WIDE,
+                            Math.round(
+                              (typeof window !== "undefined"
+                                ? window.innerWidth
+                                : 1600) * 0.5,
+                            ),
+                          )
+                        : sideWidth,
+                    }
+            }
           >
-            {/* A plain ×, quiet until it's wanted (frame 1). Folded, it
-                closes the outputs; the window's × is in the header. */}
-            <button
-              type="button"
-              aria-label={narrow ? "Close outputs" : "Close"}
-              onClick={narrow ? () => setOutsOpen(false) : onClose}
-              className={`flex items-center justify-center h-8 w-8 rounded-lg ${muted}`}
+            {/* The window's close, in its own row above the column. */}
+            <div
+              className={`flex-shrink-0 flex flex-row items-center justify-end px-3 py-2 border-b ${hairline}`}
             >
-              <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
-            </button>
-          </div>
-          {contact && !(wizardStage === "looks" && !narrow) ? (
-            <WorkspaceSide
-              contact={contact}
-              // The plan card's next step (plan → build).
-              next={next}
-              planActions={planActions}
-              reviewInChat={wizardOn || reuseOn}
-              reuseInChat={reuseOn}
-              sketchHidden={wizardStage === "looks"}
-              buildNext={
-                wp.build ? (
-                  <BuildNext
-                    build={wp.build}
-                    state={pb.state}
-                    actions={buildActions}
-                    restored={pb.restored}
-                    change={buildChange(wp.build)}
-                    cell={buildCell(wp.build)}
-                    onStop={pb.stop}
-                    stopping={pb.stopping}
-                    actionError={pb.actionError || buildError}
-                  />
-                ) : null
-              }
-              // A change to one widget (release 6c): in place or new, and
-              // signing in to change it in place.
-              onWidgetMode={
-                convWidget && convWidget.canInPlace ? setModePick : null
-              }
-              onSignIn={
-                convWidget && convWidget.canSignIn && making && making.widget
-                  ? signInToChange
-                  : null
-              }
-              messages={messages}
-              statusOf={all.statusOf}
-              wp={wp}
-              planReadOnly={answering}
-              onBuild={starting || walking ? null : buildIt}
-              build={wp.build}
-              // A fix from the preview shows in the chat too.
-              pb={pb ? { ...pb, revise: sendFix } : pb}
-              dashTeam={dashTeamRoles}
-              open={sideOpen}
-              onOpen={setSideOpen}
-              wide={wide}
-              // No Expand in a small window: the column already covers it.
-              onToggleWide={narrow ? null : () => setWide((v) => !v)}
-              onSummary={setSideSummary}
-            />
-          ) : null}
-        </aside>
-      </div>
-      {walking ? (
-        <BuildWalk
-          wp={wp}
-          onReady={(checks) => {
-            setWalking(false);
-            startBuild({ checks });
-          }}
-          onCancel={() => setWalking(false)}
-        />
-      ) : null}
-      {authGate}
-    </Modal>
+              {/* A plain ×, quiet until it's wanted (frame 1). Folded, it
+                closes the outputs; the window's × is in the header. */}
+              <button
+                type="button"
+                aria-label={narrow ? "Close outputs" : "Close"}
+                onClick={narrow ? () => setOutsOpen(false) : onClose}
+                className={`flex items-center justify-center h-8 w-8 rounded-lg ${muted}`}
+              >
+                <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
+              </button>
+            </div>
+            {contact && !(wizardStage === "looks" && !narrow) ? (
+              <WorkspaceSide
+                contact={contact}
+                // The plan card's next step (plan → build).
+                next={next}
+                planActions={planActions}
+                reviewInChat={wizardOn || reuseOn}
+                reuseInChat={reuseOn}
+                sketchHidden={wizardStage === "looks"}
+                checkedBefore={
+                  wizardOn && !wp.build && wizardStage !== "looks"
+                    ? askRows(
+                        wizardStage,
+                        wp.wizard.piece,
+                        wp.providers,
+                        liveTools,
+                      )
+                    : null
+                }
+                buildNext={
+                  wp.build ? (
+                    <BuildNext
+                      build={wp.build}
+                      state={pb.state}
+                      actions={buildActions}
+                      restored={pb.restored}
+                      change={buildChange(wp.build)}
+                      cell={buildCell(wp.build)}
+                      onStop={pb.stop}
+                      stopping={pb.stopping}
+                      actionError={pb.actionError || buildError}
+                    />
+                  ) : null
+                }
+                // A change to one widget (release 6c): in place or new, and
+                // signing in to change it in place.
+                onWidgetMode={
+                  convWidget && convWidget.canInPlace ? setModePick : null
+                }
+                onSignIn={
+                  convWidget && convWidget.canSignIn && making && making.widget
+                    ? signInToChange
+                    : null
+                }
+                messages={messages}
+                statusOf={all.statusOf}
+                wp={wp}
+                planReadOnly={answering}
+                onBuild={starting || walking ? null : buildIt}
+                build={wp.build}
+                // A fix from the preview shows in the chat too.
+                pb={pb ? { ...pb, revise: sendFix } : pb}
+                dashTeam={dashTeamRoles}
+                open={sideOpen}
+                onOpen={setSideOpen}
+                wide={wide}
+                // No Expand in a small window: the column already covers it.
+                onToggleWide={narrow ? null : () => setWide((v) => !v)}
+                onSummary={setSideSummary}
+              />
+            ) : null}
+          </aside>
+        </div>
+        {walking ? (
+          <BuildWalk
+            wp={wp}
+            onReady={(checks) => {
+              setWalking(false);
+              startBuild({ checks });
+            }}
+            onCancel={() => setWalking(false)}
+          />
+        ) : null}
+        {authGate}
+      </Modal>
+    </ModelInfoContext.Provider>
   );
 };
 

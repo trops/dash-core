@@ -220,6 +220,82 @@ describe("createConnectorLister", () => {
     assert.equal(r.connectors.length, 2);
   });
 
+  // Connector details ("A connector Dash can't find says why").
+  it("says what it checked: the Claude Code, its account, the others here", async () => {
+    const seen = [];
+    const lister = createConnectorLister({
+      loadQuery: async () => fakeQuery([STATUS], seen),
+      resolveCli: () => "/bin/claude",
+      readVersion: async (p) => (p === "/bin/claude" ? "2.1.305" : "2.0.14"),
+      findClis: async () => ["/bin/claude", "/usr/local/bin/claude"],
+      readAuthStatus: async (p) =>
+        p === "/bin/claude"
+          ? {
+              loggedIn: true,
+              authMethod: "claude.ai",
+              email: "me@x.com",
+              subscriptionType: "max",
+            }
+          : { loggedIn: true, authMethod: "claude.ai", email: "other@x.com" },
+    });
+    // A bot run's listing never runs the other Claude Codes.
+    assert.deepEqual((await lister.list()).details.others, []);
+    const r = await lister.list({ refresh: true, details: true });
+    assert.deepEqual(r.details.cli, {
+      path: "/bin/claude",
+      version: "2.1.305",
+    });
+    assert.deepEqual(r.details.account, {
+      loggedIn: true,
+      method: "claude.ai",
+      email: "me@x.com",
+      plan: "max",
+    });
+    assert.deepEqual(r.details.others, [
+      {
+        path: "/usr/local/bin/claude",
+        version: "2.0.14",
+        account: {
+          loggedIn: true,
+          method: "claude.ai",
+          email: "other@x.com",
+          plan: null,
+        },
+      },
+    ]);
+    assert.deepEqual(r.details.stillConnecting, []);
+  });
+
+  it("Reconnect: connects again, never the cached answer, and says how it went", async () => {
+    const seen = [];
+    const asked = [];
+    const lister = createConnectorLister({
+      loadQuery: async () => (args) => {
+        seen.push(args);
+        return {
+          mcpServerStatus: async () => STATUS,
+          reconnectMcpServer: async (name) => {
+            asked.push(name);
+            if (name === "claude.ai Google Drive")
+              throw new Error("auth failed");
+          },
+          close: () => {},
+        };
+      },
+      resolveCli: () => "/bin/claude",
+    });
+    await lister.list();
+    const r = await lister.list({ reconnect: true });
+    assert.equal(seen.length, 2);
+    // Every one not connected (Google Calendar is).
+    assert.deepEqual(asked, ["claude.ai Google Drive"]);
+    assert.deepEqual(r.details.reconnected, [
+      { server: "claude.ai Google Drive", ok: false, error: "auth failed" },
+    ]);
+    await lister.list({ reconnect: "claude.ai Google Calendar" });
+    assert.deepEqual(asked.slice(-1), ["claude.ai Google Calendar"]);
+  });
+
   it("reuses the cached list unless asked to refresh", async () => {
     const seen = [];
     const lister = createConnectorLister({

@@ -1,5 +1,12 @@
 import React, { useCallback, useContext, useEffect, useState } from "react";
-import { Panel, ThemeContext } from "@trops/dash-react";
+import {
+  EmptyState,
+  FontAwesomeIcon,
+  Panel,
+  StatusBadge,
+  ThemeContext,
+  useStatusTokens,
+} from "@trops/dash-react";
 import { Widget } from "../../Widget";
 import { useTeamBots } from "../../Components/Bots/useTeamBots";
 import {
@@ -7,18 +14,13 @@ import {
   toPlainText,
   triggerLabel,
 } from "../../Components/Bots/botConversation";
-import { openBotsView } from "./BotResultsWidget";
+import { dayTime, openBotsView } from "./BotResultsWidget";
 
 const STATUS_TEXT = {
   completed: "Completed",
   failed: "Failed",
   stopped: "Stopped",
   running: "Running",
-};
-const RUN_DOT = {
-  completed: "bg-green-400",
-  failed: "bg-red-400",
-  stopped: "bg-gray-500",
 };
 
 function api() {
@@ -49,6 +51,8 @@ export const BotActivityContent = ({ dashboardId, team }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
   const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
+  const strong = currentTheme["text-neutral-light"] || "";
+  const statusTokens = useStatusTokens();
   const [rows, setRows] = useState(null);
 
   const teamIds = ((team && team.bots) || []).map((b) => b.id);
@@ -88,10 +92,42 @@ export const BotActivityContent = ({ dashboardId, team }) => {
     (a) => a && a.request && teamIds.includes(a.request.botId),
   );
 
+  // Runs by day: Today, Yesterday, then the date (approved mockup).
+  const dayOf = (iso) => {
+    const at = dayTime(iso);
+    return at ? at.split(",")[0] : "Earlier";
+  };
+  const groups = [];
+  for (const r of rows || []) {
+    const day = dayOf(r.run.endedAt || r.run.startedAt);
+    const g = groups[groups.length - 1];
+    if (g && g.day === day) g.rows.push(r);
+    else groups.push({ day, rows: [r] });
+  }
+  const tone = (status) =>
+    status === "completed"
+      ? ["success", "check"]
+      : status === "failed"
+        ? ["error", "exclamation"]
+        : status === "running"
+          ? ["info", "spinner"]
+          : ["neutral", "circle-stop"];
+
   return (
-    <div className="flex flex-col gap-2 h-full min-h-0">
-      <span className="text-sm font-semibold">Bot activity</span>
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1">
+    <div className="flex flex-col h-full min-h-0">
+      <div
+        className={`flex flex-row items-center gap-3 pb-3 border-b ${hairline}`}
+      >
+        <span
+          className={`dr-chat-card flex flex-shrink-0 items-center justify-center h-8 w-8 rounded-lg border ${hairline}`}
+        >
+          <FontAwesomeIcon icon="bolt" className={`h-3.5 w-3.5 ${muted}`} />
+        </span>
+        <span className={`flex-1 text-sm font-semibold ${strong}`}>
+          Bot activity
+        </span>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 pt-3">
         {approvals.map((a) => (
           <button
             key={a.id}
@@ -99,47 +135,80 @@ export const BotActivityContent = ({ dashboardId, team }) => {
             onClick={() =>
               openBotsView(dashboardId, a.request.botId, "conversation")
             }
-            className="text-left text-xs text-amber-400"
+            className={`text-left flex flex-row items-center gap-3 rounded-xl border px-3 py-2 ${statusTokens.warning.bg || ""} ${statusTokens.warning.border || ""}`}
           >
-            {`${nameOf(a.request.botId)} wants to use ${a.request.toolName}${a.request.serverName ? ` on ${a.request.serverName}` : ""}`}
+            <FontAwesomeIcon
+              icon="hand"
+              className={`h-3.5 w-3.5 ${statusTokens.warning.icon || ""}`}
+            />
+            <span className={`flex-1 text-xs font-semibold ${strong}`}>
+              {`${nameOf(a.request.botId)} wants to use ${a.request.toolName}${a.request.serverName ? ` on ${a.request.serverName}` : ""}`}
+            </span>
+            <StatusBadge state="warning" label="Needs you" />
           </button>
         ))}
         {rows && !rows.length ? (
-          <span className={`text-sm ${muted}`}>
-            No bot runs on this dashboard yet.
-          </span>
+          <EmptyState
+            icon={<FontAwesomeIcon icon="bolt" className="h-5 w-5" />}
+            title="No bot runs yet"
+            description="No bot runs on this dashboard yet — each run shows here as it happens."
+          />
         ) : null}
-        {(rows || []).map((r, i) => {
-          const trigger = triggerLabel(r.run, nameOf);
-          const runDot = RUN_DOT[r.run.status] || "bg-gray-500";
-          const t = r.run.endedAt || r.run.startedAt;
-          return (
-            <button
-              key={`${r.botId}-${t}-${i}`}
-              type="button"
-              data-testid="bot-activity-row"
-              onClick={() => openBotsView(dashboardId, r.botId, "activity")}
-              className={`text-left rounded-md border px-2 py-1.5 flex flex-col gap-0.5 ${hairline}`}
+        {groups.map((g) => (
+          <div key={g.day} className="flex flex-col">
+            <span
+              className={`text-xs font-semibold uppercase tracking-wider pt-2 pb-1 ${muted}`}
             >
-              <span className="flex flex-row items-center gap-2 text-xs">
-                <span className={`h-2 w-2 rounded-full ${runDot}`} />
-                <span className="font-medium">{r.botName}</span>
-                <span className={muted}>
-                  {[
-                    STATUS_TEXT[r.run.status] || r.run.status,
-                    t ? new Date(t).toLocaleTimeString() : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-              </span>
-              {trigger ? (
-                <span className={`text-xs ${muted}`}>{trigger}</span>
-              ) : null}
-              <span className="text-xs truncate">{summaryLine(r.run)}</span>
-            </button>
-          );
-        })}
+              {g.day}
+            </span>
+            {g.rows.map((r, i) => {
+              const trigger = triggerLabel(r.run, nameOf);
+              const t = r.run.endedAt || r.run.startedAt;
+              const [state, icon] = tone(r.run.status);
+              const s = statusTokens[state] || {};
+              const time = t
+                ? new Date(t).toLocaleTimeString(undefined, {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })
+                : null;
+              return (
+                <button
+                  key={`${r.botId}-${t}-${i}`}
+                  type="button"
+                  data-testid="bot-activity-row"
+                  onClick={() => openBotsView(dashboardId, r.botId, "activity")}
+                  className={`dr-clickable text-left flex flex-row items-start gap-3 rounded-lg px-1 py-2 ${i ? `border-t ${hairline}` : ""}`}
+                >
+                  <span
+                    className={`flex flex-shrink-0 items-center justify-center h-6 w-6 rounded-full ${s.bg || ""}`}
+                    aria-label={STATUS_TEXT[r.run.status] || r.run.status}
+                  >
+                    <FontAwesomeIcon
+                      icon={icon}
+                      className={`h-3 w-3 ${s.icon || muted} ${r.run.status === "running" ? "animate-spin" : ""}`}
+                    />
+                  </span>
+                  <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                    <span className="flex flex-row items-baseline gap-2">
+                      <span className={`text-sm font-semibold ${strong}`}>
+                        {r.botName}
+                      </span>
+                      <span className={`text-xs ${muted}`}>
+                        {[time, trigger].filter(Boolean).join(" · ")}
+                      </span>
+                    </span>
+                    <span
+                      className={`text-xs truncate ${r.run.status === "failed" ? statusTokens.error.icon || "" : muted}`}
+                    >
+                      {summaryLine(r.run)}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </div>
   );

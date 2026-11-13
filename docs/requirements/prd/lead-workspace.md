@@ -1,10 +1,10 @@
 # PRD: Lead Workspace — Talk to Each Team Through Its Lead
 
 **Status:** In Progress (release 3)
-**Last Updated:** 2026-11-10
+**Last Updated:** 2026-11-13
 **Owner:** John Giatropoulos
 **Location:** dash-core (framework feature; dash-electron hosts the notifications panel and picks up each release)
-**Approved mockup:** https://claude.ai/artifact/LQogUdGVwvhr1w435jXkrS (page "CURRENT — Lead workspace", frames 1–37; release 6c frames 38–43; theme round frames 44–47; theme change round frames 48–52b; page "Make a bot or dashboard in Create", frames 1–18)
+**Approved mockup:** https://claude.ai/artifact/LQogUdGVwvhr1w435jXkrS (page "CURRENT — Lead workspace", frames 1–37; release 6c frames 38–43; theme round frames 44–47; theme change round frames 48–52b; page "Make a bot or dashboard in Create", frames 1–18; page "Which model ran it", frames 1–4)
 **Related PRDs:** [bot-teams.md](./bot-teams.md) (teams, leads), [app-navigation.md](./app-navigation.md) (Bots page, bot page), [bot-factory.md](./bot-factory.md) (bots, approvals)
 
 ---
@@ -408,3 +408,13 @@ The Create window is where every bot and dashboard starts. Before, a dashboard's
   - The Planner is told the dashboard when the door set it (`makingStart` note with its id), "no dashboard", or to ask — one of theirs or none, never new (Planner instructions `BOT_PLACEMENT`). A plan whose dashboard has no id says to use list_dashboards' id or leave dashboard out (`validatePlan`).
   - Claude connectors: `list_providers` says which service each is and its tools; the Planner offers them for a bot's service, marked "(Claude connector)". The plan's "Or use one you have" offers them for what only bots need (`planHave`, `providerChoices({ bots })`). A planned bot that uses one shows **Runs on: Your Claude subscription**, and the build sets it there (`planBotDefinition` → `provider: "claude-code"`).
 - **Not done:** the dashboard copy doesn't copy its bots (as Duplicate); the dashboard's Bots view only shows a new bot's form when it isn't being edited.
+
+### Which model ran it (approved 2026-11-13, page "Which model ran it", frames 1–4)
+
+The user changed the Planner and Builder to Opus · Thorough in Settings › AI and couldn't see in the conversation what each role ran on. (A saved job default beats a role's built-in tier, so the Planner had been on Sonnet.)
+
+- **One pick** (`botController._modelPick`): the bot's own model › its job's default in Settings › AI (a model of its provider) › a Dash team role's tier › a lead's fast tier › the provider's default — with its style and `chosen` (the user picked it). Runs (`_resolveRunProfile`), `listDashTeam` and `listLeads` (`runsOn`, `style`, `chosen`) use it, so the list shows what a run uses. Saving Settings › AI tells open team lists (`BOT_LIST_CHANGED`).
+- **Kept with the run:** the run record has `style` and `modelChosen` beside `model`; a plan build's steps keep `model`, `style`, `modelChosen` and `tookMs` (every try).
+- **In the conversation:** each hand-off step ("Asked the Planner") and build step line ("Builder built …", "Checker passed it") ends with **Opus 5.5 · Thorough**; Dash's own check of what the user chose says **Dash itself**. A message's meta line names the model and style too (`runCostLabel`). Opening a step shows **Ran on**, **Why** ("Your choice for Create · Builder in Settings › AI" / "Built in for the Checker"), **Took** and **Change in Settings › AI** (opens Settings › AI over the workspace). A hand-off step takes the model its role starts on (the list at that moment); a direct Planner run and build steps take the run's own.
+- **On the right:** **Who works on this** — Planner, Builder, Checker, Scout and the conversation's lead, each with its model · style and Your choice / Built in, "A change applies from the next step — one already running keeps its model.", and **Change in Settings › AI**.
+- **Not as the mockup:** the per-model colours (Opus / Sonnet / Haiku) aren't shown — no theme token fits, so the tags are muted text; a step's count of steps isn't kept (only how long it took); a dashboard's own bots' hand-offs show no model.

@@ -17,6 +17,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { normalizeType } from "../Create/planChecklist";
 import { toolName } from "./handoffSteps";
+import { WhoWorks } from "./ModelInfo";
 import { BeforeItBuilds, OutputCard, PlanNext, PlanOutput } from "./PlanViews";
 import {
   BuildLogOutput,
@@ -273,6 +274,8 @@ export const WorkspaceSide = ({
   reuseInChat = false,
   // Step 4 draws the looks in the chat: no sketch beside it.
   sketchHidden = false,
+  // A wizard step, checked before it's asked (askChecks.askRows).
+  checkedBefore = null,
   buildNext = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
@@ -589,6 +592,50 @@ export const WorkspaceSide = ({
         />
       ) : null}
 
+      {/* A wizard step, checked before it's asked: only what's real. */}
+      {checkedBefore && checkedBefore.rows.length ? (
+        <div
+          className="flex flex-col gap-2"
+          data-testid="workspace-checked-before"
+        >
+          <span className="flex flex-col gap-0.5">
+            <span
+              className={`text-xs font-semibold uppercase tracking-wider ${muted}`}
+            >
+              Checked before asking
+            </span>
+            <span className={`text-xs ${muted}`}>{checkedBefore.sub}</span>
+          </span>
+          <div
+            className={`dr-chat-card flex flex-col rounded-xl border overflow-hidden ${hairline}`}
+          >
+            {checkedBefore.rows.map((r, i) => (
+              <div
+                key={i}
+                className={`flex flex-row items-start gap-2 px-3 py-2 text-xs ${i ? `border-t ${hairline}` : ""}`}
+                data-testid="workspace-checked-row"
+              >
+                {r.ok === null ? (
+                  <FontAwesomeIcon
+                    icon="spinner"
+                    className={`h-3 w-3 mt-0.5 animate-spin ${muted}`}
+                  />
+                ) : (
+                  <FontAwesomeIcon
+                    icon={r.ok ? "check" : "xmark"}
+                    className={`h-3 w-3 mt-0.5 ${r.ok ? statusTokens.success.icon : statusTokens.error.icon}`}
+                  />
+                )}
+                <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                  <span className={strong}>{r.main}</span>
+                  {r.sub ? <span className={muted}>{r.sub}</span> : null}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {/* Once it builds, what's left is asked for as Needs you (frame 3). */}
       {/* Nothing to do before building while the user picks a provider. */}
       {wp && !build && !wp.waitingForPick ? (
@@ -788,6 +835,9 @@ export const WorkspaceSide = ({
           ) : null}
         </div>
       )}
+
+      {/* Which model ran it: who works on this, and on what. */}
+      {contact && contact.kind !== "bot" ? <WhoWorks /> : null}
 
       {plan ? (
         <div

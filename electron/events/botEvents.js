@@ -35,6 +35,10 @@ const BOTS_GET_PAUSE_STATE = "bots-get-pause-state";
 const BOTS_LIST_TOOL_SOURCES = "bots-list-tool-sources";
 // The connectors in the user's Claude account (Claude connector providers).
 const BOTS_LIST_CLAUDE_CONNECTORS = "bots-list-claude-connectors";
+// A connector's details: the Claude Code to use; a connector Dash has
+// stopped trying (and Try once more now).
+const BOTS_USE_CLAUDE_CLI = "bots-use-claude-cli";
+const BOTS_CONNECTOR_GIVEN_UP = "bots-connector-given-up";
 const BOTS_GET_GRANTS = "bots-get-grants";
 const BOTS_REVOKE_GRANT = "bots-revoke-grant";
 // Team leads (bot-teams TEAM-002 / TEAM-003).
@@ -148,6 +152,8 @@ module.exports = {
   BOTS_GET_PAUSE_STATE,
   BOTS_LIST_TOOL_SOURCES,
   BOTS_LIST_CLAUDE_CONNECTORS,
+  BOTS_USE_CLAUDE_CLI,
+  BOTS_CONNECTOR_GIVEN_UP,
   BOTS_GET_GRANTS,
   BOTS_REVOKE_GRANT,
   BOTS_ENSURE_LEAD,

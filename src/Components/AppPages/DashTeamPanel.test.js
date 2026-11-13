@@ -154,7 +154,7 @@ test("its last run shows model, tokens and cost", () => {
     },
   });
   expect(
-    screen.getByText("Haiku · 1.3k tokens · included in your plan"),
+    screen.getByText("Haiku 4.5 · 1.3k tokens · included in your plan"),
   ).toBeInTheDocument();
 });
 

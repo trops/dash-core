@@ -1,17 +1,18 @@
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { Button, Button2, Checkbox, SegmentedControl } from "@trops/dash-react";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import { SettingsEditor } from "./StepReview";
 import { TextLink } from "./TextLink";
 import { AnswerPart, WizardAnswer } from "./WizardAnswer";
-import { changeTools, readsFromLabel, refreshChoices } from "./widgetSpec";
+import { offeredChanges, readNotice, settingBounds } from "./askChecks";
+import { readsFromLabel, refreshChoices } from "./widgetSpec";
 
 /**
  * The Planner's question for step 2, for its chat bubble.
  */
-export const doesQuestion = (piece, providers = []) => {
+export const doesQuestion = (piece, providers = [], live = null) => {
   const from = readsFromLabel(piece, providers) || "its provider";
-  return changeTools(piece, providers).length
+  return offeredChanges(piece, providers, live).length
     ? {
         question: `Can it change anything on ${from}?`,
         why: "Each one you tick becomes a button in the widget, and asks you before it first changes anything. Then the settings it starts with, and how often it reads.",
@@ -32,6 +33,9 @@ export const doesQuestion = (piece, providers = []) => {
  * @param {Array} providers     the user's providers (providers.json)
  * @param {({ changes, settings, refresh }) => void} onNext
  * @param {() => void} onBack   back to Reads from
+ * @param {object} live         the provider's running tools (useLiveTools):
+ *   checked before it's asked — only actions it really has, a reading
+ *   tool that can change things said here, settings held to their tool
  */
 export const StepDoes = ({
   piece,
@@ -39,9 +43,15 @@ export const StepDoes = ({
   onNext,
   onBack,
   readOnly = false,
+  live = null,
 }) => {
-  const { muted } = useConfigTokens();
-  const tools = changeTools(piece, providers);
+  const { muted, strong, hairline } = useConfigTokens();
+  const tools = offeredChanges(piece, providers, live);
+  const notice = readNotice(piece, providers, live);
+  const bounds = settingBounds(piece, providers, live);
+  const [valid, setValid] = useState(true);
+  const onValidity = useCallback((v) => setValid(v), []);
+  const checking = !!live && live.status === "reading";
   const from = readsFromLabel(piece, providers) || "Its provider";
   const [ticked, setTicked] = useState(() =>
     (Array.isArray(piece.changes) ? piece.changes : []).filter((t) =>
@@ -64,6 +74,7 @@ export const StepDoes = ({
     taken.current = null;
     if (settingsDone.current) settingsDone.current();
     onNext({
+      // Only what it offers now (a tool it doesn't have is never kept).
       changes: tools.map((t) => t.tool).filter((t) => ticked.includes(t)),
       settings: taken.current || settings,
       refresh: every,
@@ -74,12 +85,42 @@ export const StepDoes = ({
       testId="wizard-does"
       actions={
         <>
-          <Button title="Next: talks to" disabled={readOnly} onClick={next} />
+          <Button
+            title="Next: talks to"
+            disabled={readOnly || !valid}
+            onClick={next}
+          />
           <Button2 title="Back" disabled={readOnly} onClick={onBack} />
         </>
       }
     >
+      {notice.map((n) => (
+        <div
+          key={n.tool}
+          className={`flex flex-row items-start gap-3 rounded-xl border px-3 py-2 ${hairline}`}
+          data-testid="does-read-notice"
+        >
+          <span className={`text-xs font-bold mt-0.5 ${muted}`}>i</span>
+          <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+            <span className={`text-sm font-semibold ${strong}`}>
+              To read, it has to use {n.tool}
+            </span>
+            <span className={`text-xs ${muted}`}>
+              {n.kind === "change"
+                ? "That tool can also change things."
+                : "That tool doesn't say whether it changes things."}{" "}
+              With nothing ticked below, the widget only ever calls it to read —
+              the Checker checks that.
+            </span>
+          </span>
+        </div>
+      ))}
       <AnswerPart first title="Buttons in the widget">
+        {checking ? (
+          <span className={`text-xs ${muted}`}>
+            Checking what {from} can do…
+          </span>
+        ) : null}
         {tools.length ? (
           <div
             className="flex flex-row flex-wrap gap-3"
@@ -101,7 +142,7 @@ export const StepDoes = ({
               />
             ))}
           </div>
-        ) : (
+        ) : checking ? null : (
           <span className={`text-sm ${muted}`}>
             None — {from} has nothing a widget could change with.
           </span>
@@ -125,6 +166,8 @@ export const StepDoes = ({
       >
         <SettingsEditor
           settings={settings}
+          bounds={bounds}
+          onValidity={onValidity}
           doneRef={settingsDone}
           onDone={(value) => {
             taken.current = value;

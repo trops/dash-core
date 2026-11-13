@@ -69,22 +69,75 @@ afterEach(() => {
 });
 
 describe("BotResultsContent (TEAM-012)", () => {
-  it("shows the bot, its status, what triggered it, and its latest answer as plain text", () => {
+  it("shows the bot, its status, what triggered it, and its answer as rows", () => {
     setup();
     expect(screen.getByText("Inbox")).toBeInTheDocument();
-    expect(screen.getByText("Idle")).toBeInTheDocument();
+    expect(screen.getByText("Done")).toBeInTheDocument();
     expect(
       screen.getByText(/Triggered by Agenda › Completed/),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("bot-results-answer")).toHaveTextContent(
-      "Important unread (2): 1. AWS alarm",
-    );
+    // The line before the list, then one row per entry — never raw marks.
+    expect(screen.getByText("Important unread (2):")).toBeInTheDocument();
+    expect(screen.getAllByTestId("bot-results-item")).toHaveLength(1);
+    expect(screen.getByText("AWS alarm")).toBeInTheDocument();
     expect(screen.getByTestId("bot-results-answer")).not.toHaveTextContent(
       "**",
     );
   });
 
-  it("starts the answer scrolled to the end, where the result is", () => {
+  it("each row's action is a badge; the whole answer is a click away", () => {
+    setup({
+      team: team({
+        lastRunByBot: {
+          bot_i: {
+            status: "completed",
+            trigger: "schedule",
+            endedAt: "2026-10-05T14:30:00.000Z",
+            output:
+              "You have 7 unread; 2 matter.\n\n1. **Dana Whitfield** — asks to move the review. Action: reply.\n2. **Google** — new sign-in from a Mac. Action: check it was you.\n\n5 newsletters left out.",
+          },
+        },
+      }),
+    });
+    expect(
+      screen.getByText("You have 7 unread; 2 matter."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Dana Whitfield")).toBeInTheDocument();
+    expect(screen.getByText("Reply")).toBeInTheDocument();
+    expect(screen.getByText("Check it was you")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the whole answer" }),
+    );
+    expect(screen.getByTestId("bot-results-answer")).toHaveTextContent(
+      "1. Dana Whitfield — asks to move the review.",
+    );
+  });
+
+  it("a short answer is said large", () => {
+    setup({
+      team: team({
+        lastRunByBot: {
+          bot_i: {
+            status: "completed",
+            output:
+              "Searching now.\n\nYou have no unread emails from the last 24 hours.",
+          },
+        },
+      }),
+    });
+    expect(screen.getByTestId("bot-results-answer")).toHaveTextContent(
+      /^You have no unread emails from the last 24 hours\./,
+    );
+    // What came before it is a click away.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the whole answer" }),
+    );
+    expect(screen.getByTestId("bot-results-answer")).toHaveTextContent(
+      "Searching now.",
+    );
+  });
+
+  it("long text starts scrolled to the end, where the result is; a list starts at the top", () => {
     const proto = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
       "scrollHeight",
@@ -94,7 +147,13 @@ describe("BotResultsContent (TEAM-012)", () => {
       get: () => 500,
     });
     try {
-      setup();
+      const long =
+        "Let me look. ".repeat(30) + "\n\n" + "Found it. ".repeat(30);
+      setup({
+        team: team({
+          lastRunByBot: { bot_i: { status: "completed", output: long } },
+        }),
+      });
       expect(screen.getByTestId("bot-results-scroll").scrollTop).toBe(500);
     } finally {
       if (proto)
@@ -123,30 +182,62 @@ describe("BotResultsContent (TEAM-012)", () => {
 
   it("runs the bot, and opens it in the Bots view", async () => {
     const { api, events, cleanup } = setup();
-    fireEvent.click(screen.getByText("Run now"));
+    fireEvent.click(screen.getByRole("button", { name: "Run now" }));
     await waitFor(() =>
       expect(api.run).toHaveBeenCalledWith("bot_i", "", false),
     );
-    fireEvent.click(screen.getByText("Open in Bots view"));
+    fireEvent.click(screen.getByRole("button", { name: "Open in Bots view" }));
     expect(events).toEqual([
       { workspaceId: 7, botId: "bot_i", tab: "conversation" },
     ]);
     cleanup();
   });
 
-  it("says when approvals are waiting, and opens them", () => {
-    const { events, cleanup } = setup({
+  it("an approval is answered right in the widget", () => {
+    const approve = jest.fn();
+    setup({
       team: team({
         statusOf: () => "Needs approval",
-        approvalsFor: (id) => (id === "bot_i" ? [{ id: "a1" }] : []),
+        approve,
+        approvalsFor: (id) =>
+          id === "bot_i"
+            ? [
+                {
+                  id: "a1",
+                  request: {
+                    botId: "bot_i",
+                    toolName: "mcp__Gmail__modify_labels",
+                    serverName: "Gmail",
+                  },
+                },
+              ]
+            : [],
       }),
     });
-    expect(screen.getByText("Needs approval")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("1 approval waiting"));
-    expect(events).toEqual([
-      { workspaceId: 7, botId: "bot_i", tab: "conversation" },
-    ]);
-    cleanup();
+    expect(screen.getByText("Needs you")).toBeInTheDocument();
+    expect(screen.getByTestId("bot-results-approval")).toHaveTextContent(
+      "Wants to use modify_labels on Gmail",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+    expect(approve).toHaveBeenCalledWith("a1", { allow: true });
+    fireEvent.click(screen.getByRole("button", { name: "Always allow" }));
+    expect(approve).toHaveBeenCalledWith("a1", { allow: true, remember: true });
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    expect(approve).toHaveBeenCalledWith("a1", { allow: false });
+  });
+
+  it("running: what it's doing, Stop, and the last result faded", () => {
+    const { api } = setup({
+      team: team({ statusOf: () => "Running" }),
+    });
+    api.stop = jest.fn();
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.getByTestId("bot-results-running")).toHaveTextContent(
+      "Working on it…",
+    );
+    expect(screen.getByText("Last result")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(api.stop).toHaveBeenCalledWith("bot_i");
   });
 
   it("shows a failed run's readable error", () => {
@@ -163,11 +254,57 @@ describe("BotResultsContent (TEAM-012)", () => {
       }),
     });
     expect(screen.getByText("Out of credits")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Try again" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "See what went wrong" }),
+    ).toBeInTheDocument();
+  });
+
+  it("a run waiting for an approval is still running — no second run, no 'hasn't run'", () => {
+    setup({
+      team: team({
+        lastRunByBot: {},
+        running: ["bot_i"],
+        statusOf: () => "Needs approval",
+        approvalsFor: (id) =>
+          id === "bot_i"
+            ? [{ id: "a1", request: { botId: "bot_i", toolName: "send" } }]
+            : [],
+      }),
+    });
+    expect(screen.getByRole("button", { name: "Running…" }).disabled).toBe(
+      true,
+    );
+    expect(screen.getByTestId("bot-results-running")).toBeInTheDocument();
+    expect(screen.queryByText(/hasn.t run yet/)).toBeNull();
+  });
+
+  it("a failed run's own words aren't shown as a last result", () => {
+    setup({
+      team: team({
+        lastRunByBot: {
+          bot_i: {
+            status: "failed",
+            error: "boom",
+            output: "I'll search Gmail.",
+          },
+        },
+        statusOf: () => "Failed",
+      }),
+    });
+    expect(screen.queryByText("Last result")).toBeNull();
+    expect(screen.queryByText("I'll search Gmail.")).toBeNull();
   });
 
   it("says when the bot hasn't run yet", () => {
     setup({ team: team({ lastRunByBot: {} }) });
     expect(screen.getByText(/hasn.t run yet/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Run it now" }),
+    ).toBeInTheDocument();
   });
 
   it("lets you pick a bot when it isn't linked, and saves the link", async () => {
@@ -181,7 +318,9 @@ describe("BotResultsContent (TEAM-012)", () => {
     await waitFor(() =>
       expect(api.bindBotWidget).toHaveBeenCalledWith(7, 12, "bot_i"),
     );
-    expect(await screen.findByText("Run now")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Run now" }),
+    ).toBeInTheDocument();
   });
 
   it("asks again when the linked bot is gone", () => {
@@ -199,7 +338,9 @@ describe("BotResultsContent (TEAM-012)", () => {
       }),
     });
     expect(screen.getByText("All good.")).toBeInTheDocument();
-    expect(screen.queryByText("Run now")).toBeNull();
-    expect(screen.getByText("Open in Bots view")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Open in Bots view" }),
+    ).toBeInTheDocument();
   });
 });

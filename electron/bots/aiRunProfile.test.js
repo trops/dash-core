@@ -47,6 +47,13 @@ function fake({ ai, bots = [] } = {}) {
   return {
     _appId: "app",
     _botsRoot: "/tmp/bots",
+    _modelPick(bot, s) {
+      return botController._modelPick.call(this, bot, s);
+    },
+    _pause: { isPaused: () => false },
+    _notifyListChanged() {
+      this.notified = (this.notified || 0) + 1;
+    },
     _getMainWindow: () => null,
     _providers: {
       listProviders: () => ({
@@ -208,6 +215,90 @@ describe("followDefaultOnce", () => {
     self.bot("a").provider = "claude-code";
     assert.deepEqual(botController.followDefaultOnce.call(self), []);
     assert.equal(self.bot("a").provider, "claude-code");
+  });
+});
+
+describe("which model ran it — one pick for runs and the team list", () => {
+  const pick = (self, bot) =>
+    botController._modelPick.call(self, { id: "bot_1", ...bot });
+
+  it("the bot's own model: chosen", () => {
+    const p = pick(fake(), { model: "claude-sonnet-5-5" });
+    assert.equal(p.model, "claude-sonnet-5-5");
+    assert.equal(p.chosen, true);
+  });
+
+  it("its job's default in Settings › AI: chosen, with its style", () => {
+    const self = fake({
+      ai: {
+        defaults: { builder: { model: "claude-opus-5-5", style: "thorough" } },
+      },
+    });
+    const p = pick(self, { system: "dash-team", role: "builder" });
+    assert.equal(p.model, "claude-opus-5-5");
+    assert.equal(p.style.style, "thorough");
+    assert.equal(p.chosen, true);
+  });
+
+  it("a job default that isn't a model of the provider: built in instead", () => {
+    const self = fake({
+      ai: { defaults: { builder: { model: "gpt-x" } } },
+    });
+    const p = pick(self, { system: "dash-team", role: "builder" });
+    assert.equal(p.model, "claude-sonnet-5-5");
+    assert.equal(p.chosen, false);
+  });
+
+  it("built in: a role's tier, a lead's fast tier, else the provider's default", () => {
+    const self = fake();
+    const planner = pick(self, { system: "dash-team", role: "planner" });
+    assert.equal(planner.model, "claude-opus-5-5");
+    assert.equal(planner.chosen, false);
+    assert.equal(planner.style, null);
+    assert.equal(pick(self, { role: "lead" }).model, "claude-haiku-5-5");
+    assert.equal(pick(self, {}).model, "claude-opus-5-5");
+  });
+
+  it("the run keeps its style and whether the model was chosen", () => {
+    const self = fake({
+      ai: {
+        defaults: { planner: { model: "claude-opus-5-5", style: "thorough" } },
+      },
+    });
+    const p = profile(self, { system: "dash-team", role: "planner" });
+    assert.equal(p.style, "thorough");
+    assert.equal(p.modelChosen, true);
+    assert.equal(profile(fake(), {}).modelChosen, false);
+  });
+
+  it("the team list shows the same model a run would use", () => {
+    const self = fake({
+      ai: {
+        defaults: { planner: { model: "claude-opus-5-5", style: "thorough" } },
+      },
+      bots: [
+        { id: "t1", system: "dash-team", role: "planner", name: "Planner" },
+        { id: "t2", system: "dash-team", role: "checker", name: "Checker" },
+      ],
+    });
+    const team = botController.listDashTeam.call(self);
+    const planner = team.find((b) => b.role === "planner");
+    assert.equal(planner.runsOn, "claude-opus-5-5");
+    assert.equal(planner.style, "thorough");
+    assert.equal(planner.chosen, true);
+    const checker = team.find((b) => b.role === "checker");
+    assert.equal(checker.runsOn, "claude-sonnet-5-5");
+    assert.equal(checker.chosen, false);
+  });
+
+  it("a Settings › AI change tells the open team lists", () => {
+    const self = fake();
+    botController.setBotSettings.call(self, {
+      ai: { defaults: { builder: { model: "claude-opus-5-5" } } },
+    });
+    assert.equal(self.notified, 1);
+    botController.setBotSettings.call(self, { keepAwake: true });
+    assert.equal(self.notified, 1);
   });
 });
 

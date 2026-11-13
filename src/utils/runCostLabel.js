@@ -5,6 +5,8 @@
  * recorded before costs were kept show tokens only.
  */
 
+import { runModelLabel } from "./modelRunLabel";
+
 const FAMILIES = [
   [/opus/i, "Opus"],
   [/sonnet/i, "Sonnet"],
@@ -53,11 +55,14 @@ function dollars(usd) {
   return usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`;
 }
 
-/** The full line for a run: "Sonnet · 14.2k tokens · $0.06". */
+/**
+ * The full line for a run: "Sonnet 4.6 · Thorough · 14.2k tokens · $0.06" —
+ * which model ran it, with its version and style.
+ */
 export function runCostLabel(run) {
   if (!run) return "";
   const parts = [];
-  const model = modelLabel(run.model);
+  const model = runModelLabel(run);
   if (model) parts.push(model);
   const tokens = usageTokens(run.usage);
   if (tokens > 0) parts.push(`${formatTokens(tokens)} tokens`);
