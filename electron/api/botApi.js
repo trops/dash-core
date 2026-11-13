@@ -270,9 +270,18 @@ const botApi = {
   /** A cell build's preview: Looks good, with the picks { providers, settings }. */
   approvePlanStep: (buildId, stepId, inputs = {}) =>
     ipcRenderer.invoke(BOTS_APPROVE_PLAN_STEP, { buildId, stepId, inputs }),
-  /** A cell build's preview: Change something — back to the Builder. */
-  revisePlanStep: (buildId, stepId, note) =>
-    ipcRenderer.invoke(BOTS_REVISE_PLAN_STEP, { buildId, stepId, note }),
+  /**
+   * A cell build's preview: Change something — back to the Builder. `marks`
+   * (Mark a spot): { rect, spots } — the preview's place in the window and
+   * the boxes drawn on it; the app takes the picture.
+   */
+  revisePlanStep: (buildId, stepId, note, marks = null) =>
+    ipcRenderer.invoke(BOTS_REVISE_PLAN_STEP, {
+      buildId,
+      stepId,
+      note,
+      marks,
+    }),
   /** Remove what the build made: { removed, kept } or { error }. */
   /** Create's Recent (4e-1): summaries, newest first. */
   listCreateRecent: () => ipcRenderer.invoke(CREATE_RECENT_LIST),

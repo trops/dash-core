@@ -711,3 +711,32 @@ test("gateFsCallWithJit: after a Deny, approving another prompt for the widget a
   await call("readFromFile"); // asks again rather than staying denied
   assert.strictEqual(prompts, 3);
 });
+
+test("a widget's own data file never asks — not even without a grant", async () => {
+  reset();
+  let approvalCalled = false;
+  __mockApproval = async () => {
+    approvalCalled = true;
+    return { approve: false };
+  };
+  const own = "ai-built.notes.Notes--7-a-3.json";
+  for (const action of ["saveToFile", "readFromFile"]) {
+    const r = await gateFsCallWithJit(
+      { widgetId: "ai-built.notes.Notes", action, args: { filename: own } },
+      { enableJit: true },
+    );
+    assert.strictEqual(r.allow, true);
+  }
+  assert.strictEqual(approvalCalled, false);
+  // Another widget's own file, or any other name, still asks.
+  const other = await gateFsCallWithJit(
+    {
+      widgetId: "ai-built.other.Other",
+      action: "readFromFile",
+      args: { filename: own },
+    },
+    { enableJit: true },
+  );
+  assert.strictEqual(other.allow, false);
+  assert.strictEqual(approvalCalled, true);
+});

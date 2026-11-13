@@ -62,7 +62,8 @@ import { ApprovalPreview } from "./ApprovalPreview";
  * "Plan this with the Dash team", which opens a Dash Lead conversation with
  * the request and the lead's note (lead-workspace release 6c); the marker
  * itself is never shown.
- * @param {boolean} [paused]  the bot is paused: it says so and the box waits
+ * @param {boolean} [paused]  the bot is paused: it says so, and a message
+ *   still goes through (paused only stops what it does on its own)
  * @param {() => void} [onResume]  Resume, shown with the paused note
  * @param {string} [overBudget]  the limit it's over ("its $5.00 monthly
  *   budget") — it won't run; the box waits (US-019)
@@ -104,8 +105,9 @@ export const BotChat = ({
   overBudget = null,
   onKeepRunning = null,
 }) => {
-  // The box waits while the bot can't run.
-  const blocked = paused || !!overBudget;
+  // The box waits while the bot can't run. A paused bot can: a message the
+  // user sends is a run they started.
+  const blocked = !!overBudget;
   // "2 events waiting" while it's held (US-011 AC8).
   const waiting = waitingText(queuedEvents);
   // A bot that runs on its own: what a message here does.
@@ -546,15 +548,13 @@ export const BotChat = ({
         ariaLabel="Message"
         sendLabel={isLead ? "Ask" : "Send"}
         placeholder={
-          paused
-            ? `Turn on ${bot.name} to message it`
-            : overBudget
-              ? `Keep ${bot.name} running to message it`
-              : isLead
-                ? "Ask the lead about this team…"
-                : (runs || EMPTY).length && !freshNext
-                  ? `Reply to ${bot.name}…`
-                  : `Message ${bot.name}…`
+          overBudget
+            ? `Keep ${bot.name} running to message it`
+            : isLead
+              ? "Ask the lead about this team…"
+              : (runs || EMPTY).length && !freshNext
+                ? `Reply to ${bot.name}…`
+                : `Message ${bot.name}…`
         }
         above={
           paused || overBudget || notice || jobNote ? (
@@ -567,7 +567,7 @@ export const BotChat = ({
                   {jobNote}
                 </span>
               ) : null}
-              {overBudget && !paused ? (
+              {overBudget ? (
                 <div
                   className={`rounded-lg border px-3 py-2 flex flex-col gap-2 text-xs ${statusTokens.warning.bg} ${statusTokens.warning.border}`}
                   data-testid="bot-chat-over-budget"
@@ -604,7 +604,10 @@ export const BotChat = ({
                     className={`h-3 w-3 ${muted}`}
                   />
                   <span className="flex-1">
-                    Paused — it won&apos;t answer until you turn it on.
+                    Paused — it won&apos;t run on its own.
+                    {overBudget
+                      ? ""
+                      : " Messages you send here still go through."}
                     {waiting
                       ? ` ${waiting} — they'll run when you turn it on.`
                       : ""}

@@ -1,5 +1,12 @@
 import React, { useContext, useEffect, useState } from "react";
 import {
+  readsFromNames,
+  sketchOf,
+  widgetLabel,
+} from "./WidgetWizard/widgetSpec";
+import { ReviewSketch } from "./WidgetWizard/StepReview";
+import { cellPlace } from "./workspaceStart";
+import {
   Button2,
   Button3,
   FontAwesomeIcon,
@@ -155,7 +162,7 @@ function memberState(
   m,
   last,
   status,
-  { plan, lines, rawThemes = null, username = null },
+  { plan, lines, rawThemes = null, username = null, picking = null },
 ) {
   const working = !!(last && last.status === "asking");
   if (working)
@@ -171,6 +178,14 @@ function memberState(
       return { tone: "idle", state: "stopped", line: last.result || "" };
     // A plan says what it is ("drafted a plan — 2 widgets"), not the
     // Planner's first words.
+    // Waiting for the user to pick what the widget reads from.
+    if (last.plan && picking) {
+      return {
+        tone: "ok",
+        state: "asked you",
+        line: `which provider ${picking} reads from`,
+      };
+    }
     if (last.plan) {
       const what = planSubLine(last.plan, [], { rawThemes, username });
       return {
@@ -190,7 +205,9 @@ function memberState(
     return {
       tone: "idle",
       state: "waiting",
-      line: "waiting for your go-ahead",
+      line: picking
+        ? `builds once you pick what ${picking} reads from`
+        : "waiting for your go-ahead",
     };
   if (plan && m.role === "checker")
     return { tone: "idle", state: "waiting", line: ROLE_LINES.checker };
@@ -250,6 +267,12 @@ export const WorkspaceSide = ({
   onSignIn = null,
   next = null,
   planActions = null,
+  // Review & build is in the chat: its yes is the one way to build.
+  reviewInChat = false,
+  // A widget the user already has: its own steps, nothing to build.
+  reuseInChat = false,
+  // Step 4 draws the looks in the chat: no sketch beside it.
+  sketchHidden = false,
   buildNext = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
@@ -368,6 +391,7 @@ export const WorkspaceSide = ({
     return opened(
       <PlanOutput
         wp={wp}
+        onReplan={planActions ? planActions.onAnswer : null}
         readOnly={planReadOnly}
         onBuild={onBuild}
         buildLine={buildLine}
@@ -481,6 +505,7 @@ export const WorkspaceSide = ({
     const { tone, state, line } =
       inBuild ||
       memberState(m, last, statusOf(m.id), {
+        picking: wp && wp.waitingForPick && wp.pick ? wp.pick.name : null,
         plan,
         lines,
         rawThemes,
@@ -493,7 +518,7 @@ export const WorkspaceSide = ({
           ? null
           : inBuild && inBuild.state !== "not needed"
             ? BUILD_ROLES[m.role]
-            : last && last.plan && plan
+            : last && last.plan && plan && !(wp && wp.waitingForPick)
               ? {
                   // A change to a dashboard the user has (frame 30).
                   label:
@@ -550,8 +575,25 @@ export const WorkspaceSide = ({
     >
       <span className={`text-sm font-semibold ${strong}`}>Outputs</span>
 
+      {/* Review & build: how the wizard's widget will look (a sketch). */}
+      {reviewInChat &&
+      !reuseInChat &&
+      !sketchHidden &&
+      wp &&
+      wp.wizard &&
+      wp.plan &&
+      !build ? (
+        <ReviewSketch
+          sketch={sketchOf(wp.wizard.piece)}
+          where={wp.plan.cell ? cellPlace(wp.plan.cell) : ""}
+        />
+      ) : null}
+
       {/* Once it builds, what's left is asked for as Needs you (frame 3). */}
-      {wp && !build ? <BeforeItBuilds wp={wp} readOnly={planReadOnly} /> : null}
+      {/* Nothing to do before building while the user picks a provider. */}
+      {wp && !build && !wp.waitingForPick ? (
+        <BeforeItBuilds wp={wp} readOnly={planReadOnly} />
+      ) : null}
       <BuildNeedsYou
         types={needs}
         onConnected={() => {
@@ -574,8 +616,23 @@ export const WorkspaceSide = ({
           onClick={() => onOpen("preview")}
         />
       ) : null}
+      {/* Nothing is planned until the user picks what it reads from. */}
+      {wp && wp.waitingForPick && wp.pick ? (
+        <div
+          className={`flex flex-col gap-1 rounded-xl border px-4 py-3 ${statusTokens.info.accentBorder}`}
+          data-testid="workspace-waiting-pick"
+        >
+          <span className={`text-sm font-semibold ${strong}`}>
+            Waiting for you
+          </span>
+          <span className={`text-sm ${muted}`}>
+            Pick which provider {wp.pick.name} reads from, in the chat. Nothing
+            is planned or built until you do.
+          </span>
+        </div>
+      ) : null}
       {/* The plan, with its next step — never a dead end (plan → build). */}
-      {plan || (planActions && next) ? (
+      {!(wp && wp.waitingForPick) && (plan || (planActions && next)) ? (
         <div
           className={`flex flex-col rounded-xl border overflow-hidden ${
             planActions && nextNeedsYou(next)
@@ -592,17 +649,45 @@ export const WorkspaceSide = ({
                   ? "palette"
                   : undefined
               }
-              title={`${planName(plan)} — ${planTarget(plan) || plan.widgetChange ? "changes" : "plan"}`}
+              // One new widget in a cell: the widget is the plan.
+              title={
+                plan.cell && wp.wizard && !wp.reuse
+                  ? `${widgetLabel(wp.wizard.piece)} — new widget`
+                  : `${planName(plan)} — ${planTarget(plan) || plan.widgetChange ? "changes" : "plan"}`
+              }
               sub={
                 buildLine ||
-                planStatus({ plan, check: wp.check, open: wp.open })
+                [
+                  planStatus({ plan, check: wp.check, open: wp.open }),
+                  wp.wizard &&
+                  readsFromNames(wp.wizard.piece, wp.providers, wp.picked)
+                    ? `reads from ${readsFromNames(
+                        wp.wizard.piece,
+                        wp.providers,
+                        wp.picked,
+                      )}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
               }
               kind="Plan"
               bordered={false}
               onClick={() => onOpen("plan")}
             />
           ) : null}
-          {planActions && next ? (
+          {planActions && next && reviewInChat && !build ? (
+            <div
+              className={`px-4 py-3 ${plan ? `border-t ${hairline}` : ""}`}
+              data-testid="workspace-review-in-chat"
+            >
+              <span className={`text-sm ${muted}`}>
+                {reuseInChat
+                  ? "Choose each part in the chat, then Yes, preview it."
+                  : "Check each part in the chat, then Yes, build it."}
+              </span>
+            </div>
+          ) : planActions && next ? (
             <div className={`px-4 py-3 ${plan ? `border-t ${hairline}` : ""}`}>
               <PlanNext
                 next={next}
@@ -711,7 +796,9 @@ export const WorkspaceSide = ({
         >
           <span className={`font-semibold ${strong}`}>Providers</span>
           <span className={muted}>
-            {providersLine(wp.checklist, connected)}
+            {wp.waitingForPick
+              ? "you're choosing"
+              : providersLine(wp.checklist, connected, plan)}
           </span>
         </div>
       ) : null}

@@ -522,9 +522,10 @@ describe("each run reads as its own run (Bots view conversation)", () => {
 });
 
 describe("skipNotice (TEAM-015)", () => {
-  it("says paused, busy, or the reason — and that the message is kept", () => {
-    expect(skipNotice("Inbox Watch", "this bot is paused")).toBe(
-      "Inbox Watch is paused — resume it, then send again.",
+  it("says all paused, busy, or the reason — and that the message is kept", () => {
+    // Only "all bots are paused" stops a message the user sends.
+    expect(skipNotice("Inbox Watch", "all bots are paused")).toBe(
+      "All bots are paused — turn them back on in the Bots page, then send again.",
     );
     expect(skipNotice("Inbox Watch", "a run is already in progress")).toBe(
       "Inbox Watch is busy with another run — send again when it finishes.",

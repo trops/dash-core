@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { NEAR_PX, placeAnswer, sentIndex } from "./answerOnTop";
 import { Button, Button3, ChatComposer, ChatMessage } from "@trops/dash-react";
 import {
   findTeamRole,
@@ -91,6 +92,9 @@ export const AskStep = ({
   // busy }) => node; and what's sent for a typed reply (the plan as it
   // stands goes along), as (text) => text.
   renderAfter = null,
+  // A message the host shows differently (or not at all): (m, i) => true
+  // leaves its bubble out; what renderAfter shows after it still shows.
+  hideMessage = null,
   prepareSend = null,
   // A typed reply the host takes instead (a plain "yes" builds the plan):
   // (text) => true when it did, and nothing is sent.
@@ -257,8 +261,8 @@ export const AskStep = ({
     if (res.skipped) {
       const why = teamSkipText(res.reason, to ? to.leadName || "lead" : name);
       if (!to) setRoleBusy(why.busy);
-      // A lead's reason is already written for the user ("… is paused —
-      // resume it in the Bots view"); only busy needs saying differently.
+      // A lead's reason is already written for the user ("… is over its
+      // budget — …"); only busy needs saying differently.
       note(to && !why.busy ? res.reason : why.text);
       return;
     }
@@ -604,7 +608,6 @@ export const AskStep = ({
     const bot = await findTeamRole("planner");
     if (bot && bots && bots.stop) await bots.stop(bot.id);
   };
-  if (controlRef) controlRef.current = { askPlanner, stopPlanner };
 
   // `details` go to the lead with it but aren't shown (e.g. the plan's
   // problems behind "Ask the Planner to fix it").
@@ -630,13 +633,86 @@ export const AskStep = ({
     const box = boxes && boxes.length ? boxes[boxes.length - 1] : null;
     if (box) box.focus();
   };
-  // The conversation follows its newest message (and what shows after it:
-  // the plan's card, the reply choices).
+  // For the workspace: ask the Planner, stop it, put a message in the
+  // conversation (a fix sent to the Builder), or go to the reply box.
+  if (controlRef) {
+    controlRef.current = {
+      askPlanner,
+      stopPlanner,
+      say: (msg) => add(msg),
+      focusReply,
+    };
+  }
+  // After you send, your message goes to the top of the view and the team's
+  // work fills the room below it; once that no longer fits, the view follows
+  // the newest part — unless you scrolled away to read. A saved conversation
+  // opens on its newest message.
   const scroller = useRef(null);
+  const content = useRef(null);
+  const room = useRef(null);
+  const anchorEl = useRef(null);
+  const [anchor, setAnchor] = useState(-1);
+  const prevLength = useRef(messages.length);
+  const away = useRef(false);
+  const placedAt = useRef(null);
   useEffect(() => {
+    const i = sentIndex(prevLength.current, messages);
+    prevLength.current = messages.length;
+    if (i >= 0) {
+      away.current = false;
+      setAnchor(i);
+    } else if (anchor >= messages.length) setAnchor(-1);
+  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+  const place = () => {
     const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length, busy, follow]);
+    const box = content.current;
+    if (!el || !box) return;
+    if (anchor < 0 || !anchorEl.current) {
+      if (room.current) room.current.style.height = "0px";
+      // Newest last — unless you scrolled up to read.
+      if (!away.current) el.scrollTop = el.scrollHeight;
+      return;
+    }
+    const at = (node) =>
+      node.getBoundingClientRect().top -
+      el.getBoundingClientRect().top +
+      el.scrollTop;
+    const p = placeAnswer({
+      anchorTop: at(anchorEl.current) - at(box),
+      contentHeight: box.offsetHeight,
+      viewHeight: el.clientHeight,
+      away: away.current,
+    });
+    if (room.current) room.current.style.height = `${p.room}px`;
+    if (p.scrollTop !== null) {
+      el.scrollTop = p.scrollTop;
+      placedAt.current = el.scrollTop;
+    }
+  };
+  useLayoutEffect(place, [messages.length, busy, follow, anchor]);
+  // What grows without a new message (the reply as it streams, a plan card
+  // drawing in, the window resized) is followed too — one watcher, calling
+  // the latest place.
+  const placeRef = useRef(place);
+  placeRef.current = place;
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const watch = new ResizeObserver(() => placeRef.current());
+    if (content.current) watch.observe(content.current);
+    if (scroller.current) watch.observe(scroller.current);
+    return () => watch.disconnect();
+  }, []);
+  const onScroll = () => {
+    const el = scroller.current;
+    if (!el) return;
+    const nearBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_PX;
+    const nearPlaced =
+      anchor >= 0 &&
+      placedAt.current !== null &&
+      Math.abs(el.scrollTop - placedAt.current) < NEAR_PX;
+    away.current = !(nearPlaced || nearBottom);
+  };
   const after = (m, i) =>
     renderAfter
       ? renderAfter(m, i, {
@@ -653,14 +729,44 @@ export const AskStep = ({
       className="flex-1 min-h-0 flex flex-col"
       data-testid="ask-step"
     >
-      <div ref={scroller} className="flex-1 min-h-0 overflow-y-auto">
-        <div className="flex flex-col gap-3 px-3 py-3">
+      <div
+        ref={scroller}
+        className="flex-1 min-h-0 overflow-y-auto"
+        onScroll={onScroll}
+      >
+        <div ref={content} className="w-full flex flex-col gap-4 px-8 py-5">
           {messages.map((m, i) => (
             <React.Fragment key={m.who === "step" && m.id ? m.id : i}>
-              {m.who === "you" ? (
-                <ChatMessage key={i} role="you">
-                  {m.text}
-                </ChatMessage>
+              {hideMessage && hideMessage(m, i) ? null : m.who === "you" ? (
+                <div
+                  ref={i === anchor ? anchorEl : undefined}
+                  data-testid={i === anchor ? "answer-on-top" : undefined}
+                >
+                  <ChatMessage role="you">
+                    {m.text}
+                    {/* A fix with marked spots: what you marked, small. */}
+                    {m.marks && m.marks.count ? (
+                      <span
+                        className="flex flex-row items-center gap-2 mt-2"
+                        data-testid="ask-you-marks"
+                      >
+                        {m.marks.thumb ? (
+                          <img
+                            src={m.marks.thumb}
+                            alt="The spots you marked on the preview"
+                            className="rounded"
+                            style={{ width: 72 }}
+                          />
+                        ) : null}
+                        <span className="text-xs font-semibold">
+                          {m.marks.count === 1
+                            ? "Marked spot · 1"
+                            : `Marked spots · ${m.marks.count}`}
+                        </span>
+                      </span>
+                    ) : null}
+                  </ChatMessage>
+                </div>
               ) : m.who === "note" ? (
                 <ChatMessage key={i} role="note">
                   {m.text}
@@ -743,6 +849,8 @@ export const AskStep = ({
             </ChatMessage>
           ) : null}
         </div>
+        {/* Room for your message to reach the top while the work fills in. */}
+        <div ref={room} aria-hidden="true" />
       </div>
       <ChatComposer
         ariaLabel="Ask a follow-up"
@@ -780,7 +888,7 @@ export const AskStep = ({
         {...(hint !== undefined ? { hint } : {})}
         // Same word as the dock's first question (one label per action).
         sendLabel="Ask"
-        className="flex-shrink-0"
+        className="flex-shrink-0 w-full"
       />
     </div>
   );

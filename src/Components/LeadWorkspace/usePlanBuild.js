@@ -97,8 +97,8 @@ export function usePlanBuild(buildId, initialState = null) {
     resume: () => act(() => botsApi().resumePlanBuild(buildId)),
     approve: (stepId, inputs = {}) =>
       act(() => botsApi().approvePlanStep(buildId, stepId, inputs)),
-    revise: (stepId, note) =>
-      act(() => botsApi().revisePlanStep(buildId, stepId, note)),
+    revise: (stepId, note, marks = null) =>
+      act(() => botsApi().revisePlanStep(buildId, stepId, note, marks)),
   };
 }
 

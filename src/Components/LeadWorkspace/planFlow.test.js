@@ -5,6 +5,7 @@
  * right column always offers a way on — the plan never leaves you stuck.
  */
 import React from "react";
+import { AppContext } from "../../Context/App/AppContext";
 import "@testing-library/jest-dom";
 import {
   act,
@@ -14,6 +15,15 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+
+// The app's widget registry: what a reused widget's steps list (tests set it).
+const mockRegistry = { map: {} };
+jest.mock("../../ComponentManager", () => ({
+  ComponentManager: {
+    componentMap: () => mockRegistry.map,
+    config: (id) => (mockRegistry.map[id] ? { ...mockRegistry.map[id] } : null),
+  },
+}));
 
 jest.mock("@trops/dash-react", () => {
   const actual = jest.requireActual("@trops/dash-react");
@@ -208,10 +218,10 @@ afterEach(() => {
 
 // ── Helpers: a person using it ───────────────────────────────────────
 
-async function start(text) {
+async function start(text, { providers = null } = {}) {
   const onOpenThemeEditor = jest.fn();
   const changeCurrentTheme = jest.fn();
-  render(
+  const ui = (
     <ThemeContext.Provider
       value={{ currentTheme: {}, rawThemes: {}, changeCurrentTheme }}
     >
@@ -220,7 +230,14 @@ async function start(text) {
         onClose={jest.fn()}
         onOpenThemeEditor={onOpenThemeEditor}
       />
-    </ThemeContext.Provider>,
+    </ThemeContext.Provider>
+  );
+  render(
+    providers ? (
+      <AppContext.Provider value={{ providers }}>{ui}</AppContext.Provider>
+    ) : (
+      ui
+    ),
   );
   const box = await screen.findByRole("textbox", { name: "Ask Dash Lead" });
   fireEvent.change(box, { target: { value: text } });
@@ -674,7 +691,7 @@ describe("stopping and coming back", () => {
   });
 });
 
-test("a dashboard plan that needs a provider: Yes is there, and Before it builds says what to connect", async () => {
+test("a widget only a provider the user hasn't got can serve: the plan waits and says so — never a Connect detour", async () => {
   const dash = {
     summary: "A home dashboard",
     pieces: [
@@ -690,11 +707,15 @@ test("a dashboard plan that needs a provider: Yes is there, and Before it builds
   };
   script.d_l = [() => leadAsked("planner", planned(dash), "Build it?")];
   await start("A dashboard for my smart home");
-  await nextIs("ready");
-  expectAWayOn();
-  expect(within(side()).getByTestId("workspace-before")).toHaveTextContent(
-    /Connect Homeassistant/i,
-  );
+  expect(
+    await within(side()).findByTestId("workspace-waiting-pick"),
+  ).toHaveTextContent(/Nothing is planned or built until you do/);
+  expect(
+    await screen.findByText(
+      "None of your providers can give Lights panel what it needs yet.",
+    ),
+  ).toBeInTheDocument();
+  expect(within(side()).queryByTestId("workspace-before")).toBeNull();
 });
 
 describe("review fixes", () => {
@@ -859,4 +880,135 @@ test("the plan arrives while the lead is still writing: the card waits — no ta
   );
   await nextIs("ready");
   expect(plannerRuns()).toHaveLength(1);
+});
+
+describe("the wizard, step 1 · Reads from — the app asks, from providers.json", () => {
+  const PROVIDERS = {
+    "Google Calendar": {
+      name: "Google Calendar",
+      type: "google-calendar",
+      providerClass: "mcp",
+      allowedTools: ["list-events"],
+    },
+    "Home Assistant MCP": {
+      name: "Home Assistant MCP",
+      type: "home-assistant-mcp",
+      providerClass: "mcp",
+      allowedTools: ["ha_get_state", "ha_config_get_calendar_events"],
+    },
+    "Google Calendar (Claude connector)": {
+      name: "Google Calendar (Claude connector)",
+      type: "claude-connector",
+      providerClass: "connector",
+      mcpConfig: { server: "claude.ai Google Calendar" },
+      allowedTools: ["list_events"],
+    },
+  };
+  // The Planner named Google Calendar itself — and asked nothing.
+  const calendar = {
+    summary: "Today's calendar",
+    pieces: [
+      {
+        kind: "widget",
+        name: "Today's Calendar",
+        source: "new",
+        providers: ["google-calendar"],
+        provider: { "google-calendar": "Google Calendar" },
+      },
+    ],
+  };
+
+  test("the pick shows — nothing ticked, the connector off — and nothing is planned until the user picks", async () => {
+    script.d_l = [() => leadAsked("planner", planned(calendar), "Build it?")];
+    script.d_p = [() => ({ output: planned(calendar) })];
+    await start("My calendar for today", { providers: PROVIDERS });
+    const card = await screen.findByTestId("wizard-reads-from");
+    const rows = within(card).getAllByTestId("provider-pick-row");
+    expect(rows.map((r) => r.getAttribute("data-ticked"))).toEqual([
+      "false",
+      "false",
+      "false",
+    ]);
+    expect(within(card).getByText("Home Assistant MCP")).toBeInTheDocument();
+    expect(
+      within(card).getByText("Its tools can get calendar events"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        "Widgets can't use Claude connectors yet — bots can.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(side()).getByTestId("workspace-waiting-pick"),
+    ).toBeInTheDocument();
+    expect(within(side()).queryByTestId("workspace-plan-box")).toBeNull();
+    expect(within(side()).queryByTestId("workspace-before")).toBeNull();
+    expect(screen.queryByTestId("workspace-plan-card")).toBeNull();
+    // The lead's words on a plan that isn't one yet stay out.
+    expect(screen.queryByText("Build it?")).toBeNull();
+
+    // Pick Home Assistant: the Planner plans again with it.
+    const ha = rows.find((r) => within(r).queryByText("Home Assistant MCP"));
+    fireEvent.click(within(ha).getByRole("checkbox"));
+    fireEvent.click(within(card).getByRole("button", { name: "Use this" }));
+    await waitFor(() =>
+      expect(
+        runs.some(
+          (r) =>
+            r.botId === "d_p" &&
+            /reads from Home Assistant MCP/.test(String(r.prompt)),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  test("the Planner asks which provider itself: one card in the chat — not twice, no plan card — and the pick goes back to it", async () => {
+    const asking = {
+      summary: "A calendar widget",
+      questions: [
+        {
+          question: "Which should today's events come from?",
+          pick: "providers",
+          options: [
+            "Google Calendar",
+            "Home Assistant MCP",
+            "Google Calendar (Claude connector)",
+          ],
+          reasons: {
+            "Home Assistant MCP": "reads events from a Home Assistant calendar",
+          },
+        },
+      ],
+      pieces: [],
+    };
+    script.d_l = [
+      () => leadAsked("planner", planned(asking), "One question first."),
+    ];
+    await start("My calendar for today", { providers: PROVIDERS });
+    const cards = await screen.findAllByTestId("wizard-reads-from");
+    expect(cards).toHaveLength(1);
+    expect(within(side()).queryAllByTestId("provider-pick")).toHaveLength(0);
+    expect(
+      within(side()).getByTestId("workspace-waiting-pick"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("workspace-plan-card")).toBeNull();
+    expect(
+      within(cards[0]).getByText("reads events from a Home Assistant calendar"),
+    ).toBeInTheDocument();
+    const rows = within(cards[0]).getAllByTestId("provider-pick-row");
+    const gc = rows.find((r) => within(r).queryByText("Google Calendar"));
+    fireEvent.click(within(gc).getByRole("checkbox"));
+    fireEvent.click(within(cards[0]).getByRole("button", { name: "Use this" }));
+    await waitFor(() =>
+      expect(
+        runs.some(
+          (r) =>
+            r.botId === "d_p" &&
+            /Which should today's events come from\? — Google Calendar/.test(
+              String(r.prompt),
+            ),
+        ),
+      ).toBe(true),
+    );
+  });
 });

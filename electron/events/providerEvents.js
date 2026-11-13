@@ -10,6 +10,10 @@ const PROVIDER_SAVE_ERROR = "provider-save-error";
 const PROVIDER_LIST = "provider-list";
 const PROVIDER_LIST_COMPLETE = "provider-list-complete";
 const PROVIDER_LIST_ERROR = "provider-list-error";
+// What each provider is and the tools approved for it — read straight from
+// providers.json, nothing decrypted (a sign-in that can't be read here
+// doesn't hide the provider).
+const PROVIDER_LIST_SUMMARIES = "provider-list-summaries";
 
 const PROVIDER_GET = "provider-get";
 const PROVIDER_GET_COMPLETE = "provider-get-complete";
@@ -30,6 +34,7 @@ module.exports = {
   PROVIDER_LIST,
   PROVIDER_LIST_COMPLETE,
   PROVIDER_LIST_ERROR,
+  PROVIDER_LIST_SUMMARIES,
   PROVIDER_GET,
   PROVIDER_GET_COMPLETE,
   PROVIDER_GET_ERROR,

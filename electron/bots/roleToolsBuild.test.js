@@ -83,6 +83,7 @@ describe("tools and servers", () => {
         "list_dashboards",
         "bot_answers",
         "bot_results",
+        "see_marked_spots",
       ],
     );
     assert.deepEqual(
@@ -139,6 +140,42 @@ describe("widget_guide", () => {
       /Tools for gmail:\n- search_messages\(query\) — Search/,
     );
     assert.match(r.text, /Tools for notion: none known/);
+  });
+
+  it("live tools from the user's provider: exactly what each call takes, and its folders", async () => {
+    const r = await handleRoleTool(
+      deps({
+        widgetGuide: async () => ({
+          rules: "# Rules",
+          tools: { filesystem: [{ name: "read_file", args: ["path"] }] },
+          live: {
+            filesystem: {
+              provider: "My Files",
+              tools: [
+                {
+                  name: "read_text_file",
+                  description: "Read a file as text.\nMore.",
+                  inputSchema: {
+                    properties: { path: { type: "string" } },
+                    required: ["path"],
+                  },
+                },
+              ],
+              notes: ["Folders My Files can use: /Users/me/Documents"],
+            },
+          },
+        }),
+      }),
+      as("builder"),
+      "widget_guide",
+      { providers: ["filesystem"] },
+    );
+    assert.match(
+      r.text,
+      /Tools for filesystem \(live from the user's My Files[^\n]*\n- read_text_file\(path: string\) — Read a file as text\.\n/,
+    );
+    assert.match(r.text, /Folders My Files can use: \/Users\/me\/Documents/);
+    assert.doesNotMatch(r.text, /read_file\(path\)/);
   });
 });
 

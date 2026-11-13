@@ -18,6 +18,8 @@ export function useConfigTokens() {
     selectedBg: key("surface") || "bg-gray-800",
     selectedBorder: currentTheme?.["border-primary-dark"] || "border-gray-600",
     fieldBg: key("well") || "bg-gray-900",
+    // A link's colour (the theme's accent).
+    accent: key("accent") || "text-indigo-300",
   };
 }
 

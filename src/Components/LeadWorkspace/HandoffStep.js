@@ -1,6 +1,13 @@
-import React, { useState } from "react";
+import React, { createContext, useContext, useState } from "react";
 import { FontAwesomeIcon } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+
+/**
+ * What a step's line ends with, when the conversation knows better than
+ * the step (the wizard: "found 3 providers for Today's Calendar" — nothing
+ * is planned until the user picks). (step) => string | null.
+ */
+export const StepTailContext = createContext(null);
 
 /**
  * HandoffStep — one hand-off in a lead's conversation (lead-workspace
@@ -12,20 +19,24 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 export const HandoffStep = ({ step }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const [open, setOpen] = useState(false);
+  const tailFor = useContext(StepTailContext);
   if (!step) return null;
+  const said = tailFor ? tailFor(step) : null;
   const asking = step.status === "asking";
   const failed = step.status === "failed";
   const stopped = step.status === "stopped";
-  const tail = asking
-    ? "asking…"
-    : failed
-      ? "couldn't answer"
-      : stopped
-        ? "stopped"
-        : // A plan says so, not the Planner's first words (release 3b).
-          step.plan
-          ? "drafted a plan"
-          : step.result || "answered";
+  const tail = said
+    ? said
+    : asking
+      ? "asking…"
+      : failed
+        ? "couldn't answer"
+        : stopped
+          ? "stopped"
+          : // A plan says so, not the Planner's first words (release 3b).
+            step.plan
+            ? "drafted a plan"
+            : step.result || "answered";
   return (
     <div className="flex flex-col gap-1" data-testid="handoff-step">
       <button

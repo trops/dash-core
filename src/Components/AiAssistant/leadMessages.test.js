@@ -106,8 +106,11 @@ describe("availabilityNotice (AC7)", () => {
     expect(availabilityNotice(lead)).toBeNull();
   });
 
+  test("a paused lead still answers the user", () => {
+    expect(availabilityNotice({ ...lead, paused: true })).toBeNull();
+  });
+
   test.each([
-    [{ paused: true }, /paused — resume it in the Bots view/],
     [{ overBudget: true }, /over its budget/],
     [{ running: true }, /busy with another run/],
   ])("explains %p", (state, pattern) => {

@@ -311,6 +311,22 @@ export const PlanPieces = ({
                   {edit && p.kind === "widget" ? (
                     <EditPlanDetails piece={p} edit={edit} muted={muted} />
                   ) : null}
+                  {p.kind === "widget" && !edit ? (
+                    <div className="ml-7">
+                      <ReadsFrom
+                        piece={p}
+                        onChange={readOnly ? null : () => setChooseIndex(index)}
+                      />
+                    </div>
+                  ) : null}
+                  {chooseIndex === index ? (
+                    <ChooseProviderDialog
+                      plan={plan}
+                      index={index}
+                      onEdit={onEdit}
+                      onClose={() => setChooseIndex(null)}
+                    />
+                  ) : null}
                   {p.kind === "bot" && p.source === "new" ? (
                     <BotPlanDetails
                       piece={p}
@@ -458,7 +474,9 @@ export const PlanChecklistRows = ({
                       ? "Review"
                       : it.kind === "connect"
                         ? "Connect"
-                        : "OK"
+                        : it.kind === "choose"
+                          ? "Choose"
+                          : "OK"
                   }
                   size="sm"
                   onClick={() => onAction(it)}

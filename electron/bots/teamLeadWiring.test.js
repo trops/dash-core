@@ -127,7 +127,12 @@ describe("botController — a lead asks its bots (team_ask_bot)", () => {
       ctrl,
       /takeHandoff: \(\) => this\._handoffs\.take\(lead\.id, runKey\)/,
     );
-    assert.match(ctrl, /run: \(opts\) => this\._run\(member\.id, opts\)/);
+    // For the user's own request, the bot's run is theirs too (a paused
+    // bot still answers — userRunPaused.test.js).
+    assert.match(
+      ctrl,
+      /run: \(opts\) =>\s*this\._inUserRun\(lead\.id\)\s*\? this\._asUserRun\(member\.id, \(\) => this\._run\(member\.id, opts\)\)\s*: this\._run\(member\.id, opts\)/,
+    );
     // Who started the lead's own run (an outside caller can't run its
     // bots) and its conversation — read from the run entry by leadRunInfo
     // (leadAsk.test.js), never the entry object itself.

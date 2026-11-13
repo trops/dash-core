@@ -19,6 +19,7 @@
  *   place_widget    Builder               put an installed widget on a dashboard
  *   bot_results     Planner               the latest result each bot sent (5e)
  *   bot_runs        Planner               recent bot runs and their answers (5e)
+ *   see_marked_spots Builder              the spots the user marked on a preview
  *
  * Everything on ROLE_SERVER only reads (ask_role runs another team bot, itself
  * limited to its role's tools) and is auto-allowed. build_widget installs a
@@ -32,6 +33,7 @@
  */
 "use strict";
 
+const { markedSpotsResult } = require("./markedSpots");
 const {
   describeResults,
   describeRuns,
@@ -242,6 +244,21 @@ const TOOL_DEFS = {
       required: ["bot"],
     },
   },
+  see_marked_spots: {
+    name: "see_marked_spots",
+    description:
+      "See the spots the user marked on your widget's running preview: a picture of the widget as it looks now, each spot a numbered dashed box, and where each box is. Use it first whenever your request says the user marked spots, then change what's in the boxes as asked and nothing else.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        widget: {
+          type: "string",
+          description: "The widget's draft name (draft:<Name>) or its name.",
+        },
+      },
+      required: ["widget"],
+    },
+  },
   list_dashboards: {
     name: "list_dashboards",
     description:
@@ -304,6 +321,7 @@ const ROLE_TOOL_NAMES = {
     "list_dashboards",
     "bot_answers",
     "bot_results",
+    "see_marked_spots",
   ],
   checker: [
     "check_widget",
@@ -628,6 +646,36 @@ function classifyTool(tool) {
   return "unknown";
 }
 
+/**
+ * A tool with what it takes, from its live input schema:
+ * "read_text_file(path: string, head?: number)" —
+ * "?" marks an optional input. Just the name when its schema isn't known
+ * (the server isn't running).
+ */
+function toolSignature(t) {
+  const name = typeof t === "string" ? t : t && t.name;
+  const schema =
+    t && typeof t === "object" ? t.inputSchema || t.input_schema : null;
+  const props = schema && schema.properties;
+  if (!name || !props || typeof props !== "object") return name;
+  const required = new Set(
+    Array.isArray(schema.required) ? schema.required : [],
+  );
+  const keys = Object.keys(props);
+  const args = keys.slice(0, 10).map((k) => {
+    const p = props[k] || {};
+    let type = Array.isArray(p.enum)
+      ? p.enum
+          .slice(0, 6)
+          .map((v) => JSON.stringify(v))
+          .join(" | ")
+      : p.type || "any";
+    if (Array.isArray(type)) type = type.join(" | ");
+    return `${k}${required.has(k) ? "" : "?"}: ${type}`;
+  });
+  return `${name}(${args.join(", ")}${keys.length > 10 ? ", …" : ""})`;
+}
+
 function describeProvider(p) {
   // A connector from the user's Claude account: a bot on the Claude
   // subscription can use it; a widget never can.
@@ -647,7 +695,9 @@ function describeProvider(p) {
     return `${p.name}${p.type ? ` (${p.type})` : ""} — credentials widgets can use (no tools)`;
   }
   const head = `${p.name}${p.type ? ` (${p.type})` : ""}${
-    p.running ? "" : " — not running"
+    p.running
+      ? ""
+      : " — not running now; it starts by itself when the build or a bot uses it, so never ask the user to start it"
   }`;
   if (!Array.isArray(p.tools)) {
     return `${head}\n  tools: not known until it runs (every tool it offers)`;
@@ -655,8 +705,9 @@ function describeProvider(p) {
   if (!p.tools.length) return `${head}\n  tools: none allowed`;
   const groups = { read: [], change: [], unknown: [] };
   for (const t of p.tools) {
-    const name = typeof t === "string" ? t : t && t.name;
-    if (name) groups[classifyTool(t)].push(name);
+    // With what each tool takes, so a widget or bot calls it right.
+    const sig = toolSignature(t);
+    if (sig) groups[classifyTool(t)].push(sig);
   }
   const lines = [head];
   if (groups.read.length) lines.push(`  can read: ${groups.read.join(", ")}`);
@@ -914,6 +965,21 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
         }
         const parts = [String(g.rules).slice(0, GUIDE_LIMIT)];
         for (const [type, tools] of Object.entries(g.tools || {})) {
+          // Live from the user's provider: exactly what each call takes.
+          const live = g.live && g.live[type];
+          if (live) {
+            parts.push(
+              [
+                `Tools for ${type} (live from the user's ${live.provider} — call them exactly like this; "?" = optional):`,
+                ...(live.tools || []).map(
+                  (t) =>
+                    `- ${toolSignature(t)}${t.description ? ` — ${String(t.description).split("\n")[0].slice(0, 160)}` : ""}`,
+                ),
+                ...(live.notes || []),
+              ].join("\n"),
+            );
+            continue;
+          }
           parts.push(
             tools && tools.length
               ? `Tools for ${type}:\n${tools
@@ -979,6 +1045,13 @@ async function handleRoleTool(deps, ctx, toolName, args = {}) {
         if (!deps.botAnswers) return fail("Bot answers aren't available here.");
         const res = deps.botAnswers({ bot: a.bot, count: a.count }) || {};
         return res.error ? fail(res.error) : ok(res.text);
+      }
+      case "see_marked_spots": {
+        // The picture goes to the model as an image; the words are fenced.
+        const r = markedSpotsResult(String(a.widget || "").trim());
+        return r.images
+          ? { text: fence(r.text), images: r.images, isError: false }
+          : ok(r.text);
       }
       case "list_dashboards": {
         const dashboards = (deps.listDashboards && deps.listDashboards()) || [];
@@ -1098,5 +1171,6 @@ module.exports = {
   registryBotsOf,
   classifyTool,
   describeProvider,
+  toolSignature,
   HandoffCap,
 };

@@ -19,6 +19,8 @@ import {
   providerLabel,
   planHave,
   connectorNames,
+  answerLines,
+  questionDefault,
 } from "./planChecklist";
 
 const plan = {
@@ -451,5 +453,36 @@ describe("a planned bot that uses a Claude connector", () => {
     expect(
       botDetails(piece).find((r) => r.label === "Runs on"),
     ).toBeUndefined();
+  });
+});
+
+describe("a typed question's default (found live: blank was 'no answer')", () => {
+  const tz = {
+    question:
+      "Which time zone should it use? Leave blank for America/New_York.",
+  };
+  test("what a blank means, from the question — or its own default", () => {
+    expect(questionDefault(tz)).toBe("America/New_York");
+    expect(questionDefault({ question: "How many items? (blank = 10)" })).toBe(
+      "10",
+    );
+    expect(
+      questionDefault({ question: "Its name?", default: "Groceries" }),
+    ).toBe("Groceries");
+    expect(questionDefault({ question: "Your repo?" })).toBe("");
+    // A question with options is tapped, not typed.
+    expect(
+      questionDefault({ question: "Leave blank for x", options: ["a"] }),
+    ).toBe("");
+  });
+  test("left blank, it's answered with the default — never asked again", () => {
+    expect(answerLines([tz], {})).toEqual([
+      "Which time zone should it use? Leave blank for America/New_York. — America/New_York",
+    ]);
+    expect(answerLines([tz], { 0: "  " })[0]).toMatch(/— America\/New_York$/);
+    expect(answerLines([tz], { 0: "Europe/London" })[0]).toMatch(
+      /— Europe\/London$/,
+    );
+    expect(answerLines([{ question: "Your repo?" }], {})).toEqual([]);
   });
 });

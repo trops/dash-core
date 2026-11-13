@@ -1054,7 +1054,8 @@ async function applyLoadV2(win, appId, manifest, choices = {}, deps = {}) {
       }
       count(row);
       for (const c of res.installed || []) {
-        botsPaused.push(c.name || row.package);
+        // A team's lead isn't paused (botController.installTeam).
+        if (c.role !== "lead") botsPaused.push(c.name || row.package);
         // Provider choices from the profile (by bot name in a team).
         const o =
           row.kind === "team"

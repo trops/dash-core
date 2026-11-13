@@ -36,6 +36,7 @@ import {
 import { appendAnswerText } from "../../utils/answerText";
 import { withoutHandoff } from "../../utils/handoff";
 import { readableError } from "../Bots/botConversation";
+import { skipReason } from "../../utils/leadAsk";
 
 // The fields of a team lead stored on chat messages / the saved recipient.
 const pickLead = (lead) => ({
@@ -471,7 +472,7 @@ export function ChatCore({
             return;
           if (record?.skipped) {
             finishLeadRun(placeholderId, {
-              error: `${target.leadName} is busy with another run — try again when it finishes.`,
+              error: skipReason(target.leadName, record.reason),
             });
           } else if (record?.error || record?.status === "failed") {
             finishLeadRun(placeholderId, {

@@ -114,7 +114,7 @@ const kitchenSink = {
       dashboardId: 7,
       title: "Event Sender",
     },
-    // Declares no events → not offered.
+    // Declares no events → still sends Dash's own three.
     { component: "trops.samples.Notepad", id: 4, dashboardId: 7 },
   ],
 };
@@ -129,15 +129,25 @@ const widgetConfigs = cfg({
 });
 
 describe("buildWidgetEventCatalog", () => {
-  it("lists dashboards → widgets → declared events, skipping silent ones", () => {
+  it("lists dashboards → widgets → their events and the three every widget sends", () => {
     const cat = buildWidgetEventCatalog([kitchenSink, empty], widgetConfigs);
     expect(cat).toHaveLength(1);
     expect(cat[0]).toMatchObject({ workspaceId: "7", name: "Kitchen Sink" });
-    expect(cat[0].widgets).toHaveLength(1);
+    expect(cat[0].widgets).toHaveLength(2);
     expect(cat[0].widgets[0]).toMatchObject({
       ref: "trops.samples.EventSender",
       instanceId: "3",
-      events: ["buttonClicked", "messageSent"],
+      events: [
+        "buttonClicked",
+        "messageSent",
+        "readComplete",
+        "renderComplete",
+        "readFailed",
+      ],
+    });
+    expect(cat[0].widgets[1]).toMatchObject({
+      ref: "trops.samples.Notepad",
+      events: ["readComplete", "renderComplete", "readFailed"],
     });
     expect(cat[0].widgets[0].label).toBeTruthy();
   });
@@ -294,8 +304,17 @@ describe("buildTriggerOptions (one 'Runs when…' picker, TEAM-012)", () => {
     expect(labels(opts)).toEqual([
       "Widgets on Kitchen Sink | Event Sender › buttonClicked",
       "Widgets on Kitchen Sink | Event Sender › messageSent",
+      "Widgets on Kitchen Sink | Event Sender › readComplete",
+      "Widgets on Kitchen Sink | Event Sender › renderComplete",
+      "Widgets on Kitchen Sink | Event Sender › readFailed",
+      "Widgets on Kitchen Sink | Notepad › readComplete",
+      "Widgets on Kitchen Sink | Notepad › renderComplete",
+      "Widgets on Kitchen Sink | Notepad › readFailed",
       "Widgets on Kitchen Sink | Event Sender (2) › buttonClicked",
       "Widgets on Kitchen Sink | Event Sender (2) › messageSent",
+      "Widgets on Kitchen Sink | Event Sender (2) › readComplete",
+      "Widgets on Kitchen Sink | Event Sender (2) › renderComplete",
+      "Widgets on Kitchen Sink | Event Sender (2) › readFailed",
       "Bots on this team | Agenda › Completed",
       "Bots on this team | Agenda › Failed",
       "Bots on this team | Inbox › Completed",

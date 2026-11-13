@@ -4,6 +4,7 @@ import {
   Button2,
   Button3,
   ButtonIcon2,
+  ChatMessage,
   FontAwesomeIcon,
   InputText,
   Switch,
@@ -12,10 +13,20 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import {
+  answerLines,
+  questionDefault,
   createdFor,
   normalizeType,
+  providerPickAnswer,
+  providerPickRows,
   removePiece,
 } from "../Create/planChecklist";
+import {
+  ChooseProviderDialog,
+  ProviderPick,
+  ReadsFrom,
+} from "../Create/ProviderPick";
+import { useKnownProviders } from "../../hooks/useKnownProviders";
 import {
   ConnectDialog,
   InstallReviewDialog,
@@ -49,6 +60,15 @@ import {
 } from "../../utils/themeStanding";
 import { themeUseLine, useThemeUse } from "./useThemeUse";
 import { useRegistryUsername } from "../../hooks/useRegistryUsername";
+import { StepReview } from "./WidgetWizard/StepReview";
+import { StepQuestion, WizardAnswer } from "./WidgetWizard/WizardAnswer";
+import {
+  chosenParts,
+  widgetLabel,
+  wizardIndex,
+} from "./WidgetWizard/widgetSpec";
+import { cellPlace } from "./workspaceStart";
+import { reuseIndex } from "./WidgetWizard/reuseSpec";
 
 /**
  * The plan in a workspace conversation (lead-workspace release 3a, frames 1,
@@ -67,14 +87,19 @@ export const OutputCard = ({
   kind = "",
   onClick,
   bordered = true,
+  // What a click does, in words beside the arrow ("Open preview").
+  go = "",
   testId,
 }) => {
-  const { muted, strong, hairline, selectedBg, fieldBg } = useConfigTokens();
+  const { muted, strong, hairline, selectedBg, fieldBg, accent } =
+    useConfigTokens();
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex flex-row items-center gap-3 rounded-xl px-4 py-3 text-left ${bordered ? `border ${hairline}` : ""} ${selectedBg} dr-role-surface`}
+      // It lights up under the pointer (dr-clickable), so it reads as
+      // something to click; unbordered, its edge only shows then.
+      className={`w-full flex flex-row items-center gap-3 rounded-xl px-4 py-3 text-left border ${bordered ? hairline : "border-transparent"} ${selectedBg} dr-role-surface dr-clickable`}
       data-testid={testId}
     >
       <span
@@ -92,6 +117,19 @@ export const OutputCard = ({
       {kind ? (
         <span className={`flex-shrink-0 text-xs ${muted}`}>{kind}</span>
       ) : null}
+      {onClick && go ? (
+        <span
+          className={`flex-shrink-0 flex flex-row items-center gap-1.5 text-xs font-semibold ${accent} dr-role-accent`}
+        >
+          {go}
+          <FontAwesomeIcon icon="chevron-right" className="h-3 w-3" />
+        </span>
+      ) : onClick ? (
+        <FontAwesomeIcon
+          icon="chevron-right"
+          className={`flex-shrink-0 h-3 w-3 ${muted}`}
+        />
+      ) : null}
     </button>
   );
 };
@@ -100,7 +138,14 @@ export const OutputCard = ({
  * The plan as a card in the conversation: opens it on the right. An earlier
  * plan (one the Planner has since changed) says so, and still opens.
  */
-export const PlanCard = ({ plan, earlier = false, onOpen }) => {
+export const PlanCard = ({
+  plan,
+  earlier = false,
+  onOpen,
+  // The wizard's widget: its name and line instead (frame 4).
+  title: givenTitle = null,
+  sub: givenSub = null,
+}) => {
   // Whose a changed theme is (theme change round): the card says remix.
   const { rawThemes } = useContext(ThemeContext) || {};
   const username = useRegistryUsername();
@@ -121,7 +166,8 @@ export const PlanCard = ({ plan, earlier = false, onOpen }) => {
         // theme, that it's a theme (theme round, frame 45); a theme change,
         // its changes or its remix (frames 49-50).
         title={
-          planTarget(plan) || plan.widgetChange
+          givenTitle ||
+          (planTarget(plan) || plan.widgetChange
             ? `${planName(plan)} — changes`
             : isThemeOnly(plan)
               ? `${planName(plan)} — theme`
@@ -129,13 +175,111 @@ export const PlanCard = ({ plan, earlier = false, onOpen }) => {
                 ? change && change.origin
                   ? `${themeChange(plan).name} (remix) — theme`
                   : `${themeChange(plan).name} — changes`
-                : planName(plan)
+                : planName(plan))
         }
-        sub={earlier ? `${line} · changed since` : line}
+        sub={givenSub || (earlier ? `${line} · changed since` : line)}
         bordered={false}
         onClick={onOpen}
       />
     </div>
+  );
+};
+
+/**
+ * Under the plan: what each widget reads from, by name (widget step by
+ * step, release 1) — Change (or Choose) pins the plan to the user's pick.
+ */
+const PlanReadsFrom = ({
+  plan,
+  onEdit = null,
+  picked = [],
+  onPicked = null,
+  onReplan = null,
+}) => {
+  const { strong } = useConfigTokens();
+  const [choosing, setChoosing] = useState(null);
+  const widgets = ((plan && plan.pieces) || [])
+    .map((p, index) => ({ p, index }))
+    .filter(
+      ({ p }) =>
+        p &&
+        p.kind === "widget" &&
+        Array.isArray(p.providers) &&
+        p.providers.length,
+    );
+  if (!widgets.length) return null;
+  return (
+    <div className="flex flex-col gap-3" data-testid="workspace-reads-from">
+      {widgets.map(({ p, index }) => (
+        <div key={index} className="flex flex-col gap-1">
+          <span className={`text-sm font-semibold ${strong}`}>{p.name}</span>
+          <ReadsFrom
+            piece={p}
+            picked={picked}
+            onChange={onEdit ? () => setChoosing(index) : null}
+          />
+        </div>
+      ))}
+      {choosing !== null && onEdit ? (
+        <ChooseProviderDialog
+          plan={plan}
+          index={choosing}
+          onEdit={onEdit}
+          onReplan={onReplan}
+          picked={picked}
+          onPicked={onPicked}
+          onClose={() => setChoosing(null)}
+        />
+      ) : null}
+    </div>
+  );
+};
+
+/**
+ * The Planner asks which of the user's providers to use (widget step by
+ * step, release 1): ticked by the user, never for them. One question sends
+ * at once; with others, it's kept with their answers (onPick).
+ */
+const ProviderQuestion = ({
+  q,
+  onSend,
+  onPick = null,
+  picked = null,
+  onPicked = null,
+}) => {
+  // providers.json + what the app loaded: never empty by mistake.
+  const known = useKnownProviders();
+  const { muted } = useConfigTokens();
+  const rows = providerPickRows(known, q.options, {
+    forBots: !!q.forBots,
+    reasons: q.reasons || null,
+  });
+  if (picked && onPick) {
+    // Picked, with the other questions still to answer: what was picked,
+    // and Change to pick again.
+    return (
+      <span className="flex flex-row items-center gap-3">
+        <span
+          className={`text-sm ${muted}`}
+          data-testid="provider-question-picked"
+        >
+          {picked}
+        </span>
+        <Button3 size="sm" title="Change" onClick={() => onPick(null)} />
+      </span>
+    );
+  }
+  return (
+    <ProviderPick
+      rows={rows}
+      onePerKind={!q.forBots}
+      onUse={(chosen) => {
+        const text = providerPickAnswer(q.question, chosen, q.options);
+        if (onPicked) onPicked(chosen.map((c) => c.name));
+        if (onPick) onPick(text.slice(q.question.length + 3));
+        else onSend(text, chosen.map((c) => c.name).join(", "));
+      }}
+    />
   );
 };
 
@@ -161,6 +305,10 @@ export const PlanChoices = ({
   onAnswer = null,
   onDecide = null,
   onFix = null,
+  onPicked = null,
+  // Review & build: its own words on yes, held until every part is set.
+  yesTitle = null,
+  yesDisabled = false,
 }) => {
   // Answers go to the Planner itself when the host can send them there.
   const answer = (text, shown) =>
@@ -170,89 +318,161 @@ export const PlanChoices = ({
   const username = useRegistryUsername();
   // Several questions: picks per question, sent together.
   const [picks, setPicks] = useState({});
+  const [own, setOwn] = useState("");
   const questions = (plan && plan.questions) || [];
   if (questions.length) {
-    const answered = questions.filter((_q, i) => picks[i]).length;
+    const answered = answerLines(questions, picks).length;
+    // Which provider is the user's to pick: the Planner doesn't decide it.
+    const picksProvider = questions.some((q) => q && q.pick === "providers");
+    const sayOwn = () =>
+      own.trim() && answer(answerLines(questions, picks, own).join("\n"));
+    const one = questions.length === 1;
+    // A question from the Planner, as the wizard's are (approved "Wizard
+    // steps read like a chat"): its words in a bubble, your answers in one
+    // card under it.
     return (
-      <div
-        className="flex flex-col gap-3"
-        data-testid="workspace-plan-questions"
-      >
-        {questions.map((q, i) => {
-          const options = (Array.isArray(q.options) ? q.options : []).filter(
-            Boolean,
-          );
-          return (
-            <div
-              key={i}
-              className={`flex flex-col gap-2 rounded-lg border px-4 py-3 ${hairline}`}
-            >
-              <span className={`text-xs ${muted}`}>
-                Planner · Dash team asks
-              </span>
-              <span className={`text-sm font-semibold ${strong}`}>
-                {q.question}
-              </span>
-              {options.length ? (
-                <div className="flex flex-row flex-wrap gap-2">
-                  {options.map((o) => (
-                    <ButtonIcon2
-                      key={o}
-                      text={o}
-                      ariaPressed={picks[i] === o}
-                      selected={picks[i] === o}
-                      onClick={() => {
-                        // "I'll type it" isn't an answer: the reply box.
-                        if (isTypeItOption(o)) {
-                          onChange();
-                          return;
+      <div data-testid="workspace-plan-questions">
+        <ChatMessage
+          role="reply"
+          label="Planner"
+          meta="Dash team"
+          footer={
+            <WizardAnswer>
+              {questions.map((q, i) => {
+                const given = (
+                  Array.isArray(q.options) ? q.options : []
+                ).filter(Boolean);
+                // One question to type, with a default: tap it to use it.
+                const options =
+                  given.length || questions.length > 1 || !questionDefault(q)
+                    ? given
+                    : [questionDefault(q)];
+                return (
+                  <div
+                    key={i}
+                    className={`flex flex-col gap-2 ${i ? `pt-4 border-t ${hairline}` : ""}`}
+                    data-testid="workspace-plan-question"
+                  >
+                    {one ? null : (
+                      <span className={`text-sm font-semibold ${strong}`}>
+                        {q.question}
+                      </span>
+                    )}
+                    {q.pick === "providers" ? (
+                      <ProviderQuestion
+                        q={q}
+                        onPicked={onPicked}
+                        onSend={answer}
+                        picked={questions.length > 1 ? picks[i] || null : null}
+                        onPick={
+                          questions.length > 1
+                            ? (text) => setPicks((p) => ({ ...p, [i]: text }))
+                            : null
                         }
-                        if (questions.length === 1) {
-                          answer(`${q.question} — ${o}`, o);
-                          return;
+                      />
+                    ) : options.length ? (
+                      <div className="flex flex-row flex-wrap gap-2">
+                        {options.map((o) => (
+                          <ButtonIcon2
+                            key={o}
+                            text={o}
+                            ariaPressed={picks[i] === o}
+                            selected={picks[i] === o}
+                            onClick={() => {
+                              // "I'll type it" isn't an answer: the reply box.
+                              if (isTypeItOption(o)) {
+                                onChange();
+                                return;
+                              }
+                              if (questions.length === 1) {
+                                answer(`${q.question} — ${o}`, o);
+                                return;
+                              }
+                              setPicks((p) => ({ ...p, [i]: o }));
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ) : questions.length > 1 ? (
+                      // A typed answer, with the others (never lost when sent).
+                      <InputText
+                        label="Your answer"
+                        // Its suggested answer, filled in (yours replaces it).
+                        value={picks[i] ?? questionDefault(q)}
+                        onChange={(v) =>
+                          setPicks((p) => ({
+                            ...p,
+                            [i]: typeof v === "string" ? v : "",
+                          }))
                         }
-                        setPicks((p) => ({ ...p, [i]: o }));
-                      }}
-                    />
-                  ))}
+                      />
+                    ) : null}
+                  </div>
+                );
+              })}
+              {questions.length > 1 ? (
+                <div className="flex flex-row items-center gap-3">
+                  <Button
+                    title="Send answers"
+                    disabled={!answered}
+                    onClick={() =>
+                      answer(answerLines(questions, picks).join("\n"))
+                    }
+                  />
+                  <span className={`text-sm ${muted}`}>
+                    {answered} of {questions.length} answered
+                  </span>
                 </div>
               ) : null}
-            </div>
-          );
-        })}
-        {questions.length > 1 ? (
-          <div className="flex flex-row items-center gap-3">
-            <Button
-              title="Send answers"
-              disabled={!answered}
-              onClick={() =>
-                answer(
-                  questions
-                    .map((q, i) =>
-                      picks[i] ? `${q.question} — ${picks[i]}` : null,
-                    )
-                    .filter(Boolean)
-                    .join("\n"),
-                )
-              }
+              {questions.length > 1 ? (
+                // Words of your own go with the answers above, never instead.
+                <div className="flex flex-row items-end gap-2">
+                  <div className="flex-1 min-w-0">
+                    <InputText
+                      label="Or say it your way"
+                      value={own}
+                      onChange={(v) => setOwn(typeof v === "string" ? v : "")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          sayOwn();
+                        }
+                      }}
+                    />
+                  </div>
+                  <Button2
+                    title="Send"
+                    disabled={!own.trim()}
+                    onClick={sayOwn}
+                  />
+                </div>
+              ) : null}
+              <div className="flex flex-row flex-wrap items-center gap-2">
+                {questions.length > 1 ? null : (
+                  <span className={`text-xs ${muted}`}>
+                    Or type your own answer below.
+                  </span>
+                )}
+                {onDecide && !picksProvider ? (
+                  <Button3
+                    size="sm"
+                    title="Decide for me and finish the plan"
+                    onClick={onDecide}
+                  />
+                ) : null}
+              </div>
+            </WizardAnswer>
+          }
+        >
+          {one ? (
+            <StepQuestion question={questions[0].question} />
+          ) : (
+            <StepQuestion
+              question={`${questions.length} things before I plan it`}
+              why="Pick an answer for each, then Send answers — or say it your way."
             />
-            <span className={`text-sm ${muted}`}>
-              {answered} of {questions.length} answered
-            </span>
-          </div>
-        ) : null}
-        <div className="flex flex-row flex-wrap items-center gap-2">
-          <span className={`text-xs ${muted}`}>
-            Or type your own answer below.
-          </span>
-          {onDecide ? (
-            <Button3
-              size="sm"
-              title="Decide for me and finish the plan"
-              onClick={onDecide}
-            />
-          ) : null}
-        </div>
+          )}
+        </ChatMessage>
       </div>
     );
   }
@@ -298,7 +518,8 @@ export const PlanChoices = ({
       {onBuild ? (
         <>
           <Button
-            title={yesLabel(plan, { rawThemes, username })}
+            title={yesTitle || yesLabel(plan, { rawThemes, username })}
+            disabled={yesDisabled}
             onClick={onBuild}
           />
           <Button2 title="Change something" onClick={onChange} />
@@ -344,6 +565,7 @@ export const PlanNext = ({
   onStopPlanner = null,
   leadName = "The Dash Lead",
   buildSlot = null,
+  onPicked = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const { rawThemes } = useContext(ThemeContext) || {};
@@ -396,19 +618,41 @@ export const PlanNext = ({
       </span>
     );
   } else if (next === "question") {
-    const answered = questions.filter((_q, i) => picks[i]).length;
+    const answered = answerLines(questions, picks).length;
+    // Which provider is the user's to pick: the Planner doesn't decide it.
+    const picksProvider = questions.some((q) => q && q.pick === "providers");
+    // Typed words go with the answers already given, never instead of them.
+    const sayOwn = () =>
+      own.trim() && say(answerLines(questions, picks, own).join("\n"));
     body = (
       <div className="flex flex-col gap-3">
         {questions.map((q, i) => {
-          const options = (Array.isArray(q.options) ? q.options : []).filter(
+          const given = (Array.isArray(q.options) ? q.options : []).filter(
             (o) => o && !isTypeItOption(o),
           );
+          // One question to type, with a default: tap it to use it.
+          const options =
+            given.length || questions.length > 1 || !questionDefault(q)
+              ? given
+              : [questionDefault(q)];
           return (
             <div key={i} className="flex flex-col gap-2">
               <span className={`text-sm font-semibold ${strong}`}>
                 {q.question}
               </span>
-              {options.length ? (
+              {q.pick === "providers" ? (
+                <ProviderQuestion
+                  q={q}
+                  onPicked={onPicked}
+                  onSend={say}
+                  picked={questions.length > 1 ? picks[i] || null : null}
+                  onPick={
+                    questions.length > 1
+                      ? (text) => setPicks((p) => ({ ...p, [i]: text }))
+                      : null
+                  }
+                />
+              ) : options.length ? (
                 <div className="flex flex-row flex-wrap gap-2">
                   {options.map((o) => (
                     <ButtonIcon2
@@ -424,6 +668,19 @@ export const PlanNext = ({
                     />
                   ))}
                 </div>
+              ) : questions.length > 1 ? (
+                // A typed answer, with the others (never lost when sent).
+                <InputText
+                  label="Your answer"
+                  // Its suggested answer, filled in (yours replaces it).
+                  value={picks[i] ?? questionDefault(q)}
+                  onChange={(v) =>
+                    setPicks((p) => ({
+                      ...p,
+                      [i]: typeof v === "string" ? v : "",
+                    }))
+                  }
+                />
               ) : null}
             </div>
           );
@@ -433,16 +690,7 @@ export const PlanNext = ({
             <Button2
               title="Send answers"
               disabled={!answered}
-              onClick={() =>
-                say(
-                  questions
-                    .map((q, i) =>
-                      picks[i] ? `${q.question} — ${picks[i]}` : null,
-                    )
-                    .filter(Boolean)
-                    .join("\n"),
-                )
-              }
+              onClick={() => say(answerLines(questions, picks).join("\n"))}
             />
             <span className={`text-xs ${muted}`}>
               {answered} of {questions.length} answered
@@ -458,23 +706,21 @@ export const PlanNext = ({
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  say(own);
+                  sayOwn();
                 }
               }}
             />
           </div>
-          <Button2
-            title="Send"
-            disabled={!own.trim()}
-            onClick={() => say(own)}
-          />
+          <Button2 title="Send" disabled={!own.trim()} onClick={sayOwn} />
         </div>
-        <div className={`flex flex-col gap-1 border-t pt-3 ${hairline}`}>
-          <div>{decide(false)}</div>
-          <span className={`text-xs ${muted}`}>
-            The Planner picks for you and sends a plan you can say yes to.
-          </span>
-        </div>
+        {picksProvider ? null : (
+          <div className={`flex flex-col gap-1 border-t pt-3 ${hairline}`}>
+            <div>{decide(false)}</div>
+            <span className={`text-xs ${muted}`}>
+              The Planner picks for you and sends a plan you can say yes to.
+            </span>
+          </div>
+        )}
       </div>
     );
   } else if (next === "nothing") {
@@ -586,7 +832,7 @@ export const BeforeItBuilds = ({ wp, readOnly = false }) => {
   return (
     <>
       <div
-        className={`flex flex-col rounded-xl border overflow-hidden ${statusTokens.warning.accentBorder}`}
+        className={`dr-chat-card flex flex-col rounded-xl border overflow-hidden ${statusTokens.warning.accentBorder}`}
         data-testid="workspace-before"
       >
         <span className={`px-4 py-3 text-sm font-semibold ${strong}`}>
@@ -625,6 +871,16 @@ export const BeforeItBuilds = ({ wp, readOnly = false }) => {
             );
             setDialog(null);
           }}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
+      {dialog && dialog.kind === "choose" ? (
+        <ChooseProviderDialog
+          plan={plan}
+          index={dialog.item.pieceIndex}
+          onEdit={wp.edit}
+          picked={wp.picked || []}
+          onPicked={wp.notePicked || null}
           onClose={() => setDialog(null)}
         />
       ) : null}
@@ -677,6 +933,8 @@ export const PlanOutput = ({
   onSignIn = null,
   // A theme its build changed (theme change round): state.changedTheme.
   changedTheme = null,
+  // Change (what a widget reads from) is planned again here.
+  onReplan = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
@@ -795,6 +1053,70 @@ export const PlanOutput = ({
           ...planned.filter((r) => r.warn),
         ]
       : planned;
+  // One new widget in the cell the user picked: the plan is the widget —
+  // every part of it, as on Review & build — and where it goes comes after.
+  // (A widget the user already has isn't one to build: the plan's own view.)
+  const widgetAt =
+    plan && plan.cell && !wc && reuseIndex(plan) < 0 ? wizardIndex(plan) : -1;
+  const widgetPlan =
+    widgetAt < 0
+      ? null
+      : (!earlier && wp.wizard && wp.wizard.piece) || plan.pieces[widgetAt];
+  if (widgetPlan) {
+    return (
+      <div className="flex flex-col gap-4" data-testid="workspace-plan-output">
+        <div className="flex flex-col gap-1">
+          <span className={`text-xs ${muted}`}>
+            {earlier ? "Planner · an earlier plan" : "Planner · the widget"}
+          </span>
+          <span className={`text-lg font-semibold ${strong}`}>
+            {widgetLabel(widgetPlan)}
+          </span>
+          <span className={`text-sm ${muted}`}>
+            {buildLine
+              ? "What was built, part by part"
+              : "What it will do, part by part — nothing is built until you say yes"}
+          </span>
+        </div>
+        <StepReview
+          plan={plan}
+          piece={widgetPlan}
+          providers={wp.providers || []}
+          picked={wp.picked || []}
+          reads={!earlier && wp.wizard ? wp.wizard.reads : null}
+          where={cellPlace(plan.cell)}
+          edited={earlier ? {} : chosenParts(wp.choices || {})}
+          readOnly
+        />
+        {draws ? (
+          <div
+            className="flex flex-col gap-2"
+            data-testid="workspace-plan-where"
+          >
+            <span className={`text-sm font-semibold ${strong}`}>
+              Where it goes
+            </span>
+            <span className={`text-xs ${muted}`}>
+              {`${cellPlace(plan.cell)} on ${
+                target ? target.name : "the dashboard"
+              } — nothing else changes`}
+            </span>
+            <div
+              className="grid grid-cols-2 gap-3"
+              data-testid="workspace-plan-changes"
+            >
+              <ChangesGrid label="Now" rows={changes.now} cols={changes.cols} />
+              <ChangesGrid
+                label="After"
+                rows={changes.after}
+                cols={changes.cols}
+              />
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-4" data-testid="workspace-plan-output">
       <div className="flex flex-col gap-1">
@@ -858,9 +1180,18 @@ export const PlanOutput = ({
           was={changing ? changing.raw : null}
         />
       ) : null}
+      {!wc && !changeOnly ? (
+        <PlanReadsFrom
+          plan={plan}
+          onReplan={readOnly || earlier || buildLine ? null : onReplan}
+          onEdit={readOnly || earlier || buildLine ? null : wp.edit}
+          picked={wp.picked || []}
+          onPicked={wp.notePicked || null}
+        />
+      ) : null}
       {rows.length ? (
         <div
-          className={`flex flex-col rounded-xl border overflow-hidden ${hairline}`}
+          className={`dr-chat-card flex flex-col rounded-xl border overflow-hidden ${hairline}`}
           data-testid="workspace-plan-rows"
         >
           {rows.map((r, i) => (

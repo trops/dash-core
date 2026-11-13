@@ -325,7 +325,7 @@ describe("Dash team instructions (phase 4a)", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /"access": \[string\]/);
     assert.match(planner.instructions, /short tappable options/);
-    assert.equal(planner.history.length, 21);
+    assert.equal(planner.history.length, 25);
   });
 });
 
@@ -451,7 +451,12 @@ describe("Dash team instructions — pages, connections and answers (Create buil
     );
     assert.match(
       planner.instructions,
-      /setting names in the widget's \.dash\.js userConfig \(read_widget\)/,
+      /setting names from its \.dash\.js userConfig \(read_widget\)/,
+    );
+    // A new widget's values are settings, exact values only.
+    assert.match(
+      planner.instructions,
+      /for a new widget, every concrete value it needs[^.]*as a short camelCase name and only the exact value \("\/Users\/me\/notes\/list\.md", never "From \/Users\/me\/notes\/list\.md"/,
     );
     assert.match(
       planner.instructions,
@@ -625,7 +630,7 @@ describe("Dash team instructions (design guide)", () => {
     assert.match(planner.instructions, /each widget is its own panel/);
     // (the latest three are release 6c's and the theme round's, which
     // already had the rules)
-    const before = planner.history[planner.history.length - 8];
+    const before = planner.history[planner.history.length - 12];
     assert.doesNotMatch(before, /one main area/);
     assert.match(before, /<plan><\/plan>/);
   });
@@ -710,7 +715,7 @@ describe("Dash team instructions (lead-workspace 6c: no Create window)", () => {
   it("no Create in the text; the text before upgrades", () => {
     const planner = ROLES.find((x) => x.role === "planner");
     assert.doesNotMatch(planner.instructions, /in Create/);
-    const before = planner.history[planner.history.length - 7];
+    const before = planner.history[planner.history.length - 11];
     assert.match(before, /choose Theme in Create/);
   });
 });
@@ -728,7 +733,7 @@ describe("Dash team instructions (lead-workspace theme round)", () => {
       planner.instructions,
       /use New Theme on the Themes page/,
     );
-    const before = planner.history[planner.history.length - 6];
+    const before = planner.history[planner.history.length - 10];
     assert.match(before, /use New Theme on the Themes page/);
     assert.notEqual(before, planner.instructions);
   });
@@ -741,7 +746,7 @@ describe("Dash team instructions (theme round: color names)", () => {
       planner.instructions,
       /"colorNames": \{"primary": a one- or two-word name/,
     );
-    const before = planner.history[planner.history.length - 5];
+    const before = planner.history[planner.history.length - 9];
     assert.match(before, /"source": "new", "colors"/);
     assert.doesNotMatch(before, /colorNames/);
   });
@@ -759,7 +764,7 @@ describe("Dash team instructions (theme change round)", () => {
       planner.instructions,
       /Changing a saved theme isn't something a plan does/,
     );
-    const before = planner.history[planner.history.length - 4];
+    const before = planner.history[planner.history.length - 8];
     assert.match(before, /Changing a saved theme isn't something a plan does/);
     assert.match(before, /colorNames/);
   });
@@ -790,7 +795,7 @@ describe("Dash team instructions (plan → build: never stuck)", () => {
   it("a new theme doesn't ask where it goes; the Planner before it upgrades", () => {
     const planner = ROLES.find((r) => r.role === "planner");
     assert.match(planner.instructions, /don't ask where it goes/);
-    const before = planner.history[planner.history.length - 3];
+    const before = planner.history[planner.history.length - 7];
     assert.doesNotMatch(before, /don't ask where it goes/);
     const bots = ROLE_IDS.map((r) => teamBot(r));
     bots[0].instructions = before;
@@ -812,7 +817,7 @@ describe("Dash team instructions (bots in Create)", () => {
     assert.match(planner.instructions, /\(Claude connector\)/);
   });
   it("keeps the text before so an unedited Planner's copy is recognized", () => {
-    const last = planner.history[planner.history.length - 2];
+    const last = planner.history[planner.history.length - 6];
     assert.match(last, /A new theme is saved to their themes either way/);
     assert.doesNotMatch(last, /never offer a new dashboard/);
   });
@@ -829,8 +834,99 @@ describe("Dash team instructions (a widget shows what a bot sends, TD-009)", () 
     assert.match(planner.instructions, /read every shape \(recommended\)/);
   });
   it("keeps the text before so an unedited Planner's copy is recognized", () => {
-    const last = planner.history[planner.history.length - 1];
+    const last = planner.history[planner.history.length - 5];
     assert.match(last, /\(Claude connector\)/);
     assert.doesNotMatch(last, /bot_answers/);
+  });
+});
+
+describe("Dash team instructions (widget step by step, release 1)", () => {
+  const planner = ROLES.find((r) => r.role === "planner");
+  it("the user always picks a widget's provider — the Planner never does", () => {
+    assert.match(planner.instructions, /never pick one for them/);
+    assert.match(planner.instructions, /"pick": "providers"/);
+    assert.match(
+      planner.instructions,
+      /Never answer this question for the user/,
+    );
+    assert.match(planner.instructions, /"forBots": true/);
+  });
+  it("keeps the released text so an unedited Planner's copy upgrades", () => {
+    const last = planner.history[planner.history.length - 4];
+    assert.doesNotMatch(last, /"pick": "providers"/);
+    assert.match(last, /<plan><\/plan>/);
+  });
+});
+
+describe("Dash team instructions (open choices)", () => {
+  const planner = ROLES.find((r) => r.role === "planner");
+  it("what the user will see is always asked — never decided for them", () => {
+    assert.match(
+      planner.instructions,
+      /What the user will see is theirs to choose/,
+    );
+    assert.match(planner.instructions, /which of several widgets to use/);
+    assert.match(planner.instructions, /12- or 24-hour/);
+    assert.match(planner.instructions, /Put the default first/);
+  });
+  it("keeps the text before so an unedited Planner's copy upgrades", () => {
+    const last = planner.history[planner.history.length - 3];
+    assert.doesNotMatch(last, /theirs to choose/);
+    assert.match(last, /"pick": "providers"/);
+  });
+});
+
+describe("Dash team instructions (typed defaults)", () => {
+  const planner = ROLES.find((r) => r.role === "planner");
+  it("a typed question carries its suggested answer — never 'leave blank for'", () => {
+    assert.match(planner.instructions, /can carry "default"/);
+    assert.match(planner.instructions, /Never write "leave blank for/);
+  });
+  it("keeps the text before so an unedited Planner's copy upgrades", () => {
+    const last = planner.history[planner.history.length - 2];
+    assert.match(last, /theirs to choose/);
+    assert.doesNotMatch(last, /can carry "default"/);
+  });
+});
+
+describe("Dash team instructions (a widget the user has)", () => {
+  const planner = ROLES.find((r) => r.role === "planner");
+  it("no provider question for a widget the user already has — the app asks", () => {
+    assert.match(
+      planner.instructions,
+      /don't ask which provider it reads from/,
+    );
+    assert.match(planner.instructions, /"yours", "ai-built" or "registry"/);
+  });
+  it("keeps the text before so an unedited Planner's copy upgrades", () => {
+    const last = planner.history[planner.history.length - 1];
+    assert.match(last, /can carry "default"/);
+    assert.doesNotMatch(last, /don't ask which provider it reads from/);
+  });
+});
+
+describe("Dash team instructions (Review & build)", () => {
+  const planner = ROLES.find((r) => r.role === "planner");
+  it("the Planner says what each new widget will be, part by part", () => {
+    for (const field of [
+      '"shows"',
+      '"whenEmpty"',
+      '"reads"',
+      '"changes"',
+      '"refresh"',
+      '"sends"',
+      '"preview"',
+    ]) {
+      assert.ok(planner.instructions.includes(field), field);
+    }
+    assert.match(planner.instructions, /\[\] when it only reads/);
+    assert.match(
+      planner.instructions,
+      /never readComplete, renderComplete or readFailed/,
+    );
+  });
+  it("the released text stays the last history entry", () => {
+    const last = planner.history[planner.history.length - 4];
+    assert.doesNotMatch(last, /"whenEmpty"/);
   });
 });

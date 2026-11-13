@@ -91,9 +91,28 @@ function providerDown(error) {
   );
 }
 
+/**
+ * A path the provider's folders don't include (the permission gate's
+ * "path argument 'path' rejected … Requested: <path> (resolved …"):
+ * → { input, path } or null.
+ */
+function pathOutside(error) {
+  const e = String(error || "");
+  if (!/not within any allowed root|path argument/i.test(e)) return null;
+  const input = (e.match(/path argument '([^']+)'/) || [])[1] || "path";
+  const requested = (e.match(
+    /Requested: ([\s\S]+?)(?: \(resolved|\. Allowed|$)/,
+  ) || [])[1];
+  return { input, path: requested ? requested.trim() : "" };
+}
+
 /** The likely cause of an error, in plain words — or "". */
 function likelyCause(error, { provider = "its provider" } = {}) {
   const e = String(error || "");
+  const outside = pathOutside(e);
+  if (outside) {
+    return `The ${outside.input} it was given isn't inside a folder ${provider} can use — check the widget's settings (a value like "From …" means text got into the path), or add the folder to ${provider}.`;
+  }
   if (/Cannot find module|ENOENT|command not found|spawn .* ENOENT/i.test(e)) {
     return `The program ${provider} starts can't be found — check the command in its settings, then Reconnect.`;
   }
@@ -165,6 +184,7 @@ function widgetAsset(facts, name) {
 function widgetCallIssue(facts) {
   const { component, widgetName = "", provider, tool, args, error } = facts;
   const name = widgetName || displayName(component) || "A widget";
+  const outside = pathOutside(error);
   return {
     asset: widgetAsset(facts, name),
     severity: "problem",
@@ -176,8 +196,11 @@ function widgetCallIssue(facts) {
         ? `${name} couldn't connect to ${provider}`
         : `${name}: ${provider} › ${tool} failed`,
     call: { provider, tool, args, error },
-    // Readable: a JSON answer's message, not the JSON (raw stays on call).
-    message: readableError(error).message,
+    // Readable: a JSON answer's message, not the JSON (raw stays on call);
+    // a path outside the provider's folders, in plain words.
+    message: outside
+      ? `The ${outside.input} "${outside.path}" isn't inside a folder ${provider} can use.`
+      : readableError(error).message,
     // The provider's own suggestion first — it knows best — then ours.
     hint: suggestionHint(error, provider) || likelyCause(error, { provider }),
   };

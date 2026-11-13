@@ -1,5 +1,6 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppContext } from "../../Context/App/AppContext";
+import { useKnownProviders } from "../../hooks/useKnownProviders";
 import { validatePlan } from "../../utils/teamPlan";
 import {
   buildChecklist,
@@ -17,6 +18,18 @@ import {
   widgetBuildPlan,
 } from "./workspacePlan";
 import { forEdit } from "../Create/editCreate";
+import { useBotEmitters } from "../Settings/details/useBotEmitters";
+import {
+  applyChoices,
+  pinFromPicked,
+  pickFromQuestion,
+  readsFromStep,
+  widgetLabel,
+  wizardIndex,
+} from "./WidgetWizard/widgetSpec";
+import { reuseIndex } from "./WidgetWizard/reuseSpec";
+
+const NO_CHOICES = {};
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -31,7 +44,99 @@ const NONE = {
   edits: [],
   sent: false,
   builds: [],
+  // Provider names the user picked here — only those count as chosen.
+  picked: [],
+  // The step the user was asked to pick at: its plan was only a draft.
+  pickStepId: null,
+  // The widget wizard: the step it's on ("does", "talks", "review") and
+  // what the user chose there (applyChoices) — whatever a new plan says.
+  wizardStage: null,
+  choices: {},
+  // Which widget they're for (its name, lower case): another widget in the
+  // same conversation starts its own steps.
+  choicesFor: null,
 };
+
+const lower = (v) =>
+  String(v || "")
+    .trim()
+    .toLowerCase();
+// The widget the steps are for: a new one (the wizard), else one the user
+// already has going into a cell (its own steps).
+const stepsIndex = (plan) => {
+  if (!plan) return -1;
+  const reuse = reuseIndex(plan);
+  return reuse >= 0 ? reuse : wizardIndex(plan);
+};
+const wizardPiece = (plan) => {
+  const at = stepsIndex(plan);
+  return at >= 0 ? plan.pieces[at] : null;
+};
+// Whose choices: the widget, and whether it's one the user has (its own
+// steps) or a new one — switching between them starts over.
+const stepsKey = (plan, piece) =>
+  piece ? `${lower(piece.name)}${reuseIndex(plan) >= 0 ? ":yours" : ""}` : "";
+
+/** The wizard's step and choices: this window's, else what was saved. */
+const wizardOf = (cur, was) =>
+  cur.choicesFor
+    ? {
+        wizardStage: cur.wizardStage || null,
+        choices: cur.choices || {},
+        choicesFor: cur.choicesFor,
+      }
+    : {
+        wizardStage: (was && was.wizardStage) || null,
+        choices: (was && was.choices) || {},
+        choicesFor: (was && was.choicesFor) || null,
+      };
+
+/**
+ * A new plan from the Planner: the user's choices stay with their widget —
+ * but a part the Planner changed (the user asked in the chat) is the new
+ * plan's; another widget starts over.
+ */
+export function carryChoices(carried, prevPlan, nextPlan) {
+  const piece = wizardPiece(nextPlan);
+  if (
+    !piece ||
+    !carried.choicesFor ||
+    stepsKey(nextPlan, piece) !== carried.choicesFor
+  ) {
+    return { wizardStage: null, choices: {}, choicesFor: null };
+  }
+  const was = wizardPiece(prevPlan) || {};
+  const changed = (k) =>
+    piece[k] !== undefined &&
+    JSON.stringify(piece[k]) !== JSON.stringify(was[k]);
+  const c = { ...(carried.choices || {}) };
+  if (changed("changes")) delete c.changes;
+  if (changed("refresh")) delete c.refresh;
+  if (changed("listens")) delete c.listens;
+  // Another widget of theirs (the Planner changed it): its pick and
+  // connection are the plan's now.
+  if (changed("package") || changed("component")) {
+    delete c.component;
+    delete c.settings;
+  }
+  if (changed("package") || changed("provider")) delete c.provider;
+  if (c.settings && changed("settings")) {
+    // Only the settings the Planner changed are its own now.
+    const mine = {};
+    for (const k of Object.keys(c.settings)) {
+      const said = piece.settings && piece.settings[k];
+      const before = was.settings && was.settings[k];
+      if (JSON.stringify(said) === JSON.stringify(before))
+        mine[k] = c.settings[k];
+    }
+    c.settings = mine;
+  }
+  if (Array.isArray(c.eventsOff)) {
+    const now = Array.isArray(piece.events) ? piece.events : [];
+    c.eventsOff = c.eventsOff.filter((e) => now.includes(e));
+  }
+  return { ...carried, choices: c };
+}
 
 /** What a conversation saves of its plan (and its builds). */
 const saved = (st) => ({
@@ -41,6 +146,11 @@ const saved = (st) => ({
   edits: st.edits,
   sent: st.sent,
   builds: st.builds,
+  picked: st.picked || [],
+  pickStepId: st.pickStepId || null,
+  wizardStage: st.wizardStage || null,
+  choices: st.choices || {},
+  choicesFor: st.choicesFor || null,
   // When this plan came in (the notifications panel's time for it, release
   // 4) — not when the conversation last changed.
   madeAt: st.madeAt || null,
@@ -74,6 +184,8 @@ export function useWorkspacePlan({
   widget = null,
 }) {
   const app = useContext(AppContext) || {};
+  // providers.json + what the app loaded: never empty by mistake.
+  const known = useKnownProviders();
   const step = latestPlanStep(messages);
   const stepId = step ? step.id : null;
   const [state, setState] = useState(NONE);
@@ -124,6 +236,13 @@ export function useWorkspacePlan({
       const builds = cur.builds.length
         ? cur.builds
         : (was && Array.isArray(was.builds) && was.builds) || [];
+      // What the user picked stays with the conversation, across plans.
+      const picked = [
+        ...new Set([
+          ...((was && Array.isArray(was.picked) && was.picked) || []),
+          ...(cur.picked || []),
+        ]),
+      ];
       if (was && was.stepId === step.id && was.plan) {
         return {
           stepId: step.id,
@@ -132,6 +251,9 @@ export function useWorkspacePlan({
           edits: Array.isArray(was.edits) ? was.edits : [],
           sent: !!was.sent,
           builds,
+          picked,
+          pickStepId: cur.pickStepId || (was && was.pickStepId) || null,
+          ...wizardOf(cur, was),
           madeAt: was.madeAt || null,
         };
       }
@@ -142,6 +264,13 @@ export function useWorkspacePlan({
         edits: [],
         sent: false,
         builds,
+        picked,
+        pickStepId: cur.pickStepId || (was && was.pickStepId) || null,
+        ...carryChoices(
+          wizardOf(cur, was),
+          cur.plan || (was && was.plan) || null,
+          step.plan,
+        ),
         madeAt: Date.now(),
       };
     });
@@ -191,22 +320,87 @@ export function useWorkspacePlan({
     [],
   );
 
-  const plan = useMemo(
+  // The user's provider picks hold, whatever a new plan says.
+  const pinned = useMemo(
     () =>
-      cell ? planForCell(state.plan, cell) : planForWidget(state.plan, widget),
-    [state.plan, cell, widget],
-  );
-  // A Claude connector stands in for what only the plan's bots need.
-  const have = planHave(plan, app.providers);
-  const checklist = useMemo(
-    () => (plan ? buildChecklist(plan, have) : []),
+      pinFromPicked(
+        cell
+          ? planForCell(state.plan, cell)
+          : planForWidget(state.plan, widget),
+        state.picked || [],
+        known,
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [plan, app.providers],
+    [state.plan, cell, widget, state.picked, known],
+  );
+  // The widget wizard (one new widget): step 1, Reads from — what the app
+  // found in providers.json, and whether the user has picked.
+  const wizardAt = pinned ? wizardIndex(pinned) : -1;
+  // A widget the user already has, into a cell: its own steps (Which one,
+  // Settings, Review), its choices kept the same way.
+  // (The same widget as the wizard's: its provider pick still comes first.)
+  const reuseAt = pinned ? reuseIndex(pinned) : -1;
+  const stepsAt = reuseAt >= 0 ? reuseAt : wizardAt;
+  // So do what they chose in its steps — for this widget only.
+  const wizardName =
+    stepsAt >= 0 ? stepsKey(pinned, pinned.pieces[stepsAt]) : "";
+  const choicesHere = !!wizardName && state.choicesFor === wizardName;
+  const choices = choicesHere ? state.choices || {} : NO_CHOICES;
+  const plan = useMemo(
+    () => applyChoices(pinned, stepsAt, choices, known),
+    [pinned, stepsAt, choices, known],
+  );
+  // The dashboard's bots: what a new widget can listen for, and bots the
+  // plan's check knows are there.
+  const dashboardId = cell
+    ? cell.workspaceId
+    : (state.plan && state.plan.dashboard && state.plan.dashboard.id) || null;
+  const botEmitters = useBotEmitters(dashboardId, dashboardId != null);
+  const botNames = (botEmitters || []).map((b) => b.name).filter(Boolean);
+  const forWidget = (cur) =>
+    cur.choicesFor === wizardName
+      ? { choicesFor: wizardName, choices: cur.choices || {} }
+      : { choicesFor: wizardName, choices: {}, wizardStage: null };
+  const wizard =
+    wizardAt >= 0
+      ? {
+          index: wizardAt,
+          piece: plan.pieces[wizardAt],
+          reads: readsFromStep(
+            plan.pieces[wizardAt],
+            known,
+            state.picked || [],
+          ),
+        }
+      : null;
+  const question =
+    plan && Array.isArray(plan.questions)
+      ? plan.questions.find((q) => q && q.pick === "providers") || null
+      : null;
+  // A widget the user already has isn't asked where it reads from first:
+  // the widget they pick decides what kind (its own steps ask, if at all).
+  const pick = question
+    ? pickFromQuestion(question, known, wizard ? wizard.piece : null)
+    : wizard && reuseAt < 0
+      ? {
+          name: widgetLabel(wizard.piece),
+          piece: wizard.piece,
+          reads: wizard.reads,
+          question: null,
+          done: wizard.reads.done,
+        }
+      : null;
+  // A Claude connector stands in for what only the plan's bots need.
+  const have = planHave(plan, known);
+  const checklist = useMemo(
+    () => (plan ? buildChecklist(plan, have, known, state.picked || []) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [plan, known, state.picked],
   );
   // A cell's plan is checked as its build will be: one widget (release 6c).
   const check = plan
     ? plan.cell
-      ? validatePlan(cellBuildPlan(plan), { cell: true })
+      ? validatePlan(cellBuildPlan(plan), { cell: true, bots: botNames })
       : plan.widgetChange
         ? isSettingsChange(plan)
           ? plan.widgetChange.onDashboard
@@ -231,7 +425,7 @@ export function useWorkspacePlan({
                 },
               },
             )
-        : validatePlan(plan, {})
+        : validatePlan(plan, { bots: botNames })
     : null;
   const open = checklist.filter((it) => !isDone(it, state.checks, have)).length;
 
@@ -252,8 +446,64 @@ export function useWorkspacePlan({
     check,
     open,
     have,
-    providers: app.providers,
+    // Provider names the user picked in this conversation.
+    picked: state.picked || [],
+    wizard,
+    // A widget the user already has, into a cell: the piece with their
+    // choices, and as the Planner proposed it.
+    reuse:
+      reuseAt >= 0
+        ? {
+            index: reuseAt,
+            piece: plan.pieces[reuseAt],
+            planned: pinned.pieces[reuseAt],
+          }
+        : null,
+    // Waiting for the user to pick what the widget reads from: nothing is
+    // planned or built until they do.
+    // What the user is asked to pick, if anything: the Planner's own
+    // provider question first (its plan isn't one yet), else the app's
+    // (the wizard's widget, from providers.json).
+    pick,
+    waitingForPick: !!(pick && !pick.done),
+    pickStepId: state.pickStepId || null,
+    notePicked: (names, stepId = null) =>
+      setState((cur) => ({
+        ...cur,
+        pickStepId: cur.pickStepId || stepId || null,
+        picked: [
+          ...new Set([...(cur.picked || []), ...(names || []).filter(Boolean)]),
+        ],
+      })),
+    providers: known,
     refreshProviders: app.refreshProviders || null,
+    // The wizard's widget as the Planner made it (before the user's
+    // choices): what it proposed to send.
+    plannedPiece: wizard && pinned ? pinned.pieces[wizard.index] : null,
+    // The dashboard's bots (null until loaded).
+    botEmitters,
+    // Where the wizard's widget's dashboard is (its bots, Talks to).
+    hasDashboard: dashboardId != null,
+    wizardStage: choicesHere ? state.wizardStage || null : null,
+    setWizardStage: (stage) =>
+      setState((cur) => ({
+        ...cur,
+        ...forWidget(cur),
+        wizardStage: stage,
+      })),
+    choices,
+    // A part chosen in the wizard; `note` tells the Planner with the next
+    // message.
+    choose: (part, value, note = null) =>
+      setState((cur) => {
+        const mine = forWidget(cur);
+        return {
+          ...cur,
+          ...mine,
+          choices: { ...mine.choices, [part]: value },
+          edits: note ? [...cur.edits, note] : cur.edits,
+        };
+      }),
     edit,
     setCheck: (item, status) =>
       setState((cur) => ({

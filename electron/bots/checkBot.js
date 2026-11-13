@@ -73,6 +73,28 @@ function checkBot(def, ctx = {}) {
     }
   }
 
+  // The tools it picks must be ones its provider has (as the provider runs
+  // now): a made-up or misspelled name only fails when the bot runs.
+  if (typeof ctx.toolsOf === "function") {
+    const sel =
+      def.toolSelections && typeof def.toolSelections === "object"
+        ? def.toolSelections
+        : {};
+    const hadSel = (existing && existing.toolSelections) || {};
+    for (const [server, picked] of Object.entries(sel)) {
+      const have = ctx.toolsOf(server);
+      if (!Array.isArray(have) || !have.length) continue; // not known now
+      const had = new Set(list(hadSel[server]).map(String));
+      for (const tool of list(picked)) {
+        if (have.includes(String(tool))) continue;
+        report(
+          !had.has(String(tool)),
+          `It uses the tool "${tool}" on ${server}, which ${server} doesn't have. Its tools: ${have.slice(0, 12).join(", ")}${have.length > 12 ? ", …" : ""}.`,
+        );
+      }
+    }
+  }
+
   if (
     typeof ctx.knownAiProvider === "function" &&
     def.provider &&
