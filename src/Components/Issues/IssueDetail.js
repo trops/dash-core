@@ -1,14 +1,22 @@
 import React, { useContext, useState } from "react";
-import { Button, Button2, Button3 } from "@trops/dash-react";
+import { Button, Button2, Button3, StatusBadge } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { IssueDot, IssueFacts, callRows, useRetryWidget } from "./IssueParts";
+import {
+  IssueDot,
+  IssueFacts,
+  MuteButton,
+  callRows,
+  useRetryWidget,
+} from "./IssueParts";
 import { IssueKindBadge } from "./IssueRow";
 import {
   assetName,
   detailLine,
   firstLineClipped,
   isSignInIssue,
+  mutedCountText,
+  mutedSinceText,
   rawErrorText,
   whenText,
 } from "./issueText";
@@ -21,6 +29,7 @@ import {
   reconnectProvider,
   resolveIssue,
   signsInWithCommand,
+  unmuteIssue,
 } from "./issueActions";
 
 const norm = (s) =>
@@ -65,6 +74,18 @@ export function timelineOf(issue, now = new Date()) {
     });
   }
   const recent = Array.isArray(issue.recent) ? issue.recent : [];
+  // When it was muted, between the times it happened.
+  const mutedAt = issue.status === "muted" ? Date.parse(issue.mutedAt) : NaN;
+  let mutedShown = Number.isNaN(mutedAt);
+  const mutedEntry = () => {
+    mutedShown = true;
+    out.push({
+      key: "muted",
+      when: whenText(issue.mutedAt, now),
+      what: "You muted it",
+      tone: "muted",
+    });
+  };
   const tool = issue.call && issue.call.tool;
   const known = [issue.message, issue.call && issue.call.error, issue.title]
     .filter(Boolean)
@@ -77,7 +98,8 @@ export function timelineOf(issue, now = new Date()) {
     return firstLineClipped(m);
   };
   const firstShown = (issue.count || 1) <= recent.length;
-  recent.forEach((r, i) =>
+  recent.forEach((r, i) => {
+    if (!mutedShown && Date.parse(r.at) < mutedAt) mutedEntry();
     out.push({
       key: `r${i}`,
       when: whenText(r.at, now),
@@ -87,9 +109,10 @@ export function timelineOf(issue, now = new Date()) {
             ? `${tool} failed for the first time`
             : "It happened for the first time"
           : said(r.message),
-      tone: issue.severity,
-    }),
-  );
+      tone: issue.status === "muted" ? "muted" : issue.severity,
+    });
+  });
+  if (!mutedShown) mutedEntry();
   if (!firstShown && issue.firstAt) {
     out.push({
       key: "first",
@@ -115,6 +138,7 @@ export const IssueDetail = ({
   dashApi = null,
   workspaces = [],
   onOpenWorkspace = null,
+  onUnmuted = null,
   now = new Date(),
 }) => {
   const { muted, strong, hairline, selectedBg } = useConfigTokens();
@@ -145,6 +169,7 @@ export const IssueDetail = ({
   // the sign-in again.
   const signInHere = signIn && signsInWithCommand(provider);
   const open = issue.status === "open";
+  const isMuted = issue.status === "muted";
   const { title, error } = headlineOf(issue);
 
   const reconnect = async () => {
@@ -168,9 +193,10 @@ export const IssueDetail = ({
       className="flex flex-col gap-3 min-h-0"
     >
       <span className="flex flex-row items-center gap-2">
-        <IssueDot severity={open ? issue.severity : "ok"} />
+        <IssueDot severity={open ? issue.severity : isMuted ? "muted" : "ok"} />
         <h3 className={`text-lg font-semibold ${strong}`}>{title}</h3>
         <IssueKindBadge kind={kind} />
+        {isMuted ? <StatusBadge state="neutral" label="Muted" /> : null}
       </span>
       <span className={`text-sm ${muted}`}>{detailLine(issue, now)}</span>
 
@@ -199,6 +225,23 @@ export const IssueDetail = ({
           className={`p-3 rounded-lg border text-sm ${hairline} ${selectedBg} ${strong}`}
         >
           {`Likely cause: ${issue.hint}`}
+        </div>
+      ) : null}
+
+      {isMuted ? (
+        <div
+          role="note"
+          data-testid="issue-muted"
+          className={`flex flex-col gap-1 p-3 rounded-lg border ${hairline}`}
+        >
+          <span className={`text-sm font-semibold ${strong}`}>
+            {mutedSinceText(issue, now)}
+          </span>
+          <span className={`text-xs ${muted}`}>
+            This error doesn&apos;t show on cards, in the menu count or in Open.
+            Dash still counts it, and other errors still show.
+          </span>
+          <span className={`text-xs ${strong}`}>{mutedCountText(issue)}</span>
         </div>
       ) : null}
 
@@ -266,8 +309,18 @@ export const IssueDetail = ({
           />
         ) : null}
         <span className="flex-1" />
+        {open ? <MuteButton issue={issue} /> : null}
         {open ? (
           <Button3 title="Mark resolved" onClick={() => resolveIssue(issue)} />
+        ) : null}
+        {isMuted ? (
+          <Button3
+            title="Unmute"
+            onClick={async () => {
+              const where = await unmuteIssue(issue);
+              if (where && onUnmuted) onUnmuted(issue, where);
+            }}
+          />
         ) : null}
       </span>
     </section>

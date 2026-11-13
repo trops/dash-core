@@ -230,4 +230,14 @@ export function useIssues(filter = {}) {
   return { issues, counts, loading, refresh };
 }
 
+/** Muted issues of one widget copy (its panel lists them, with Unmute). */
+export function useWidgetMutedIssues(component, itemId, workspaceId) {
+  // Matched like its open issues (isIssueOfWidget): a missing dashboard or
+  // id doesn't hide them.
+  const { issues } = useIssues({ status: "muted", kind: "widget" });
+  return component
+    ? issues.filter((i) => isIssueOfWidget(i, component, itemId, workspaceId))
+    : [];
+}
+
 export default useIssues;

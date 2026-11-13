@@ -162,6 +162,33 @@ function cleanInput(input) {
 const byNewest = (a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt);
 
 /**
+ * Which error it was, for muting: the message, ignoring case and spacing,
+ * and ids and numbers that change every time (a process id, "after 30012ms",
+ * a request id) — short numbers like a status code (400 vs 500) still count.
+ * Muting matches this widget (or bot, or provider), this call, this error —
+ * a different error from the same call still opens an issue. The first 300
+ * characters decide.
+ */
+function errorSignature(issue) {
+  const text =
+    (issue && (issue.message || (issue.call && issue.call.error))) ||
+    (issue && issue.title) ||
+    "";
+  return clip(
+    String(text)
+      .toLowerCase()
+      .replace(/\b(?=[0-9a-f-]*\d)[0-9a-f]{8,}(?:-[0-9a-f]+)*\b/g, "#")
+      .replace(/\d{4,}/g, "#")
+      .replace(/\s+/g, " ")
+      .trim(),
+    300,
+  );
+}
+
+/** A muted issue's key: its group and its error, so other errors don't join it. */
+const mutedKey = (key, signature) => `${key}|muted:${signature}`;
+
+/**
  * @param {{ initial?: object[], now?: () => number, onChange?: (list) => void,
  *   newId?: () => string }} deps
  */
@@ -178,10 +205,14 @@ function createIssueStore({
 
   const prune = () => {
     const cutoff = now() - MAX_AGE_MS;
-    issues = issues
-      .filter((i) => Date.parse(i.lastAt) >= cutoff || i.status === "open")
-      .sort(byNewest)
-      .slice(0, MAX_ISSUES);
+    const kept = issues.filter(
+      (i) => Date.parse(i.lastAt) >= cutoff || i.status === "open",
+    );
+    // Over the limit: open ones stay first (a busy muted one never pushes
+    // them out).
+    const open = kept.filter((i) => i.status === "open").sort(byNewest);
+    const rest = kept.filter((i) => i.status !== "open").sort(byNewest);
+    issues = [...open, ...rest].slice(0, MAX_ISSUES).sort(byNewest);
   };
   prune();
   const changed = () => onChange(issues.slice());
@@ -193,8 +224,24 @@ function createIssueStore({
     const key = issueKey(clean);
     if (!key) return null;
     const at = new Date(now()).toISOString();
-    const found = issues.find((i) => i.key === key);
     const entry = { at, message: clean.message };
+    // Muted ("Mute errors like this"): counted quietly, never opened.
+    const quiet = issues.find(
+      (i) =>
+        i.status === "muted" && i.key === mutedKey(key, errorSignature(clean)),
+    );
+    if (quiet) {
+      Object.assign(quiet, {
+        lastAt: at,
+        count: (quiet.count || 1) + 1,
+        mutedCount: (quiet.mutedCount || 0) + 1,
+        recent: [entry, ...(quiet.recent || [])].slice(0, RECENT),
+      });
+      issues.sort(byNewest);
+      changed();
+      return { issue: { ...quiet }, isNew: false, muted: true };
+    }
+    const found = issues.find((i) => i.key === key);
     if (found) {
       const reopened = found.status === "resolved";
       Object.assign(found, {
@@ -333,6 +380,48 @@ function createIssueStore({
     return before - issues.length;
   }
 
+  /**
+   * Mute an issue: the same error from the same asset and call is counted
+   * but never shows as open. A muted issue quiet for 30 days drops off.
+   */
+  function mute(id) {
+    const i = issues.find((x) => x.id === id);
+    if (!i || i.status === "muted") return false;
+    const base = issueKey(i);
+    if (!base) return false;
+    i.key = mutedKey(base, errorSignature(i));
+    i.status = "muted";
+    i.mutedAt = new Date(now()).toISOString();
+    i.mutedCount = 0;
+    delete i.resolvedAt;
+    delete i.resolvedBy;
+    changed();
+    return true;
+  }
+
+  /**
+   * Unmute: back in Open when it happened since it was muted, else resolved.
+   * When another error from that call is open, that one stays and this goes.
+   */
+  function unmute(id) {
+    const i = issues.find((x) => x.id === id);
+    if (!i || i.status !== "muted") return false;
+    const base = issueKey(i);
+    if (!base || issues.some((x) => x !== i && x.key === base)) {
+      issues = issues.filter((x) => x !== i);
+      changed();
+      return true;
+    }
+    const happened = (i.mutedCount || 0) > 0;
+    i.key = base;
+    i.status = happened ? "open" : "resolved";
+    if (!happened) i.resolvedAt = new Date(now()).toISOString();
+    delete i.mutedAt;
+    delete i.mutedCount;
+    changed();
+    return true;
+  }
+
   /** Remove resolved issues (Clear resolved). */
   function clearResolved() {
     const before = issues.length;
@@ -341,10 +430,11 @@ function createIssueStore({
     return before - issues.length;
   }
 
-  /** Open issues per kind, for the left menu's count. */
+  /** Open issues per kind, for the left menu's count; and how many are muted. */
   function counts() {
-    const out = { total: 0, widget: 0, bot: 0, provider: 0 };
+    const out = { total: 0, widget: 0, bot: 0, provider: 0, muted: 0 };
     for (const i of issues) {
+      if (i.status === "muted") out.muted += 1;
       if (i.status !== "open") continue;
       out.total += 1;
       out[i.asset.kind] += 1;
@@ -359,6 +449,8 @@ function createIssueStore({
     resolveAsset,
     resolveSignIn,
     resolveWorked,
+    mute,
+    unmute,
     removeWhere,
     clearResolved,
     counts,
@@ -374,5 +466,6 @@ module.exports = {
   assetKey,
   issueKey,
   cleanInput,
+  errorSignature,
   createIssueStore,
 };

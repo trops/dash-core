@@ -152,7 +152,10 @@ const issueController = {
   /** Record a failure; every window hears about it. */
   record(input) {
     const res = ensure().record(fromRenderer(input));
-    if (res) broadcast({ counts: store.counts(), issue: res.issue });
+    // A muted repeat is counted quietly: no window needs to reload for it.
+    if (res && !res.muted) {
+      broadcast({ counts: store.counts(), issue: res.issue });
+    }
     return res ? res.issue : null;
   },
 
@@ -185,6 +188,23 @@ const issueController = {
     const n = ensure().resolveSignIn(provider);
     if (n) broadcast({ counts: store.counts() });
     return n;
+  },
+
+  /**
+   * Mute an issue ("Mute errors like this"): the same error from the same
+   * asset and call is still counted but never shows as open.
+   */
+  mute(id) {
+    const ok = ensure().mute(id);
+    if (ok) broadcast({ counts: store.counts() });
+    return ok;
+  },
+
+  /** Unmute: back in Open if it happened since, else resolved. */
+  unmute(id) {
+    const ok = ensure().unmute(id);
+    if (ok) broadcast({ counts: store.counts() });
+    return ok;
   },
 
   /** A call that failed before worked: its issue is resolved. */

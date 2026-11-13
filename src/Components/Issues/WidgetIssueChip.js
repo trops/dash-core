@@ -72,8 +72,11 @@ export const WidgetIssueChip = ({
         aria-label={`${problemsText(issues.length)} — see what went wrong`}
         aria-expanded={open}
         onClick={() => {
-          pinned.current = !open;
-          setOpen(!open);
+          // A click pins the card open — even when hovering opened it
+          // first; a second click closes it.
+          const pin = !pinned.current;
+          pinned.current = pin;
+          setOpen(pin);
         }}
         className={`inline-flex flex-row items-center gap-1.5 h-6 px-2.5 rounded-full border text-xs font-semibold cursor-pointer ${status.error.border} ${status.error.bg} ${status.error.text}`}
       >

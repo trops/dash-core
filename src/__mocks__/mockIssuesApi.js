@@ -1,6 +1,7 @@
 /**
  * mockIssuesApi — a window.mainApi.issues for tests (issues PRD): list
- * filters like the main process, resolve / clearResolved change the list,
+ * filters like the main process, resolve / mute / unmute / clearResolved
+ * change the list,
  * and every change tells "issues:changed" listeners.
  */
 export function mockIssuesApi(initial = [], extra = {}) {
@@ -19,7 +20,12 @@ export function mockIssuesApi(initial = [], extra = {}) {
           (f.status === "all" || i.status === (f.status || "open")) &&
           (!f.kind || (i.asset && i.asset.kind === f.kind)) &&
           (f.workspaceId == null ||
-            String(i.asset && i.asset.workspaceId) === String(f.workspaceId)),
+            String(i.asset && i.asset.workspaceId) === String(f.workspaceId)) &&
+          (!f.asset ||
+            (i.asset &&
+              i.asset.component === f.asset.component &&
+              (f.asset.itemId == null ||
+                String(i.asset.itemId) === String(f.asset.itemId)))),
       ),
     ),
     counts: jest.fn(async () => ({})),
@@ -33,6 +39,27 @@ export function mockIssuesApi(initial = [], extra = {}) {
       return true;
     }),
     resolveAsset: jest.fn(async () => 1),
+    mute: jest.fn(async (id) => {
+      all = all.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              status: "muted",
+              mutedAt: new Date().toISOString(),
+              mutedCount: 0,
+            }
+          : i,
+      );
+      emit();
+      return true;
+    }),
+    unmute: jest.fn(async (id) => {
+      all = all.map((i) =>
+        i.id === id ? { ...i, status: i.mutedCount ? "open" : "resolved" } : i,
+      );
+      emit();
+      return true;
+    }),
     clearResolved: jest.fn(async () => {
       all = all.filter((i) => i.status !== "resolved");
       emit();

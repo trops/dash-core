@@ -40,7 +40,13 @@ export const IssueRow = ({ issue, active = false, onClick, now }) => {
         }`}
       >
         <IssueDot
-          severity={issue.status === "resolved" ? "ok" : issue.severity}
+          severity={
+            issue.status === "resolved"
+              ? "ok"
+              : issue.status === "muted"
+                ? "muted"
+                : issue.severity
+          }
           className="mt-1.5"
         />
         <span className="flex-1 min-w-0 flex flex-col gap-0.5">
@@ -63,7 +69,11 @@ export const IssueRow = ({ issue, active = false, onClick, now }) => {
           </span>
           {n > 1 ? (
             <span
-              className={`text-xs font-semibold px-2 rounded-full ${status.error.bg} ${status.error.text}`}
+              className={`text-xs font-semibold px-2 rounded-full ${
+                issue.status === "muted"
+                  ? `border ${hairline} ${muted}`
+                  : `${status.error.bg} ${status.error.text}`
+              }`}
             >
               {`×${n}`}
             </span>

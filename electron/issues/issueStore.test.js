@@ -186,6 +186,7 @@ describe("createIssueStore", () => {
       widget: 1,
       bot: 1,
       provider: 1,
+      muted: 0,
     });
     assert.equal(store.resolveAsset(widget), 1);
     assert.equal(store.counts().widget, 0);
@@ -231,5 +232,205 @@ describe("resolveSignIn — a provider that works again", () => {
     assert.equal(store.resolveSignIn("Google Calendar"), 2);
     assert.equal(store.resolveSignIn("Gmail"), 0);
     assert.equal(store.list().filter((i) => i.status === "open").length, 1);
+  });
+});
+
+describe("muting an error (Mute errors like this)", () => {
+  const badRequest = "API error: 400 - 400: Bad Request";
+
+  it("the same error from the same widget and call is counted quietly, never opened", () => {
+    const c = clock();
+    const store = createIssueStore({ now: c.now });
+    const { issue } = store.record(failedCall(badRequest));
+    assert.equal(store.mute(issue.id), true);
+    assert.equal(store.list().length, 0);
+    assert.equal(store.counts().total, 0);
+    c.tick(60000);
+    const res = store.record(failedCall(badRequest));
+    assert.equal(res.muted, true);
+    assert.equal(res.isNew, false);
+    const [m] = store.list({ status: "muted" });
+    assert.equal(m.count, 2);
+    assert.equal(m.mutedCount, 1);
+    assert.equal(m.lastAt, new Date(c.now()).toISOString());
+    assert.equal(store.list().length, 0);
+  });
+
+  it("a different error from that widget and call still opens an issue", () => {
+    const store = createIssueStore({ now: clock().now });
+    const { issue } = store.record(failedCall(badRequest));
+    store.mute(issue.id);
+    const res = store.record(
+      failedCall("Entity media_player.bedroom_speaker not found"),
+    );
+    assert.equal(res.isNew, true);
+    assert.ok(!res.muted);
+    assert.equal(store.list().length, 1);
+    assert.equal(store.list({ status: "muted" }).length, 1);
+  });
+
+  it("matches the error loosely: case and spacing don't matter", () => {
+    const store = createIssueStore({ now: clock().now });
+    const { issue } = store.record(failedCall(badRequest));
+    store.mute(issue.id);
+    const res = store.record(
+      failedCall("  api ERROR: 400 -  400: bad request "),
+    );
+    assert.equal(res.muted, true);
+  });
+
+  it("another copy of the widget isn't muted", () => {
+    const store = createIssueStore({ now: clock().now });
+    const { issue } = store.record(failedCall(badRequest));
+    store.mute(issue.id);
+    const other = {
+      ...failedCall(badRequest),
+      asset: { ...widget, itemId: "12" },
+    };
+    assert.ok(!store.record(other).muted);
+  });
+
+  it("a successful call or a completed run doesn't touch a muted issue", () => {
+    const store = createIssueStore({ now: clock().now });
+    const { issue } = store.record(failedCall(badRequest));
+    store.mute(issue.id);
+    assert.equal(store.resolveWorked(failedCall()), 0);
+    assert.equal(store.resolveAsset(widget), 0);
+    assert.equal(store.list({ status: "muted" }).length, 1);
+  });
+
+  it("unmute: back in Open if it happened since muting, else resolved", () => {
+    const c = clock();
+    const store = createIssueStore({ now: c.now });
+    const a = store.record(failedCall(badRequest)).issue;
+    store.mute(a.id);
+    store.record(failedCall(badRequest));
+    assert.equal(store.unmute(a.id), true);
+    assert.equal(store.list().length, 1);
+    assert.equal(store.list()[0].muted, undefined);
+    // Happens again → the same open issue counts up.
+    store.record(failedCall(badRequest));
+    assert.equal(store.list()[0].count, 3);
+
+    const quiet = createIssueStore({ now: c.now });
+    const b = quiet.record(failedCall(badRequest)).issue;
+    quiet.mute(b.id);
+    quiet.unmute(b.id);
+    assert.equal(quiet.list({ status: "resolved" }).length, 1);
+  });
+
+  it("unmute when a different error from that call is open: the open one stays", () => {
+    const store = createIssueStore({ now: clock().now });
+    const a = store.record(failedCall(badRequest)).issue;
+    store.mute(a.id);
+    store.record(failedCall("Entity not found"));
+    assert.equal(store.unmute(a.id), true);
+    assert.equal(store.list({ status: "all" }).length, 1);
+    assert.equal(store.list()[0].message, "Entity not found");
+  });
+
+  it("a muted error quiet for 30 days drops off; one still happening stays", () => {
+    const c = clock();
+    const store = createIssueStore({ now: c.now });
+    const a = store.record(failedCall(badRequest)).issue;
+    store.mute(a.id);
+    c.tick(31 * 24 * 60 * 60 * 1000);
+    const later = createIssueStore({ now: c.now, initial: store.all() });
+    assert.equal(later.list({ status: "muted" }).length, 0);
+
+    const busy = createIssueStore({ now: c.now });
+    const b = busy.record(failedCall(badRequest)).issue;
+    busy.mute(b.id);
+    c.tick(29 * 24 * 60 * 60 * 1000);
+    busy.record(failedCall(badRequest));
+    c.tick(5 * 24 * 60 * 60 * 1000);
+    const again = createIssueStore({ now: c.now, initial: busy.all() });
+    assert.equal(again.list({ status: "muted" }).length, 1);
+  });
+
+  it("counts say how many are muted; the open total leaves them out", () => {
+    const store = createIssueStore({ now: clock().now });
+    const a = store.record(failedCall(badRequest)).issue;
+    store.mute(a.id);
+    assert.deepEqual(store.counts(), {
+      total: 0,
+      widget: 0,
+      bot: 0,
+      provider: 0,
+      muted: 1,
+    });
+    assert.equal(store.mute("nope"), false);
+    assert.equal(store.unmute(a.id + "x"), false);
+  });
+
+  it("clear resolved keeps muted ones", () => {
+    const store = createIssueStore({ now: clock().now });
+    const a = store.record(failedCall(badRequest)).issue;
+    store.mute(a.id);
+    store.clearResolved();
+    assert.equal(store.list({ status: "muted" }).length, 1);
+  });
+});
+
+describe("muting — what counts as the same error", () => {
+  const { errorSignature } = require("./issueStore");
+
+  it("ids and long numbers that change each time don't matter; a status code does", () => {
+    assert.equal(
+      errorSignature({ message: "Server exited (pid 4812) after 30012ms" }),
+      errorSignature({ message: "Server exited (pid 4907) after 29988ms" }),
+    );
+    assert.equal(
+      errorSignature({ message: "request 9f8e7d6c-1a2b-3c4d failed" }),
+      errorSignature({ message: "request 0a1b2c3d-4e5f-6a7b failed" }),
+    );
+    assert.notEqual(
+      errorSignature({ message: "API error: 400 Bad Request" }),
+      errorSignature({ message: "API error: 500 Server Error" }),
+    );
+    // No message: the call's error, then the title.
+    assert.equal(
+      errorSignature({ message: "", call: { error: "Boom" }, title: "t" }),
+      "boom",
+    );
+    assert.equal(errorSignature({ message: "", call: null, title: "T" }), "t");
+  });
+
+  it("a muted bot issue (no call) stays muted when its pid changes", () => {
+    const store = createIssueStore({ now: clock().now });
+    const bot = { kind: "bot", botId: "b1", name: "Digest" };
+    const a = store.record({
+      asset: bot,
+      title: "Digest: Notes wasn't available",
+      message: "Notes couldn't start (pid 4812)",
+    }).issue;
+    store.mute(a.id);
+    const res = store.record({
+      asset: bot,
+      title: "Digest: Notes wasn't available",
+      message: "Notes couldn't start (pid 5120)",
+    });
+    assert.equal(res.muted, true);
+    assert.equal(store.counts().total, 0);
+  });
+
+  it("over the limit, open issues stay — a busy muted one doesn't push them out", () => {
+    const c = clock();
+    const store = createIssueStore({ now: c.now });
+    const first = store.record(failedCall("API error: 400")).issue;
+    for (let n = 0; n < MAX_ISSUES - 1; n += 1) {
+      c.tick(1);
+      store.record({
+        asset: { ...widget, itemId: `x${n}` },
+        title: "t",
+        call: { provider: "P", tool: "t", error: "e" },
+      });
+    }
+    // One more: the oldest (first) would be dropped if it weren't open.
+    store.mute(store.list()[0].id);
+    c.tick(1);
+    store.record({ asset: { ...widget, itemId: "y" }, title: "t2" });
+    assert.ok(store.list().some((i) => i.id === first.id));
+    assert.equal(store.list({ status: "all" }).length, MAX_ISSUES);
   });
 });

@@ -102,6 +102,24 @@ function loadOpenCalls(issues) {
   );
 }
 
+/**
+ * An issue is open again (unmuted): its call working next resolves it — the
+ * list loaded at start didn't have it.
+ */
+export function noteIssueOpenAgain(issue) {
+  const a = (issue && issue.asset) || {};
+  if (a.kind !== "widget" || !issue.call || !openCalls) return;
+  openCalls.add(
+    callKey(
+      a.component,
+      a.itemId,
+      a.workspaceId,
+      issue.call.provider,
+      issue.call.tool,
+    ),
+  );
+}
+
 /** Tests only. */
 export function _resetOpenCalls() {
   openCalls = null;

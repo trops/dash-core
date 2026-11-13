@@ -8,6 +8,7 @@ import {
   noteWidgetCallWorked,
   _resetOpenCalls,
   setWidgetNamer,
+  noteIssueOpenAgain,
 } from "./issues";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -99,6 +100,29 @@ describe("a call that works", () => {
     ]);
     noteWidgetCallWorked(facts, call); // loads the open list
     await flush();
+    noteWidgetCallWorked(facts, call);
+    expect(api.resolveWorked).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("an issue unmuted (open again)", () => {
+  beforeEach(() => _resetOpenCalls());
+  afterEach(() => {
+    delete window.mainApi;
+  });
+  it("its call working next resolves it, though it wasn't open at start", async () => {
+    const api = mockApi([]);
+    noteWidgetCallWorked(facts, call); // loads the (empty) open list
+    await flush();
+    noteIssueOpenAgain({
+      asset: {
+        kind: "widget",
+        component: facts.component,
+        itemId: "u1",
+        workspaceId: "7",
+      },
+      call,
+    });
     noteWidgetCallWorked(facts, call);
     expect(api.resolveWorked).toHaveBeenCalledTimes(1);
   });
