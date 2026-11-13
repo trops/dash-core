@@ -295,6 +295,15 @@ const ProviderQuestion = ({
  * @param {() => void} [onDecide]   Decide for me and finish the plan
  * @param {() => void} [onFix]      the gaps, straight to the Planner
  */
+/**
+ * What a question has now: the user's pick, else its default (shown
+ * picked, and counted as answered).
+ */
+const pickedFor = (questions, picks, i) =>
+  picks[i] != null && String(picks[i]).trim()
+    ? picks[i]
+    : questionDefault(questions[i]);
+
 export const PlanChoices = ({
   plan,
   check,
@@ -376,8 +385,8 @@ export const PlanChoices = ({
                           <ButtonIcon2
                             key={o}
                             text={o}
-                            ariaPressed={picks[i] === o}
-                            selected={picks[i] === o}
+                            ariaPressed={pickedFor(questions, picks, i) === o}
+                            selected={pickedFor(questions, picks, i) === o}
                             onClick={() => {
                               // "I'll type it" isn't an answer: the reply box.
                               if (isTypeItOption(o)) {
@@ -414,13 +423,16 @@ export const PlanChoices = ({
                 <div className="flex flex-row items-center gap-3">
                   <Button
                     title="Send answers"
-                    disabled={!answered}
+                    disabled={answered < questions.length}
                     onClick={() =>
                       answer(answerLines(questions, picks).join("\n"))
                     }
                   />
                   <span className={`text-sm ${muted}`}>
                     {answered} of {questions.length} answered
+                    {answered < questions.length
+                      ? " — answer each to send"
+                      : ""}
                   </span>
                 </div>
               ) : null}
@@ -658,8 +670,8 @@ export const PlanNext = ({
                     <ButtonIcon2
                       key={o}
                       text={o}
-                      ariaPressed={picks[i] === o}
-                      selected={picks[i] === o}
+                      ariaPressed={pickedFor(questions, picks, i) === o}
+                      selected={pickedFor(questions, picks, i) === o}
                       onClick={() =>
                         questions.length === 1
                           ? say(`${q.question} — ${o}`, o)
@@ -689,11 +701,12 @@ export const PlanNext = ({
           <div className="flex flex-row items-center gap-3">
             <Button2
               title="Send answers"
-              disabled={!answered}
+              disabled={answered < questions.length}
               onClick={() => say(answerLines(questions, picks).join("\n"))}
             />
             <span className={`text-xs ${muted}`}>
               {answered} of {questions.length} answered
+              {answered < questions.length ? " — answer each to send" : ""}
             </span>
           </div>
         ) : null}

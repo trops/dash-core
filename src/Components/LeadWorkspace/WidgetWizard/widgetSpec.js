@@ -615,31 +615,47 @@ const aboutWords = (tool) =>
 
 /**
  * Step 2 · What it does — "Can it change things?": the tools of the
- * providers it reads from that change things (from their saved list), as
- * plain actions; the Planner's proposed ones too, should a provider not
- * have listed them. `related`: about what the widget reads (or proposed) —
- * shown first; the provider's others are behind a link.
+ * providers it reads from that change things, as plain actions — checked
+ * before it's asked: with `live` (the provider's running tools, their
+ * read-only flags) only those it really has; without, its saved list. A
+ * tool the Planner proposed is offered only when the provider has it (or
+ * its saved list doesn't say which it has). `related`: about what the
+ * widget reads (or proposed) — shown first; the others behind a link.
+ * @param {{ type, tools: Array<{ name, annotations? }> }|null} live  one
+ *   provider's running tools — the others keep their saved list
  * @returns {Array<{ tool, label, provider, related }>}
  */
-export function changeTools(piece, providers) {
+export function changeTools(piece, providers, live = null) {
   const about = new Set(readTools(piece, providers).flatMap(aboutWords));
   const proposed = strs(piece && piece.changes);
   const out = [];
+  // Whether a provider says which tools it has: live, or a saved list.
+  let known = false;
   for (const k of kindsOf(piece)) {
     const pin = livePin(piece, k, providers);
     if (!pin) continue;
-    for (const t of (Array.isArray(pin.allowedTools)
-      ? pin.allowedTools
-      : []
-    ).map(String)) {
-      if (classifyTool(t) !== "change" || out.some((x) => x.tool === t)) {
+    const mine =
+      live && Array.isArray(live.tools) && live.type === pin.type
+        ? live.tools
+        : null;
+    const tools = mine
+      ? mine.filter((t) => t && t.name)
+      : (Array.isArray(pin.allowedTools) ? pin.allowedTools : []).map(String);
+    if (tools.length) known = true;
+    for (const t of tools) {
+      const name = typeof t === "string" ? t : t.name;
+      if (classifyTool(t) !== "change" || out.some((x) => x.tool === name)) {
         continue;
       }
-      out.push({ tool: t, label: capital(toolWords(t)), provider: pin.name });
+      out.push({
+        tool: name,
+        label: capital(toolWords(name)),
+        provider: pin.name,
+      });
     }
   }
   for (const t of proposed) {
-    if (!out.some((x) => x.tool === t)) {
+    if (!known && !out.some((x) => x.tool === t)) {
       out.push({ tool: t, label: capital(toolWords(t)), provider: "" });
     }
   }
@@ -685,6 +701,14 @@ export function previewRead(piece, providers) {
         ? piece.settings
         : {},
   };
+}
+
+/** The first provider it reads from, as { type, name } — or null. */
+export function wizardPin(piece, providers) {
+  const pin = kindsOf(piece)
+    .map((k) => livePin(piece, k, providers))
+    .find(Boolean);
+  return pin ? { type: pin.type, name: pin.name } : null;
 }
 
 /** The providers it reads from, by name: "Google Calendar". */
@@ -761,6 +785,9 @@ export function standardSends(readsFrom = "") {
  * @param {string[]} off         the events the user unticked
  * @returns {Array<{ event, when, carries, on }>}
  */
+// A name a widget can send (checked before it's asked): eventClicked.
+const EVENT_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
+
 export function proposedSends(plannedPiece, off = []) {
   const sends = Array.isArray(plannedPiece && plannedPiece.sends)
     ? plannedPiece.sends.filter((s) => s && typeof s.event === "string")
@@ -768,7 +795,10 @@ export function proposedSends(plannedPiece, off = []) {
   const names = [
     ...strs(plannedPiece && plannedPiece.events),
     ...sends.map((s) => s.event.trim()),
-  ].filter((e, i, all) => e && all.indexOf(e) === i && !isReservedEvent(e));
+  ].filter(
+    (e, i, all) =>
+      e && all.indexOf(e) === i && !isReservedEvent(e) && EVENT_NAME.test(e),
+  );
   return names.map((event) => {
     const s = sends.find((x) => x.event.trim() === event) || {};
     return {
@@ -860,7 +890,8 @@ export function applyChoices(plan, index, choices, providers = null) {
   if (!plan || index < 0 || !Object.keys(c).length) return plan;
   const piece = plan.pieces && plan.pieces[index];
   if (!piece) return plan;
-  const next = { ...piece };
+  // Built step by step: the build holds it to these choices (planBuild).
+  const next = { ...piece, chosen: true };
   if (Array.isArray(c.changes)) {
     // Only what the provider it reads from now can do (picked again: the
     // last one's actions go).

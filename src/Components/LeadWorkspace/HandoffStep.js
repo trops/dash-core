@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState } from "react";
 import { FontAwesomeIcon } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { ModelTag, RanOn } from "./ModelInfo";
 
 /**
  * What a step's line ends with, when the conversation knows better than
@@ -14,7 +15,8 @@ export const StepTailContext = createContext(null);
  * release 2): a quiet line, "Asked Inbox Watch · 2 need attention ▸", that
  * opens to what the bot was asked and what it answered.
  *
- * @param {{ bot, label, request, status, answer?, result? }} step
+ * @param {{ bot, label, request, status, answer?, result?, model?,
+ *   style?, modelChosen?, role? }} step  model…role: which model ran it
  */
 export const HandoffStep = ({ step }) => {
   const { muted, strong, hairline } = useConfigTokens();
@@ -61,6 +63,7 @@ export const HandoffStep = ({ step }) => {
           <span className={`font-medium ${strong}`}>{step.label}</span>
           {` · ${tail}`}
         </span>
+        <ModelTag run={step} />
         <FontAwesomeIcon
           icon={open ? "chevron-down" : "chevron-right"}
           className="h-2.5 w-2.5"
@@ -71,6 +74,7 @@ export const HandoffStep = ({ step }) => {
           className={`ml-5 flex flex-col gap-2 border-l pl-3 text-sm ${hairline}`}
           data-testid="handoff-step-detail"
         >
+          <RanOn run={step} />
           {step.request ? (
             <div className="flex flex-col gap-0.5">
               <span className={`text-xs ${muted}`}>Asked</span>

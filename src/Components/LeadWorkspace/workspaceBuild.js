@@ -319,6 +319,125 @@ export function checkRows(state) {
     });
 }
 
+const things = (n) => (n === 1 ? "1 thing" : `${n} things`);
+
+/**
+ * Held to your choices: Dash's own check of a widget's code against what
+ * the user chose — its check step, the rows (made[i].held), what doesn't
+ * match yet (made[i].mismatch), and a step at the end of the line.
+ * @returns {{ step, build, held, mismatch, end } | null}
+ */
+export function heldOf(state) {
+  const steps = stepsOf(state);
+  const made = (state && state.made) || {};
+  const end = steps.find((s) => s.status === "failed" && s.endOfLine) || null;
+  for (const s of steps.filter((x) => x.kind === "check")) {
+    const m = made[s.piece] || {};
+    const ending = end && end.piece === s.piece ? end : null;
+    if (m.held || m.mismatch || ending) {
+      return {
+        step: s,
+        build: steps.find((x) => x.id === `build:${s.piece}`) || null,
+        held: m.held || null,
+        mismatch:
+          Array.isArray(m.mismatch) && m.mismatch.length ? m.mismatch : null,
+        end: ending,
+      };
+    }
+  }
+  return end
+    ? { step: null, build: null, held: null, mismatch: null, end }
+    : null;
+}
+
+/** The chat's lines once it matches: fixed to match, then checked. */
+export function heldLines(h) {
+  if (!h || !h.held || h.mismatch || !(h.held.rows || []).length) return [];
+  return [
+    ...(h.held.fixed
+      ? [
+          {
+            label: `Builder fixed ${things(h.held.fixed)} to match your choices`,
+            status: "done",
+          },
+        ]
+      : []),
+    {
+      label: "Checked — it matches every choice you made",
+      status: "done",
+      link: "check",
+    },
+  ];
+}
+
+/** The Checker's line once it passed the widget being previewed. */
+function checkerLines(state, at) {
+  const steps = (state && state.steps) || [];
+  const check = at
+    ? steps.find((s) => s.id === `check:${at.piece}`)
+    : steps.find((s) => s.kind === "check");
+  return check && check.status === "done"
+    ? [{ label: "Checker passed it", status: "done", role: "checker" }]
+    : [];
+}
+
+/**
+ * Which model ran it: the build's step lines, each with the run behind it —
+ * the Builder's or the Checker's model, style, whose choice and how long it
+ * took, or Dash itself for its own check of what the user chose.
+ */
+export function withRuns(chat, state) {
+  if (!chat) return chat;
+  const steps = (state && state.steps) || [];
+  const runOf = (kind, role) => {
+    const done = steps.filter((s) => s.kind === kind && s.model);
+    const s = done[done.length - 1];
+    return s
+      ? {
+          model: s.model,
+          style: s.style || null,
+          modelChosen: !!s.modelChosen,
+          tookMs: s.tookMs || null,
+          role,
+        }
+      : null;
+  };
+  const tag = (line) => {
+    if (!line || line.run) return line;
+    const label = String(line.label || "");
+    const run =
+      line.role === "checker" || /^Checker\b/.test(label)
+        ? runOf("check", "checker")
+        : /^Checked —/.test(label)
+          ? { dash: true }
+          : /^(Builder|Sent to the Builder)\b/.test(label)
+            ? runOf("build", "builder")
+            : null;
+    return run ? { ...line, run } : line;
+  };
+  return {
+    ...chat,
+    step: tag(chat.step),
+    ...(chat.lines ? { lines: chat.lines.map(tag) } : {}),
+  };
+}
+
+/**
+ * The Check report's "What you chose": each choice, checked in the code —
+ * or, while it's being fixed, what doesn't match yet.
+ */
+export function heldRows(state) {
+  const h = heldOf(state);
+  if (!h) return [];
+  const rows = h.held && Array.isArray(h.held.rows) ? h.held.rows : [];
+  const off = (h.mismatch || []).map((p) => ({
+    ok: false,
+    main: p.main,
+    sub: p.chose ? `You chose: ${p.chose}` : "",
+  }));
+  return off.length ? [...off, ...rows.filter((r) => r.ok)] : rows;
+}
+
 /** "2 new widgets checked" — the report's line. */
 export function checkLine(state) {
   const n = stepsOf(state).filter(
@@ -481,6 +600,7 @@ export function buildChat(state, opts = {}) {
     opts.restored &&
     (chat.choices === "failed" ||
       chat.choices === "preview" ||
+      chat.choices === "endofline" ||
       buildStatus(state, opts.leftOff || []) === "waiting-for-providers")
   ) {
     return {
@@ -614,6 +734,33 @@ function chatFor(
       : what;
   };
 
+  const held = heldOf(state);
+  if (
+    isBuilding(state) &&
+    held &&
+    held.mismatch &&
+    held.build &&
+    (held.build.status === "running" || held.build.status === "waiting")
+  ) {
+    return {
+      step: {
+        label: `Checked — ${things(held.mismatch.length)} didn't match what you chose`,
+        status: "failed",
+        link: "check",
+      },
+      lines: [
+        {
+          label: "Builder is fixing them, then it's checked again",
+          status: "asking",
+        },
+      ],
+      off: held.mismatch,
+      card: null,
+      reply:
+        "The Builder is bringing it in line with what you chose.\n\nIt fixes and re-checks until it matches — nothing for you to do, and nothing is installed until then.",
+      choices: null,
+    };
+  }
   if (isBuilding(state)) {
     const toBuild = built.some(
       (s) => s.status === "running" || s.status === "waiting",
@@ -655,6 +802,7 @@ function chatFor(
     }
     return {
       step: { label: `Builder built ${name}`, status: "done" },
+      lines: [...heldLines(held), ...checkerLines(state, at)],
       card: { kind: "widget", title: name, sub: "Widget · preview ready" },
       // A change from here is a fix: the Builder edits its own widget.
       reply: `${name} is ready to look at — it's on the right, running. Tell me what to change and I'll send it to the Builder as a fix — the rest stays as it is — before ${
@@ -672,6 +820,29 @@ function chatFor(
   if (status === "finished-with-problems") {
     const failed = failedSteps(state, leftOff);
     const first = failed[0] || null;
+    if (first && first.endOfLine) {
+      const e = first.endOfLine;
+      const mine = held && held.end === first ? held.mismatch : null;
+      const off = mine || [
+        { main: firstLine(e.what) || "it couldn't be done", chose: null },
+      ];
+      return {
+        step: {
+          label:
+            first.kind === "build"
+              ? "Builder can't do one thing you chose"
+              : `Checked — ${things(off.length)} can't be done as you chose`,
+          status: "failed",
+          ...(first.kind === "check" ? { link: "check" } : {}),
+        },
+        off,
+        card: null,
+        reply: `I couldn't make ${off.length === 1 ? "one thing" : "some things"} match what you chose.\n\nIt isn't something another try can fix. Nothing was installed.`,
+        choices: "endofline",
+        failed: first,
+        closest: e.closest || null,
+      };
+    }
     const label = first
       ? nameOf(nameOf(first.label, "Build"), "Check")
       : "One step";

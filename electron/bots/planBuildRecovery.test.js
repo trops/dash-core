@@ -163,13 +163,12 @@ describe("Let Builder fix it (CRE-004 AC4)", () => {
     assert.equal(state.totals.tokens, 200 + 20);
   });
 
-  it("at most twice per widget, then it's over to the user", async () => {
+  it(`at most ${MAX_FIXES} times per widget, then it's over to the user`, async () => {
     const d = deps();
-    d.verdicts.push("FAILED", "FAILED", "FAILED");
+    d.verdicts.push(...Array(MAX_FIXES + 1).fill("FAILED"));
     const build = createPlanBuild(plan, d);
-    await build.run();
-    await build.fix("check:1");
-    const state = await build.fix("check:1");
+    let state = await build.run();
+    for (let i = 0; i < MAX_FIXES; i++) state = await build.fix("check:1");
     const s = by(state);
     assert.equal(s["check:1"].status, "failed");
     assert.equal(s["check:1"].canFix, false);

@@ -68,6 +68,12 @@ const { planPages, planTarget } = require("./teamPlan");
 const { wireBuildLines, wireCheckLines } = require("./widgetWire");
 const { removeWidgets } = require("../utils/placeWidget");
 const { rememberMarks } = require("./markedSpots");
+const {
+  specCheck,
+  mismatchText,
+  mismatchKey,
+  cantOf,
+} = require("./specChecks");
 
 const AI_BUILT = /@ai-built\/[a-z0-9][a-z0-9-]*/gi;
 
@@ -94,6 +100,12 @@ const STATUS = {
 
 // How many times the Builder may fix one widget before it's over to the user.
 const MAX_FIXES = 2;
+// A widget built step by step (the wizard's `chosen`) is held to its
+// choices: up to this many fixes — a fix that gets nowhere stops sooner (the
+// same mismatch twice: a fresh start, then the end of the line).
+const MAX_HELD_FIXES = 6;
+// After this many fixes without passing, the next one starts afresh.
+const FRESH_AT = 3;
 // How many changes the user can ask for at a cell build's preview.
 const MAX_REVISIONS = 5;
 
@@ -697,6 +709,14 @@ function specLines(piece) {
   return lines;
 }
 
+// A CAN'T that blames Dash's own tools or the draft, not the user's choice.
+const DASH_TOOL_TROUBLE =
+  /\b(read_widget|build_widget|check_widget|widget_guide|place_widget|draft:)|\bon disk\b/i;
+
+// The Builder says so when a choice can't be done, rather than faking it.
+const CANT_LINE =
+  "If something the user chose can't be done with their provider's tools, don't fake it or quietly leave it out: finish with CAN'T: <what and why> | CLOSEST: <the closest that works>. Only for what the user chose — never because a Dash tool failed (read your draft with read_widget and its draft:<Name>, or write it again).";
+
 /**
  * The Builder's request for one widget. With `fix` ({ package, problem }) it
  * asks the Builder to fix what it built (Let Builder fix it, 4d-3).
@@ -711,13 +731,15 @@ function buildRequest(
   const providers = (piece.providers || []).join(", ") || "none";
   const update = piece.source === "update" || !!(fix && fix.installed);
   const first = fix
-    ? fix.change && fix.draft
-      ? `Change the widget you wrote for this plan (${fix.draft}) — the user looked at it and wants a change.`
-      : fix.draft
-        ? `Fix the widget you wrote for this plan (${fix.draft}).`
-        : fix.package
-          ? `Fix the widget ${fix.package} you built for this plan.`
-          : `Build this plan's widget again — the last try didn't work.`
+    ? fix.fresh
+      ? "Build this plan's widget again from the start — the last tries kept missing what the user chose. Write it fresh; don't patch the last draft."
+      : fix.change && fix.draft
+        ? `Change the widget you wrote for this plan (${fix.draft}) — the user looked at it and wants a change.`
+        : fix.draft
+          ? `Fix the widget you wrote for this plan (${fix.draft}).`
+          : fix.package
+            ? `Fix the widget ${fix.package} you built for this plan.`
+            : `Build this plan's widget again — the last try didn't work.`
     : piece.source === "update"
       ? `Update the widget ${piece.package || piece.name} for this plan.`
       : `Build a new widget for this plan.`;
@@ -737,6 +759,7 @@ function buildRequest(
     ...settingsLines(piece),
     ...specLines(piece),
     ...wiringLines(plan, piece),
+    CANT_LINE,
     `Use a PascalCase name based on "${piece.name}"${
       fix && (fix.package || fix.draft) ? " (keep the same name)" : ""
     }. Read widget_guide first, then build_widget${
@@ -806,6 +829,7 @@ function editBuildRequest(plan, piece, fix, edit) {
     "Keep every setting, its connection and the events it sends, unless the plan says to drop one.",
     ...wiringLines(plan, piece),
     ...wireBuildLines(edit.wire),
+    CANT_LINE,
     update
       ? `Keep the name ${name} and change only widgets/${name}.js and widgets/${name}.dash.js — not its other files. Read widget_guide, then build_widget with name "${name}" and update: true; it's built inside a copy of its package, so the other files come along.`
       : `Give it a new PascalCase name based on "${piece.name}" (not ${name}) and change only its component and .dash.js — it's built inside a copy of the package, so it can keep importing the package's other files. Read widget_guide, then build_widget with that name (no update).`,
@@ -836,7 +860,12 @@ const isStr = (v) => typeof v === "string";
  * breaking change — and after Let Builder fix it, the Checker is told what
  * the fix was for, so the change it asked for isn't held against it (4d-3).
  */
-function checkRequest(plan, piece, made = {}, { edit = null } = {}) {
+function checkRequest(
+  plan,
+  piece,
+  made = {},
+  { edit = null, held = null } = {},
+) {
   const lines = [
     `Check ${made.draft || made.package}. Run check_widget on ${made.draft || made.package}, read the code if you need to, and end with VERDICT: PASSED or VERDICT: FAILED.`,
   ];
@@ -863,6 +892,23 @@ function checkRequest(plan, piece, made = {}, { edit = null } = {}) {
     lines.push(
       "What the user approved — check the widget does each:",
       ...spec.map((l) => `- ${l}`),
+    );
+  }
+  // What Dash held the code to already (held to your choices): those match.
+  const passed = held && Array.isArray(held.rows) ? held.rows : [];
+  if (passed.length) {
+    lines.push(
+      `Dash already checked these in the code, and they match: ${passed
+        .map((r) => r.main)
+        .join(
+          "; ",
+        )}. Spend your check on what the code alone can't settle — what it really shows, and that each button asks before it first changes anything.`,
+    );
+  }
+  const unsure = held && Array.isArray(held.unsure) ? held.unsure : [];
+  if (unsure.length) {
+    lines.push(
+      `Dash couldn't tell whether ${unsure.join(", ")} only ${unsure.length === 1 ? "reads" : "read"}: check the widget only reads with ${unsure.length === 1 ? "it" : "them"} — the user didn't choose ${unsure.length === 1 ? "it" : "them"} to change anything.`,
     );
   }
   const connections = Object.entries(
@@ -1612,6 +1658,17 @@ function createPlanBuild(plan, deps, opts = {}) {
     theme: null,
     // piece index → changes the user asked for at the preview (cell builds)
     revisions: {},
+    // piece index → each check's mismatches (their key), in order — a fix
+    // that got nowhere repeats one
+    mismatches: {},
+    // piece index → every mismatch it had, for "fixed N things"
+    mismatched: {},
+    // piece index → the Builder started afresh once
+    fresh: {},
+    // piece index → mismatches the user settled (the closest that works)
+    waived: {},
+    // piece index → settled: the next check's mismatches are excused
+    settling: {},
     // what an earlier build made that the edited plan no longer has
     leftovers: [],
     totals: { tokens: 0, usd: 0, includedInPlan: true },
@@ -1651,6 +1708,12 @@ function createPlanBuild(plan, deps, opts = {}) {
     const c = record.cost || null;
     const usd = c && typeof c.usd === "number" ? c.usd : 0;
     step.model = record.model || null;
+    // Which model ran it: its style, and how long it took (every try).
+    step.style = record.style || null;
+    step.modelChosen = !!record.modelChosen;
+    const took =
+      Date.parse(record.endedAt || "") - Date.parse(record.startedAt || "");
+    if (took > 0) step.tookMs = (step.tookMs || 0) + took;
     // A fixed step adds up every try.
     step.tokens = (step.tokens || 0) + tokens;
     step.usd = (step.usd || 0) + usd;
@@ -1659,6 +1722,86 @@ function createPlanBuild(plan, deps, opts = {}) {
     state.totals.usd += usd;
     if (c && !c.includedInPlan) state.totals.includedInPlan = false;
   };
+
+  /**
+   * The draft held to what the user chose (specChecks): its rows kept for
+   * the Check report; a mismatch throws, said plainly, for the Builder.
+   * Nothing to hold it to (no draft code here) — null, the Checker alone.
+   */
+  async function liveToolsOf(piece) {
+    const kinds = Array.isArray(piece.providers) ? piece.providers : [];
+    if (!deps.liveTools || !kinds.length) return null;
+    const got = await Promise.resolve(deps.liveTools(kinds)).catch(() => null);
+    return got
+      ? Object.values(got).flatMap((x) =>
+          x && Array.isArray(x.tools) ? x.tools : [],
+        )
+      : null;
+  }
+
+  async function heldToChoices(step, piece, made) {
+    // Only a widget the user built step by step has choices to hold it to.
+    if (!piece || !piece.chosen || !made.draft || !deps.draftCode) return null;
+    const code = await Promise.resolve(
+      deps.draftCode({ draft: made.draft }),
+    ).catch(() => null);
+    if (!code || !code.componentCode) return null;
+    const live = await liveToolsOf(piece);
+    const res = specCheck(
+      { ...piece, settings: plannedSettings(piece) },
+      code,
+      {
+        events: eventsToSend(plan, piece),
+        live,
+      },
+    );
+    const w = step.piece;
+    // Just settled (the closest that works): what's still off is what the
+    // user agreed to — excused from now on.
+    if (state.settling[w]) {
+      state.waived[w] = [
+        ...(state.waived[w] || []),
+        ...res.problems.map((p) => p.main),
+      ];
+      delete state.settling[w];
+    }
+    const waived = state.waived[w] || [];
+    const problems = res.problems.filter((p) => !waived.includes(p.main));
+    const seen = state.mismatched[w] || [];
+    made.held = {
+      rows: res.rows,
+      unsure: res.unsure,
+      ...(seen.length ? { fixed: seen.length } : {}),
+    };
+    if (!problems.length) {
+      delete made.mismatch;
+      // Only checks one after another count as a fix that got nowhere.
+      state.mismatches[w] = [];
+      return made.held;
+    }
+    state.mismatched[w] = [
+      ...seen,
+      ...problems.map((p) => p.main).filter((m) => !seen.includes(m)),
+    ];
+    made.mismatch = problems;
+    step.mismatch = problems;
+    const key = mismatchKey(problems);
+    const tried = state.mismatches[w] || (state.mismatches[w] = []);
+    const repeated = tried[tried.length - 1] === key;
+    tried.push(key);
+    const err = new Error(
+      `${problems.length === 1 ? "1 thing doesn't" : `${problems.length} things don't`} match what the user chose`,
+    );
+    // A fix that got nowhere: start afresh once; after that, it's the end
+    // of the line — another try won't do it.
+    if (repeated && state.fresh[w]) {
+      err.notFixable = true;
+      err.endOfLine = { what: mismatchText(problems), closest: null };
+    } else if (repeated) {
+      step.freshStart = true;
+    }
+    throw err;
+  }
 
   async function runStep(step) {
     const piece = step.piece != null ? pieces[step.piece] : null;
@@ -1772,14 +1915,34 @@ function createPlanBuild(plan, deps, opts = {}) {
         return;
       }
       case "build": {
-        const record = await deps.askRole(
-          "builder",
-          buildRequest(plan, piece, step.fix || null, {
-            cell: !!opts.cell,
-            standalone: !!opts.standalone,
-            edit: opts.edit || null,
-          }),
-        );
+        // While it builds, each draft it saves is held to what the user
+        // chose — build_widget tells the Builder at once.
+        let release = null;
+        if (deps.holdBuilder && piece && piece.chosen) {
+          const live = await liveToolsOf(piece);
+          release = deps.holdBuilder((code) => {
+            const res = specCheck(
+              { ...piece, settings: plannedSettings(piece) },
+              code || {},
+              { events: eventsToSend(plan, piece), live },
+            );
+            const waived = state.waived[step.piece] || [];
+            return res.problems.filter((p) => !waived.includes(p.main));
+          });
+        }
+        let record;
+        try {
+          record = await deps.askRole(
+            "builder",
+            buildRequest(plan, piece, step.fix || null, {
+              cell: !!opts.cell,
+              standalone: !!opts.standalone,
+              edit: opts.edit || null,
+            }),
+          );
+        } finally {
+          if (typeof release === "function") release();
+        }
         account(step, record);
         if (!record || record.skipped)
           throw notFixable(
@@ -1787,6 +1950,19 @@ function createPlanBuild(plan, deps, opts = {}) {
           );
         if (record.status === "failed")
           throw notFixable(record.error || "the Builder failed");
+        // It can't be done as chosen: no fix makes it so (end of the line).
+        const cant = cantOf(record.output);
+        // About one of Dash's own tools, not a choice: a fix can sort that.
+        if (cant && DASH_TOOL_TROUBLE.test(cant.what)) {
+          step.detail = String(record.output || "").slice(-ANSWER_KEPT);
+          throw new Error(`the Builder got stuck: ${cant.what}`);
+        }
+        if (cant) {
+          step.detail = String(record.output || "").slice(-ANSWER_KEPT);
+          const err = notFixable(`the Builder can't: ${cant.what}`);
+          err.endOfLine = cant;
+          throw err;
+        }
         const outcome = buildOutcome(record);
         if (outcome.error) {
           // The Builder's own account, to read under the step.
@@ -1810,9 +1986,16 @@ function createPlanBuild(plan, deps, opts = {}) {
       }
       case "check": {
         const made = state.made[step.piece] || {};
+        state.made[step.piece] = made;
+        // What the user chose, checked in the code by Dash itself — a
+        // mismatch goes back to the Builder before the Checker runs.
+        const held = await heldToChoices(step, piece, made);
         const record = await deps.askRole(
           "checker",
-          checkRequest(plan, piece, made, { edit: opts.edit || null }),
+          checkRequest(plan, piece, made, {
+            edit: opts.edit || null,
+            held,
+          }),
         );
         account(step, record);
         if (!record || record.skipped)
@@ -2095,14 +2278,26 @@ function createPlanBuild(plan, deps, opts = {}) {
     const builderFixes =
       BUILDER_FIXES.has(step.kind) &&
       (step.kind !== "save" || DRAFT_PROBLEM.test(step.error || ""));
+    const most = piece && piece.chosen ? MAX_HELD_FIXES : MAX_FIXES;
     step.fixesLeft =
       piece && BUILT.has(piece.source) && builderFixes
-        ? Math.max(0, MAX_FIXES - used)
+        ? Math.max(0, most - used)
         : 0;
     step.canFix = step.fixesLeft > 0;
     // The Builder's tries are used up — over to the user.
     step.fixesUsedUp =
       !!piece && BUILT.has(piece.source) && builderFixes && !step.canFix;
+    // The end of the line: what can't be done, and what's closest.
+    if (step.endOfLine) {
+      step.fixesLeft = 0;
+      step.canFix = false;
+      step.fixesUsedUp = !!piece && BUILT.has(piece.source);
+    } else if (step.fixesUsedUp && opts.autoFix && step.mismatch) {
+      step.endOfLine = {
+        what: step.mismatch ? mismatchText(step.mismatch) : step.error,
+        closest: null,
+      };
+    }
     step.canRetry =
       (RETRIES.has(step.kind) &&
         !(step.kind === "place" && CANT_TELL_WHICH.test(step.error || ""))) ||
@@ -2120,6 +2315,9 @@ function createPlanBuild(plan, deps, opts = {}) {
       "waitingFor",
       "startedAt",
       "finishedAt",
+      "endOfLine",
+      "mismatch",
+      "freshStart",
     ]) {
       delete step[k];
     }
@@ -2189,6 +2387,7 @@ function createPlanBuild(plan, deps, opts = {}) {
         } else {
           step.status = stopping ? STATUS.stopped : STATUS.failed;
           step.error = (err && err.message) || String(err);
+          if (err && err.endOfLine) step.endOfLine = err.endOfLine;
           if (step.status === STATUS.failed) markOptions(step);
           step.autoFixable = !(err && err.notFixable);
         }
@@ -2241,6 +2440,7 @@ function createPlanBuild(plan, deps, opts = {}) {
     if (!step || step.status !== STATUS.failed || !step.canFix) {
       return Promise.resolve({ error: "The Builder can't fix that step." });
     }
+    if (step.piece != null) state.mismatches[step.piece] = [];
     prepareFix(step);
     resetSkipped();
     return run();
@@ -2253,14 +2453,17 @@ function createPlanBuild(plan, deps, opts = {}) {
     const made = state.made[w] || {};
     const build = steps.find((s) => s.id === `build:${w}`);
     const check = steps.find((s) => s.id === `check:${w}`);
-    const problem = [
-      `${step.label}: ${step.error}`,
-      step.kind === "check" && step.detail
-        ? `The Checker said:\n${step.detail}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const problem =
+      step.mismatch && step.mismatch.length
+        ? `It doesn't match what the user chose — change exactly these, and keep everything else as it is:\n${mismatchText(step.mismatch)}`
+        : [
+            `${step.label}: ${step.error}`,
+            step.kind === "check" && step.detail
+              ? `The Checker said:\n${step.detail}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join("\n");
     const saveStep = steps.find((s) => s.id === `save:${w}`);
     const installed = !!saveStep && saveStep.status === STATUS.done;
     // A cell build: what the Builder fixes is previewed again — nothing the
@@ -2277,12 +2480,22 @@ function createPlanBuild(plan, deps, opts = {}) {
     // A change the user asked for stays asked for.
     const asked =
       build && build.fix && build.fix.change ? build.fix.problem : null;
+    // Fixes that got nowhere: once, the Builder starts afresh — a widget
+    // in use (installed, or a change to one) is always fixed in place.
+    const fresh =
+      !!(pieces[w] && pieces[w].chosen) &&
+      !installed &&
+      !opts.edit &&
+      !state.fresh[w] &&
+      (!!step.freshStart || state.fixes[w] >= FRESH_AT);
+    if (fresh) state.fresh[w] = true;
     if (build) {
       reset(build);
       build.fix = {
-        package: made.package || null,
-        draft: made.draft || null,
+        package: fresh ? null : made.package || null,
+        draft: fresh ? null : made.draft || null,
         installed,
+        ...(fresh ? { fresh: true } : {}),
         problem: asked
           ? `${problem}\n(While making the change the user asked for: ${asked})`
           : problem,
@@ -2375,6 +2588,8 @@ function createPlanBuild(plan, deps, opts = {}) {
     const build = steps.find((s) => s.id === `build:${w}`);
     const change = String(note || "").trim();
     state.revisions[w] = (state.revisions[w] || 0) + 1;
+    // The user's change starts the count of fixes that got nowhere again.
+    state.mismatches[w] = [];
     const made = state.made[w] || {};
     reset(build);
     const spots = marks && Array.isArray(marks.spots) ? marks.spots : [];
@@ -2400,6 +2615,49 @@ function createPlanBuild(plan, deps, opts = {}) {
     return run();
   }
 
+  /**
+   * The end of the line, settled: the user takes the closest that works.
+   * The Builder builds it that way; what couldn't be done isn't held
+   * against it again, and its tries start over.
+   */
+  function settle(stepId) {
+    if (busy) return Promise.resolve({ error: "The build is still running." });
+    const step = steps.find((s) => s.id === stepId);
+    const end = step && step.status === STATUS.failed && step.endOfLine;
+    if (!end || !end.closest) {
+      return Promise.resolve({ error: "There's nothing closer to build." });
+    }
+    const w = step.piece;
+    const made = state.made[w] || {};
+    state.waived[w] = [
+      ...(state.waived[w] || []),
+      ...(made.mismatch || []).map((p) => p.main),
+    ];
+    state.fixes[w] = 0;
+    state.mismatches[w] = [];
+    state.fresh[w] = false;
+    state.settling[w] = true;
+    const build = steps.find((s) => s.id === `build:${w}`);
+    if (!build)
+      return Promise.resolve({ error: "This widget wasn't built here." });
+    reset(build);
+    build.fix = {
+      package: made.package || null,
+      draft: made.draft || null,
+      installed: false,
+      change: true,
+      problem: `The user agreed to the closest that works: ${end.closest}. Build it that way — everything else stays as they chose.`,
+    };
+    for (const id of [`check:${w}`, `save:${w}`, `preview:${w}`]) {
+      const s = steps.find((x) => x.id === id);
+      if (s) reset(s);
+    }
+    if (made.preview) delete made.preview;
+    reset(step);
+    resetSkipped();
+    return run();
+  }
+
   function stop() {
     stopping = true;
     if (current && current.role !== "dash" && deps.abortRole)
@@ -2416,6 +2674,7 @@ function createPlanBuild(plan, deps, opts = {}) {
     approve,
     revise,
     reviseProblem,
+    settle,
   };
 }
 
@@ -2423,6 +2682,8 @@ module.exports = {
   normalizeKind,
   STATUS,
   MAX_FIXES,
+  MAX_HELD_FIXES,
+  FRESH_AT,
   builtSummary,
   undoOnDashboard,
   themeChoices,

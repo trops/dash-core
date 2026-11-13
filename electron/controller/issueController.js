@@ -180,6 +180,13 @@ const issueController = {
     return n;
   },
 
+  /** A provider worked again: its "couldn't sign in" issues are resolved. */
+  resolveSignIn(provider) {
+    const n = ensure().resolveSignIn(provider);
+    if (n) broadcast({ counts: store.counts() });
+    return n;
+  },
+
   /** A call that failed before worked: its issue is resolved. */
   resolveWorked(input) {
     const n = ensure().resolveWorked(fromRenderer(input));

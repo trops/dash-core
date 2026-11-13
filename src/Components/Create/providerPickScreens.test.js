@@ -518,7 +518,13 @@ describe("the inline questions (PlanChoices): answers kept, blanks aren't answer
     fireEvent.change(screen.getByLabelText("Your answer"), {
       target: { value: "   " },
     });
-    expect(screen.getByText("0 of 2 answered")).toBeInTheDocument();
+    expect(
+      screen.getByText("0 of 2 answered — answer each to send"),
+    ).toBeInTheDocument();
+    // Not every question answered: nothing to send yet.
+    expect(screen.getByRole("button", { name: "Send answers" }).disabled).toBe(
+      true,
+    );
     fireEvent.click(boxFor("Home Assistant MCP"));
     fireEvent.click(screen.getByRole("button", { name: "Use this" }));
     fireEvent.change(screen.getByLabelText("Or say it your way"), {

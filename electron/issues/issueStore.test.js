@@ -212,3 +212,24 @@ describe("createIssueStore", () => {
     assert.equal(reloaded.list({ status: "all" }).length, 0);
   });
 });
+
+describe("resolveSignIn — a provider that works again", () => {
+  it("resolves every open sign-in issue about it, from any bot", () => {
+    const c = clock();
+    const store = createIssueStore({ now: c.now });
+    const signIn = (botId) => ({
+      asset: { kind: "bot", botId, name: botId },
+      severity: "problem",
+      cause: "sign-in",
+      title: "Google Calendar couldn't sign in",
+      call: { provider: "Google Calendar", tool: "list_events", error: "401" },
+      related: { provider: "Google Calendar" },
+    });
+    store.record(signIn("a"));
+    store.record(signIn("b"));
+    store.record({ ...signIn("c"), cause: "run", title: "other" });
+    assert.equal(store.resolveSignIn("Google Calendar"), 2);
+    assert.equal(store.resolveSignIn("Gmail"), 0);
+    assert.equal(store.list().filter((i) => i.status === "open").length, 1);
+  });
+});

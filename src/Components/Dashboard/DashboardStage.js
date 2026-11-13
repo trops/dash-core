@@ -3723,6 +3723,8 @@ const DashboardStageInner = ({
                 // one of your dashboards (lead-workspace "make it in Create").
                 dashboards={workspaceConfig}
                 onDuplicateDashboard={handleDuplicateDashboard}
+                // Which model ran it: Change in Settings › AI (over it).
+                onOpenSettings={(section) => openAppSettings(section)}
               />
             ) : null}
             <NewBotModal

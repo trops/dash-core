@@ -237,6 +237,10 @@ function warningsOf(run) {
   return [];
 }
 
+// A call's error that says the sign-in was turned down.
+const SIGN_IN_FAILED =
+  /^\s*401\b|\b(?:status|code|http|error)\W{0,3}401\b|\b401\s+(?:unauthori[sz]ed|unauthenticated)|invalid_grant|\bunauthenticated\b|token (?:has )?(?:expired|been revoked)|re-?authenticate|sign[- ]?in (?:expired|required|failed)|invalid credentials/i;
+
 /** A finished bot run → its issues: the failure, and each warning. */
 function botRunIssues({ bot, run }) {
   if (!bot || !run) return [];
@@ -267,6 +271,35 @@ function botRunIssues({ bot, run }) {
         provider: (badCall && badCall.provider) || "its provider",
       }),
     });
+  }
+  // A run that finished, but a call it made couldn't sign in (a connector
+  // Claude says is connected, whose service turned the sign-in down): the
+  // provider's sign-in is the problem, said once per provider.
+  if (run.status !== "failed") {
+    const seen = new Set();
+    for (const c of run.toolCalls || []) {
+      if (!c || c.ok !== false || !SIGN_IN_FAILED.test(String(c.error || ""))) {
+        continue;
+      }
+      const provider = c.provider || "";
+      if (seen.has(provider)) continue;
+      seen.add(provider);
+      out.push({
+        asset,
+        severity: "problem",
+        cause: "sign-in",
+        title: `${provider || "A provider"} couldn't sign in`,
+        message: String(c.error),
+        call: {
+          provider,
+          tool: c.tool || "",
+          args: c.args,
+          error: c.error || "",
+        },
+        ...(provider ? { related: { provider } } : {}),
+        hint: likelyCause(c.error, { provider: provider || "its provider" }),
+      });
+    }
   }
   for (const w of warningsOf(run)) {
     const message = typeof w === "string" ? w : w && w.message;

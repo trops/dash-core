@@ -250,6 +250,8 @@ const readsOnly = (plan) => ({
     {
       ...plan.pieces[0],
       changes: [],
+      // Built step by step: the build holds it to these choices.
+      chosen: true,
       look: { id: "list", options: expect.any(Object) },
       whenEmpty: "Nothing to show",
     },

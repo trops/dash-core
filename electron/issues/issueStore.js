@@ -282,6 +282,30 @@ function createIssueStore({
   }
 
   /**
+   * A provider worked again (a call to it succeeded, from any bot): every
+   * open "couldn't sign in" issue about it is resolved.
+   */
+  function resolveSignIn(provider) {
+    const want = String(provider || "");
+    if (!want) return 0;
+    let n = 0;
+    for (const i of issues) {
+      if (
+        i.status === "open" &&
+        i.cause === "sign-in" &&
+        ((i.related && i.related.provider === want) ||
+          (i.call && i.call.provider === want))
+      ) {
+        i.status = "resolved";
+        i.resolvedAt = new Date(now()).toISOString();
+        n += 1;
+      }
+    }
+    if (n) changed();
+    return n;
+  }
+
+  /**
    * The same call worked again: its open issue is resolved ("it worked
    * again") — the same asset and call as `input` would record.
    */
@@ -333,6 +357,7 @@ function createIssueStore({
     list,
     resolve,
     resolveAsset,
+    resolveSignIn,
     resolveWorked,
     removeWhere,
     clearResolved,

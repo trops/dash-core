@@ -861,7 +861,7 @@ describe("automatic fixes (Create build fixes 2)", () => {
   });
 
   it(`stops after ${MAX_FIXES} fixes and hands it to the user`, async () => {
-    const { d, requests } = scripted(["FAILED", "FAILED", "FAILED", "FAILED"]);
+    const { d, requests } = scripted(Array(MAX_FIXES + 1).fill("FAILED"));
     const state = await createPlanBuild(one, d, { autoFix: true }).run();
     assert.equal(
       requests.filter((r) => r[0] === "builder").length,

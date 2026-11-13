@@ -117,6 +117,9 @@ export const AskStep = ({
   // value that changes as the build goes, so the chat follows it.
   working = null,
   follow = null,
+  // Which model ran it (lead workspace): (step) => what the step's bot
+  // starts on ({ model, style, modelChosen, role }), kept with the step.
+  stepRun = null,
 }) => {
   // [{ who: "you" | "planner" | "lead" | "role" | "note" | "step", text, meta?, plan? }]
   // A step is a hand-off ("Asked Inbox Watch"): { id, bot, label, request,
@@ -217,7 +220,11 @@ export const AskStep = ({
     const onEvent = (e) => {
       const step = stepFromCall(e);
       if (step) {
-        add({ ...step, id: `${seq}:${step.id}` });
+        add({
+          ...step,
+          ...(stepRun ? stepRun(step) : {}),
+          id: `${seq}:${step.id}`,
+        });
         return;
       }
       if (e && e.type === "tool_result") {
@@ -528,6 +535,7 @@ export const AskStep = ({
         request: text,
         status: "asking",
         direct: true,
+        ...(stepRun ? stepRun({ bot: "the Planner" }) : {}),
       },
     ]);
     const conversationId = askId.current;
@@ -558,15 +566,35 @@ export const AskStep = ({
           : failed
             ? `The Planner couldn't answer: ${(res && res.error) || "unknown error"}`
             : res.output || "";
+      // What it really ran on, and how long it took (which model ran it).
+      const ran = (m) =>
+        res && res.model
+          ? m.map((x) =>
+              x && x.who === "step" && x.id === id
+                ? {
+                    ...x,
+                    model: res.model,
+                    style: res.style || null,
+                    modelChosen: !!res.modelChosen,
+                    role: "planner",
+                    tookMs:
+                      Date.parse(res.endedAt || "") -
+                        Date.parse(res.startedAt || "") || null,
+                  }
+                : x,
+            )
+          : m;
       const apply = (m) =>
         stopped
           ? withStopped(m, id)
-          : withResult(m, {
-              type: "tool_result",
-              id,
-              output,
-              isError: failed,
-            });
+          : ran(
+              withResult(m, {
+                type: "tool_result",
+                id,
+                output,
+                isError: failed,
+              }),
+            );
       if (conversationId) {
         const run = directRuns.get(conversationId);
         if (run && run.id === id) directRuns.delete(conversationId);

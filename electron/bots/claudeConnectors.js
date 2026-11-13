@@ -24,6 +24,11 @@ const POLL_MS = 500;
 // How long an account with no connectors yet is given for them to show up.
 const APPEAR_MS = 5000;
 
+// Reconnect waits longer: a connector coming back from sign-in is slow.
+const RECONNECT_WAIT_MS = 45000;
+// How long another Claude Code's version and account are remembered.
+const OTHERS_TTL_MS = 10 * 60 * 1000;
+
 // How long a run waits for its connectors to connect before it starts.
 const CONNECT_WAIT_MS = 15000;
 const CONNECT_POLL_MS = 250;
@@ -117,6 +122,8 @@ function connectorsFromStatus(list) {
       server: s.name,
       name: connectorDisplayName(s.name),
       status: s.status,
+      // Claude's own words when it couldn't connect it.
+      error: s.error ? String(s.error) : null,
       tools: (s.tools || [])
         .filter((t) => t && t.name)
         .map((t) => ({
@@ -193,11 +200,26 @@ function connectorNeedsSubscriptionMessage(connectors) {
  *   now?: () => number,
  * }} deps
  */
+/** What a `claude auth status` says about the account, for the details. */
+function accountOf(auth) {
+  if (!auth || typeof auth !== "object") return null;
+  return {
+    loggedIn: !!auth.loggedIn,
+    method: auth.authMethod || null,
+    email: auth.email || null,
+    plan: auth.subscriptionType || null,
+  };
+}
+
 function createConnectorLister(deps) {
   const {
     loadQuery,
     resolveCli,
     readAuthStatus = async () => null,
+    // The CLI's version ("2.1.305"), or null — for the details.
+    readVersion = async () => null,
+    // Every Claude Code on this computer: [path] — for the details.
+    findClis = async () => [],
     waitMs = LIST_WAIT_MS,
     pollMs = POLL_MS,
     now = () => Date.now(),
@@ -212,18 +234,74 @@ function createConnectorLister(deps) {
     ...extra,
   });
 
-  async function fetchList() {
+  /**
+   * The other Claude Codes on this computer, each with its version and the
+   * account it's signed in to — a different one may be the one with the
+   * connectors.
+   */
+  // path → { at, value }: another Claude Code's version and account, read
+  // at most every OTHERS_TTL_MS (each read runs that program twice).
+  const othersSeen = new Map();
+  async function otherOf(p) {
+    const had = othersSeen.get(p);
+    if (had && now() - had.at < OTHERS_TTL_MS) return had.value;
+    const [version, account] = await Promise.all([
+      Promise.resolve()
+        .then(() => readVersion(p))
+        .catch(() => null),
+      Promise.resolve()
+        .then(() => readAuthStatus(p))
+        .then(accountOf)
+        .catch(() => null),
+    ]);
+    const value = { path: p, version, account };
+    othersSeen.set(p, { at: now(), value });
+    return value;
+  }
+  async function othersThan(cliPath) {
+    let paths = [];
+    try {
+      paths = (await findClis()) || [];
+    } catch (_e) {
+      paths = [];
+    }
+    return Promise.all(
+      paths
+        .filter((x) => x && x !== cliPath)
+        .slice(0, 3)
+        .map(otherOf),
+    );
+  }
+
+  async function fetchList(opts = {}) {
+    const started = now();
     let cliPath = null;
     try {
       cliPath = resolveCli();
     } catch (_e) {
       cliPath = null;
     }
+    // What Dash checked (shown with the answer, and copied for help).
+    const details = { cli: null, account: null, others: [], waitedMs: 0 };
+    // The other Claude Codes only for the connector's own panel (a bot
+    // run's listing never waits on them).
+    const withDetails = async (state, extra = {}) => {
+      details.others = opts.details ? await othersThan(cliPath) : [];
+      details.waitedMs = Math.max(0, now() - started);
+      return result(state, { ...extra, details });
+    };
     if (!cliPath) {
-      return result("not-installed", {
+      return withDetails("not-installed", {
         message: "Claude Code isn't installed on this computer.",
       });
     }
+    let version = null;
+    try {
+      version = await readVersion(cliPath);
+    } catch (_e) {
+      version = null;
+    }
+    details.cli = { path: cliPath, version };
     // Signed in with a Claude account? (An API-key login has no connectors.)
     let auth = null;
     try {
@@ -231,8 +309,9 @@ function createConnectorLister(deps) {
     } catch (_e) {
       auth = null;
     }
+    details.account = accountOf(auth);
     if (auth && (!auth.loggedIn || auth.authMethod !== "claude.ai")) {
-      return result("not-signed-in", {
+      return withDetails("not-signed-in", {
         message: "Claude Code isn't signed in with a Claude account.",
       });
     }
@@ -260,6 +339,9 @@ function createConnectorLister(deps) {
     const q = query({ prompt: idle, options });
     // A CLI that never answers (a first-run prompt, no network) is an
     // error, not a wait that holds every later listing.
+    const wait = opts.reconnect
+      ? Math.max(opts.waitMs || 0, RECONNECT_WAIT_MS)
+      : opts.waitMs || waitMs;
     const status = () => {
       let timer = null;
       return Promise.race([
@@ -267,25 +349,63 @@ function createConnectorLister(deps) {
         new Promise((_r, reject) => {
           timer = setTimeout(
             () =>
-              reject(new Error("Claude Code didn't answer. Try Check again.")),
-            Math.max(0, waitMs + 5000),
+              reject(new Error("Claude Code didn't answer. Try Reconnect.")),
+            Math.max(0, wait + 5000),
           );
         }),
       ]).finally(() => clearTimeout(timer));
     };
     try {
-      const started = now();
       let list = await status();
+      // Reconnect: Claude Code connects the account's connectors again —
+      // the one asked for, or every one that isn't connected.
+      if (opts.reconnect && typeof q.reconnectMcpServer === "function") {
+        const asked =
+          typeof opts.reconnect === "string" ? opts.reconnect : null;
+        const again = list
+          .filter(fromClaudeAi)
+          .filter((x) => (asked ? x.name === asked : x.status !== "connected"));
+        // Not listed yet: still try the one asked for.
+        if (asked && !again.length) again.push({ name: asked });
+        details.reconnected = [];
+        for (const x of again) {
+          try {
+            let timer = null;
+            await Promise.race([
+              q.reconnectMcpServer(x.name),
+              new Promise((_r, reject) => {
+                timer = setTimeout(
+                  () => reject(new Error("it didn't answer")),
+                  RECONNECT_WAIT_MS,
+                );
+                if (timer && timer.unref) timer.unref();
+              }),
+            ]).finally(() => clearTimeout(timer));
+            details.reconnected.push({ server: x.name, ok: true });
+          } catch (err) {
+            details.reconnected.push({
+              server: x.name,
+              ok: false,
+              error: (err && err.message) || String(err),
+            });
+          }
+        }
+        list = await status();
+      }
       // The account's connectors arrive a moment after the session starts,
       // then stay "pending" while they connect.
       const waiting = (l) =>
         l.some((s) => fromClaudeAi(s) && s.status === "pending") ||
         (!l.some(fromClaudeAi) && now() - started < APPEAR_MS);
-      while (waiting(list) && now() - started < waitMs) {
+      while (waiting(list) && now() - started < wait) {
         await new Promise((r) => setTimeout(r, pollMs));
         list = await status();
       }
-      return result("ready", { connectors: connectorsFromStatus(list) });
+      // Still connecting when the wait ran out: said, not taken as absent.
+      details.stillConnecting = list
+        .filter((x) => fromClaudeAi(x) && x.status === "pending")
+        .map((x) => connectorDisplayName(x.name));
+      return withDetails("ready", { connectors: connectorsFromStatus(list) });
     } finally {
       release();
       try {
@@ -298,34 +418,43 @@ function createConnectorLister(deps) {
   }
 
   /**
-   * @param {{ refresh?: boolean, maxAgeMs?: number }} [opts]  refresh: always
-   *   ask again; maxAgeMs: reuse a cached list younger than this.
+   * @param {{ refresh?: boolean, maxAgeMs?: number, reconnect?: boolean|string,
+   *   waitMs?: number }} [opts]  refresh: always ask again; maxAgeMs: reuse a
+   *   cached list younger than this; reconnect: connect the account's
+   *   connectors again (one by its server name, or every one not connected)
+   *   and wait longer — never the cached answer.
    */
   async function list(opts = {}) {
     const fresh =
       cache &&
       !opts.refresh &&
+      !opts.reconnect &&
       (opts.maxAgeMs == null ||
         now() - Date.parse(cache.checkedAt) <= opts.maxAgeMs);
     if (fresh) return cache;
-    if (!inFlight) {
-      inFlight = fetchList()
-        .catch((err) =>
-          result("error", {
-            message:
-              (err && err.message) || "Couldn't read your Claude connectors.",
-          }),
-        )
-        .then((r) => {
-          cache = r;
-          inFlight = null;
-          return r;
-        });
-    }
-    return inFlight;
+    // A reconnect is its own check, after any one already running; a
+    // plain listing joins the one running.
+    if (inFlight && !opts.reconnect) return inFlight;
+    const before = inFlight || Promise.resolve();
+    const mine = before
+      .catch(() => null)
+      .then(() => fetchList(opts))
+      .catch((err) =>
+        result("error", {
+          message:
+            (err && err.message) || "Couldn't read your Claude connectors.",
+        }),
+      )
+      .then((r) => {
+        cache = r;
+        if (inFlight === mine) inFlight = null;
+        return r;
+      });
+    inFlight = mine;
+    return mine;
   }
 
-  return { list, cached: () => cache };
+  return { list, cached: () => cache, forget: () => (cache = null) };
 }
 
 /**
@@ -372,4 +501,5 @@ module.exports = {
   createConnectorLister,
   waitForConnectors,
   CONNECT_WAIT_MS,
+  RECONNECT_WAIT_MS,
 };

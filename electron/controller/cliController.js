@@ -8,7 +8,10 @@
  * Users with a Claude Pro/Max subscription and Claude Code installed
  * can use the Chat widget without a separate API key.
  */
-const { spawn, execSync } = require("child_process");
+const { spawn, execSync, execFile } = require("child_process");
+const fsSync = require("fs");
+const pathMod = require("path");
+const osMod = require("os");
 const {
   LLM_STREAM_DELTA,
   LLM_STREAM_TOOL_CALL,
@@ -68,8 +71,146 @@ function getShellPath() {
  */
 let _cliBinaryPath = undefined; // undefined = not yet checked
 
+// The Claude Code the user chose (a connector's details: "Use the one in
+// ~/.local/bin"), kept in the app's data folder; every run uses it.
+let _preferredFile = null;
+function preferredFile() {
+  if (_preferredFile) return _preferredFile;
+  try {
+    const { app } = require("electron");
+    _preferredFile = pathMod.join(
+      app.getPath("userData"),
+      "dash-claude-cli.json",
+    );
+  } catch (_e) {
+    _preferredFile = null;
+  }
+  return _preferredFile;
+}
+
+const runnable = (p) => {
+  try {
+    fsSync.accessSync(p, fsSync.constants.X_OK);
+    return fsSync.statSync(p).isFile();
+  } catch (_e) {
+    return false;
+  }
+};
+
+/** The chosen Claude Code's path, when it's still there — else null. */
+function preferredCli() {
+  const file = preferredFile();
+  if (!file) return null;
+  try {
+    const saved = JSON.parse(fsSync.readFileSync(file, "utf8"));
+    return saved && typeof saved.path === "string" && runnable(saved.path)
+      ? saved.path
+      : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Use this Claude Code from now on (null: back to the first on the PATH).
+ * Only one Dash found on this computer (findCliBinaries) — never any
+ * program a page asks for: it runs for every bot.
+ * @returns {Promise<{ ok: true, path } | { ok: false, error }>}
+ */
+async function setPreferredCli(path) {
+  const file = preferredFile();
+  if (!file) return { ok: false, error: "Can't save that here." };
+  if (path) {
+    const realOf = (p) => {
+      try {
+        return fsSync.realpathSync(p);
+      } catch (_e) {
+        return null;
+      }
+    };
+    const want = realOf(path);
+    const found = (await findCliBinaries()).map(realOf);
+    if (!want || !found.includes(want) || !runnable(path)) {
+      return {
+        ok: false,
+        error: `${path} isn't a Claude Code Dash found on this computer.`,
+      };
+    }
+  }
+  try {
+    if (path) fsSync.writeFileSync(file, JSON.stringify({ path }));
+    else fsSync.rmSync(file, { force: true });
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || "Couldn't save it." };
+  }
+  _cliBinaryPath = undefined;
+  return { ok: true, path: path || resolveCliBinary() };
+}
+
+/** Every Claude Code on this computer: on the PATH, then where it installs. */
+async function findCliBinaries() {
+  const found = [];
+  const add = (p) => {
+    if (!p || !runnable(p)) return;
+    let real = p;
+    try {
+      real = fsSync.realpathSync(p);
+    } catch (_e) {
+      real = p;
+    }
+    if (!found.some((x) => x.real === real)) found.push({ path: p, real });
+  };
+  if (!IS_WINDOWS) {
+    // Never blocks the app while it looks.
+    const onPath = await new Promise((resolve) =>
+      execFile(
+        "which",
+        ["-a", "claude"],
+        { timeout: 5000, env: { ...process.env, PATH: getShellPath() } },
+        (err, stdout) => resolve(String(stdout || "")),
+      ),
+    );
+    onPath
+      .split("\n")
+      .map((l) => l.trim())
+      .forEach(add);
+    const home = osMod.homedir();
+    [
+      pathMod.join(home, ".local", "bin", "claude"),
+      pathMod.join(home, ".claude", "local", "claude"),
+      pathMod.join(home, ".npm-global", "bin", "claude"),
+      "/usr/local/bin/claude",
+      "/opt/homebrew/bin/claude",
+    ].forEach(add);
+  }
+  return found.map((x) => x.path);
+}
+
+/** A Claude Code's version ("2.1.305"), or null. */
+function readCliVersion(path) {
+  return new Promise((resolve) => {
+    execFile(
+      IS_WINDOWS ? windowsQuote(path) : path,
+      ["--version"],
+      { timeout: 10000, shell: IS_WINDOWS },
+      (err, stdout) => {
+        const m = /(\d+\.\d+\.\d+)/.exec(String(stdout || ""));
+        resolve(m ? m[1] : null);
+      },
+    );
+  });
+}
+
 function resolveCliBinary() {
+  // A Claude Code that's gone since (uninstalled): look again.
+  if (_cliBinaryPath && !runnable(_cliBinaryPath)) _cliBinaryPath = undefined;
   if (_cliBinaryPath !== undefined) return _cliBinaryPath;
+  // The one the user chose wins.
+  const chosen = preferredCli();
+  if (chosen) {
+    _cliBinaryPath = chosen;
+    return _cliBinaryPath;
+  }
 
   try {
     const fullPath = getShellPath();
@@ -732,3 +873,6 @@ const cliController = {
 module.exports = cliController;
 module.exports.buildClaudeCliArgs = buildClaudeCliArgs;
 module.exports.resolveCliBinary = resolveCliBinary;
+module.exports.findCliBinaries = findCliBinaries;
+module.exports.readCliVersion = readCliVersion;
+module.exports.setPreferredCli = setPreferredCli;

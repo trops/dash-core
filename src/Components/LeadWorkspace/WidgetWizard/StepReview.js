@@ -1,16 +1,18 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Button,
   Button2,
   Button3,
   FontAwesomeIcon,
   InputText,
+  SelectInput,
   StatusBadge,
   Switch,
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import { TextLink } from "./TextLink";
+import { boundProblem, boundWords } from "./askChecks";
 import {
   STEPS,
   reviewRows,
@@ -107,7 +109,16 @@ export const StepBar = ({
  * + Add a setting. Typed as text; back to each one's kind on Done.
  * `doneRef.current()` applies what's here (the row's Done, step 2's Next).
  */
-export const SettingsEditor = ({ settings, onDone, doneRef }) => {
+export const SettingsEditor = ({
+  settings,
+  onDone,
+  doneRef,
+  // What each may be, from the tool it goes into (askChecks.settingBounds).
+  bounds = {},
+  // Told whether every setting is one its tool takes.
+  onValidity = null,
+}) => {
+  const statusTokens = useStatusTokens();
   const { muted, strong, hairline } = useConfigTokens();
   const [values, setValues] = useState(() => {
     const out = {};
@@ -145,6 +156,15 @@ export const SettingsEditor = ({ settings, onDone, doneRef }) => {
   };
   if (doneRef) doneRef.current = done;
   const keys = Object.keys(values);
+  const problems = {};
+  for (const k of keys) {
+    const why = boundProblem(values[k], bounds[k]);
+    if (why) problems[k] = why;
+  }
+  const valid = !Object.keys(problems).length;
+  useEffect(() => {
+    if (onValidity) onValidity(valid);
+  }, [valid, onValidity]);
   return (
     <div className="flex flex-col gap-2" data-testid="review-settings-editor">
       {keys.length ? (
@@ -174,6 +194,17 @@ export const SettingsEditor = ({ settings, onDone, doneRef }) => {
                       setValues((cur) => ({ ...cur, [k]: !!on }))
                     }
                   />
+                ) : bounds[k] && bounds[k].options ? (
+                  // Only what its tool takes (checked before it's asked).
+                  <SelectInput
+                    label={settingLabel(k)}
+                    value={String(values[k])}
+                    options={bounds[k].options.map((o) => ({
+                      value: o,
+                      label: o,
+                    }))}
+                    onChange={(v) => setValues((cur) => ({ ...cur, [k]: v }))}
+                  />
                 ) : (
                   <InputText
                     height="h-8"
@@ -191,6 +222,17 @@ export const SettingsEditor = ({ settings, onDone, doneRef }) => {
               </span>
               <span className={`w-36 flex-shrink-0 text-xs ${muted}`}>
                 {added.includes(k) ? "Text" : settingKind(settings[k])}
+                {bounds[k] && !bounds[k].options
+                  ? `, ${boundWords(bounds[k])}`
+                  : ""}
+                {problems[k] ? (
+                  <span
+                    className={`block ${statusTokens.error.icon}`}
+                    data-testid="setting-problem"
+                  >
+                    {problems[k]}
+                  </span>
+                ) : null}
               </span>
             </div>
           ))}

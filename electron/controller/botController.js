@@ -256,6 +256,9 @@ const {
   createConnectorLister,
   readClaudeAuthStatus,
 } = require("../bots/claudeConnectors");
+// How long Dash leaves a connector it has stopped trying, before it tries
+// once more by itself.
+const GIVEN_UP_MS = 60 * 60 * 1000;
 const {
   rememberToolGrant,
   forgetToolGrant,
@@ -944,20 +947,18 @@ const botController = {
     return ROLES.map((spec) => {
       const bot = dashTeamBot(bots, spec.role);
       if (!bot) return null;
-      const providerId = resolveBotProviderId(
-        bot,
-        backendProvider(readAi(settings)),
-      );
+      // The model it runs on now, the same pick a run makes.
+      const pick = this._modelPick(bot, settings);
+      const providerId = pick.providerId;
       return {
         ...bot,
         summary: spec.summary,
         tier: spec.tier,
         providerId,
         model: bot.model || null,
-        runsOn:
-          bot.model ||
-          defaultModelFor(bot, readAi(settings)) ||
-          modelForRole(bot, providerId, settings),
+        runsOn: pick.model,
+        style: pick.style ? pick.style.style : null,
+        chosen: pick.chosen,
         recommendedModel: tierModel(providerId, spec.tier),
         paused: this._pause.isPaused(bot.id),
       };
@@ -993,7 +994,70 @@ const botController = {
    * @param {{ refresh?: boolean }} [opts]
    */
   listClaudeConnectors(opts = {}) {
-    return this._claudeConnectors().list({ refresh: !!(opts && opts.refresh) });
+    const o = opts || {};
+    const reconnect =
+      typeof o.reconnect === "string" && o.reconnect
+        ? o.reconnect
+        : o.reconnect === true;
+    return this._claudeConnectors()
+      .list({
+        refresh: !!o.refresh,
+        // The connector's panel: what Dash checked, the others here too.
+        details: true,
+        ...(reconnect ? { reconnect } : {}),
+      })
+      .then((r) => ({ ...r, givenUp: this._givenUpList() }));
+  },
+
+  /**
+   * Use this Claude Code from now on — for connectors and every bot run
+   * (a connector's details: "Use the one in ~/.local/bin"). Null: the
+   * first on the PATH again. Answers with the connectors read through it.
+   */
+  async useClaudeCli(path = null) {
+    const cli = require("./cliController");
+    const res = await cli.setPreferredCli(path || null);
+    if (!res.ok) return { error: res.error };
+    this._claudeConnectors().forget();
+    return this.listClaudeConnectors({ refresh: true });
+  },
+
+  /**
+   * A connector Dash has stopped trying (held to the end of the line): every
+   * fix was tried and it still can't connect or sign in. Runs leave it out
+   * and say so; an hour later Dash reconnects it once, quietly, and runs try
+   * it again. `on` false: try it now (Try once more now).
+   * @param {string} server  the connector's server ("claude.ai Gmail")
+   */
+  setConnectorGivenUp(server, on = true) {
+    if (!this._givenUp) this._givenUp = new Map();
+    const key = String(server || "");
+    if (!key) return { error: "Which connector?" };
+    const was = this._givenUp.get(key);
+    if (was && was.timer) clearTimeout(was.timer);
+    if (!on) {
+      this._givenUp.delete(key);
+      return this.listClaudeConnectors({ reconnect: key });
+    }
+    const retryAt = Date.now() + GIVEN_UP_MS;
+    const timer = setTimeout(() => {
+      this._givenUp.delete(key);
+      // Once, quietly: connect it again so the next run finds it ready.
+      this._claudeConnectors()
+        .list({ reconnect: key })
+        .catch(() => null);
+    }, GIVEN_UP_MS);
+    if (timer && timer.unref) timer.unref();
+    this._givenUp.set(key, { since: Date.now(), retryAt, timer });
+    return { givenUp: this._givenUpList() };
+  },
+
+  _givenUpList() {
+    return [...(this._givenUp || new Map()).entries()].map(([server, g]) => ({
+      server,
+      since: new Date(g.since).toISOString(),
+      retryAt: new Date(g.retryAt).toISOString(),
+    }));
   },
 
   _claudeConnectors() {
@@ -1003,6 +1067,10 @@ const botController = {
           (await import("@anthropic-ai/claude-agent-sdk")).query,
         resolveCli: () => require("./cliController").resolveCliBinary() || null,
         readAuthStatus: (cliPath) => readClaudeAuthStatus(cliPath),
+        // What Dash checked: the version, and every Claude Code here.
+        readVersion: (cliPath) =>
+          require("./cliController").readCliVersion(cliPath),
+        findClis: () => require("./cliController").findCliBinaries(),
       });
     }
     return this._connectorLister;
@@ -1701,7 +1769,11 @@ const botController = {
     if (ai !== undefined) {
       next.ai = mergeAiSettings(this._store.getSettings().ai, ai);
     }
-    return this._store.setSettings(next);
+    const saved = this._store.setSettings(next);
+    // A model change shows wherever the team is listed (which model ran it).
+    if ((ai !== undefined || dashTeam !== undefined) && this._notifyListChanged)
+      this._notifyListChanged();
+    return saved;
   },
 
   /**
@@ -1813,11 +1885,28 @@ const botController = {
       workspaces = [];
     }
     const { summarizeLeads } = require("../bots/teamDirectory");
+    const bots = this._activeBots();
+    const settings = this._store.getSettings();
     return summarizeLeads({
       workspaces,
-      bots: this._activeBots(),
+      bots,
       availability: (id) => this.leadAvailability(id),
       isRunning: (id) => this._runner.listActive().includes(id),
+    }).map((l) => {
+      // The model the lead runs on now (which model ran it).
+      const bot = bots.find((b) => b && b.id === l.botId);
+      if (!bot) return l;
+      try {
+        const pick = this._modelPick(bot, settings);
+        return {
+          ...l,
+          runsOn: pick.model,
+          style: pick.style ? pick.style.style : null,
+          chosen: pick.chosen,
+        };
+      } catch (_e) {
+        return l; // not known now: the listing still shows
+      }
     });
   },
 
@@ -3109,29 +3198,18 @@ const botController = {
     return Number.isNaN(t) ? 0 : t;
   },
 
-  /** Resolve provider config + fresh decrypted credentials for a bot. */
-  _resolveRunProfile(bot) {
-    let providers = [];
-    try {
-      const win = this._getMainWindow();
-      ({ providers = [] } =
-        this._providers.listProviders(win, this._appId) || {});
-    } catch (_e) {
-      // No provider list — the bot's own provider still works; with none it
-      // fails below with a clear message.
-    }
-    // Settings › AI: what a bot without its own provider runs on, each job's
-    // default model and style, and the limits on one run.
-    const settings = this._store.getSettings();
+  /**
+   * Which model a bot runs on, and why (which model ran it): its own model,
+   * then its job's default in Settings › AI (a Claude model, only for bots
+   * on Claude), else Dash team bots on their role's model for the provider,
+   * leads on the fast tier (they only read team data), others on the
+   * provider's default. `chosen`: the user picked it (the bot's own model or
+   * a job default), not built in.
+   * @returns {{ providerId, model, style: object|null, chosen: boolean }}
+   */
+  _modelPick(bot, settings = this._store.getSettings()) {
     const ai = readAi(settings);
-    // The bot's own provider, else Settings › AI's, else Claude Code (CLI).
-    const followsDefault = !bot.provider;
     const providerId = resolveBotProviderId(bot, backendProvider(ai));
-    const provider = getProvider(providerId);
-    // A model of its own wins, then its job's default in Settings › AI. Without
-    // either: Dash team bots run on their role's model for this provider;
-    // leads on the fast tier (they only read team data).
-    // Job defaults are Claude models: only for bots running on Claude.
     const jobDefault = defaultModelFor(bot, ai);
     const jobModel =
       jobDefault &&
@@ -3153,6 +3231,33 @@ const botController = {
     } else {
       model = getDefaultModel(providerId);
     }
+    return {
+      providerId,
+      model,
+      style: styleFor(bot, ai),
+      chosen: !!(bot.model || jobModel),
+    };
+  },
+
+  /** Resolve provider config + fresh decrypted credentials for a bot. */
+  _resolveRunProfile(bot) {
+    let providers = [];
+    try {
+      const win = this._getMainWindow();
+      ({ providers = [] } =
+        this._providers.listProviders(win, this._appId) || {});
+    } catch (_e) {
+      // No provider list — the bot's own provider still works; with none it
+      // fails below with a clear message.
+    }
+    // Settings › AI: what a bot without its own provider runs on, each job's
+    // default model and style, and the limits on one run.
+    const settings = this._store.getSettings();
+    const ai = readAi(settings);
+    // The bot's own provider, else Settings › AI's, else Claude Code (CLI).
+    const followsDefault = !bot.provider;
+    const { providerId, model, style, chosen } = this._modelPick(bot, settings);
+    const provider = getProvider(providerId);
 
     let credentials = {};
     try {
@@ -3174,7 +3279,6 @@ const botController = {
 
     // The style's effort, when the model takes one (Haiku 4.5 and other
     // providers' models don't).
-    const style = styleFor(bot, ai);
     const takesEffort = getCuratedModels(providerId).some(
       (m) =>
         m.value === model && m.reasoning && m.reasoning.control === "effort",
@@ -3199,6 +3303,10 @@ const botController = {
       // The answer-length line isn't for Create's roles: their answers have
       // formats the next step reads (a verdict, a list of matches).
       styleLine: style && !isDashTeam(bot) ? style.line : null,
+      // The style's name ("thorough"), kept with the run (which model ran it).
+      style: style ? style.style : null,
+      // The user picked that model (Settings › AI or the bot's own).
+      modelChosen: !!chosen,
       maxTurns: limits.maxTurns,
       maxMinutes: limits.minutes,
       maxCostUsd: limits.costPerRun,
@@ -3407,6 +3515,32 @@ const botController = {
         // A change's preview runs with a copy's own connection and settings.
         copyInputs: ({ package: pkg, workspaceId }) =>
           this._widgetCopyInputs(pkg, workspaceId),
+        // A draft's code, held to what the user chose (specChecks) before
+        // the Checker runs — compiled or not.
+        draftCode: async ({ draft }) => {
+          const tools = this._widgetTools;
+          if (!draft || !tools) return null;
+          const r = tools.draftCode
+            ? tools.draftCode({ name: draft })
+            : tools.previewDraft
+              ? tools.previewDraft({ name: draft })
+              : null;
+          return r && r.success
+            ? { componentCode: r.componentCode, configCode: r.configCode }
+            : null;
+        },
+        // The widget's provider tools, running — their read-only flags.
+        liveTools: (types) => this._liveToolsFor(types),
+        // While the Builder builds: build_widget holds each draft to what
+        // the user chose (null when it's done).
+        // (Only the plan's Builder hears it; letting go clears only its own.)
+        holdBuilder: (fn) => {
+          const hold = { fn };
+          this._builderHold = hold;
+          return () => {
+            if (this._builderHold === hold) this._builderHold = null;
+          };
+        },
         // A cell build's preview inputs: the draft's (or installed widget's)
         // config source — parsed, never run, in planBuild.
         previewConfig: async ({ draft, component }) => {
@@ -3540,6 +3674,16 @@ const botController = {
     const { entry, step, error } = this._finishedBuild(buildId, stepId);
     if (error) return { error };
     if (!entry.build) return { error: "Continue building first." };
+    // The end of the line (held to your choices): the user took the
+    // closest that works — the Builder builds it that way.
+    if (
+      step.status === "failed" &&
+      step.endOfLine &&
+      step.endOfLine.closest &&
+      entry.build.settle
+    ) {
+      return this._continueBuild(entry.build.settle(stepId));
+    }
     if (step.status !== "failed" || !step.canFix) {
       return { error: "The Builder can't fix that step." };
     }
@@ -4709,11 +4853,30 @@ const botController = {
         const { fetchRegistryIndex } = require("./registryController");
         return registryBotsOf(await fetchRegistryIndex());
       },
-      readWidget: ({ name, component }) =>
-        require("../widgetRegistry").readWidgetSources({
+      readWidget: ({ name, component }) => {
+        // A draft (draft:<Name>, not installed yet): the Builder reads its
+        // own code before fixing it.
+        const tools = this._widgetTools;
+        if (String(name || "").startsWith("draft:")) {
+          const r = tools && tools.draftCode ? tools.draftCode({ name }) : null;
+          return r && r.success
+            ? {
+                success: true,
+                componentName: String(name).slice("draft:".length),
+                componentCode: r.componentCode,
+                configCode: r.configCode,
+                files: [],
+              }
+            : {
+                success: false,
+                error: `${name} hasn't been written yet — write it with build_widget.`,
+              };
+        }
+        return require("../widgetRegistry").readWidgetSources({
           widgetName: name,
           componentName: component,
-        }),
+        });
+      },
       // One of its package's other files (Phase 3).
       readWidgetFile: ({ name, file }) =>
         require("../widgetRegistry").readWidgetFile({
@@ -4734,12 +4897,31 @@ const botController = {
                 }).catch(() => ({})),
               }),
             // During a change (Phase 3) the build is held to its widget.
-            buildWidget: (req) =>
-              this._widgetTools.build({
-                ...req,
+            buildWidget: async (req) => {
+              const { role, ...rest } = req || {};
+              const res = await this._widgetTools.build({
+                ...rest,
                 provider: this._providerPick(req.provider),
                 edit: this._editRun || null,
-              }),
+              });
+              // While a plan's Builder builds a widget chosen step by
+              // step: what doesn't match the user's choices yet, as advice
+              // (held to your choices) — the build's check is what decides.
+              const hold = role === "builder" ? this._builderHold : null;
+              if (!hold || !res || !res.success) return res;
+              let off = [];
+              try {
+                off = hold.fn({
+                  componentCode: rest.componentCode,
+                  configCode: rest.configCode,
+                });
+              } catch (_e) {
+                off = [];
+              }
+              return Array.isArray(off) && off.length
+                ? { ...res, choiceProblems: off }
+                : res;
+            },
             // A change that shows what a bot sends must have its listener.
             checkWidget: async (req) =>
               withWireProblems(
@@ -5067,6 +5249,8 @@ const botController = {
           name: t.name,
           description: t.description || "",
           inputSchema: t.inputSchema || null,
+          // Its read-only flag, when the server gives one (held to choices).
+          ...(t.annotations ? { annotations: t.annotations } : {}),
         })),
         notes: [],
       };
@@ -5399,6 +5583,7 @@ const botController = {
       connectors: linked.connectors,
       connectorServers: linked.connectorServers,
       readOnlyTools: linked.readOnly,
+      notes: linked.notes || [],
     };
   },
 
@@ -5430,6 +5615,23 @@ const botController = {
         );
       }
       for (const input of inputs) issueController.record(input);
+      // A provider a call reached this run (and didn't fail to sign in to)
+      // signs in fine: its sign-in issues, from any bot, are resolved.
+      const failedSignIn = new Set(
+        inputs
+          .filter((x) => x.cause === "sign-in" && x.call)
+          .map((x) => x.call.provider),
+      );
+      const worked = new Set(
+        toolCalls
+          .filter((c) => c && c.ok === true && c.provider)
+          .map((c) => c.provider),
+      );
+      for (const provider of worked) {
+        if (!failedSignIn.has(provider) && issueController.resolveSignIn) {
+          issueController.resolveSignIn(provider);
+        }
+      }
     } catch (_e) {
       // Issues are a convenience: never a reason a run fails.
     }
@@ -5470,10 +5672,30 @@ const botController = {
       return none;
     }
     const wanted = new Set(bot.mcpServers || []);
-    const granted = providers.filter(
-      (p) => p && p.providerClass === CONNECTOR_CLASS && wanted.has(p.name),
-    );
-    if (!granted.length) return none;
+    const givenUp = this._givenUp || new Map();
+    const notes = [];
+    const granted = providers.filter((p) => {
+      if (!p || p.providerClass !== CONNECTOR_CLASS || !wanted.has(p.name)) {
+        return false;
+      }
+      const server = p.mcpConfig && p.mcpConfig.server;
+      const g = server ? givenUp.get(server) : null;
+      if (!g) return true;
+      const at = new Date(g.retryAt).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      this._runWarning(bot, runOpts, {
+        type: "warning",
+        message: `${p.name} was left out of this run: it can't connect or sign in right now, and Dash has stopped trying until ${at}. Its answer can't include ${p.name}.`,
+        provider: p.name,
+      });
+      notes.push(
+        `${p.name} isn't available this run (it can't connect or sign in right now). Don't try to use it; say in your answer that ${p.name} was left out, and answer from what you can reach.`,
+      );
+      return false;
+    });
+    if (!granted.length) return { ...none, notes };
     let listed = null;
     try {
       listed = await this._claudeConnectors().list({
@@ -5509,6 +5731,7 @@ const botController = {
     return {
       ...resolved,
       connectorServers: all.map((c) => c.server),
+      notes,
     };
   },
 

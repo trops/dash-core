@@ -218,6 +218,36 @@ describe("build_widget", () => {
     assert.match(r.text, /- line 3: <Modal> isn't allowed/);
   });
 
+  it("tells the Builder what doesn't match the user's choices yet (held to your choices)", async () => {
+    let seen = null;
+    const r = await handleRoleTool(
+      deps({
+        buildWidget: async (req) => {
+          seen = req;
+          return {
+            success: true,
+            widgetName: "draft:Hello",
+            choiceProblems: [
+              {
+                main: "It calls ha_delete_event, which changes things",
+                chose: "only reads — it never changes anything",
+              },
+            ],
+          };
+        },
+      }),
+      as("builder"),
+      "build_widget",
+      { name: "Hello", componentCode: "c", configCode: "k" },
+    );
+    assert.equal(seen.role, "builder");
+    assert.equal(r.isError, false);
+    assert.match(
+      r.text,
+      /doesn't match what the user chose yet — change exactly these[\s\S]*- It calls ha_delete_event, which changes things — they chose: only reads/,
+    );
+  });
+
   it("passes update and provider through", async () => {
     let seen = null;
     await handleRoleTool(
