@@ -6,6 +6,8 @@
  *   install   one per registry piece — reviewed and approved (installed at Build)
  *   connect   one per provider type a piece needs that the user doesn't have
  *   approve   any other step the Planner listed — the user says OK
+ *   choose    a widget needs a kind of provider the user has several of,
+ *             and the plan didn't name one — the user picks (never Dash)
  *
  * Nothing here installs or connects anything.
  */
@@ -226,6 +228,304 @@ export function choosePlanProvider(plan, providerType, provider) {
   return { ...plan, pieces };
 }
 
+const lowerFirst = (s) =>
+  String(s).charAt(0).toLowerCase() + String(s).slice(1);
+
+const listOf = (providers) =>
+  (Array.isArray(providers)
+    ? providers
+    : Object.values(providers || {})
+  ).filter((p) => p && p.name);
+
+/** What a provider is, in the words the Providers page uses. */
+export function providerKindLabel(p) {
+  const cls = p && p.providerClass;
+  if (cls === CONNECTOR) return "Claude connector";
+  if (cls === "mcp") return "Tools (MCP)";
+  if (cls === "websocket") return "Live feed";
+  return "Credentials";
+}
+
+/** A change to a widget already placed: it keeps its connection. */
+export const keepsConnection = (piece) =>
+  !!piece && (piece.source === "update" || piece.source === "settings");
+
+/**
+ * The provider a widget piece is pinned to for a kind — only when the pin
+ * names one of the user's providers a widget can use (not a Claude
+ * connector, not one renamed or removed since).
+ */
+export function livePin(piece, type, providers) {
+  const pins =
+    piece && piece.provider && typeof piece.provider === "object"
+      ? piece.provider
+      : {};
+  const key = Object.keys(pins).find((k) => normalizeType(k) === type);
+  if (!key || typeof pins[key] !== "string") return null;
+  const want = pins[key].toLowerCase();
+  return (
+    listOf(providers).find(
+      (p) => p.providerClass !== CONNECTOR && p.name.toLowerCase() === want,
+    ) || null
+  );
+}
+
+// Words in a kind's name that say nothing about what it does.
+const GENERIC_WORDS = new Set([
+  "google",
+  "microsoft",
+  "mcp",
+  "api",
+  "server",
+  "app",
+  "the",
+  "my",
+  "custom",
+]);
+
+/** "google-calendar" → ["calendar"]; "home-assistant-mcp" → ["home", "assistant"]. */
+export const kindWords = (type) =>
+  normalizeType(type)
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2 && !GENERIC_WORDS.has(w));
+
+/**
+ * The user's providers that could give a widget what one kind gives — found
+ * by the app, not the AI: that kind itself, or a provider whose saved tools
+ * name what it's about (a calendar from Home Assistant's
+ * "ha_config_get_calendar_events"). Claude connectors are included (the
+ * pick list shows them off). Same kind first.
+ * @returns {string[]} names
+ */
+export function candidatesFor(type, providers) {
+  const want = normalizeType(type);
+  const words = kindWords(want);
+  const all = listOf(providers);
+  const same = all.filter(
+    (p) =>
+      normalizeType(p.type) === want ||
+      (p.providerClass === CONNECTOR && connectorTypes(p).includes(want)),
+  );
+  const byTools = all.filter((p) => {
+    if (same.includes(p) || !words.length) return false;
+    const tools = (Array.isArray(p.allowedTools) ? p.allowedTools : [])
+      .concat(Array.isArray(p.tools) ? p.tools : [])
+      .map((t) => String((t && t.name) || t).toLowerCase());
+    return tools.some((t) => words.some((w) => t.includes(w)));
+  });
+  return [...same, ...byTools].map((p) => p.name);
+}
+
+/**
+ * The kinds a widget piece needs that the user hasn't chosen a provider
+ * for (widget step by step, release 1: the user always chooses). With
+ * `picked` (the names the user picked in this conversation), a pin counts
+ * only when it's one of those — a pin the Planner made itself doesn't; any
+ * kind some provider of theirs could serve is theirs to choose. Without it
+ * (an older screen), only a kind they have several of and none pinned.
+ */
+export function unpinnedChoices(piece, providers, picked = null) {
+  if (!piece || piece.kind !== "widget" || keepsConnection(piece)) return [];
+  const usable = listOf(providers).filter((p) => p.providerClass !== CONNECTOR);
+  const mine = Array.isArray(picked)
+    ? picked.map((n) => String(n).toLowerCase())
+    : null;
+  const out = [];
+  for (const t of Array.isArray(piece.providers) ? piece.providers : []) {
+    const type = normalizeType(t);
+    if (!type || out.includes(type)) continue;
+    const pin = livePin(piece, type, providers);
+    if (mine) {
+      if (pin && mine.includes(pin.name.toLowerCase())) continue;
+      const usableNames = usable.map((p) => p.name);
+      const can = candidatesFor(type, providers).filter((n) =>
+        usableNames.includes(n),
+      );
+      if (can.length || pin) out.push(type);
+      continue;
+    }
+    if (pin) continue;
+    const same = usable.filter((p) => normalizeType(p.type) === type);
+    if (same.length > 1) out.push(type);
+  }
+  return out;
+}
+
+/**
+ * What a widget piece reads from now, by name: each kind's live pin, or
+ * the user's only provider of that kind — what Change starts ticked.
+ */
+export function readsNow(piece, providers) {
+  const usable = listOf(providers).filter((p) => p.providerClass !== CONNECTOR);
+  const names = [];
+  for (const t of Array.isArray(piece && piece.providers)
+    ? piece.providers
+    : []) {
+    const type = normalizeType(t);
+    if (!type) continue;
+    const pin = livePin(piece, type, providers);
+    const same = usable.filter((p) => normalizeType(p.type) === type);
+    const p = pin || (same.length === 1 ? same[0] : null);
+    if (p && !names.includes(p.name)) names.push(p.name);
+  }
+  return names;
+}
+
+/**
+ * A provider question's rows: the providers the Planner suggested (its
+ * order), and the user's others under "Show other compatible providers". A Claude
+ * connector can't back a widget yet: shown, off, with why.
+ * @returns {{ suggested: Row[], others: Row[] }}  Row: { name, type,
+ *   providerClass, kind, off, why, reason }
+ */
+export function providerPickRows(
+  providers,
+  options = [],
+  { forBots = false, reasons = null } = {},
+) {
+  const all = listOf(providers);
+  const row = (p) => {
+    const off = !forBots && p.providerClass === CONNECTOR;
+    return {
+      name: p.name,
+      type: p.type || "",
+      providerClass: p.providerClass || null,
+      kind: providerKindLabel(p),
+      off,
+      why: off ? "Widgets can't use Claude connectors yet — bots can." : "",
+      reason:
+        (reasons && typeof reasons[p.name] === "string" && reasons[p.name]) ||
+        "",
+      isDefault: p.isDefaultForType === true,
+    };
+  };
+  const byName = (n) =>
+    all.find((p) => p.name.toLowerCase() === String(n || "").toLowerCase());
+  const suggested = [];
+  for (const o of Array.isArray(options) ? options : []) {
+    const p = byName(o);
+    if (p && !suggested.some((s) => s.name === p.name)) suggested.push(row(p));
+  }
+  // What can't be used here goes last.
+  suggested.sort((a, b) => Number(a.off) - Number(b.off));
+  const others = all
+    .filter((p) => !suggested.some((s) => s.name === p.name))
+    // Plain credentials (an API key) aren't something a widget reads from
+    // on its own; tools and live feeds are.
+    .filter((p) => p.providerClass !== "credential" || p.type)
+    .map(row)
+    // Only what could be used here: a widget can't use a Claude connector.
+    .filter((r) => !r.off)
+    .sort(
+      (a, b) => Number(a.off) - Number(b.off) || a.name.localeCompare(b.name),
+    );
+  return { suggested, others };
+}
+
+/**
+ * The user's answer to a provider question, for the Planner: the exact
+ * names, and which they picked that weren't suggested (so it checks them).
+ */
+export function providerPickAnswer(question, picked, suggestedNames = []) {
+  const names = (picked || []).map((p) => (p && p.name) || p).filter(Boolean);
+  const extra = names.filter((n) => !(suggestedNames || []).includes(n));
+  const head = `${question} — ${names.join(" and ")}`;
+  return extra.length
+    ? `${head}. (I picked ${extra.join(" and ")} myself — check ${
+        extra.length === 1 ? "it" : "they"
+      } can give what the widget needs, and say so if not.)`
+    : head;
+}
+
+/**
+ * One widget reads from the providers the user picked: its types and each
+ * pinned by name. A widget the user has (reused) that read something else
+ * becomes a new one — it was made for other tools.
+ * @returns {{ plan, note }}
+ */
+export function pinWidgetProviders(plan, index, picked) {
+  const pieces = (plan && plan.pieces) || [];
+  const piece = pieces[index];
+  const use = (picked || []).filter(
+    (p) => p && p.name && p.providerClass !== CONNECTOR,
+  );
+  if (!piece || !use.length) return { plan, note: "" };
+  // A widget reads one provider of each kind: the last one picked wins.
+  const byKind = new Map();
+  for (const p of use) byKind.set(normalizeType(p.type || p.name), p);
+  const kept = [...byKind.values()];
+  const types = kept.map((p) => p.type || p.name);
+  const provider = {};
+  for (const p of kept) provider[p.type || p.name] = p.name;
+  const before = (Array.isArray(piece.providers) ? piece.providers : []).map(
+    normalizeType,
+  );
+  const same =
+    before.length === types.length &&
+    types.every((t) => before.includes(normalizeType(t)));
+  const reused = piece.source && piece.source !== "new";
+  const next = { ...piece, providers: types, provider };
+  if (reused && !same) {
+    next.source = "new";
+    delete next.package;
+    delete next.component;
+  }
+  const names = kept.map((p) => p.name).join(" and ");
+  return {
+    plan: {
+      ...plan,
+      pieces: pieces.map((p, i) => (i === index ? next : p)),
+    },
+    note:
+      reused && !same
+        ? `${piece.name} reads from ${names} — build it new (the one I have reads something else)`
+        : `${piece.name} reads from ${names}`,
+  };
+}
+
+// "Leave blank for America/New_York", "(blank = 10)": what a blank answer
+// means, said in the question itself.
+const BLANK_MEANS = [
+  /\b(?:leave|left|keep)\s+(?:it\s+)?(?:blank|empty)\s*(?:for|to\s+use|and\s+(?:it|I)(?:'ll|\s+will)\s+use|=|:)\s*(?:the\s+default\s*(?:of|:|\()?\s*)?["\u201c']?([^"\u201d'.)\n,;?]+)/i,
+  /\bblank\s*(?:=|means|uses?)\s*["\u201c']?([^"\u201d'.)\n,;?]+)/i,
+];
+
+/**
+ * The answer a typed question suggests: its "default", or what the
+ * question says a blank means. "" when it has none (or has options).
+ */
+export function questionDefault(q) {
+  if (!q || (Array.isArray(q.options) && q.options.length) || q.pick) return "";
+  if (typeof q.default === "number") return String(q.default);
+  if (typeof q.default === "string" && q.default.trim())
+    return q.default.trim();
+  const text = String(q.question || "");
+  for (const re of BLANK_MEANS) {
+    const m = text.match(re);
+    if (m && m[1] && m[1].trim()) return m[1].trim();
+  }
+  return "";
+}
+
+/**
+ * The Planner's questions answered, as lines for it: each answer given
+ * (trimmed), a typed one left blank taking its default (found live: "leave
+ * blank for America/New_York" was sent as no answer, and asked again),
+ * then the user's own words.
+ */
+export function answerLines(questions, picks = {}, own = "") {
+  const lines = (questions || [])
+    .map((q, i) => {
+      const a =
+        (picks && picks[i] != null ? String(picks[i]).trim() : "") ||
+        questionDefault(q);
+      return q && a ? `${q.question} — ${a}` : null;
+    })
+    .filter(Boolean);
+  const mine = String(own || "").trim();
+  return mine ? [...lines, mine] : lines;
+}
+
 /** "gmail" / "Google Calendar" / "github" → "Gmail" / "Google Calendar" / "GitHub". */
 export function providerLabel(name) {
   const type = normalizeType(name);
@@ -235,9 +535,18 @@ export function providerLabel(name) {
 /**
  * @param {object} plan
  * @param {Set<string>} have  the user's provider types
+ * @param {Array|object} [providers]  the user's providers: a widget whose
+ *   provider the user hasn't picked gets a "choose"
+ * @param {string[]} [picked]  provider names the user picked in this
+ *   conversation (unpinnedChoices)
  * @returns {Array<{ id, kind, label, package?, providerType?, pieceIndex? }>}
  */
-export function buildChecklist(plan, have = new Set()) {
+export function buildChecklist(
+  plan,
+  have = new Set(),
+  providers = null,
+  picked = null,
+) {
   const pieces = (plan && Array.isArray(plan.pieces) && plan.pieces) || [];
   const items = [];
   const seenPkg = new Set();
@@ -273,6 +582,20 @@ export function buildChecklist(plan, have = new Set()) {
       });
     }
   }
+  // Which provider a widget reads from: the user's pick, never a guess.
+  if (providers) {
+    pieces.forEach((p, i) => {
+      for (const type of unpinnedChoices(p, providers, picked)) {
+        items.push({
+          id: `choose:${i}:${type}`,
+          kind: "choose",
+          label: `Choose what ${p.name || "the widget"} reads from`,
+          providerType: type,
+          pieceIndex: i,
+        });
+      }
+    });
+  }
   // Planner steps that aren't an install or a connect above.
   for (const b of (plan && plan.beforeBuilding) || []) {
     if (!b || b.kind !== "approve" || !b.what) continue;
@@ -283,6 +606,7 @@ export function buildChecklist(plan, have = new Set()) {
 
 /** Whether an item is done: approved/OK'd, or (connect) the type now exists. */
 export function isDone(item, state = {}, have = new Set()) {
+  if (item.kind === "choose") return false;
   if (item.kind === "connect") {
     // Skipped: the build goes ahead and waits for it (CRE-004 AC5).
     return (
@@ -329,9 +653,21 @@ export function buildButtonLabel(
   const connects = open.filter((it) => it.kind === "connect");
   const installs = open.filter((it) => it.kind === "install");
   const others = open.filter((it) => it.kind === "approve");
+  const chooses = open.filter((it) => it.kind === "choose");
   const parts = [];
-  if (connects.length === 1) parts.push(connects[0].label);
-  else if (connects.length) parts.push(`Connect ${connects.length} accounts`);
+  if (chooses.length === 1) parts.push(chooses[0].label);
+  else if (chooses.length) {
+    parts.push(`Choose what ${chooses.length} widgets read from`);
+  }
+  if (connects.length === 1) {
+    parts.push(
+      parts.length ? lowerFirst(connects[0].label) : connects[0].label,
+    );
+  } else if (connects.length) {
+    parts.push(
+      `${parts.length ? "connect" : "Connect"} ${connects.length} accounts`,
+    );
+  }
   if (installs.length) {
     parts.push(
       `${parts.length ? "approve" : "Approve"} ${installs.length} install${

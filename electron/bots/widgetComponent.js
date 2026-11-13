@@ -31,7 +31,27 @@ function scopedId(packageName, componentName) {
 function resolveWidgetComponent(widget, component, listInstalled, hint = {}) {
   const name = String(widget || "").trim();
   if (!name) return { error: "Which widget?" };
-  if (!name.includes("/")) {
+  // A registry package by its bare name ("clock"): it's kept under that
+  // name too — the scoped one ("@trops/clock") gives the layout's id.
+  let bareHit = null;
+  if (!name.includes("/") && name.split(".").length < 3) {
+    const lower = name.toLowerCase();
+    const all = (listInstalled() || []).filter((p) => p && p.name);
+    // In two scopes: the one a full component id names ("trops.clock.X").
+    const scope =
+      component && String(component).split(".").length >= 3
+        ? String(component).split(".")[0].toLowerCase()
+        : null;
+    bareHit =
+      (scope &&
+        all.find(
+          (p) => String(p.name).toLowerCase() === `@${scope}/${lower}`,
+        )) ||
+      all.find((p) => String(p.name).toLowerCase().endsWith(`/${lower}`)) ||
+      all.find((p) => String(p.name).toLowerCase() === lower) ||
+      null;
+  }
+  if (!name.includes("/") && !bareHit) {
     // Already a component id (scope.package.Component, or a built-in).
     return name.split(".").length >= 3
       ? { component: name }
@@ -39,10 +59,16 @@ function resolveWidgetComponent(widget, component, listInstalled, hint = {}) {
           error: `"${name}" isn't a widget package or a full component id (scope.package.Component).`,
         };
   }
-  const pkgName = name.startsWith("@") ? name : `@${name}`;
-  const pkg = (listInstalled() || []).find(
-    (p) => p && String(p.name).toLowerCase() === pkgName.toLowerCase(),
-  );
+  const pkgName = bareHit
+    ? String(bareHit.name)
+    : name.startsWith("@")
+      ? name
+      : `@${name}`;
+  const pkg =
+    bareHit ||
+    (listInstalled() || []).find(
+      (p) => p && String(p.name).toLowerCase() === pkgName.toLowerCase(),
+    );
   if (!pkg) return { error: `${pkgName} isn't installed.` };
   const comps = (Array.isArray(pkg.widgets) ? pkg.widgets : [])
     .map((w) => w && w.name)

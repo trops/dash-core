@@ -15,6 +15,15 @@ import {
   within,
 } from "@testing-library/react";
 
+// The app's widget registry: what a reused widget's steps list (tests set it).
+const mockRegistry = { map: {} };
+jest.mock("../../ComponentManager", () => ({
+  ComponentManager: {
+    componentMap: () => mockRegistry.map,
+    config: (id) => (mockRegistry.map[id] ? { ...mockRegistry.map[id] } : null),
+  },
+}));
+
 jest.mock("@trops/dash-react", () => {
   const actual = jest.requireActual("@trops/dash-react");
   return {
@@ -93,6 +102,7 @@ jest.mock("./useWidgetTarget", () => ({
 }));
 
 import { LeadWorkspace } from "./LeadWorkspace";
+import { AppContext } from "../../Context/App/AppContext";
 
 // A new conversation as the start asks it (one place to start): a card's
 // example goes in the box, then Ask.
@@ -231,6 +241,40 @@ test("a bot on no dashboard: its own chat, and its runs on the right", async () 
   expect(await screen.findByText("TICK")).toBeInTheDocument();
   expect(screen.queryByText("New conversation")).toBeNull();
 });
+
+// A plan whose one widget went through the steps: nothing ticked in step 2,
+// the List look in step 4.
+const readsOnly = (plan) => ({
+  ...plan,
+  pieces: [
+    {
+      ...plan.pieces[0],
+      changes: [],
+      look: { id: "list", options: expect.any(Object) },
+      whenEmpty: "Nothing to show",
+    },
+  ],
+});
+
+// The wizard's steps 2, 3 and 4, as proposed (the List look), to Review &
+// build.
+function throughSteps(msg, i, api) {
+  for (const next of [
+    "Next: talks to",
+    "Next: looks",
+    "Use List",
+    "Next: review",
+  ]) {
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(msg, i, api);
+    });
+    const c = render(node);
+    const b = within(c.container).queryByRole("button", { name: next });
+    if (b) fireEvent.click(b);
+    c.unmount();
+  }
+}
 
 describe("WorkspaceSide", () => {
   const contact = {
@@ -403,7 +447,7 @@ describe("a plan in the conversation (release 3a)", () => {
     return node;
   };
 
-  test("the plan's card opens it on the right; Before it builds names who asks", async () => {
+  test("the whole plan shows in the chat; Before it builds names who asks", async () => {
     await openWithPlan();
     const side = screen.getByTestId("workspace-side");
     expect(within(side).getByTestId("workspace-output-plan")).toHaveTextContent(
@@ -422,24 +466,16 @@ describe("a plan in the conversation (release 3a)", () => {
       "Before it builds · 1 of 1 done",
     );
 
-    // The card under the Planner's step opens the plan.
+    // Under the Planner's step: the whole plan, not a card to click.
     expect(after(0)).toBeNull();
-    const card = render(after(1));
-    fireEvent.click(
-      within(card.container).getByRole("button", { name: /Home/ }),
-    );
-    expect(screen.getByTestId("workspace-plan-output")).toHaveTextContent(
-      "Lights panel",
-    );
+    const inChat = within(render(after(1)).container).getByTestId("chat-plan");
+    expect(inChat).toHaveTextContent("Lights panel");
     // One row per piece, read only: changes are asked for in the chat.
-    expect(screen.getAllByTestId("workspace-plan-row")[0]).toHaveTextContent(
-      "Lights panelNew",
-    );
     expect(
-      within(screen.getByTestId("workspace-plan-output")).queryByRole(
-        "button",
-        { name: /Swap|Remove/ },
-      ),
+      within(inChat).getAllByTestId("workspace-plan-row")[0],
+    ).toHaveTextContent("Lights panelNew");
+    expect(
+      within(inChat).queryByRole("button", { name: /Swap|Remove/ }),
     ).toBeNull();
   });
 
@@ -512,6 +548,11 @@ describe("a plan in the conversation (release 3a)", () => {
             builds: [],
             // When the plan came in (release 4's notifications).
             madeAt: expect.any(Number),
+            picked: [],
+            pickStepId: null,
+            wizardStage: null,
+            choices: {},
+            choicesFor: null,
           },
         },
       }),
@@ -1506,6 +1547,7 @@ describe("release 3b: building in the conversation", () => {
       mockAskProps.onStarted("q_new");
       mockAskProps.onMessagesChange(msgs);
     });
+    throughSteps(reply, 2, api);
     let node = null;
     act(() => {
       node = mockAskProps.renderAfter(reply, 2, api);
@@ -1654,11 +1696,15 @@ describe("release 3b: building in the conversation", () => {
       pieces: [{ kind: "widget", name: "Calendar", source: "new" }],
     };
     await buildIt(ONE);
-    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(ONE, {
-      cell: true,
-      standalone: true,
-      recentId: "q_new",
-    });
+    // Through step 2 with nothing ticked: it only reads, said.
+    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(
+      readsOnly(ONE),
+      {
+        cell: true,
+        standalone: true,
+        recentId: "q_new",
+      },
+    );
     push({
       status: "waiting-for-you",
       steps: [
@@ -1689,9 +1735,8 @@ describe("release 3b: building in the conversation", () => {
         s({ id: "save:0", kind: "save", piece: 0, label: "Install Calendar" }),
       ],
     });
-    expect(screen.getByTestId("workspace-output-preview")).toHaveTextContent(
-      "Calendar",
-    );
+    // Said yes here: its preview is open on the right by itself.
+    expect(screen.getByTestId("workspace-preview")).toBeInTheDocument();
     const c = chat();
     fireEvent.click(within(c).getByRole("button", { name: "Looks good" }));
     await waitFor(() =>
@@ -1701,6 +1746,279 @@ describe("release 3b: building in the conversation", () => {
         {},
       ),
     );
+  });
+
+  test("its preview ready after yes here: it opens on the right by itself — no second click", async () => {
+    const ONE = {
+      summary: "A light shopping list",
+      pieces: [{ kind: "widget", name: "Shopping Lite", source: "new" }],
+    };
+    await buildIt(ONE);
+    const steps = (build, preview) => [
+      s({
+        id: "build:0",
+        kind: "build",
+        piece: 0,
+        role: "builder",
+        label: "Build Shopping Lite",
+        status: build,
+      }),
+      s({
+        id: "preview:0",
+        kind: "preview",
+        piece: 0,
+        role: "you",
+        label: "Preview Shopping Lite",
+        status: preview,
+      }),
+    ];
+    push({ status: "running", steps: steps("running", "waiting") });
+    expect(screen.queryByTestId("workspace-preview")).toBeNull();
+    push({ status: "waiting-for-you", steps: steps("done", "needs-you") });
+    expect(screen.getByTestId("workspace-preview")).toBeInTheDocument();
+  });
+
+  test("a typed change at the preview is a fix for the Builder — your words show, never a new plan", async () => {
+    const ONE = {
+      summary: "A light shopping list",
+      pieces: [{ kind: "widget", name: "Shopping Lite", source: "new" }],
+    };
+    await buildIt(ONE);
+    window.mainApi.bots.revisePlanStep = jest
+      .fn()
+      .mockResolvedValue({ ok: true });
+    const steps = (preview, build = "done") => [
+      s({
+        id: "build:0",
+        kind: "build",
+        piece: 0,
+        role: "builder",
+        label: "Build Shopping Lite",
+        status: build,
+      }),
+      s({
+        id: "check:0",
+        kind: "check",
+        piece: 0,
+        role: "checker",
+        label: "Check Shopping Lite",
+        status: build === "done" ? "done" : "waiting",
+      }),
+      s({
+        id: "preview:0",
+        kind: "preview",
+        piece: 0,
+        role: "you",
+        label: "Preview Shopping Lite",
+        status: preview,
+      }),
+    ];
+    push({ status: "waiting-for-you", steps: steps("needs-you") });
+    // The reply box says where a change goes.
+    expect(mockAskProps.placeholder).toBe(
+      "Tell me what to change — it goes to the Builder as a fix",
+    );
+    const say = jest.fn();
+    mockAskProps.controlRef.current = { say, focusReply: jest.fn() };
+    let taken = false;
+    act(() => {
+      taken = mockAskProps.takeReply("Too much padding around the list items");
+    });
+    expect(taken).toBe(true);
+    await waitFor(() =>
+      expect(window.mainApi.bots.revisePlanStep).toHaveBeenCalledWith(
+        "build_1",
+        "preview:0",
+        "Too much padding around the list items",
+        null,
+      ),
+    );
+    // Not to the Lead or the Planner.
+    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(say).toHaveBeenCalledWith({
+        who: "you",
+        text: "Too much padding around the list items",
+        fix: true,
+      }),
+    );
+    // In the chat: the build as it was, then the fix under your words.
+    const fixMsg = {
+      who: "you",
+      text: "Too much padding around the list items",
+      fix: true,
+    };
+    act(() => {
+      mockAskProps.onMessagesChange([
+        you("Plan it"),
+        planStep("1:t1", ONE),
+        reply,
+        fixMsg,
+      ]);
+    });
+    push({ status: "running", steps: steps("waiting", "running") });
+    const earlier = chat();
+    expect(earlier).toHaveTextContent("Builder built Shopping Lite");
+    expect(
+      within(earlier).queryByRole("button", { name: "Looks good" }),
+    ).toBeNull();
+    const under = () => {
+      let node = null;
+      act(() => {
+        node = mockAskProps.renderAfter(fixMsg, 3, api);
+      });
+      return render(node).container;
+    };
+    expect(under()).toHaveTextContent(
+      "Sent to the Builder as a fix · changing Shopping Lite",
+    );
+    push({ status: "waiting-for-you", steps: steps("needs-you") });
+    const done = under();
+    expect(done).toHaveTextContent("Builder changed Shopping Lite · fix 1");
+    expect(
+      within(done).getByRole("button", { name: "Looks good" }),
+    ).toBeInTheDocument();
+    // Something bigger: the next reply goes to the Planner instead.
+    fireEvent.click(
+      within(done).getByRole("button", { name: "Change the plan instead" }),
+    );
+    expect(mockAskProps.placeholder).toBe(
+      "Tell the Planner what to change in the plan",
+    );
+    let toLead = true;
+    act(() => {
+      toLead = mockAskProps.takeReply("Use my other calendar instead");
+    });
+    expect(toLead).toBe(false);
+    expect(window.mainApi.bots.revisePlanStep).toHaveBeenCalledTimes(1);
+  });
+
+  describe("at the preview, what's typed", () => {
+    const ONE = {
+      summary: "A light shopping list",
+      pieces: [{ kind: "widget", name: "Shopping Lite", source: "new" }],
+    };
+    const steps = (preview, build = "done", save = "waiting") => [
+      s({
+        id: "build:0",
+        kind: "build",
+        piece: 0,
+        role: "builder",
+        label: "Build Shopping Lite",
+        status: build,
+      }),
+      s({
+        id: "check:0",
+        kind: "check",
+        piece: 0,
+        role: "checker",
+        label: "Check Shopping Lite",
+        status: build === "done" ? "done" : "waiting",
+      }),
+      s({
+        id: "preview:0",
+        kind: "preview",
+        piece: 0,
+        role: "you",
+        label: "Preview Shopping Lite",
+        status: preview,
+      }),
+      s({
+        id: "save:0",
+        kind: "save",
+        piece: 0,
+        label: "Install Shopping Lite",
+        status: save,
+      }),
+    ];
+    const atPreview = async () => {
+      await buildIt(ONE);
+      window.mainApi.bots.revisePlanStep = jest
+        .fn()
+        .mockResolvedValue({ ok: true });
+      push({ status: "waiting-for-you", steps: steps("needs-you") });
+      const say = jest.fn();
+      mockAskProps.controlRef.current = { say, focusReply: jest.fn() };
+      return say;
+    };
+    const type = (t) => {
+      let taken = null;
+      act(() => {
+        taken = mockAskProps.takeReply(t);
+      });
+      return taken;
+    };
+
+    test("“looks good” is Looks good — never a change", async () => {
+      const say = await atPreview();
+      expect(type("Looks good!")).toBe(true);
+      await waitFor(() =>
+        expect(window.mainApi.bots.approvePlanStep).toHaveBeenCalledWith(
+          "build_1",
+          "preview:0",
+          {},
+        ),
+      );
+      expect(window.mainApi.bots.revisePlanStep).not.toHaveBeenCalled();
+      expect(say).toHaveBeenCalledWith({
+        who: "you",
+        text: "Looks good!",
+        local: true,
+      });
+    });
+
+    test("“thanks” changes nothing, and says how to keep it", async () => {
+      const say = await atPreview();
+      expect(type("thanks")).toBe(true);
+      expect(window.mainApi.bots.revisePlanStep).not.toHaveBeenCalled();
+      expect(window.mainApi.bots.approvePlanStep).not.toHaveBeenCalled();
+      expect(say).toHaveBeenCalledWith(
+        expect.objectContaining({
+          who: "note",
+          text: expect.stringMatching(/Nothing sent to the Builder/),
+        }),
+      );
+    });
+
+    test("a change the build refuses is your words and why — not a fix", async () => {
+      const say = await atPreview();
+      window.mainApi.bots.revisePlanStep.mockResolvedValue({
+        error:
+          "That's 5 changes — discard it and describe what you want again.",
+      });
+      type("Smaller text");
+      await waitFor(() =>
+        expect(say).toHaveBeenCalledWith({
+          who: "you",
+          text: "Smaller text",
+          local: true,
+        }),
+      );
+      expect(say).toHaveBeenCalledWith({
+        who: "note",
+        text: "Couldn't send that to the Builder: That's 5 changes — discard it and describe what you want again.",
+      });
+    });
+
+    test("after Looks good, installing isn't called a fix", async () => {
+      await atPreview();
+      const fixMsg = { who: "you", text: "Smaller text", fix: true };
+      act(() => {
+        mockAskProps.onMessagesChange([
+          you("Plan it"),
+          planStep("1:t1", ONE),
+          reply,
+          fixMsg,
+        ]);
+      });
+      push({ status: "running", steps: steps("done", "done", "running") });
+      let node = null;
+      act(() => {
+        node = mockAskProps.renderAfter(fixMsg, 3, api);
+      });
+      const c = render(node).container;
+      expect(c).not.toHaveTextContent("Sent to the Builder as a fix");
+    });
   });
 
   test("stopped: Carry on building continues the same build in its place", async () => {
@@ -2199,7 +2517,7 @@ describe("release 3c: leads bring in the Dash team; Create opens here; changes s
     expect(
       within(out).getByRole("button", { name: "Yes, make the changes" }),
     ).toBeInTheDocument();
-    // The card in the chat says what it changes.
+    // The chat shows the whole plan: what it changes.
     let node = null;
     act(() => {
       node = mockAskProps.renderAfter(dashStep, 1, {
@@ -2208,9 +2526,9 @@ describe("release 3c: leads bring in the Dash team; Create opens here; changes s
         focusReply: jest.fn(),
       });
     });
-    expect(render(node).container).toHaveTextContent(
-      "Plan · 1 added · on Kitchen Sink",
-    );
+    const inChat = within(render(node).container).getByTestId("chat-plan");
+    expect(inChat).toHaveTextContent("Kitchen Sink — changes");
+    expect(inChat).toHaveTextContent("Weather");
   });
 
   test("Open as a plan: the plan carries on as a new Dash Lead conversation", async () => {
@@ -2535,6 +2853,251 @@ describe("an empty cell (release 6c, frames 38, 39)", () => {
     });
   });
 
+  test("a widget you already have: Which one, Settings, Review — nothing picked for you; Yes, preview it", async () => {
+    const hour = {
+      type: "select",
+      defaultValue: "12",
+      displayName: "Hour Format",
+      options: [
+        { displayName: "12-hour", value: "12" },
+        { displayName: "24-hour", value: "24" },
+      ],
+    };
+    mockRegistry.map = {
+      "trops.clock.DigitalClockWidget": {
+        displayName: "Digital Clock",
+        package: "Clock",
+        userConfig: { hourFormat: hour },
+      },
+      "trops.clock.FlipClockWidget": {
+        displayName: "Flip Clock",
+        package: "Clock",
+        userConfig: { hourFormat: hour },
+      },
+    };
+    const REUSE = {
+      summary: "A clock",
+      pieces: [
+        {
+          kind: "widget",
+          name: "Digital Clock",
+          source: "yours",
+          package: "clock",
+          settings: { hourFormat: "12" },
+        },
+      ],
+    };
+    render(<LeadWorkspace request={{ cell: CELL }} onClose={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "The weather" }));
+    act(() => {
+      mockAskProps.onStarted("q_reuse");
+      mockAskProps.onMessagesChange([you("A clock"), planStep(REUSE), reply]);
+    });
+    const step = () => {
+      let node = null;
+      act(() => {
+        node = mockAskProps.renderAfter(reply, 2, api);
+      });
+      return render(node);
+    };
+    // Which one: the package's widgets; the suggestion marked, none picked.
+    let c = step();
+    expect(c.container).toHaveTextContent(
+      "You have 2 widgets in Clock. Which one should go in this cell?",
+    );
+    const tiles = within(c.container).getAllByTestId("reuse-tile");
+    expect(tiles).toHaveLength(2);
+    expect(tiles[0]).toHaveTextContent("Planner suggests");
+    expect(
+      within(c.container).getByRole("button", { name: "Next: settings" }),
+    ).toBeDisabled();
+    expect(
+      within(c.container).queryByRole("button", { name: "Yes, build it" }),
+    ).toBeNull();
+    fireEvent.click(tiles[1]);
+    fireEvent.click(
+      within(c.container).getByRole("button", { name: "Next: settings" }),
+    );
+    c.unmount();
+    // Settings: its own, the suggestion first.
+    c = step();
+    expect(c.container).toHaveTextContent("How should Flip Clock be set?");
+    fireEvent.click(
+      within(c.container).getByRole("radio", { name: "24-hour" }),
+    );
+    fireEvent.click(
+      within(c.container).getByRole("button", { name: "Next: review" }),
+    );
+    c.unmount();
+    // Review: what goes in; earlier steps read as question and answer.
+    c = step();
+    expect(c.container).toHaveTextContent("Here's Flip Clock. Put it in?");
+    expect(c.container).toHaveTextContent("Hour Format: 24-hour");
+    expect(c.container).toHaveTextContent(
+      "Flip Clock — yours, already installed",
+    );
+    fireEvent.click(
+      within(c.container).getByRole("button", { name: "Yes, preview it" }),
+    );
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
+    );
+    const sent = JSON.stringify(
+      window.mainApi.bots.startPlanBuild.mock.calls[0],
+    );
+    expect(sent).toContain("trops.clock.FlipClockWidget");
+    // Nothing to build: ready at once — and open on the right by itself.
+    await waitFor(() => expect(push).not.toBeNull());
+    push({
+      status: "waiting-for-you",
+      steps: [
+        {
+          id: "preview:0",
+          kind: "preview",
+          piece: 0,
+          role: "you",
+          label: "Preview Flip Clock",
+          status: "needs-you",
+        },
+      ],
+    });
+    expect(screen.getByTestId("workspace-preview")).toBeInTheDocument();
+    expect(sent).toMatch(/\\?"hourFormat\\?":\\?"24\\?"/);
+    c.unmount();
+    mockRegistry.map = {};
+  });
+
+  describe("a widget you already have reads from what it's built for", () => {
+    const CAL = {
+      summary: "My calendar for today",
+      pieces: [
+        {
+          kind: "widget",
+          name: "Calendar Today",
+          source: "ai-built",
+          package: "@ai-built/calendartoday",
+          providers: ["google-calendar"],
+        },
+      ],
+    };
+    const open = (providers) => {
+      mockRegistry.map = {
+        "ai-built.calendartoday.CalendarToday": {
+          displayName: "Calendar Today",
+          package: "Calendar",
+          providers: [{ type: "google-calendar", providerClass: "mcp" }],
+          userConfig: {},
+        },
+      };
+      render(
+        <AppContext.Provider value={{ providers }}>
+          <LeadWorkspace request={{ cell: CELL }} onClose={jest.fn()} />
+        </AppContext.Provider>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "The weather" }));
+      act(() => {
+        mockAskProps.onStarted("q_cal");
+        mockAskProps.onMessagesChange([
+          you("My calendar for today"),
+          planStep(CAL),
+          reply,
+        ]);
+      });
+    };
+    const step = () => {
+      let node = null;
+      act(() => {
+        node = mockAskProps.renderAfter(reply, 2, api);
+      });
+      return render(node);
+    };
+    const gcal = (name) => ({
+      name,
+      type: "google-calendar",
+      providerClass: "mcp",
+    });
+    afterEach(() => {
+      mockRegistry.map = {};
+    });
+
+    test("no provider question first; several of its kind: chosen in Settings, then it's the one", async () => {
+      open({
+        "Google Calendar": gcal("Google Calendar"),
+        "Work Calendar": gcal("Work Calendar"),
+        "Home Assistant MCP": {
+          name: "Home Assistant MCP",
+          type: "home-assistant-mcp",
+          providerClass: "mcp",
+        },
+      });
+      let c = step();
+      // Straight to its settings (one widget in the package) — no
+      // "where should it read from" first, and only calendars to pick.
+      expect(c.container).toHaveTextContent(
+        "How should Calendar Today be set?",
+      );
+      const reads = within(c.container).getByTestId("reuse-reads-from");
+      expect(reads).toHaveTextContent("Google Calendar");
+      expect(reads).toHaveTextContent("Work Calendar");
+      expect(reads).not.toHaveTextContent("Home Assistant MCP");
+      expect(
+        within(c.container).getByRole("button", { name: "Next: review" }),
+      ).toBeDisabled();
+      fireEvent.click(
+        within(c.container).getByRole("radio", { name: "Work Calendar" }),
+      );
+      fireEvent.click(
+        within(c.container).getByRole("button", { name: "Next: review" }),
+      );
+      c.unmount();
+      c = step();
+      const row = within(c.container)
+        .getAllByTestId("reuse-review-row")
+        .find((r) => r.textContent.includes("Reads from"));
+      expect(row).toHaveTextContent("Work Calendar");
+      fireEvent.click(
+        within(c.container).getByRole("button", { name: "Yes, preview it" }),
+      );
+      await waitFor(() =>
+        expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
+      );
+      expect(
+        JSON.stringify(window.mainApi.bots.startPlanBuild.mock.calls[0]),
+      ).toContain("Work Calendar");
+      c.unmount();
+    });
+
+    test("none of its kind: Review says what it needs — no Yes", () => {
+      open({
+        "Home Assistant MCP": {
+          name: "Home Assistant MCP",
+          type: "home-assistant-mcp",
+          providerClass: "mcp",
+        },
+      });
+      let c = step();
+      fireEvent.click(
+        within(c.container).getByRole("button", { name: "Next: review" }),
+      );
+      c.unmount();
+      c = step();
+      expect(c.container).toHaveTextContent(
+        "Calendar Today reads from Google Calendar, and you don't have one yet.",
+      );
+      expect(
+        within(c.container).queryByRole("button", { name: "Yes, preview it" }),
+      ).toBeNull();
+      // Nor does a typed yes (or the side's Yes) start it.
+      let taken = null;
+      act(() => {
+        taken = mockAskProps.takeReply("yes");
+      });
+      expect(taken).toBe(false);
+      expect(window.mainApi.bots.startPlanBuild).not.toHaveBeenCalled();
+      c.unmount();
+    });
+  });
+
   test("a plan with more than one widget doesn't fit: the check says so, nothing is built", () => {
     render(<LeadWorkspace request={{ cell: CELL }} onClose={jest.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "The weather" }));
@@ -2576,8 +3139,9 @@ describe("an empty cell (release 6c, frames 38, 39)", () => {
     expect(mockAskProps.about).toBeNull();
   });
 
-  test("Put it in again, while it's still there, stays in", async () => {
-    await yesAddIt();
+  test("once it's in the cell, it's done: nothing to click, the window closes", async () => {
+    const onClose = jest.fn();
+    await yesAddIt(onClose);
     const heard = [];
     const listen = (e) => heard.push(e.detail);
     window.addEventListener("dash:place-widget-in-cell", listen);
@@ -2587,14 +3151,12 @@ describe("an empty cell (release 6c, frames 38, 39)", () => {
     });
     push(DONE);
     act(() => heard[0].onPlaced(true));
-    fireEvent.click(
-      within(chat()).getByRole("button", { name: "Put it in again" }),
-    );
-    act(() => heard[1].onPlaced("taken"));
     window.removeEventListener("dash:place-widget-in-cell", listen);
     expect(
       within(chat()).getByTestId("workspace-build-reply"),
     ).toHaveTextContent("Weather is in the cell you picked.");
+    expect(within(chat()).queryByTestId("workspace-build-choices")).toBeNull();
+    await waitFor(() => expect(onClose).toHaveBeenCalled(), { timeout: 3000 });
   });
 
   test("a build that ends waiting for a provider is put in too", async () => {
@@ -2626,20 +3188,21 @@ describe("an empty cell (release 6c, frames 38, 39)", () => {
     );
   });
 
-  const yesAddIt = async () => {
-    render(<LeadWorkspace request={{ cell: CELL }} onClose={jest.fn()} />);
+  const yesAddIt = async (onClose = jest.fn()) => {
+    render(<LeadWorkspace request={{ cell: CELL }} onClose={onClose} />);
     fireEvent.click(screen.getByRole("button", { name: "The weather" }));
     act(() => {
       mockAskProps.onStarted("q_new");
       mockAskProps.onMessagesChange([you("The weather"), planStep(ONE), reply]);
     });
+    throughSteps(reply, 2, api);
     let node = null;
     act(() => {
       node = mockAskProps.renderAfter(reply, 2, api);
     });
     const choices = render(node);
     fireEvent.click(
-      within(choices.container).getByRole("button", { name: "Yes, add it" }),
+      within(choices.container).getByRole("button", { name: "Yes, build it" }),
     );
     choices.unmount();
     await waitFor(() =>
@@ -2673,12 +3236,16 @@ describe("an empty cell (release 6c, frames 38, 39)", () => {
     ],
   };
 
-  test("Yes, add it: built as a cell's, without the dashboard; the editor puts it in", async () => {
+  test("Yes, build it: built as a cell's, without the dashboard; the editor puts it in", async () => {
     await yesAddIt();
-    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(ONE, {
-      cell: true,
-      recentId: "q_new",
-    });
+    // Through step 2 with nothing ticked: it only reads, said.
+    expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(
+      readsOnly(ONE),
+      {
+        cell: true,
+        recentId: "q_new",
+      },
+    );
     const heard = [];
     const listen = (e) => heard.push(e.detail);
     window.addEventListener("dash:place-widget-in-cell", listen);
@@ -2709,6 +3276,148 @@ describe("an empty cell (release 6c, frames 38, 39)", () => {
     expect(
       within(c).queryByRole("button", { name: "Put it in the cell" }),
     ).toBeNull();
+  });
+
+  test("steps 2 and 3 come first; what the user chose is built and placed (does, talks-step frames)", async () => {
+    window.mainApi.bots.list = jest.fn().mockResolvedValue([
+      {
+        id: "bot_recipe",
+        ref: "local/recipe-bot",
+        name: "Recipe Bot",
+        workspaceId: "7",
+        publishes: [{ name: "meal", label: "planned meal" }],
+      },
+    ]);
+    window.mainApi.bots.listToolSources = jest.fn().mockResolvedValue([]);
+    const SPEC = {
+      ...ONE,
+      pieces: [
+        {
+          ...ONE.pieces[0],
+          refresh: "every 5 minutes",
+          events: ["dayIsRainy"],
+          sends: [
+            {
+              event: "dayIsRainy",
+              when: "when rain is coming",
+              carries: "the hour it starts",
+            },
+          ],
+        },
+      ],
+    };
+    render(<LeadWorkspace request={{ cell: CELL }} onClose={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "The weather" }));
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange([
+        you("The weather"),
+        planStep(SPEC),
+        reply,
+      ]);
+    });
+    // Step 2: no build yet, anywhere.
+    let c = chat();
+    expect(c).toHaveTextContent("Step 2 of 5");
+    // The Planner asks it, as a question in the chat.
+    expect(within(c).getByTestId("wizard-question")).toHaveTextContent(
+      "What should it start with?",
+    );
+    expect(
+      within(c).queryByRole("button", { name: "Yes, build it" }),
+    ).toBeNull();
+    expect(screen.getByTestId("workspace-review-in-chat")).toBeInTheDocument();
+    fireEvent.click(within(c).getByRole("radio", { name: "Every hour" }));
+    fireEvent.click(within(c).getByRole("button", { name: "Next: talks to" }));
+    // Step 3: Dash's three, its own proposed, the dashboard's bot.
+    await waitFor(() => expect(window.mainApi.bots.list).toHaveBeenCalled());
+    c = chat();
+    expect(c).toHaveTextContent("Step 3 of 5");
+    // What every widget sends: one folded line, open to see.
+    fireEvent.click(within(c).getByRole("button", { name: "Show" }));
+    expect(within(c).getAllByTestId("talks-always")).toHaveLength(3);
+    fireEvent.click(within(c).getByLabelText("When rain is coming"));
+    fireEvent.click(within(c).getByLabelText("Recipe Bot's planned meal"));
+    fireEvent.click(within(c).getByRole("button", { name: "Next: looks" }));
+    // Step 4: the looks, drawn; pick one, then on.
+    c = chat();
+    expect(c).toHaveTextContent("Step 4 of 5");
+    // The looks across the window: no side strip; the × in the header.
+    expect(screen.getByRole("complementary", { name: "Outputs" })).toHaveClass(
+      "hidden",
+    );
+    expect(
+      within(screen.getByRole("region", { name: "Conversation" })).getByRole(
+        "button",
+        { name: "Close" },
+      ),
+    ).toBeInTheDocument();
+    expect(within(c).getAllByTestId("look-idea").length).toBe(3);
+    fireEvent.click(within(c).getByRole("button", { name: "Use Cards" }));
+    c = chat();
+    expect(within(c).getByTestId("wizard-looks-tweak")).toBeInTheDocument();
+    fireEvent.click(within(c).getByRole("button", { name: "Next: review" }));
+    // Review & build: what was chosen says so; Change goes back to its step.
+    c = chat();
+    const row = (k) =>
+      c.querySelector(`[data-testid="review-row"][data-key="${k}"]`);
+    expect(row("updates")).toHaveTextContent("Every hour");
+    expect(row("updates")).toHaveTextContent("You chose");
+    expect(row("talks")).toHaveTextContent(
+      "Sends readComplete, renderComplete, readFailed",
+    );
+    expect(row("talks")).not.toHaveTextContent("dayIsRainy");
+    expect(row("talks")).toHaveTextContent("Listens for: Recipe Bot's meal");
+    fireEvent.click(
+      within(c).getByRole("button", { name: "Change Talks to others" }),
+    );
+    c = chat();
+    expect(within(c).getByTestId("wizard-talks")).toBeInTheDocument();
+    // What was chosen is still ticked.
+    expect(within(c).getByLabelText("Recipe Bot's planned meal")).toBeChecked();
+    expect(within(c).getByLabelText("When rain is coming")).not.toBeChecked();
+    fireEvent.click(within(c).getByRole("button", { name: "Next: looks" }));
+    // The look picked stays picked.
+    c = chat();
+    expect(within(c).getByTestId("wizard-looks-tweak")).toHaveTextContent(
+      "Cards · change it",
+    );
+    fireEvent.click(within(c).getByRole("button", { name: "Next: review" }));
+    c = chat();
+    fireEvent.click(within(c).getByRole("button", { name: "Yes, build it" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
+    );
+    const built = window.mainApi.bots.startPlanBuild.mock.calls[0][0];
+    expect(built.pieces[0]).toMatchObject({
+      look: { id: "cards" },
+      refresh: "Every hour",
+      events: [],
+      listens: [
+        {
+          bot: "Recipe Bot",
+          botId: "bot_recipe",
+          ref: "local/recipe-bot",
+          result: "meal",
+          handler: "showRecipeBotMeal",
+        },
+      ],
+    });
+    // Put in the cell with what it shows from the bot.
+    await waitFor(() => expect(push).not.toBeNull());
+    const heard = [];
+    const listen = (e) => heard.push(e.detail);
+    window.addEventListener("dash:place-widget-in-cell", listen);
+    push({
+      status: "running",
+      steps: [{ ...DONE.steps[0], status: "running" }],
+    });
+    push(DONE);
+    window.removeEventListener("dash:place-widget-in-cell", listen);
+    expect(heard).toHaveLength(1);
+    expect(heard[0].listeners).toEqual({
+      showRecipeBotMeal: ["bot:local/recipe-bot[bot_recipe].result.meal"],
+    });
   });
 
   test("not being edited any more: it says so, and Put it in the cell tries again", async () => {

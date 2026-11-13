@@ -8,6 +8,7 @@ import {
   toolErrorText,
   widgetFacts,
 } from "../utils/issues";
+import { sendReadEvent } from "../utils/widgetEvents";
 
 /**
  * Module-level shared state for MCP server connections.
@@ -28,6 +29,29 @@ const pendingConnects = new Map();
 // Map<`${workspaceId}::${serverName}`, Promise<result>>
 
 const NO_WORKSPACE = "__no_workspace__";
+
+/** One consumer lets a shared server go; the last one stops it. */
+function releaseServer(dashApi, serverName, workspaceId, stateKey) {
+  const state = serverStates.get(stateKey);
+  if (state) {
+    state.consumerCount = Math.max(0, state.consumerCount - 1);
+    if (state.consumerCount > 0) return;
+    serverStates.delete(stateKey);
+  }
+  dashApi.mcpStopServer(
+    serverName,
+    () => {},
+    () => {},
+    workspaceId,
+  );
+}
+
+/** The server under a call is gone (stopped, or its process lost). */
+export function isServerGone(message) {
+  return /\bServer not connected\b|^Not connected$/i.test(
+    String(message || ""),
+  );
+}
 
 /**
  * Renderer-side timeout for `callTool`. MUST exceed
@@ -122,7 +146,10 @@ function unionPathScope(grants, serverName) {
  * }
  */
 export const useMcpProvider = (providerType, options = {}) => {
-  const { autoConnect = true } = options;
+  // `internal`: the app's own read (the widget wizard's Looks preview) —
+  // not a widget: no widget permission to ask, no Issue, no widget events.
+  // Its caller reads only (a read tool), never what changes things.
+  const { autoConnect = true, internal = false } = options;
 
   const app = useContext(AppContext);
   const workspace = useContext(WorkspaceContext);
@@ -322,6 +349,7 @@ export const useMcpProvider = (providerType, options = {}) => {
           );
         });
         if (statusResult?.status === "connected") {
+          if (!mountedRef.current) return;
           cached.consumerCount++;
           applyResult(cached);
           return;
@@ -412,7 +440,14 @@ export const useMcpProvider = (providerType, options = {}) => {
 
     try {
       const result = await connectPromise;
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) {
+        // Left while it started (the cleanup saw nothing to let go): this
+        // hook's hold on it is let go now, so it doesn't run on for good.
+        if (!result.error) {
+          releaseServer(dashApi, selectedProviderName, workspaceId, stateKey);
+        }
+        return;
+      }
 
       if (result.error) {
         setError(result.message);
@@ -488,6 +523,111 @@ export const useMcpProvider = (providerType, options = {}) => {
   }, [dashApi, selectedProviderName, workspace]);
 
   /**
+   * One call to the server; a failed call is recorded as an issue.
+   * `retrying`: a server stopped under it is started and called again, so
+   * that failure isn't told as a failed read (readFailed).
+   */
+  const callOnce = useCallback(
+    (toolName, args, workspaceId, widgetIdForGate, retrying = false) => {
+      return new Promise((resolve, reject) => {
+        // An answer after the timeout is not told again.
+        let timedOut = false;
+        const readEvent = (event) => {
+          if (internal) return;
+          if (retrying && event.error && isServerGone(event.error)) return;
+          sendReadEvent(widgetData, event);
+        };
+        const timeout = setTimeout(() => {
+          timedOut = true;
+          readEvent({
+            provider: selectedProviderName,
+            tool: toolName,
+            error: `timed out after ${CALL_TOOL_TIMEOUT_MS}ms`,
+          });
+          reject(
+            new Error(
+              `Tool call "${toolName}" timed out after ${CALL_TOOL_TIMEOUT_MS}ms`,
+            ),
+          );
+        }, CALL_TOOL_TIMEOUT_MS);
+
+        dashApi.mcpCallTool(
+          selectedProviderName,
+          toolName,
+          args,
+          effectiveAllowedTools,
+          (event, result) => {
+            clearTimeout(timeout);
+            if (timedOut) return;
+            console.log(
+              `[useMcpProvider] Tool result for ${toolName}:`,
+              result,
+            );
+            // Issues (issues PRD): a failed call is recorded against this
+            // widget on this dashboard — even when the widget only shows
+            // its own message — and a call that works again resolves it.
+            const facts = internal ? {} : widgetFacts(widgetData, workspace);
+            const call = { provider: selectedProviderName, tool: toolName };
+            if (result.error) {
+              noteWidgetCallFailed(facts, {
+                ...call,
+                args,
+                error: result.message,
+              });
+              // Every widget tells others what it read (readComplete /
+              // readFailed) — sent by Dash, not the widget.
+              readEvent({ ...call, error: result.message });
+              reject(new Error(result.message));
+            } else {
+              if (result.result && result.result.isError) {
+                noteWidgetCallFailed(facts, {
+                  ...call,
+                  args,
+                  error: toolErrorText(result.result),
+                });
+                readEvent({ ...call, error: toolErrorText(result.result) });
+              } else {
+                noteWidgetCallWorked(facts, call);
+                readEvent({ ...call, result: result.result });
+              }
+              resolve(result.result);
+            }
+          },
+          (event, err) => {
+            clearTimeout(timeout);
+            if (timedOut) return;
+            noteWidgetCallFailed(
+              internal ? {} : widgetFacts(widgetData, workspace),
+              {
+                provider: selectedProviderName,
+                tool: toolName,
+                args,
+                error: err?.message || "Failed to call MCP tool",
+              },
+            );
+            readEvent({
+              provider: selectedProviderName,
+              tool: toolName,
+              error: err?.message || "Failed to call MCP tool",
+            });
+            reject(new Error(err?.message || "Failed to call MCP tool"));
+          },
+          workspaceId,
+          widgetIdForGate,
+        );
+      });
+    },
+    [
+      dashApi,
+      selectedProviderName,
+      effectiveAllowedTools,
+      widgetData,
+      workspace,
+      internal,
+    ],
+  );
+
+  /**
    * Call a tool on the MCP server
    */
   const callTool = useCallback(
@@ -524,69 +664,26 @@ export const useMcpProvider = (providerType, options = {}) => {
       // permissioning is silent (the legacy widgetId-null bypass
       // skips the gate entirely). Threading it here makes JIT
       // consent fire for widgets without the user-grant cached.
-      const widgetIdForGate = widgetData?.name || null;
+      const widgetIdForGate = internal ? null : widgetData?.name || null;
 
       console.log(`[useMcpProvider] Calling tool: ${toolName}`, args);
 
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(
-            new Error(
-              `Tool call "${toolName}" timed out after ${CALL_TOOL_TIMEOUT_MS}ms`,
-            ),
-          );
-        }, CALL_TOOL_TIMEOUT_MS);
-
-        dashApi.mcpCallTool(
-          selectedProviderName,
-          toolName,
-          args,
-          effectiveAllowedTools,
-          (event, result) => {
-            clearTimeout(timeout);
-            console.log(
-              `[useMcpProvider] Tool result for ${toolName}:`,
-              result,
-            );
-            // Issues (issues PRD): a failed call is recorded against this
-            // widget on this dashboard — even when the widget only shows
-            // its own message — and a call that works again resolves it.
-            const facts = widgetFacts(widgetData, workspace);
-            const call = { provider: selectedProviderName, tool: toolName };
-            if (result.error) {
-              noteWidgetCallFailed(facts, {
-                ...call,
-                args,
-                error: result.message,
-              });
-              reject(new Error(result.message));
-            } else {
-              if (result.result && result.result.isError) {
-                noteWidgetCallFailed(facts, {
-                  ...call,
-                  args,
-                  error: toolErrorText(result.result),
-                });
-              } else {
-                noteWidgetCallWorked(facts, call);
-              }
-              resolve(result.result);
-            }
-          },
-          (event, err) => {
-            clearTimeout(timeout);
-            noteWidgetCallFailed(widgetFacts(widgetData, workspace), {
-              provider: selectedProviderName,
-              tool: toolName,
-              args,
-              error: err?.message || "Failed to call MCP tool",
-            });
-            reject(new Error(err?.message || "Failed to call MCP tool"));
-          },
-          workspaceId,
-          widgetIdForGate,
+      // The server was stopped under it (another screen let it go — a
+      // preview closing, a build finishing): start it again, and call once
+      // more, instead of failing every call after.
+      const call = (retrying = false) =>
+        callOnce(toolName, args, workspaceId, widgetIdForGate, retrying);
+      try {
+        return await call(true);
+      } catch (e) {
+        if (!isServerGone(e && e.message)) throw e;
+        serverStates.delete(
+          rendererStateKey(workspaceId, selectedProviderName),
         );
-      });
+        connectedRef.current = false;
+        await connect();
+        return call();
+      }
     },
     [
       dashApi,
@@ -595,6 +692,9 @@ export const useMcpProvider = (providerType, options = {}) => {
       widgetData,
       providerType,
       workspace,
+      connect,
+      callOnce,
+      internal,
     ],
   );
 
@@ -603,7 +703,7 @@ export const useMcpProvider = (providerType, options = {}) => {
   // so the failed connection is recorded against this widget too, and
   // connecting again resolves it.
   useEffect(() => {
-    if (!selectedProviderName) return;
+    if (!selectedProviderName || internal) return;
     const facts = widgetFacts(widgetData, workspace);
     const call = { provider: selectedProviderName, tool: "connect" };
     if (status === "error" && error) {

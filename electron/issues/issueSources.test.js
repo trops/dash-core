@@ -281,3 +281,25 @@ describe("a provider's JSON error", () => {
     assert.equal(input.cause, "call");
   });
 });
+
+describe("a path outside the provider's folders", () => {
+  it("says so plainly, and points at the widget's settings", () => {
+    const error =
+      "Widget permission gate: path argument 'path' rejected: safePath: requested path is not within any allowed root. Requested: From /tmp/notes/shopping.md (resolved to /app/From /tmp/notes/shopping.md). Allowed roots: /tmp/notes";
+    const input = widgetCallIssue({
+      component: "ai-built.shoppinglist.ShoppingList",
+      provider: "My Files",
+      tool: "read_text_file",
+      error,
+    });
+    assert.equal(
+      input.message,
+      'The path "From /tmp/notes/shopping.md" isn\'t inside a folder My Files can use.',
+    );
+    assert.match(
+      input.hint,
+      /check the widget's settings \(a value like "From …"/,
+    );
+    assert.equal(input.call.error, error);
+  });
+});

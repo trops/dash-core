@@ -138,6 +138,9 @@ test("choices only under the answer to the same question as the plan", () => {
 
 test("still answering: the user's question is the last word, or a hand-off is out", () => {
   expect(stillAnswering([{ who: "you", text: "x" }])).toBe(true);
+  // A fix for the Builder, or words kept at a preview: not to the lead.
+  expect(stillAnswering([{ who: "you", text: "x", fix: true }])).toBe(false);
+  expect(stillAnswering([{ who: "you", text: "x", local: true }])).toBe(false);
   expect(
     stillAnswering([{ who: "you" }, { who: "step", status: "asking" }]),
   ).toBe(true);
@@ -249,4 +252,40 @@ describe("planForWidget — showing what a bot sends (TD-009)", () => {
       planForWidget(plan, { component: "a.b.List" }).pieces[0].listens,
     ).toHaveLength(1);
   });
+});
+
+test("the plan names its providers, and a widget still to choose for is a warning (widget step by step, release 1)", () => {
+  const plan = {
+    pieces: [
+      {
+        kind: "widget",
+        name: "Shopping List",
+        providers: ["filesystem"],
+        provider: { filesystem: "Home Notes" },
+      },
+      {
+        kind: "bot",
+        name: "Reminder",
+        tools: [{ provider: "Slack Dash Comms", tools: ["send_message"] }],
+      },
+    ],
+  };
+  expect(providersLine([], () => false, plan)).toBe(
+    "Home Notes · Slack Dash Comms",
+  );
+  const choose = {
+    id: "choose:0:filesystem",
+    kind: "choose",
+    label: "Choose what Today reads from",
+    providerType: "filesystem",
+    pieceIndex: 0,
+  };
+  expect(providersLine([choose])).toBe("1 to choose");
+  expect(planRows({ pieces: [] }, [choose])).toEqual([
+    {
+      main: "Choose what Today reads from",
+      sub: "You pick — before it builds",
+      warn: true,
+    },
+  ]);
 });

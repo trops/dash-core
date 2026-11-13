@@ -510,11 +510,11 @@ describe("BotChat — a message that doesn't run is kept (TEAM-015)", () => {
     expect(composer()).toHaveValue("Again please");
   });
 
-  it("a paused bot says so, offers Turn on, and the box waits", async () => {
+  it("a paused bot says so and offers Turn on — a message still goes through", async () => {
     window.mainApi = {
       bots: {
         getRuns: jest.fn().mockResolvedValue(runs),
-        run: jest.fn(),
+        run: jest.fn().mockResolvedValue({ status: "completed" }),
         onStream: jest.fn(() => "s1"),
         removeListener: jest.fn(),
       },
@@ -523,16 +523,20 @@ describe("BotChat — a message that doesn't run is kept (TEAM-015)", () => {
     render(<BotChat bot={bot} paused onResume={onResume} />);
     await screen.findByText("Check my inbox");
     expect(screen.getByTestId("bot-chat-paused")).toHaveTextContent(
-      "Paused — it won't answer until you turn it on.",
+      "Paused — it won't run on its own. Messages you send here still go through.",
     );
-    expect(composer()).toBeDisabled();
-    expect(composer()).toHaveAttribute(
-      "placeholder",
-      "Turn on Inbox Watch to message it",
-    );
+    expect(composer()).not.toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Turn on" }));
     expect(onResume).toHaveBeenCalled();
-    expect(window.mainApi.bots.run).not.toHaveBeenCalled();
+    fireEvent.change(composer(), { target: { value: "Anything new?" } });
+    fireEvent.keyDown(composer(), { key: "Enter" });
+    await waitFor(() =>
+      expect(window.mainApi.bots.run).toHaveBeenCalledWith(
+        bot.id,
+        "Anything new?",
+        expect.anything(),
+      ),
+    );
   });
 });
 

@@ -106,12 +106,18 @@ describe("getEmitters — dedupe", () => {
     expect(getEmitters(workspace, cfg)).toHaveLength(1);
   });
 
-  test("widget with no declared events → not an emitter", () => {
+  test("widget with no declared events → still sends Dash's own three", () => {
     const workspace = {
       layout: [{ component: "Noop", uuidString: "n-1" }],
     };
     const cfgNoop = mkConfig({ Noop: { events: [] } });
-    expect(getEmitters(workspace, cfgNoop)).toHaveLength(0);
+    const emitters = getEmitters(workspace, cfgNoop);
+    expect(emitters).toHaveLength(1);
+    expect(emitters[0].events).toEqual([
+      "readComplete",
+      "renderComplete",
+      "readFailed",
+    ]);
   });
 });
 

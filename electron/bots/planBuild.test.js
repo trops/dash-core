@@ -21,6 +21,7 @@ const {
   placeChoices,
   settingKeys,
   checkRequest,
+  cleanSettingValue,
 } = require("./planBuild");
 
 const plan = {
@@ -451,14 +452,21 @@ describe("widgetWiring — what a built widget sends and handles (4d-2)", () => 
       "};",
     ].join("\n");
     assert.deepEqual(widgetWiring(src), {
-      events: ["askClicked", "reset"],
+      // Dash sends its own three for every widget.
+      events: [
+        "askClicked",
+        "reset",
+        "readComplete",
+        "renderComplete",
+        "readFailed",
+      ],
       handlers: ["showGreeting"],
       rawPublish: false,
     });
   });
-  it("none declared → empty lists; unreadable → null (not checked)", () => {
+  it("none declared → only Dash's own; unreadable → null (not checked)", () => {
     assert.deepEqual(widgetWiring('export default { type: "widget" };'), {
-      events: [],
+      events: ["readComplete", "renderComplete", "readFailed"],
       handlers: [],
       rawPublish: false,
     });
@@ -914,6 +922,79 @@ describe("placeChoices — a widget's connection and settings, checked", () => {
       'connection "Work Slack"',
     ]);
   });
+  it("never places a widget on a Claude connector", () => {
+    const out = placeChoices(
+      {
+        provider: { "claude-connector": "Google Calendar (Claude connector)" },
+      },
+      {
+        connections: [
+          {
+            name: "Google Calendar (Claude connector)",
+            type: "claude-connector",
+            providerClass: "connector",
+          },
+        ],
+        settingKeys: null,
+      },
+    );
+    assert.deepEqual(out.selectedProviders, {});
+    assert.deepEqual(out.dropped, [
+      'connection "Google Calendar (Claude connector)"',
+    ]);
+  });
+  it("an unpinned type gets the user's only one of it — never a guess between several", () => {
+    const conns = [
+      {
+        name: "Google Calendar",
+        type: "google-calendar",
+        providerClass: "mcp",
+      },
+      { name: "Notes A", type: "filesystem", providerClass: "mcp" },
+      { name: "Notes B", type: "filesystem", providerClass: "mcp" },
+      {
+        name: "Google Calendar (Claude connector)",
+        type: "google-calendar",
+        providerClass: "connector",
+      },
+    ];
+    const out = placeChoices(
+      { providers: ["google-calendar", "filesystem"] },
+      { connections: conns, settingKeys: null },
+    );
+    assert.deepEqual(out.selectedProviders, {
+      "google-calendar": "Google Calendar",
+    });
+    // A pin wins over the only-one rule.
+    const pinned = placeChoices(
+      { providers: ["filesystem"], provider: { filesystem: "Notes B" } },
+      { connections: conns, settingKeys: null },
+    );
+    assert.deepEqual(pinned.selectedProviders, { filesystem: "Notes B" });
+  });
+  it("matches kinds as the plan screens do — an alias, a spaced name", () => {
+    const conns = [
+      {
+        name: "Google Calendar",
+        type: "google-calendar",
+        providerClass: "mcp",
+      },
+    ];
+    assert.deepEqual(
+      placeChoices(
+        { providers: ["calendar"] },
+        { connections: conns, settingKeys: null },
+      ).selectedProviders,
+      { "google-calendar": "Google Calendar" },
+    );
+    assert.deepEqual(
+      placeChoices(
+        { provider: { "Google Calendar": "google calendar" } },
+        { connections: conns, settingKeys: null },
+      ).selectedProviders,
+      { "google-calendar": "Google Calendar" },
+    );
+  });
   it("keeps only the settings the widget has", () => {
     const out = placeChoices(
       { settings: { indexName: "products", colour: "red" } },
@@ -987,7 +1068,10 @@ describe("the Checker is told what the plan wants (Create build fixes 3)", () =>
       text,
       /must use the user's algolia connection "Algolia John G Demos"[^\n]*asks for keys[^\n]*fails/,
     );
-    assert.match(text, /settings: workingIndexName, title/);
+    assert.match(
+      text,
+      /settings — each must be a userConfig setting[^\n]*: workingIndexName = "products_copy", title = "Boost"/,
+    );
     assert.match(
       text,
       /The plan's checks[^\n]*\n- Boost a brand and see it rise in the working index\.\n- Production is never edited\./,
@@ -1129,5 +1213,80 @@ describe("plan grids — the build follows the plan's grid", () => {
     // 4.2 was covered by its span; without it, row 4 is free from column 1.
     assert.equal(last.row, 4);
     assert.equal(last.col, 1);
+  });
+});
+
+describe("a plan's values become the widget's settings", () => {
+  const piece = {
+    kind: "widget",
+    name: "Shopping List",
+    source: "new",
+    providers: ["home-assistant-mcp"],
+    notes: "From the shopping starter",
+    settings: {
+      listEntity: "From todo.shopping_list",
+      notesFile: "`~/Documents/notes.md`",
+      refreshMinutes: 5,
+    },
+  };
+  const p = { summary: "Shopping", pieces: [piece] };
+
+  it("the Builder is told each one, as a setting with its default — never in the code", () => {
+    const req = buildRequest(p, piece);
+    assert.match(
+      req,
+      /Settings — declare each one in the widget's \.dash\.js userConfig with this default and read it from the widget's props; never write the value into the code:\n- listEntity: "todo\.shopping_list"\n- notesFile: "~\/Documents\/notes\.md"\n- refreshMinutes: 5/,
+    );
+  });
+
+  it("the Checker knows the values too", () => {
+    const req = checkRequest(p, piece);
+    assert.match(req, /listEntity = "todo\.shopping_list"/);
+  });
+
+  it("cleaned before they're placed: a label or quotes around a value go", () => {
+    const out = placeChoices(piece, {
+      settingKeys: ["listEntity", "notesFile", "refreshMinutes"],
+    });
+    assert.deepEqual(out.userPrefs, {
+      listEntity: "todo.shopping_list",
+      notesFile: "~/Documents/notes.md",
+      refreshMinutes: 5,
+    });
+  });
+
+  it("a sentence stays a sentence (only a label before one value goes)", () => {
+    assert.equal(
+      cleanSettingValue("From the kitchen list, every morning"),
+      "From the kitchen list, every morning",
+    );
+    assert.equal(cleanSettingValue("Path: /tmp/a.json"), "/tmp/a.json");
+    assert.equal(cleanSettingValue(' "Milk" '), "Milk");
+    assert.equal(cleanSettingValue(true), true);
+    // Words after a label stay — only a path, id or address loses it.
+    assert.equal(cleanSettingValue("From Alex"), "From Alex");
+    assert.equal(cleanSettingValue("Index products"), "Index products");
+    assert.equal(cleanSettingValue("List view"), "List view");
+    assert.equal(cleanSettingValue("index products_v2"), "products_v2");
+  });
+});
+
+describe("provider kinds: the build and the plan screens agree", () => {
+  it("every alias the screens know maps the same here", () => {
+    const { normalizeKind } = require("./planBuild");
+    const src = require("fs").readFileSync(
+      require("path").join(
+        __dirname,
+        "../../src/Components/Create/planChecklist.js",
+      ),
+      "utf8",
+    );
+    const block = /const ALIASES = (\{[\s\S]*?\});/.exec(src);
+    assert.ok(block, "planChecklist.js has its ALIASES");
+    const aliases = new Function(`return ${block[1]}`)();
+    for (const [name, kind] of Object.entries(aliases)) {
+      assert.equal(normalizeKind(name), kind, name);
+    }
+    assert.equal(normalizeKind("Home Assistant MCP"), "home-assistant-mcp");
   });
 });

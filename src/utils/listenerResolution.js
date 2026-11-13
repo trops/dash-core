@@ -26,6 +26,7 @@
  */
 
 import { forEachWidget } from "./providerResolution";
+import { RESERVED_WIDGET_EVENTS } from "./widgetEventNames";
 import {
   pickWidgetDisplayName,
   pickWidgetRef,
@@ -118,7 +119,7 @@ function eventsOf(item, getWidgetConfig) {
   const inline = Array.isArray(item.events) ? item.events : [];
   const cfg = getWidgetConfig?.(item.component) || {};
   const fromCfg = Array.isArray(cfg.events) ? cfg.events : [];
-  return [...new Set([...inline, ...fromCfg])];
+  return [...new Set([...inline, ...fromCfg, ...RESERVED_WIDGET_EVENTS])];
 }
 
 function eventHandlersOf(item, getWidgetConfig) {

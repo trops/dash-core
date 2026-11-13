@@ -187,22 +187,15 @@ describe("ChatCore — direct-to-lead (TEAM-013)", () => {
     ]);
   });
 
-  test("a paused lead is not run: a notice explains why and the text stays", async () => {
+  test("a paused lead still answers: the message goes through", async () => {
     const api = makeMainApi();
     window.mainApi = api;
     renderChat();
     await pick("lead_2");
     send("Status?");
-    // Other banners (e.g. "No MCP tools connected") are alerts too.
-    const notice = await screen.findByText(
-      "Sales Lead is paused — resume it in the Bots view.",
-    );
-    expect(notice.closest('[role="alert"]')).toHaveAttribute(
-      "data-variant",
-      "warning",
-    );
-    expect(api.bots.askLead).not.toHaveBeenCalled();
-    expect(input()).toHaveValue("Status?");
+    await waitFor(() => expect(api.bots.askLead).toHaveBeenCalled());
+    expect(api.bots.askLead.mock.calls[0][0]).toBe("lead_2");
+    expect(screen.queryByText(/is paused — resume it/)).not.toBeInTheDocument();
   });
 
   test("back on the Assistant, the lead exchange is sent as labelled context", async () => {

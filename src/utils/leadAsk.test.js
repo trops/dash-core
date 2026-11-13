@@ -2,7 +2,7 @@
  * askTeamLead (create-entry 5e-2a): Create's Ask box sends a question
  * straight to a team lead and streams its answer.
  */
-import { askTeamLead } from "./leadAsk";
+import { askTeamLead, skipReason } from "./leadAsk";
 
 const LEAD = {
   botId: "b_lead",
@@ -55,13 +55,27 @@ test("asks the lead directly, labelled from Create, streaming its text", async (
   expect(bots.removeListener).toHaveBeenCalledWith(7);
 });
 
-test("a paused, over-budget or busy lead isn't asked", async () => {
+test("a paused lead is asked: the user's message goes through", async () => {
   const bots = api();
-  for (const state of [
-    { paused: true },
-    { overBudget: true },
-    { running: true },
-  ]) {
+  await askTeamLead({ ...LEAD, paused: true }, "Hi");
+  expect(bots.askLead).toHaveBeenCalled();
+});
+
+test("why a skipped run didn't start, in the user's words", () => {
+  expect(skipReason("Daily Brief Lead", "all bots are paused")).toMatch(
+    /^All bots are paused/,
+  );
+  expect(skipReason("Daily Brief Lead", "this bot is over its budget")).toMatch(
+    /^Daily Brief Lead is over its budget/,
+  );
+  expect(skipReason("Daily Brief Lead", "a run is in progress")).toMatch(
+    /busy with another run/,
+  );
+});
+
+test("an over-budget or busy lead isn't asked", async () => {
+  const bots = api();
+  for (const state of [{ overBudget: true }, { running: true }]) {
     const res = await askTeamLead({ ...LEAD, ...state }, "Hi");
     expect(res.skipped).toBe(true);
     expect(res.reason).toMatch(/^Daily Brief Lead is /);

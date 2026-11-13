@@ -5,8 +5,9 @@
  *
  * runTeamRole finds the role's bot (bots.listDashTeam), runs it with the
  * request, streams its text to onText, and resolves to what the run
- * recorded. A paused or missing role resolves to { skipped, reason } — the
- * caller carries on without it.
+ * recorded. A missing role, or one the runner skips (busy, everything
+ * paused), resolves to { skipped, reason } — the caller carries on without
+ * it. A paused role still runs: the user asked.
  */
 import { appendAnswerText } from "./answerText";
 
@@ -56,9 +57,7 @@ export async function runTeamRole(
   }
   const bot = await findTeamRole(role);
   if (!bot) return { skipped: true, reason: `the ${role} isn't set up` };
-  if (bot.paused) {
-    return { skipped: true, reason: `the ${bot.name} is paused`, bot };
-  }
+  // A paused role still runs: the user asked (bots.run makes it their run).
   if (onStart) onStart(bot);
 
   let text = "";
@@ -119,10 +118,11 @@ export function teamSkipText(reason, roleName = "Planner") {
       text: `The ${roleName} is still working on an earlier request — it may be waiting for you to approve something. Answer it, or stop it, then send again.`,
     };
   }
+  // Only "all bots are paused" stops a run the user asked for.
   if (/paused/i.test(r)) {
     return {
       busy: false,
-      text: `The ${roleName} is paused. Turn it on in the Bots page › Dash team, then send again.`,
+      text: "All bots are paused. Turn them back on in the Bots page, then send again.",
     };
   }
   return {

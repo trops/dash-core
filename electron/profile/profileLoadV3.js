@@ -1008,7 +1008,7 @@ async function applyLoadV3(win, appId, manifest, choices = {}, deps = {}) {
         if (saved && def.id != null && String(saved.id) !== String(def.id)) {
           store.removeFromProfile(appId, "bots", String(def.id), profile.id);
         }
-        botsPaused.push(def.name || "Bot");
+        if (def.role !== "lead") botsPaused.push(def.name || "Bot");
       } else {
         d.saveBot(def);
       }

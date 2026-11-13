@@ -463,7 +463,7 @@ export function workingLine(state) {
  * A theme change (theme change round): `appThemeKey` — the app's theme
  * now, so "use the remix for the app" is offered only while it applies.
  * A cell build (release 6c): `cell` { dashboardName, placed, canPlace } —
- * placed: true (in the cell, unsaved; choices "place-again"), "placing", a
+ * placed: true (in the cell, unsaved; nothing to choose), "placing", a
  * reason it didn't go in ("preview", "no-answer", "taken", "gone",
  * "unknown-widget", "failed"), or unknown (a reopened one): choices "place"
  * where it can still go in.
@@ -603,9 +603,12 @@ function chatFor(
     if (builtDone.length) parts.push(plural(builtDone.length, "widget"));
     if (bots.length)
       parts.push(bots.length === 1 ? "the bot" : `${bots.length} bots`);
+    // Nothing built (a widget the user already has): never "built".
     const what = parts.length
       ? `Builder built ${parts.join(" and ")}`
-      : "Built it";
+      : built.length
+        ? "Built it"
+        : "Set it up — nothing to build";
     return checked.length
       ? `${what} · Checker checked ${checked.length === 1 ? "it" : "them"}`
       : what;
@@ -634,10 +637,27 @@ function chatFor(
   if (status === "waiting-for-you") {
     const at = steps.find((s) => s.status === "needs-you");
     const name = at ? String(at.label).replace(/^Preview /, "") : "It";
+    // A widget the user already has: nothing was built — it's theirs, set
+    // as they chose.
+    if (!built.length && kind !== "edit") {
+      return {
+        step: { label: `${name} is ready to look at`, status: "done" },
+        card: {
+          kind: "widget",
+          title: name,
+          sub: "Your widget · preview ready",
+        },
+        reply: `${name} is on the right, running — the one you already have, set as you chose. Click Looks good to put it in ${
+          kind === "cell" ? "the cell you picked" : "place"
+        }.`,
+        choices: "preview",
+      };
+    }
     return {
       step: { label: `Builder built ${name}`, status: "done" },
       card: { kind: "widget", title: name, sub: "Widget · preview ready" },
-      reply: `${name} is ready to look at — it's on the right, running. Tell me if anything should change before ${
+      // A change from here is a fix: the Builder edits its own widget.
+      reply: `${name} is ready to look at — it's on the right, running. Tell me what to change and I'll send it to the Builder as a fix — the rest stays as it is — before ${
         kind === "cell"
           ? "it goes in the cell you picked"
           : kind === "edit" && change && change.mode === "update"
@@ -864,8 +884,8 @@ function chatFor(
             : why[placed]
               ? `${name} is in your widgets. ${why[placed]}${waitNote}`
               : `${name} is in your widgets. If it isn't in the cell you picked yet, put it in while you're editing ${on}.${waitNote}`,
-      // Cancelled edits take it out again: it can be put back.
-      choices: again ? (placed === true ? "place-again" : "place") : null,
+      // In the cell: done — the window closes. Not in it: put it in.
+      choices: again && placed !== true ? "place" : null,
     };
   }
   if (kind === "widget") {

@@ -3,7 +3,7 @@
  *
  */
 
-import { WidgetApi } from "./WidgetApi";
+import { WidgetApi, ownDataFilename } from "./WidgetApi";
 import { DashboardPublisher } from "../DashboardPublisher";
 
 const electronApiMock = {
@@ -202,5 +202,116 @@ describe("WidgetApi — file results go to the widget that asked", () => {
     shared.readData({ filename: "x.json", callbackError: (e) => errs.push(e) });
     expect(calls).toEqual([]);
     expect(errs[0].message).toMatch(/own api/);
+  });
+});
+
+describe("WidgetApi — a widget's own data (no filename, no prompt)", () => {
+  const ipcWith = () => {
+    const listeners = {};
+    const calls = { save: [], read: [] };
+    return {
+      calls,
+      on: (evt, fn) => {
+        listeners[evt] = [...(listeners[evt] || []), fn];
+      },
+      removeListener: (evt, fn) =>
+        (listeners[evt] = (listeners[evt] || []).filter((f) => f !== fn)),
+      removeAllListeners: () => {},
+      emit: (evt, payload) =>
+        [...(listeners[evt] || [])].forEach((fn) => fn(null, payload)),
+      events: {
+        DATA_READ_FROM_FILE_COMPLETE: "read-ok",
+        DATA_READ_FROM_FILE_ERROR: "read-err",
+        DATA_SAVE_TO_FILE_COMPLETE: "save-ok",
+        DATA_SAVE_TO_FILE_ERROR: "save-err",
+      },
+      data: {
+        readData: (...a) => calls.read.push(a),
+        saveData: (...a) => calls.save.push(a),
+      },
+    };
+  };
+  const widget = (ipc) => {
+    const w = Object.create(WidgetApi);
+    w.init({ id: "7-a-3", name: "ai-built.shoppinglist.ShoppingList" });
+    w.setElectronApi(ipc);
+    return w;
+  };
+
+  test("no filename: the widget's own file — never undefined.json", () => {
+    const ipc = ipcWith();
+    widget(ipc).storeData({ data: { a: 1 } });
+    widget(ipc).readData({ callbackComplete: () => {} });
+    const own = ownDataFilename("ai-built.shoppinglist.ShoppingList", "7-a-3");
+    expect(own).toBe("ai-built.shoppinglist.ShoppingList--7-a-3.json");
+    expect(ipc.calls.save[0][1]).toBe(own);
+    expect(ipc.calls.read[0][0]).toBe(own);
+  });
+
+  test("readData(callback, callback) still works", () => {
+    const ipc = ipcWith();
+    const got = [];
+    widget(ipc).readData(
+      (d) => got.push(d),
+      () => {},
+    );
+    ipc.emit("read-ok", {
+      filename: "/data/ai-built.shoppinglist.ShoppingList--7-a-3.json",
+      data: JSON.stringify({ items: ["Milk"] }),
+    });
+    expect(got).toEqual([{ items: ["Milk"] }]);
+  });
+
+  test("storeData({ items }) saves that object, replacing what was there", () => {
+    const ipc = ipcWith();
+    widget(ipc).storeData({ items: ["Milk", "Eggs"] });
+    const [data, filename, append] = ipc.calls.save[0];
+    expect(data).toEqual({ items: ["Milk", "Eggs"] });
+    expect(filename).toMatch(/--7-a-3\.json$/);
+    expect(append).toBe(false);
+  });
+
+  test("saveState / loadState: a promise, the value back as saved", async () => {
+    const ipc = ipcWith();
+    const saved = widget(ipc).saveState(["Milk", "Eggs"]);
+    const [data, filename, append] = ipc.calls.save[0];
+    expect([data, append]).toEqual([{ value: ["Milk", "Eggs"] }, false]);
+    ipc.emit("save-ok", { filename: `/data/${filename}` });
+    await expect(saved).resolves.toEqual(["Milk", "Eggs"]);
+
+    const loaded = widget(ipc).loadState([]);
+    ipc.emit("read-ok", {
+      filename: `/data/${filename}`,
+      data: JSON.stringify({ value: ["Milk", "Eggs"] }),
+    });
+    await expect(loaded).resolves.toEqual(["Milk", "Eggs"]);
+  });
+
+  test('false, 0 and "" save and load like any value', async () => {
+    const ipc = ipcWith();
+    widget(ipc).saveState(false);
+    expect(ipc.calls.save[0][0]).toEqual({ value: false });
+    const loaded = widget(ipc).loadState(true);
+    ipc.emit("read-ok", {
+      filename: "/data/ai-built.shoppinglist.ShoppingList--7-a-3.json",
+      data: JSON.stringify({ value: 0 }),
+    });
+    await expect(loaded).resolves.toBe(0);
+  });
+
+  test("loadState: nothing saved yet → the fallback; a failure rejects", async () => {
+    const ipc = ipcWith();
+    const empty = widget(ipc).loadState({ items: [] });
+    ipc.emit("read-ok", {
+      filename: "/data/ai-built.shoppinglist.ShoppingList--7-a-3.json",
+      data: JSON.stringify([]),
+    });
+    await expect(empty).resolves.toEqual({ items: [] });
+    const bad = widget(ipc).loadState([]);
+    ipc.emit("read-err", {
+      filename: "ai-built.shoppinglist.ShoppingList--7-a-3.json",
+      message: "disk full",
+    });
+    await expect(bad).rejects.toThrow("disk full");
   });
 });

@@ -3,6 +3,7 @@ import {
   Button2,
   Button3,
   ChatComposer,
+  ChatMessage,
   FontAwesomeIcon,
   ListRow,
   Modal,
@@ -53,8 +54,14 @@ import { useDashboard } from "./useDashboard";
 import { useWidgetTarget } from "./useWidgetTarget";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { useWorkspacePlan } from "./useWorkspacePlan";
-import { PlanCard, PlanChoices } from "./PlanViews";
-import { BuildInChat, BuildNext, BuildWalk, PastBuild } from "./BuildViews";
+import { PlanCard, PlanChoices, PlanOutput } from "./PlanViews";
+import {
+  BuildInChat,
+  BuildNext,
+  BuildWalk,
+  PastBuild,
+  PastFix,
+} from "./BuildViews";
 import { usePlanBuild } from "./usePlanBuild";
 import {
   choicesIndex,
@@ -80,7 +87,50 @@ import {
   waitingFor,
   workingLine,
 } from "./workspaceBuild";
-import { normalizeType } from "../Create/planChecklist";
+import {
+  normalizeType,
+  pinWidgetProviders,
+  providerPickAnswer,
+} from "../Create/planChecklist";
+import { StepReadsFrom } from "./WidgetWizard/StepReadsFrom";
+import {
+  chosenParts,
+  foundLine,
+  isNewOnlyWidget,
+  listenersFor,
+  previewRead,
+  readsFromNames,
+  refreshChoices,
+  reviewRows,
+  settingLabel,
+  stepAnswers,
+  stepNotes,
+  toolWords,
+} from "./WidgetWizard/widgetSpec";
+import { StepBar, StepReview } from "./WidgetWizard/StepReview";
+import { StepDoes, doesQuestion } from "./WidgetWizard/StepDoes";
+import { StepTalks, talksQuestion } from "./WidgetWizard/StepTalks";
+import { StepLooks, looksQuestion } from "./WidgetWizard/StepLooks";
+import { StepQuestion } from "./WidgetWizard/WizardAnswer";
+import {
+  REUSE_STEPS,
+  componentNamed,
+  packageComponentIds,
+  readsFromNeeds,
+  settingFields,
+  settingsLine,
+} from "./WidgetWizard/reuseSpec";
+import {
+  ReuseReview,
+  ReuseSettings,
+  ReuseWhich,
+  reuseQuestion,
+} from "./WidgetWizard/StepReuse";
+import { ComponentManager } from "../../ComponentManager";
+import { providerLabel } from "../Create/planChecklist";
+import { ChooseProviderDialog } from "../Create/ProviderPick";
+import { cellPlace } from "./workspaceStart";
+import { StepTailContext } from "./HandoffStep";
 import { dirtyDashboardId } from "./dirtyDashboard";
 import { planTarget } from "../../utils/teamPlan";
 import { useRegistryUsername } from "../../hooks/useRegistryUsername";
@@ -193,6 +243,12 @@ function startText(contact) {
   };
 }
 
+// At the preview: words that keep it, and words that change nothing.
+const LOOKS_GOOD =
+  /^\s*(looks? (good|great|fine|perfect)|lgtm|keep it|add it|put it in|ship it)[\s.!]*$/i;
+const PLEASANTRY =
+  /^\s*(thanks?( you)?|thx|ty|ok(ay)?|cool|nice|great|perfect|awesome|good|neat)[\s.!]*$/i;
+
 /**
  * LeadWorkspace — talking to a team through its lead (lead-workspace PRD,
  * release 2). A large window: on the left, who you're talking to (the Dash
@@ -231,6 +287,9 @@ function startText(contact) {
  * Ask AI, or the registry, a copy, a blank one, a file — each on its own
  * screen with ← Back; the box is only Ask AI's.
  */
+// The wizard's steps after Reads from, in the order they're asked.
+const WIZARD_ASKS = ["does", "talks", "looks", "review"];
+
 export const LeadWorkspace = ({
   request = null,
   onClose,
@@ -434,6 +493,9 @@ export const LeadWorkspace = ({
   const [askBusy, setAskBusy] = useState(false);
   // What's open on the right: "plan", a step's id, or the overview (null).
   const [sideOpen, setSideOpen] = useState(null);
+  // Change the plan instead: the next reply goes to the Planner, not to the
+  // Builder as a fix.
+  const [planChange, setPlanChange] = useState(false);
   const [wide, setWide] = useState(false);
   // Folded drawers close when the window grows.
   useEffect(() => {
@@ -900,8 +962,15 @@ export const LeadWorkspace = ({
   };
   // Yes, build it: what's left to review first, then the build. Once —
   // again only after what was built was removed.
+  const reviewHeld = useRef(false);
+  // Yes said here: its preview opens by itself when it's ready.
+  const previewAskedHere = useRef(false);
   const buildIt = () => {
     if (!wp.plan || walking || starting || (wp.build && !removed)) return;
+    // The wizard: not before Review & build, nor until every part is set.
+    if (reviewHeld.current) return;
+    // This conversation's: another one's preview never opens for it.
+    previewAskedHere.current = wp.key || true;
     setBuildError(null);
     setWalking(true);
   };
@@ -988,6 +1057,8 @@ export const LeadWorkspace = ({
           scope: at.scope || "main",
           userPrefs: inputs.settings || null,
           selectedProviders: inputs.providers || null,
+          // What it shows from the dashboard's bots (Talks to).
+          listeners: wp.wizard ? listenersFor(wp.wizard.piece) : null,
           onPlaced: answer,
         },
       }),
@@ -1019,6 +1090,17 @@ export const LeadWorkspace = ({
       placeInCell();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cellBuildId, cellStatus]);
+  // Put in the cell here: the widget is done — the window closes onto the
+  // dashboard, where it shows (a moment first, so the line is seen).
+  const placedHere = cellBuildId && placements[cellBuildId] === true;
+  useEffect(() => {
+    if (!placedHere) return undefined;
+    const t = setTimeout(() => {
+      if (alive.current) onClose();
+    }, 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placedHere]);
   // A change to one widget that's done (release 6c), once, when it
   // finishes here: in place, it reloads everywhere it runs; a new widget
   // goes in your widgets and, made from one on a dashboard, the editor puts
@@ -1103,6 +1185,73 @@ export const LeadWorkspace = ({
     if (canSwap && placements[changeBuildId] === undefined) swapInPlace();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changeBuildId, changeStatus]);
+  // The built widget waiting on a look: what's typed (or marked) is a fix
+  // to it — the Builder changes its own code, never a new plan.
+  const previewWaiting =
+    wp.build && !removed && pb.state && pb.state.status === "waiting-for-you"
+      ? (pb.state.steps || []).find(
+          (s) => s.kind === "preview" && s.status === "needs-you",
+        ) || null
+      : null;
+  // Its preview ready after the user said yes here: it opens on the right
+  // by itself (once) — saying yes was asking to see it, no second click.
+  // Built here (the Builder's draft), or a widget the user already has.
+  const previewBuilt =
+    !!previewWaiting &&
+    ((pb.state && pb.state.steps) || []).some((s) => s.kind === "build");
+  const previewSawRunning = useRef(null);
+  const previewOpened = useRef(null);
+  const previewKey =
+    previewWaiting && wp.build
+      ? `${wp.build.buildId}:${previewWaiting.id}`
+      : null;
+  const buildStatusNow = pb.state ? pb.state.status : null;
+  useEffect(() => {
+    if (!wp.build) return;
+    if (!previewKey) {
+      if (buildStatusNow === "running")
+        previewSawRunning.current = wp.build.buildId;
+      return;
+    }
+    // Seen running here, or started here (a widget the user already has
+    // can be ready before it's ever seen running).
+    if (
+      (previewSawRunning.current === wp.build.buildId ||
+        previewAskedHere.current === (wp.key || true)) &&
+      previewOpened.current !== previewKey
+    ) {
+      previewAskedHere.current = false;
+      previewOpened.current = previewKey;
+      setSideOpen("preview");
+      if (narrow) setOutsOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewKey, buildStatusNow]);
+  const sendFix = async (stepId, note, marks = null) => {
+    const res = await pb.revise(stepId, note, marks);
+    const say = askCtl.current && askCtl.current.say;
+    const went = !!res && !res.error;
+    if (say) {
+      // Your words in the chat, with what you marked — a fix only if it
+      // went to the Builder.
+      say({
+        who: "you",
+        text: note,
+        ...(went ? { fix: true } : { local: true }),
+        ...(went && res.marked
+          ? { marks: { count: res.marked, thumb: res.thumb || null } }
+          : {}),
+      });
+      if (res && res.error) {
+        say({
+          who: "note",
+          text: `Couldn't send that to the Builder: ${res.error}`,
+        });
+      }
+    }
+    setPlanChange(false);
+    return res;
+  };
   const buildActions = {
     placeInCell,
     swapInPlace,
@@ -1121,6 +1270,12 @@ export const LeadWorkspace = ({
       : null,
     appThemeKey: themeKey || null,
     open: setSideOpen,
+    changePlan: () => {
+      setPlanChange(true);
+      if (askCtl.current && askCtl.current.focusReply) {
+        askCtl.current.focusReply();
+      }
+    },
   };
   // The lead is still answering: the plan isn't changed meanwhile.
   const answering = stillAnswering(messages) || askBusy;
@@ -1405,6 +1560,8 @@ export const LeadWorkspace = ({
   const toPlanner = (shown, request, label) =>
     !!(askCtl.current && askCtl.current.askPlanner(shown, request, label));
   const planActions = {
+    // A provider the user picked in a question (it counts as chosen).
+    onPicked: wp.notePicked,
     // `shown`: what the chat shows as theirs (a tap: just the option).
     onAnswer: (text, shown) =>
       toPlanner(shown || text, () =>
@@ -1453,6 +1610,332 @@ export const LeadWorkspace = ({
     },
     onStopPlanner: () => askCtl.current && askCtl.current.stopPlanner(),
   };
+  // The wizard's widget in words: where it goes, what it reads from.
+  const wizardWords = wp.wizard
+    ? {
+        where: wp.plan && wp.plan.cell ? cellPlace(wp.plan.cell) : "",
+        reads: readsFromNames(wp.wizard.piece, wp.providers, wp.picked),
+      }
+    : {};
+  // The wizard's steps 2–5: the wizard's widget, part by part, before it's
+  // built — a plan that only makes that one new widget (a reused one, or a
+  // dashboard's layout, keeps the plan's own view), with no questions or
+  // gaps left to settle first.
+  const wizardOn =
+    !!wp.wizard &&
+    !!wp.plan &&
+    isNewOnlyWidget(wp.plan, wp.wizard.piece) &&
+    !(wp.build && !removed) &&
+    !wp.waitingForPick &&
+    !(wp.plan.questions || []).length &&
+    !(wp.check && (wp.check.errors || []).length);
+  // Which step: What it does, Talks to, then Review & build (step 5).
+  // A stage from the other steps (a widget the user has) isn't one of these.
+  const wizardStage = wizardOn
+    ? WIZARD_ASKS.includes(wp.wizardStage)
+      ? wp.wizardStage
+      : "does"
+    : null;
+  const reviewing = wizardStage === "review";
+  const reviewSet = reviewing
+    ? (() => {
+        const r = reviewRows(wp.plan, wp.wizard.piece, {
+          providers: wp.providers,
+          picked: wp.picked,
+          reads: wp.wizard.reads,
+          where: wizardWords.where,
+        });
+        return r.setCount === r.total;
+      })()
+    : false;
+  // Reads from's Change / Choose: which widget's window is open.
+  const [choosingAt, setChoosingAt] = useState(null);
+  // A widget the user already has, into a cell (the approved "…goes
+  // through its own steps"): Which one, Settings, Review — nothing to build.
+  const reuseOn =
+    !wizardOn &&
+    !!wp.reuse &&
+    !!wp.plan &&
+    !(wp.build && !removed) &&
+    !wp.waitingForPick &&
+    !(wp.plan.questions || []).length &&
+    !(wp.check && (wp.check.errors || []).length);
+  const reuseConfig = (id) =>
+    (id && ComponentManager.config && ComponentManager.config(id)) || null;
+  const reuseIds = reuseOn
+    ? packageComponentIds(
+        wp.reuse.piece.package,
+        Object.keys(
+          (ComponentManager.componentMap && ComponentManager.componentMap()) ||
+            {},
+        ),
+      )
+    : [];
+  // Installed: its widgets are registered here (a registry one isn't yet).
+  const reuseInstalled = reuseIds.length > 0;
+  const reuseSuggested = reuseOn
+    ? (wp.reuse.planned.component &&
+        reuseIds.find(
+          (id) =>
+            id.split(".").pop() ===
+            String(wp.reuse.planned.component).split(".").pop(),
+        )) ||
+      componentNamed(
+        reuseIds,
+        wp.reuse.planned.name,
+        (id) => (reuseConfig(id) || {}).displayName,
+      )
+    : null;
+  const reusePicked =
+    reuseOn && wp.choices.component && reuseIds.includes(wp.choices.component)
+      ? wp.choices.component
+      : null;
+  const reuseComponent =
+    reusePicked || (reuseIds.length === 1 ? reuseIds[0] : null);
+  // Which one is asked only when the package has several.
+  const reuseOrder =
+    reuseIds.length > 1
+      ? ["which", "settings", "review"]
+      : ["settings", "review"];
+  const reuseStage = !reuseOn
+    ? null
+    : reuseIds.length > 1 && !reusePicked
+      ? "which"
+      : reuseOrder.includes(wp.wizardStage)
+        ? wp.wizardStage
+        : reuseOrder[0];
+  const reuseName = reuseOn
+    ? (reuseConfig(reuseComponent) || {}).displayName ||
+      wp.reuse.piece.name ||
+      "your widget"
+    : "";
+  const reuseFields = reuseOn
+    ? settingFields(
+        (reuseConfig(reuseComponent) || {}).userConfig ||
+          // Not installed yet: the Planner's settings, to type.
+          Object.fromEntries(
+            Object.keys(wp.reuse.planned.settings || {}).map((k) => [
+              k,
+              { type: "text", displayName: settingLabel(k) },
+            ]),
+          ),
+        wp.reuse.planned.settings || {},
+        wp.choices.settings || {},
+      )
+    : [];
+  // What it reads from follows from the widget picked: the user's
+  // providers of the kind it's built for (one is used as it is).
+  const reuseNeeds = reuseOn
+    ? readsFromNeeds(
+        (reuseConfig(reuseComponent) || {}).providers ||
+          (Array.isArray(wp.reuse.planned.providers)
+            ? wp.reuse.planned.providers
+            : []
+          ).map((type) => ({ type })),
+        wp.providers,
+        {
+          ...(wp.reuse.planned.provider || {}),
+          ...(wp.choices.provider || {}),
+        },
+      )
+    : [];
+  const reuseMissing =
+    reuseNeeds.find((n) => n.required && !n.options.length) || null;
+  const reuseUnpicked =
+    reuseNeeds.find((n) => n.required && n.options.length && !n.selected) ||
+    null;
+  const reusePkgLabel = reuseOn
+    ? (reuseConfig(reuseIds[0]) || {}).package ||
+      String(wp.reuse.piece.package).split("/").pop()
+    : "";
+  reviewHeld.current =
+    (wizardOn && !(reviewing && reviewSet)) ||
+    (reuseOn && (reuseStage !== "review" || !!reuseMissing || !!reuseUnpicked));
+  // A new plan or conversation: its own window.
+  const reviewKey = `${wp.key || ""}:${wp.step ? wp.step.id : ""}`;
+  useEffect(() => {
+    setChoosingAt(null);
+  }, [reviewKey]);
+  // A part chosen in the wizard: kept over every plan (wp.choose), and the
+  // Planner told with the next message — only when it changed.
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const editSettings = (next) => {
+    const w = wp.wizard;
+    if (!w || same(next, w.piece.settings || {})) return;
+    wp.choose(
+      "settings",
+      next,
+      `the user set ${w.piece.name}'s settings to: ${Object.keys(next)
+        .map((k) => `${settingLabel(k)} (${k}) = ${JSON.stringify(next[k])}`)
+        .join("; ")} — keep them`,
+    );
+  };
+  const chooseDoes = ({ changes, settings, refresh }) => {
+    const w = wp.wizard;
+    if (!w) return;
+    const name = w.piece.name;
+    // Not said yet: what's ticked (even nothing — it only reads) is said now.
+    const had = w.piece.changes;
+    if (!Array.isArray(had) || !same(changes, had)) {
+      wp.choose(
+        "changes",
+        changes,
+        changes.length
+          ? `the user chose what ${name} may change: only with ${changes.join(", ")} (${changes.map(toolWords).join(", ")}) — keep it`
+          : `the user chose that ${name} only reads — it changes nothing`,
+      );
+    }
+    editSettings(settings);
+    if (refresh !== refreshChoices(w.piece).value) {
+      wp.choose(
+        "refresh",
+        refresh,
+        `the user chose how often ${name} reads again: ${refresh}`,
+      );
+    }
+    wp.choose("confirmed", [
+      ...new Set([...(wp.choices.confirmed || []), "does"]),
+    ]);
+    wp.setWizardStage("talks");
+  };
+  const chooseTalks = ({ eventsOff, listens }) => {
+    const w = wp.wizard;
+    if (!w) return;
+    const name = w.piece.name;
+    if (!same(eventsOff, wp.choices.eventsOff || [])) {
+      wp.choose(
+        "eventsOff",
+        eventsOff,
+        eventsOff.length
+          ? `the user doesn't want ${name} to send: ${eventsOff.join(", ")}`
+          : `the user wants ${name} to send all it proposed`,
+      );
+    }
+    const had = Array.isArray(w.piece.listens) ? w.piece.listens : [];
+    if (!same(listens, had)) {
+      wp.choose(
+        "listens",
+        listens,
+        listens.length
+          ? `the user wants ${name} to show: ${listens
+              .map(
+                (l) => `${l.bot}'s "${l.result}" result (handler ${l.handler})`,
+              )
+              .join(
+                "; ",
+              )} — those bots are already on the dashboard; Dash wires them`
+          : `the user wants ${name} to listen for nothing`,
+      );
+    }
+    wp.choose("confirmed", [
+      ...new Set([...(wp.choices.confirmed || []), "talks"]),
+    ]);
+    wp.setWizardStage("looks");
+  };
+  const chooseLook = (look) => {
+    const w = wp.wizard;
+    if (!w) return;
+    // The Planner is told a look only when it changed.
+    const was = wp.choices.look || null;
+    wp.choose(
+      "look",
+      look,
+      was && same(was, look)
+        ? null
+        : `the user picked how ${w.piece.name} looks: ${JSON.stringify(look)} — keep it`,
+    );
+    wp.setWizardStage("review");
+  };
+  const toWizardStep = (stage) => wp.setWizardStage(stage);
+  // Step 1 · Reads from: the user's pick pins the widget and the Planner
+  // plans with it.
+  const useReadsPick = (chosen) => {
+    const pk = wp.pick;
+    if (!pk || !chosen || !chosen.length) return;
+    const names = chosen.map((c) => c.name);
+    const w = wp.wizard;
+    if (w) {
+      const { plan: pinned } = pinWidgetProviders(wp.plan, w.index, chosen);
+      wp.edit(pinned, null);
+    }
+    wp.notePicked(names, wp.step ? wp.step.id : null);
+    const list = names.join(" and ");
+    // The Planner's own question: answered in its words.
+    if (pk.question) {
+      planActions.onAnswer(
+        providerPickAnswer(pk.question.question, chosen, pk.question.options),
+        `Use ${list}`,
+      );
+      return;
+    }
+    planActions.onAnswer(
+      `${pk.name} reads from ${list} — the user picked ${
+        names.length === 1 ? "it" : "them"
+      } from their providers. Plan it with ${list} only (their saved tools); if ${
+        names.length === 1 ? "it" : "one"
+      } can't give what the widget needs, say so plainly.`,
+      `Use ${list}`,
+    );
+  };
+  const pickCard =
+    wp.waitingForPick && wp.pick ? (
+      <StepReadsFrom
+        piece={wp.pick.piece || { name: wp.pick.name }}
+        reads={wp.pick.reads}
+        reasons={wp.pick.reasons || null}
+        onUse={useReadsPick}
+        readOnly={askBusy}
+      />
+    ) : null;
+  // The step line while the user picks: what was found, not "drafted a plan".
+  const stepTail = (s) => {
+    if (!s) return null;
+    if (wp.waitingForPick && wp.pick && wp.step && s.id === wp.step.id) {
+      return foundLine(wp.pick.piece || { name: wp.pick.name }, wp.pick.reads);
+    }
+    if (wp.pickStepId && s.id === wp.pickStepId && wp.picked.length) {
+      return `asked which provider to use · you picked ${wp.picked.join(" and ")}`;
+    }
+    return null;
+  };
+  // The lead's words on the draft the user was asked to pick at — a plan
+  // that isn't one yet — stay out: the pick shows in their place.
+  const pickAt = (() => {
+    const id =
+      wp.waitingForPick && wp.step ? wp.step.id : wp.pickStepId || null;
+    return id ? messages.findIndex((m) => m && m.id === id) : -1;
+  })();
+  const hideMessage = (m, i) => {
+    if (pickAt < 0 || i <= pickAt || !m) return false;
+    if (m.who !== "role" && m.who !== "lead") return false;
+    // Only the lead's answer before the user's own next message.
+    for (let j = pickAt + 1; j < i; j += 1) {
+      if (messages[j] && messages[j].who === "you") return false;
+    }
+    return true;
+  };
+  // The step bar in the header: the step being asked, the ones before ticked.
+  const headerSteps = reuseOn
+    ? REUSE_STEPS.filter((s) => reuseOrder.includes(s.id))
+    : undefined;
+  const headerStep = reuseOn
+    ? reuseStage
+    : pickCard
+      ? "reads"
+      : wizardStage || "reads";
+  const headerDone = (() => {
+    if (reuseOn) {
+      const before = reuseOrder.slice(0, reuseOrder.indexOf(reuseStage));
+      return Object.fromEntries(before.map((id) => [id, "Done"]));
+    }
+    if (!wizardOn || pickCard) return {};
+    const notes = stepNotes(wp.wizard.piece, wizardWords.reads || "Picked");
+    const order = ["reads", ...WIZARD_ASKS];
+    const before = order.slice(0, order.indexOf(headerStep));
+    return Object.fromEntries(
+      Object.entries(notes).filter(([id]) => before.includes(id)),
+    );
+  })();
   const next = planNext({
     messages,
     busy: askBusy,
@@ -1466,7 +1949,36 @@ export const LeadWorkspace = ({
   // the reply choices under the lead's answer to it.
   const choicesAt = choicesIndex(messages);
   const leadName = contact ? contact.name : "Dash Lead";
+  const fixAts = wp.build
+    ? messages
+        .map((x, j) =>
+          x && x.who === "you" && x.fix && j > wp.build.at ? j : -1,
+        )
+        .filter((j) => j >= 0)
+    : [];
+  const lastFix = fixAts.length ? fixAts[fixAts.length - 1] : -1;
   const renderAfter = (m, i, api) => {
+    // Under a fix: the Builder changing the widget, then the widget changed
+    // (the latest), or what an earlier one did.
+    const fixN = fixAts.indexOf(i);
+    if (fixN >= 0) {
+      return i === lastFix ? (
+        <BuildInChat
+          build={wp.build}
+          state={pb.state}
+          leadName={leadName}
+          current
+          fix={fixN + 1}
+          actions={buildActions}
+          restored={pb.restored}
+          change={buildChange(wp.build)}
+          cell={buildCell(wp.build)}
+          actionError={pb.actionError || buildError}
+        />
+      ) : (
+        <PastFix state={pb.state} n={fixN + 1} />
+      );
+    }
     // A build shows after the message it started from (release 3b).
     const builds = wp.builds.filter((b) => b.at === i);
     if (builds.length) {
@@ -1480,6 +1992,7 @@ export const LeadWorkspace = ({
                 state={pb.state}
                 leadName={leadName}
                 current
+                earlier={lastFix >= 0}
                 yes={yesLabel(wp.plan, { rawThemes, username })}
                 actions={buildActions}
                 restored={pb.restored}
@@ -1499,8 +2012,408 @@ export const LeadWorkspace = ({
         </>
       );
     }
+    // The wizard (steps 2–5), as a chat: each step the Planner's question in
+    // its bubble with your answer in one card under it; the steps before it
+    // read as its question and your answer. Review & build ends with the
+    // plan's own buttons.
+    const wizardDashboard =
+      (convCell && convCell.dashboardName) ||
+      (wp.plan && wp.plan.dashboard && wp.plan.dashboard.name) ||
+      "";
+    const questions = !wizardOn
+      ? {}
+      : {
+          does: doesQuestion(wp.wizard.piece, wp.providers),
+          talks: talksQuestion(
+            wp.plannedPiece || wp.wizard.piece,
+            wp.choices.eventsOff || [],
+            wizardDashboard,
+          ),
+          looks: looksQuestion(),
+          review: {
+            question: reviewSet
+              ? "Here's the whole widget. Build it?"
+              : "Here's the whole widget — one part needs you.",
+            why: reviewSet
+              ? "I proposed what you didn't say. Check each part and change anything now — it's free until it's built."
+              : "Which provider it reads from. The rest I proposed — check it, change anything.",
+          },
+        };
+    const answers = wizardOn ? stepAnswers(wp.wizard.piece, wp.providers) : {};
+    const askedBefore = (stage) =>
+      WIZARD_ASKS.slice(0, WIZARD_ASKS.indexOf(stage)).map((id) => (
+        <React.Fragment key={id}>
+          <ChatMessage
+            role="reply"
+            label="Planner"
+            meta={`Step ${WIZARD_ASKS.indexOf(id) + 2} of 5`}
+          >
+            {questions[id].question}
+          </ChatMessage>
+          <ChatMessage role="you">{answers[id]}</ChatMessage>
+        </React.Fragment>
+      ));
+    const ask = (stage, answer) => (
+      <>
+        {askedBefore(stage)}
+        <ChatMessage
+          role="reply"
+          label="Planner"
+          meta={`Step ${WIZARD_ASKS.indexOf(stage) + 2} of 5`}
+          testId="wizard-ask"
+          footer={answer}
+        >
+          <StepQuestion
+            question={questions[stage].question}
+            why={questions[stage].why}
+          />
+        </ChatMessage>
+      </>
+    );
+    const providerDialog =
+      choosingAt !== null ? (
+        <ChooseProviderDialog
+          plan={wp.plan}
+          index={choosingAt}
+          onEdit={wp.edit}
+          picked={wp.picked}
+          onPicked={wp.notePicked}
+          onReplan={planActions.onAnswer}
+          onClose={() => setChoosingAt(null)}
+        />
+      ) : null;
+    const reviewCard = !wizardOn ? null : wizardStage === "does" ? (
+      <>
+        {ask(
+          "does",
+          <StepDoes
+            key={`does:${reviewKey}`}
+            piece={wp.wizard.piece}
+            providers={wp.providers}
+            readOnly={answering}
+            onNext={chooseDoes}
+            onBack={() => setChoosingAt(wp.wizard.index)}
+          />,
+        )}
+        {providerDialog}
+      </>
+    ) : wizardStage === "looks" ? (
+      ask(
+        "looks",
+        <StepLooks
+          key={`looks:${reviewKey}`}
+          piece={wp.wizard.piece}
+          preview={previewRead(wp.wizard.piece, wp.providers)}
+          look={wp.choices.look || null}
+          readOnly={answering}
+          onPick={(look) => wp.choose("look", look)}
+          onNext={chooseLook}
+          onBack={() => toWizardStep("talks")}
+          onDescribe={() => api.focusReply()}
+        />,
+      )
+    ) : wizardStage === "talks" ? (
+      ask(
+        "talks",
+        <StepTalks
+          key={`talks:${reviewKey}`}
+          plannedPiece={wp.plannedPiece}
+          piece={wp.wizard.piece}
+          eventsOff={wp.choices.eventsOff || []}
+          botEmitters={wp.hasDashboard ? wp.botEmitters : []}
+          hasDashboard={wp.hasDashboard}
+          dashboardName={wizardDashboard}
+          readsFrom={wizardWords.reads}
+          readOnly={answering}
+          onNext={chooseTalks}
+          onBack={() => toWizardStep("does")}
+          onDescribe={() => api.focusReply()}
+        />,
+      )
+    ) : (
+      <>
+        {ask(
+          "review",
+          <StepReview
+            plan={wp.plan}
+            piece={wp.wizard.piece}
+            providers={wp.providers}
+            picked={wp.picked}
+            reads={wp.wizard.reads}
+            where={wizardWords.where}
+            edited={chosenParts(wp.choices)}
+            readOnly={answering}
+            onChoose={() => setChoosingAt(wp.wizard.index)}
+            onSettings={editSettings}
+            onChat={() => api.focusReply()}
+            onStep={toWizardStep}
+            footer={
+              !wp.build && !api.busy ? (
+                <PlanChoices
+                  plan={wp.plan}
+                  check={wp.check}
+                  sent={wp.sent}
+                  onSend={api.send}
+                  onBuild={starting || walking ? null : buildIt}
+                  onChange={api.focusReply}
+                  onAnswer={planActions.onAnswer}
+                  onDecide={planActions.onDecide}
+                  onFix={planActions.onFix}
+                  onPicked={planActions.onPicked}
+                  yesTitle="Yes, build it"
+                  yesDisabled={!reviewSet}
+                />
+              ) : null
+            }
+          />,
+        )}
+        {buildError ? (
+          <span
+            className={`text-xs ${muted}`}
+            data-testid="workspace-build-error"
+          >
+            {buildError}
+          </span>
+        ) : null}
+        {providerDialog}
+      </>
+    );
+    // A widget the user already has: its own steps, asked the same way.
+    const reuseQs = !reuseOn
+      ? {}
+      : {
+          which: reuseQuestion("which", {
+            count: reuseIds.length,
+            pkgLabel: reusePkgLabel,
+            installed: reuseInstalled,
+          }),
+          settings: reuseQuestion("settings", { name: reuseName }),
+          review: reuseQuestion("review", { name: reuseName }),
+        };
+    const reuseSaid = {
+      which: reuseName,
+      settings: settingsLine(reuseFields),
+    };
+    const reuseStep = (id) =>
+      `Step ${reuseOrder.indexOf(id) + 1} of ${reuseOrder.length}`;
+    const reuseAsk = (stage, answer) => (
+      <>
+        {reuseOrder.slice(0, reuseOrder.indexOf(stage)).map((id) => (
+          <React.Fragment key={id}>
+            <ChatMessage role="reply" label="Planner" meta={reuseStep(id)}>
+              {reuseQs[id].question}
+            </ChatMessage>
+            <ChatMessage role="you">{reuseSaid[id]}</ChatMessage>
+          </React.Fragment>
+        ))}
+        <ChatMessage
+          role="reply"
+          label="Planner"
+          meta={reuseStep(stage)}
+          testId="reuse-ask"
+          footer={answer}
+        >
+          <StepQuestion
+            question={reuseQs[stage].question}
+            why={reuseQs[stage].why}
+          />
+        </ChatMessage>
+      </>
+    );
+    const pieceName = reuseOn ? wp.reuse.piece.name : "";
+    const reuseCard = !reuseOn
+      ? null
+      : reuseStage === "which"
+        ? reuseAsk(
+            "which",
+            <ReuseWhich
+              key={`which:${reviewKey}`}
+              ids={reuseIds}
+              configOf={reuseConfig}
+              packageId={wp.reuse.piece.package}
+              installed={reuseInstalled}
+              picked={reusePicked}
+              suggested={reuseSuggested}
+              settings={wp.reuse.planned.settings || {}}
+              readOnly={answering}
+              onNext={(id) => {
+                const c = reuseConfig(id) || {};
+                wp.choose(
+                  "component",
+                  id,
+                  id === wp.choices.component
+                    ? null
+                    : `the user picked ${c.displayName || id} (component ${id}) for ${pieceName} — keep it`,
+                );
+                wp.setWizardStage("settings");
+              }}
+              onBuildNew={() =>
+                planActions.onAnswer(
+                  `None of the ${reusePkgLabel} widgets fit. Plan a new widget for this cell instead (source "new").`,
+                  "Build a new one instead",
+                )
+              }
+            />,
+          )
+        : reuseStage === "settings"
+          ? reuseAsk(
+              "settings",
+              <ReuseSettings
+                key={`settings:${reviewKey}:${reuseComponent || ""}`}
+                fields={reuseFields}
+                readsFrom={reuseNeeds.filter((n) => n.options.length > 1)}
+                readOnly={answering}
+                onBack={
+                  reuseIds.length > 1 ? () => wp.setWizardStage("which") : null
+                }
+                onNext={(values, reads = {}) => {
+                  // What it reads from: picked here, or the only one.
+                  const pins = {
+                    ...Object.fromEntries(
+                      reuseNeeds
+                        .filter((n) => n.selected)
+                        .map((n) => [n.type, n.selected]),
+                    ),
+                    ...reads,
+                  };
+                  if (
+                    Object.keys(pins).length &&
+                    JSON.stringify(pins) !==
+                      JSON.stringify(wp.choices.provider || null)
+                  ) {
+                    wp.choose(
+                      "provider",
+                      pins,
+                      `the user picked what ${reuseName} reads from: ${Object.entries(
+                        pins,
+                      )
+                        .map(([t, n]) => `${n} (${t})`)
+                        .join(", ")} — keep it`,
+                    );
+                  }
+                  // Picked, as the provider question would have (the
+                  // build's checklist counts it).
+                  if (Object.keys(pins).length)
+                    wp.notePicked(Object.values(pins));
+                  const planned = wp.reuse.planned.settings || {};
+                  const changed = Object.keys(values).some(
+                    (k) =>
+                      String(values[k] ?? "") !==
+                      String(
+                        planned[k] ??
+                          reuseFields.find((f) => f.key === k)?.suggested ??
+                          "",
+                      ),
+                  );
+                  if (changed || wp.choices.settings) {
+                    wp.choose(
+                      "settings",
+                      values,
+                      `the user set ${reuseName}'s settings to: ${Object.keys(
+                        values,
+                      )
+                        .map((k) => `${k} = ${JSON.stringify(values[k])}`)
+                        .join("; ")} — keep them`,
+                    );
+                  }
+                  wp.setWizardStage("review");
+                }}
+              />,
+            )
+          : reuseAsk(
+              "review",
+              <ReuseReview
+                rows={[
+                  {
+                    key: "widget",
+                    label: "Widget",
+                    value: `${reuseName} — ${
+                      reuseInstalled
+                        ? "yours, already installed"
+                        : "from the registry, installed when you say yes"
+                    }`,
+                    chose: !!reusePicked,
+                    change: reuseIds.length > 1 ? "which" : null,
+                  },
+                  {
+                    key: "reads",
+                    label: "Reads from",
+                    value: reuseNeeds.length
+                      ? reuseNeeds
+                          .map(
+                            (n) =>
+                              n.selected ||
+                              (n.options.length
+                                ? `Choose which ${providerLabel(n.type)}`
+                                : `Needs a ${providerLabel(n.type)} provider`),
+                          )
+                          .join(", ")
+                      : "Nothing — it needs no connection",
+                    chose: !!wp.choices.provider,
+                    change: reuseNeeds.some((n) => n.options.length > 1)
+                      ? "settings"
+                      : null,
+                  },
+                  {
+                    key: "settings",
+                    label: "Settings",
+                    value: settingsLine(reuseFields),
+                    chose: !!wp.choices.settings,
+                    change: "settings",
+                  },
+                  {
+                    key: "where",
+                    label: "Where it goes",
+                    value: wp.plan.cell
+                      ? `${
+                          (convCell && convCell.dashboardName) ||
+                          (wp.plan.dashboard && wp.plan.dashboard.name) ||
+                          "Your dashboard"
+                        } — ${cellPlace(wp.plan.cell)}`
+                      : "",
+                  },
+                ]}
+                onStep={(stage) => wp.setWizardStage(stage)}
+                installed={reuseInstalled}
+                blocked={
+                  reuseMissing
+                    ? `${reuseName} reads from ${providerLabel(
+                        reuseMissing.type,
+                      )}, and you don't have one yet. Add one on the Providers page, then come back — this conversation keeps your place.`
+                    : reuseUnpicked
+                      ? `Choose which ${providerLabel(
+                          reuseUnpicked.type,
+                        )} it reads from first — in Settings.`
+                      : null
+                }
+                readOnly={answering}
+                footer={
+                  !wp.build && !api.busy ? (
+                    <PlanChoices
+                      plan={wp.plan}
+                      check={wp.check}
+                      sent={wp.sent}
+                      onSend={api.send}
+                      onBuild={starting || walking ? null : buildIt}
+                      onChange={api.focusReply}
+                      onAnswer={planActions.onAnswer}
+                      onDecide={planActions.onDecide}
+                      onFix={planActions.onFix}
+                      onPicked={planActions.onPicked}
+                      yesTitle="Yes, preview it"
+                    />
+                  ) : null
+                }
+              />,
+            );
     const choices =
-      i === choicesAt && wp.plan && !wp.build && !api.busy ? (
+      i === choicesAt && pickCard && !api.busy ? (
+        pickCard
+      ) : i === choicesAt && wizardOn && !api.busy ? (
+        reviewCard
+      ) : i === choicesAt && reuseOn && !api.busy ? (
+        reuseCard
+      ) : i === choicesAt && wp.plan && !wp.build && !api.busy ? (
         <>
           <PlanChoices
             plan={wp.plan}
@@ -1512,6 +2425,7 @@ export const LeadWorkspace = ({
             onAnswer={planActions.onAnswer}
             onDecide={planActions.onDecide}
             onFix={planActions.onFix}
+            onPicked={planActions.onPicked}
           />
           {buildError ? (
             <span
@@ -1524,13 +2438,42 @@ export const LeadWorkspace = ({
         </>
       ) : null;
     if (m.who === "step" && wp.step && m.id === wp.step.id && wp.plan) {
+      // Nothing is planned until the user picks: the pick, not the plan.
+      if (pickCard) return choicesAt === -1 ? pickCard : choices;
+      // The wizard's widget: its review, under the lead's answer.
+      if (wizardOn) return choicesAt === -1 ? reviewCard : choices;
+      if (reuseOn) return choicesAt === -1 ? reuseCard : choices;
       return (
         <>
-          <PlanCard plan={wp.plan} onOpen={() => setSideOpen("plan")} />
+          {/* The whole plan, read here — no click to the side to decide. */}
+          <div
+            className={`dr-chat-card self-start w-full max-w-2xl rounded-xl border p-4 ${hairline}`}
+            data-testid="chat-plan"
+          >
+            <PlanOutput
+              wp={wp}
+              onReplan={planActions.onAnswer}
+              readOnly={answering}
+              leadName={contact ? contact.name : undefined}
+              onWidgetMode={
+                convWidget && convWidget.canInPlace ? setModePick : null
+              }
+              onSignIn={
+                convWidget && convWidget.canSignIn && making && making.widget
+                  ? signInToChange
+                  : null
+              }
+            />
+          </div>
           {/* Brought by the app's own hand-off: its choices are here. */}
           {choices}
         </>
       );
+    }
+    // The draft the user was asked to pick at: no plan card — the pick was
+    // the answer (frame 1).
+    if (m.who === "step" && wp.pickStepId && m.id === wp.pickStepId) {
+      return null;
     }
     // An earlier plan keeps its card: the history still opens it.
     if (m.who === "step" && m.plan) {
@@ -1800,7 +2743,7 @@ export const LeadWorkspace = ({
       height="h-5/6"
     >
       <div
-        className={`relative flex flex-row h-full w-full rounded-xl overflow-hidden border ${panel.backgroundColor || ""} ${panel.borderColor || ""} ${panel.textColor || ""}`}
+        className={`dr-chat-shell relative flex flex-row h-full w-full rounded-xl overflow-hidden border ${panel.backgroundColor || ""} ${panel.borderColor || ""} ${panel.textColor || ""}`}
         data-testid="lead-workspace"
       >
         {/* A folded column open over the conversation (frames 35, 36):
@@ -1834,7 +2777,7 @@ export const LeadWorkspace = ({
               ? navOpen
                 ? `absolute left-0 z-30 w-64 flex flex-col gap-1 border-r p-3 min-h-0 shadow-lg ${hairline} ${panel.backgroundColor || ""}`
                 : "hidden"
-              : `relative w-64 flex-shrink-0 flex flex-col gap-1 border-r p-3 min-h-0 ${hairline}`
+              : `dr-chat-shell-side relative w-64 flex-shrink-0 flex flex-col gap-1 border-r p-3 min-h-0 ${hairline}`
           }
           style={
             narrow && navOpen
@@ -1975,11 +2918,13 @@ export const LeadWorkspace = ({
                                 ? ` · ${BUILT_TAG[t.fromCreate]}`
                                 : ""
                             }`
-                          : t.built
-                            ? BUILT_TAG[t.built] || null
-                            : t.planned
-                              ? "Plan"
-                              : null,
+                          : t.id === selectedId && wp.waitingForPick
+                            ? "Waiting for you"
+                            : t.built
+                              ? BUILT_TAG[t.built] || null
+                              : t.planned
+                                ? "Plan"
+                                : null,
                       ]
                         .filter(Boolean)
                         .join(" · ")}
@@ -2022,7 +2967,10 @@ export const LeadWorkspace = ({
         {/* Middle: the conversation */}
         <section
           aria-label="Conversation"
-          className="flex-1 min-w-0 flex flex-col min-h-0"
+          // Lifted above the quiet sides: the conversation is the focus.
+          className={`dr-chat-stage flex-1 min-w-0 flex flex-col min-h-0 ${
+            narrow ? "" : "my-2 rounded-xl border overflow-hidden"
+          } ${hairline} ${panel.backgroundColor || ""}`}
         >
           <header
             ref={headerRef}
@@ -2050,6 +2998,29 @@ export const LeadWorkspace = ({
             >
               {title}
             </span>
+            {/* Where the widget's steps are, small (the chat asks them). */}
+            {!narrow && (pickCard || wizardOn || reuseOn) ? (
+              <span className="flex-shrink-0 ml-3">
+                <StepBar
+                  compact
+                  current={headerStep}
+                  done={headerDone}
+                  {...(headerSteps ? { steps: headerSteps } : {})}
+                />
+              </span>
+            ) : null}
+            {/* Step 4 draws the looks across the window: no side column,
+                so the window's × is here. */}
+            {!narrow && wizardStage === "looks" ? (
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={onClose}
+                className={`flex-shrink-0 ml-3 flex items-center justify-center h-8 w-8 rounded-lg ${muted}`}
+              >
+                <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
+              </button>
+            ) : null}
             {narrow ? (
               <span className="flex-shrink-0 flex flex-row items-center gap-2 ml-3">
                 <button
@@ -2087,7 +3058,9 @@ export const LeadWorkspace = ({
           {/* What this conversation is about (frame 41): a page's New —
               also when it's reopened. */}
           {aboutShown ? (
-            <div className="flex-shrink-0 flex flex-row px-6 pt-4">
+            <div
+              className={`flex-shrink-0 flex flex-row px-6 pt-4 pb-3 border-b ${hairline}`}
+            >
               <span
                 className={`rounded-full border px-3 py-1 text-sm ${hairline}`}
                 data-testid="workspace-about"
@@ -2131,68 +3104,111 @@ export const LeadWorkspace = ({
           ) : !open && wayView ? (
             wayView
           ) : open && contact ? (
-            <AskStep
-              // A new lead is a new conversation (never a carried-over one).
-              key={`${contact.key}:${open.key}`}
-              question={open.question || ""}
-              // A page's New: saved with it, and the Dash Lead is told
-              // what's being made.
-              about={open.making ? makingAbout(making) : null}
-              onAbout={setReopenedAbout}
-              recentId={open.recentId || null}
-              recipient={contact.recipient}
-              hideTo
-              approvalBots={[
-                { id: contact.botId, name: contact.name },
-                ...contact.members,
-              ]}
-              onStarted={setSelectedId}
-              onMessagesChange={setMessages}
-              onBusyChange={setAskBusy}
-              renderAfter={renderAfter}
-              // A typed reply takes the plan (and the changes made to it on
-              // the right) along, so a change reaches the Planner whole.
-              prepareSend={(t) => withPlanContext(t, wp.plan, wp.takeEdits())}
-              // A typed "yes" to a plan that can be built builds it, as Yes;
-              // a reply while the plan has questions answers them — straight
-              // to the Planner.
-              controlRef={askCtl}
-              takeReply={(t) => {
-                if (next === "question" || (next === "nothing" && wp.plan))
-                  return planActions.onAnswer(t);
-                if (
-                  !isPlainYes(t) ||
-                  answering ||
-                  walking ||
-                  starting ||
-                  wp.sent ||
-                  (wp.build && !removed) ||
-                  !canBuild({ plan: wp.plan, check: wp.check })
-                )
-                  return false;
-                buildIt();
-                return true;
-              }}
-              placeholder="Reply"
-              hint={null}
-              // While it builds, the reply box says what's going on and Stop
-              // stops the build; the chat follows it as it goes.
-              working={
-                building
-                  ? {
-                      text: pb.stopping
-                        ? "Stopping after this step…"
-                        : workingLine(pb.state),
-                      onStop: pb.stop,
+            <StepTailContext.Provider value={stepTail}>
+              <AskStep
+                // A new lead is a new conversation (never a carried-over one).
+                key={`${contact.key}:${open.key}`}
+                question={open.question || ""}
+                // A page's New: saved with it, and the Dash Lead is told
+                // what's being made.
+                about={open.making ? makingAbout(making) : null}
+                onAbout={setReopenedAbout}
+                recentId={open.recentId || null}
+                recipient={contact.recipient}
+                hideTo
+                approvalBots={[
+                  { id: contact.botId, name: contact.name },
+                  ...contact.members,
+                ]}
+                onStarted={setSelectedId}
+                onMessagesChange={setMessages}
+                onBusyChange={setAskBusy}
+                renderAfter={renderAfter}
+                hideMessage={hideMessage}
+                // A typed reply takes the plan (and the changes made to it on
+                // the right) along, so a change reaches the Planner whole.
+                prepareSend={(t) => withPlanContext(t, wp.plan, wp.takeEdits())}
+                // A typed "yes" to a plan that can be built builds it, as Yes;
+                // a reply while the plan has questions answers them — straight
+                // to the Planner.
+                controlRef={askCtl}
+                takeReply={(t) => {
+                  if (next === "question" || (next === "nothing" && wp.plan))
+                    return planActions.onAnswer(t);
+                  // The built widget is waiting on a look: a change is a fix
+                  // to it, for the Builder — unless the plan is to change.
+                  if (planChange) {
+                    setPlanChange(false);
+                    return false;
+                  }
+                  if (previewWaiting) {
+                    const say = askCtl.current && askCtl.current.say;
+                    // "Yes" / "looks good": Looks good.
+                    if (isPlainYes(t) || LOOKS_GOOD.test(t)) {
+                      if (say) say({ who: "you", text: t, local: true });
+                      pb.approve(previewWaiting.id, {});
+                      return true;
                     }
-                  : null
-              }
-              follow={
-                pb.state
-                  ? `${pb.state.status}:${(pb.state.steps || []).filter((x) => x.status !== "waiting").length}`
-                  : null
-              }
-            />
+                    // "Thanks", "nice": not a change — no rebuild for it.
+                    if (PLEASANTRY.test(t)) {
+                      if (say) {
+                        say({ who: "you", text: t, local: true });
+                        say({
+                          who: "note",
+                          text: "Nothing sent to the Builder. Click Looks good to keep it, or say what to change.",
+                        });
+                      }
+                      return true;
+                    }
+                    // A widget the user already has: no Builder draft to fix —
+                    // a change goes to the Planner.
+                    if (!previewBuilt) return false;
+                    sendFix(previewWaiting.id, t);
+                    return true;
+                  }
+                  if (
+                    !isPlainYes(t) ||
+                    // The wizard's yes is its own button: a typed one goes
+                    // to the Planner, never lost.
+                    reviewHeld.current ||
+                    answering ||
+                    walking ||
+                    starting ||
+                    wp.sent ||
+                    (wp.build && !removed) ||
+                    !canBuild({ plan: wp.plan, check: wp.check })
+                  )
+                    return false;
+                  buildIt();
+                  return true;
+                }}
+                placeholder={
+                  planChange
+                    ? "Tell the Planner what to change in the plan"
+                    : previewWaiting && previewBuilt
+                      ? "Tell me what to change — it goes to the Builder as a fix"
+                      : "Reply"
+                }
+                hint={null}
+                // While it builds, the reply box says what's going on and Stop
+                // stops the build; the chat follows it as it goes.
+                working={
+                  building
+                    ? {
+                        text: pb.stopping
+                          ? "Stopping after this step…"
+                          : workingLine(pb.state),
+                        onStop: pb.stop,
+                      }
+                    : null
+                }
+                follow={
+                  pb.state
+                    ? `${pb.state.status}:${(pb.state.steps || []).filter((x) => x.status !== "waiting").length}`
+                    : null
+                }
+              />
+            </StepTailContext.Provider>
           ) : (
             <>
               <div className="flex-1 min-h-0 overflow-y-auto flex flex-col px-6 py-6">
@@ -2355,7 +3371,7 @@ export const LeadWorkspace = ({
         </section>
 
         {/* Right: outputs and the team, resizable */}
-        {narrow ? null : (
+        {narrow || wizardStage === "looks" ? null : (
           <ResizeHandle {...handleProps} ariaLabel="Resize outputs" />
         )}
         <aside
@@ -2368,26 +3384,34 @@ export const LeadWorkspace = ({
               ? outsOpen
                 ? `absolute right-0 z-30 flex flex-col min-h-0 border-l shadow-lg ${hairline} ${panel.backgroundColor || ""}`
                 : "hidden"
-              : `flex-shrink-0 flex flex-col min-h-0 border-l ${hairline}`
+              : wizardStage === "looks"
+                ? // Step 4 draws the looks across the window: no strip left
+                  // over (mounted, so the Outputs count holds).
+                  "hidden"
+                : `dr-chat-shell-side flex-shrink-0 flex flex-col min-h-0 border-l ${hairline}`
           }
           style={
             narrow
               ? // Frame 36: 380 wide, under the header, never past the window.
                 { width: 380, maxWidth: "100%", top: headerH, bottom: 0 }
-              : {
-                  // Expanded (frame 37): 760 wide, and never more than half the
-                  // screen, so the conversation keeps room.
-                  width: wide
-                    ? Math.min(
-                        WIDE,
-                        Math.round(
-                          (typeof window !== "undefined"
-                            ? window.innerWidth
-                            : 1600) * 0.5,
-                        ),
-                      )
-                    : sideWidth,
-                }
+              : wizardStage === "looks"
+                ? // Step 4 draws the looks across the window (the mockup):
+                  // only the window's close stays.
+                  {}
+                : {
+                    // Expanded (frame 37): 760 wide, and never more than half the
+                    // screen, so the conversation keeps room.
+                    width: wide
+                      ? Math.min(
+                          WIDE,
+                          Math.round(
+                            (typeof window !== "undefined"
+                              ? window.innerWidth
+                              : 1600) * 0.5,
+                          ),
+                        )
+                      : sideWidth,
+                  }
           }
         >
           {/* The window's close, in its own row above the column. */}
@@ -2405,12 +3429,15 @@ export const LeadWorkspace = ({
               <FontAwesomeIcon icon="xmark" className="h-4 w-4" />
             </button>
           </div>
-          {contact ? (
+          {contact && !(wizardStage === "looks" && !narrow) ? (
             <WorkspaceSide
               contact={contact}
               // The plan card's next step (plan → build).
               next={next}
               planActions={planActions}
+              reviewInChat={wizardOn || reuseOn}
+              reuseInChat={reuseOn}
+              sketchHidden={wizardStage === "looks"}
               buildNext={
                 wp.build ? (
                   <BuildNext
@@ -2442,7 +3469,8 @@ export const LeadWorkspace = ({
               planReadOnly={answering}
               onBuild={starting || walking ? null : buildIt}
               build={wp.build}
-              pb={pb}
+              // A fix from the preview shows in the chat too.
+              pb={pb ? { ...pb, revise: sendFix } : pb}
               dashTeam={dashTeamRoles}
               open={sideOpen}
               onOpen={setSideOpen}

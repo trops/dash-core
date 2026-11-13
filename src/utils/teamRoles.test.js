@@ -63,12 +63,11 @@ describe("runTeamRole (CRE-011 slice 4)", () => {
     expect(api.removeListener).toHaveBeenCalledWith(7);
   });
 
-  test("a paused or missing role is skipped", async () => {
-    setupBots({ team: [{ ...scout, paused: true }] });
-    expect(await runTeamRole("scout", "x")).toMatchObject({
-      skipped: true,
-      reason: "the Scout is paused",
-    });
+  test("a paused role still runs (the user asked); a missing one is skipped", async () => {
+    const api = setupBots({ team: [{ ...scout, paused: true }] });
+    const res = await runTeamRole("scout", "x");
+    expect(res.skipped).toBeUndefined();
+    expect(api.run).toHaveBeenCalled();
     setupBots({ team: [] });
     expect((await runTeamRole("checker", "x")).skipped).toBe(true);
     delete window.mainApi;
@@ -156,9 +155,9 @@ describe("why a Dash team role didn't run (QA 2026-10-28)", () => {
     expect(r.text).toMatch(/still working on an earlier request/);
     expect(r.text).not.toMatch(/Turn/);
   });
-  test("paused says turn it on; anything else says why", () => {
-    expect(teamSkipText("the Planner is paused").text).toMatch(
-      /is paused\. Turn it on/,
+  test("all bots paused says turn them on; anything else says why", () => {
+    expect(teamSkipText("all bots are paused").text).toMatch(
+      /^All bots are paused\. Turn them back on/,
     );
     expect(teamSkipText("over budget").text).toBe(
       "The Planner can't run right now: over budget.",

@@ -11,6 +11,9 @@
  *     dashboard?: { id, name },   // a dashboard the user has: the plan
  *                                 // changes it instead of making one (5e-2b)
  *     questions: [{ question, options?: [string] }],       // for the user
+ *       // Which of the user's providers: { question, pick: "providers",
+ *       // options: [exact provider names], reasons?: { name: what it reads },
+ *       // forBots?: true } — ticked, never chosen for them.
  *     pieces:    [{ kind: "widget" | "bot" | "layout" | "theme",
  *                   name,
  *                   source: "yours" | "ai-built" | "registry" | "new" | "update"
@@ -40,6 +43,15 @@
  *                   on?: [{ widget, event }], showResults?: boolean,
                    // made-up lines for the plan's preview (5d)
                    sample?: [string],
+                   // a new widget, part by part (Review & build): what it
+                   // shows, its empty words, the tools it reads and may
+                   // change with, how often it reads again
+                   shows?: string, whenEmpty?: string, reads?: [string],
+                   changes?: [string], refresh?: string,
+                   // what each of its events means (Talks to)
+                   sends?: [{ event, when, carries }],
+                   // the read the Looks previews are drawn from
+                   preview?: { tool, args? },
                    // a change to a widget the user has (Phase 3): what it
                    // adds, and what it keeps (settings, connection, events)
                    adds?: string, keeps?: [string] }],
@@ -64,6 +76,8 @@ const BEFORE_KINDS = ["connect", "install", "approve"];
 const NEEDS_PACKAGE = new Set(["yours", "ai-built", "registry", "update"]);
 
 const isStr = (v) => typeof v === "string" && v.trim().length > 0;
+// Sent by Dash for every widget (widgetEvents.js): never "not listed".
+const RESERVED_EVENTS = ["readComplete", "renderComplete", "readFailed"];
 const isObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** A new or changed theme's colors that aren't #rrggbb (theme rounds). */
@@ -384,6 +398,32 @@ function validatePlan(plan, context = {}) {
       if (q && q.options !== undefined && !Array.isArray(q.options)) {
         errors.push(`questions[${i}].options must be a list.`);
       }
+      if (q && q.pick !== undefined && q.pick !== "providers") {
+        errors.push(`questions[${i}].pick must be "providers".`);
+      }
+      if (
+        q &&
+        q.pick === "providers" &&
+        !(
+          Array.isArray(q.options) &&
+          q.options.length &&
+          q.options.every((o) => isStr(o))
+        )
+      ) {
+        errors.push(
+          `questions[${i}] picks providers: options must be their names.`,
+        );
+      }
+      if (
+        q &&
+        q.reasons !== undefined &&
+        (!q.reasons ||
+          typeof q.reasons !== "object" ||
+          Array.isArray(q.reasons) ||
+          !Object.values(q.reasons).every((v) => typeof v === "string"))
+      ) {
+        warnings.push(`questions[${i}].reasons must map names to text.`);
+      }
     });
   }
 
@@ -660,6 +700,40 @@ function validatePlan(plan, context = {}) {
           `${at}.sample should be a list of short lines; it isn't shown.`,
         );
       }
+      // What a new widget will be (Review & build): shown to the user,
+      // never blocks building.
+      for (const k of ["shows", "whenEmpty", "refresh"]) {
+        if (p[k] !== undefined && typeof p[k] !== "string") {
+          warnings.push(
+            `${at}.${k} should be a short sentence; it isn't shown.`,
+          );
+        }
+      }
+      for (const k of ["reads", "changes"]) {
+        if (
+          p[k] !== undefined &&
+          !(Array.isArray(p[k]) && p[k].every((x) => typeof x === "string"))
+        ) {
+          warnings.push(`${at}.${k} should be a list of tool names.`);
+        }
+      }
+      if (
+        p.sends !== undefined &&
+        !(
+          Array.isArray(p.sends) &&
+          p.sends.every((s) => s && typeof s === "object" && isStr(s.event))
+        )
+      ) {
+        warnings.push(
+          `${at}.sends should be a list of { event, when, carries }.`,
+        );
+      }
+      if (
+        p.preview !== undefined &&
+        !(isObject(p.preview) && isStr(p.preview.tool))
+      ) {
+        warnings.push(`${at}.preview should be { tool, args }.`);
+      }
       // A registry widget is installed first — the user approves it.
       if (
         p.source === "registry" &&
@@ -700,6 +774,21 @@ function validatePlan(plan, context = {}) {
     };
     const widgets = byName("widget");
     const bots = byName("bot");
+    // Bots already on the plan's dashboard: a new widget can show what
+    // they send (a lead sends no results).
+    const target = planTarget(plan);
+    const there =
+      (target &&
+        Array.isArray(context.dashboards) &&
+        (context.dashboards.find((d) => d && String(d.id) === target.id) || {})
+          .bots) ||
+      [];
+    const onDashboard = new Set(
+      [...(Array.isArray(context.bots) ? context.bots : []), ...there]
+        .map(String)
+        .filter((n) => !/ \(lead\)$/.test(n))
+        .map((n) => n.trim().toLowerCase()),
+    );
     pieces.forEach((p, i) => {
       if (!p || typeof p !== "object") return;
       const at = `pieces[${i}]`;
@@ -724,7 +813,11 @@ function validatePlan(plan, context = {}) {
               errors.push(
                 `${at}.on[${j}] names "${o.widget}", which isn't a widget in the plan.`,
               );
-            } else if (Array.isArray(w.events) && !w.events.includes(o.event)) {
+            } else if (
+              Array.isArray(w.events) &&
+              !w.events.includes(o.event) &&
+              !RESERVED_EVENTS.includes(o.event)
+            ) {
               warnings.push(
                 `${at}.on[${j}]: ${o.widget} doesn't list the event "${o.event}".`,
               );
@@ -741,9 +834,17 @@ function validatePlan(plan, context = {}) {
               errors.push(
                 `${at}.listens[${j}] needs a bot, a result and a handler.`,
               );
-            } else if (!bots.has(l.bot.trim().toLowerCase())) {
+            } else if (
+              !bots.has(l.bot.trim().toLowerCase()) &&
+              // A bot already there: by the id the user picked in Talks to
+              // (Dash wires it — the editor, for a cell's widget).
+              !(
+                isStr(l.botId) &&
+                (context.cell || onDashboard.has(l.bot.trim().toLowerCase()))
+              )
+            ) {
               errors.push(
-                `${at}.listens[${j}] names "${l.bot}", which isn't a bot in the plan.`,
+                `${at}.listens[${j}] names "${l.bot}", which isn't a bot in the plan (a bot already on the dashboard is picked by the user, in Talks to).`,
               );
             }
           });

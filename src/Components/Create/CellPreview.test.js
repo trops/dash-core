@@ -119,7 +119,7 @@ test("inputs start from the plan: its connection and settings", () => {
 
 test("Run preview runs the checked draft in the sandbox, with the inputs", async () => {
   setup();
-  fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+  // Opening it runs it.
   expect(await screen.findByTestId("sandbox")).toHaveTextContent(
     "SlackThreads",
   );
@@ -139,7 +139,7 @@ test("an installed widget (registry or yours) runs from its bundle", async () =>
   expect(screen.getByTestId("cell-preview-status")).toHaveTextContent(
     "Not on your dashboard yet",
   );
-  fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+  // Opening it runs it.
   await screen.findByTestId("sandbox");
   expect(window.mainApi.widgets.readBundle).toHaveBeenCalledWith(
     "@trops/threads",
@@ -175,7 +175,9 @@ test("Change something sends the note to the Builder; Discard discards", async (
     { target: { value: "Smaller rows" } },
   );
   fireEvent.click(send);
-  await waitFor(() => expect(h.onRevise).toHaveBeenCalledWith("Smaller rows"));
+  await waitFor(() =>
+    expect(h.onRevise).toHaveBeenCalledWith("Smaller rows", null),
+  );
   fireEvent.click(
     screen.getByRole("button", { name: "Discard — leave the cell empty" }),
   );
@@ -196,7 +198,7 @@ test("an installed widget loads by the name it's kept under (registry: bare name
       preview: { ...made.preview, widgetName: "clock" },
     },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+  // Opening it runs it.
   await screen.findByTestId("sandbox");
   expect(window.mainApi.widgets.readBundle).toHaveBeenCalledWith("clock");
 });
@@ -225,12 +227,12 @@ test("nothing to connect: it runs straight away, without a settings note", async
   expect(screen.queryByText(/Filled in from the plan/)).toBeNull();
 });
 
-test("with a connection it waits for Run preview", () => {
+test("opening it runs it — with a connection too, no Run preview first", async () => {
   setup();
-  expect(window.mainApi.widgetBuilder.previewDraft).not.toHaveBeenCalled();
-  expect(
-    screen.getByRole("button", { name: "Run preview" }),
-  ).toBeInTheDocument();
+  await waitFor(() =>
+    expect(window.mainApi.widgetBuilder.previewDraft).toHaveBeenCalled(),
+  );
+  expect(screen.queryByRole("button", { name: "Run preview" })).toBeNull();
 });
 
 // Consolidation Phase 3: a change to a widget previews its draft with its
@@ -298,7 +300,7 @@ describe("a preview that never shows (QA 2026-10-22)", () => {
     jest.useFakeTimers();
     try {
       setup();
-      fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+      // Opening it runs it.
       await screen.findByTestId("sandbox");
       act(() => {
         jest.advanceTimersByTime(PREVIEW_START_TIMEOUT_MS + 10);
@@ -313,7 +315,7 @@ describe("a preview that never shows (QA 2026-10-22)", () => {
     jest.useFakeTimers();
     try {
       setup();
-      fireEvent.click(screen.getByRole("button", { name: "Run preview" }));
+      // Opening it runs it.
       await screen.findByTestId("sandbox");
       act(() => {
         mockRendered.onMounted();
@@ -326,4 +328,85 @@ describe("a preview that never shows (QA 2026-10-22)", () => {
       jest.useRealTimers();
     }
   });
+});
+
+// jsdom has no PointerEvent: a mouse event with a pointer id stands in.
+beforeAll(() => {
+  if (!window.PointerEvent) {
+    window.PointerEvent = class extends MouseEvent {
+      constructor(type, init = {}) {
+        super(type, init);
+        this.pointerId = init.pointerId;
+      }
+    };
+  }
+});
+
+test("Mark a spot: a box on the running preview, numbered; it goes with the words", async () => {
+  const h = setup();
+  // Opening it runs it.
+  await screen.findByTestId("sandbox");
+  fireEvent.click(screen.getByRole("button", { name: "Mark a spot" }));
+  expect(screen.getByTestId("cell-preview-marking")).toHaveTextContent(
+    "Drag a box around what's wrong",
+  );
+  const area = screen.getByTestId("mark-spots");
+  const rect = { left: 0, top: 0, width: 400, height: 300 };
+  area.getBoundingClientRect = () => rect;
+  screen.getByTestId("cell-preview-stage").getBoundingClientRect = () => ({
+    ...rect,
+    left: 40,
+    top: 90,
+  });
+  fireEvent.pointerDown(area, {
+    button: 0,
+    clientX: 10,
+    clientY: 20,
+    pointerId: 1,
+  });
+  fireEvent.pointerMove(area, { clientX: 110, clientY: 80, pointerId: 1 });
+  fireEvent.pointerUp(area, { clientX: 110, clientY: 80, pointerId: 1 });
+  expect(screen.getAllByTestId("mark-spot")).toHaveLength(1);
+  expect(
+    screen.getByRole("button", { name: "Remove spot 1" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("What's wrong here?")).toBeInTheDocument();
+  fireEvent.change(
+    screen.getByPlaceholderText("e.g. smaller rows, show who replied last"),
+    { target: { value: "Too much padding" } },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Send to the Builder" }));
+  await waitFor(() =>
+    expect(h.onRevise).toHaveBeenCalledWith("Too much padding", {
+      rect: { x: 40, y: 90, width: 400, height: 300 },
+      spots: [{ x: 10, y: 20, width: 100, height: 60 }],
+    }),
+  );
+  // Sent: the boxes are cleared.
+  await waitFor(() =>
+    expect(screen.queryAllByTestId("mark-spot")).toHaveLength(0),
+  );
+});
+
+test("a click is not a box", async () => {
+  setup();
+  // Opening it runs it.
+  await screen.findByTestId("sandbox");
+  fireEvent.click(screen.getByRole("button", { name: "Mark a spot" }));
+  const area = screen.getByTestId("mark-spots");
+  area.getBoundingClientRect = () => ({
+    left: 0,
+    top: 0,
+    width: 400,
+    height: 300,
+  });
+  fireEvent.pointerDown(area, {
+    button: 0,
+    clientX: 10,
+    clientY: 20,
+    pointerId: 1,
+  });
+  fireEvent.pointerUp(area, { clientX: 12, clientY: 21, pointerId: 1 });
+  expect(screen.queryAllByTestId("mark-spot")).toHaveLength(0);
+  expect(screen.getByText("Change something")).toBeInTheDocument();
 });

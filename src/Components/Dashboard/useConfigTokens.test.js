@@ -29,6 +29,7 @@ describe("useConfigTokens", () => {
       "border-neutral-dark": "border-gray-200",
       "bg-neutral-very-dark": "bg-gray-100",
       "border-primary-dark": "border-indigo-200",
+      "text-primary-medium": "text-indigo-600",
     });
     expect(t).toEqual({
       muted: "text-gray-600",
@@ -37,6 +38,7 @@ describe("useConfigTokens", () => {
       selectedBg: "bg-gray-100",
       selectedBorder: "border-indigo-200",
       fieldBg: "bg-gray-100",
+      accent: "text-indigo-600",
     });
   });
 

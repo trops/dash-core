@@ -18,6 +18,7 @@ import { resolveGateWidgetId } from "../utils/scopedComponentId";
 import { MountTokenWrapper } from "./MountTokenWrapper";
 import { buildWidgetData } from "./buildWidgetData";
 import { canFixWithAi, fixRequestDetail } from "./canFixWithAi";
+import { sendRenderEvent } from "../utils/widgetEvents";
 import {
   noteWidgetCrashed,
   setWidgetNamer,
@@ -233,6 +234,22 @@ const WidgetRenderer = ({
   useEffect(() => {
     if (componentVersion > 0) restartGuarded(guardKey(component));
   }, [componentVersion, component]);
+  // Every widget tells others it is on screen (renderComplete) — sent by
+  // Dash, not the widget. Not for a widget that isn't installed.
+  useEffect(() => {
+    if (
+      !component ||
+      !ComponentManager.getComponent(component)?.component ||
+      ComponentManager.isLayoutContainer(component)
+    )
+      return;
+    sendRenderEvent({
+      componentName: component,
+      id: params.id,
+      dashboardId: params.dashboardId,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widgetKey, componentVersion, component]);
 
   try {
     const m = ComponentManager.componentMap();

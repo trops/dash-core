@@ -112,6 +112,43 @@ describe("resolveWidgetComponent — names with or without the Widget suffix", (
       { component: "trops.clock.MinimalTextClockWidget" },
     );
   });
+  it('a registry package by its bare name ("clock") — the scoped one is used', () => {
+    // Registry installs are kept under their bare name too (found live:
+    // the Planner said "clock" and every Try again failed the same way).
+    const both = () => [
+      { name: "clock", widgets: clocks()[0].widgets },
+      ...clocks(),
+    ];
+    assert.deepEqual(
+      resolveWidgetComponent("clock", null, both, { name: "Digital Clock" }),
+      { component: "trops.clock.DigitalClockWidget" },
+    );
+    assert.deepEqual(
+      resolveWidgetComponent("clock", "FlipClockWidget", () => [
+        {
+          name: "@trops/clock",
+          widgets: [{ name: "FlipClockWidget" }],
+        },
+      ]),
+      { component: "trops.clock.FlipClockWidget" },
+    );
+  });
+  it("a bare name in two scopes: the one the component id names", () => {
+    const two = () => [
+      { name: "@ai-built/clock", widgets: [{ name: "ClockWidget" }] },
+      { name: "@trops/clock", widgets: [{ name: "FlipClockWidget" }] },
+    ];
+    assert.deepEqual(
+      resolveWidgetComponent("clock", "trops.clock.FlipClockWidget", two),
+      { component: "trops.clock.FlipClockWidget" },
+    );
+  });
+  it("a bare name nothing is installed under still says so", () => {
+    assert.match(
+      resolveWidgetComponent("nope", null, clocks).error,
+      /isn't a widget package/,
+    );
+  });
   it("no match still says which to pick", () => {
     assert.match(
       resolveWidgetComponent("@trops/clock", null, clocks, { name: "Flip" })

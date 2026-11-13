@@ -63,3 +63,41 @@ describe("useMcpProvider — CALL_TOOL_TIMEOUT_MS", () => {
     expect(SOURCE).toMatch(/}\s*,\s*CALL_TOOL_TIMEOUT_MS\s*\)/);
   });
 });
+
+describe("useMcpProvider — a server stopped under a call", () => {
+  const { isServerGone } = require("./useMcpProvider");
+  test("is recognised, so the call starts it again and retries once", () => {
+    expect(
+      isServerGone("Server not connected: __no_workspace__::Google Calendar"),
+    ).toBe(true);
+    expect(isServerGone("Not connected")).toBe(true);
+    expect(isServerGone("API error: 400 - Bad Request")).toBe(false);
+    expect(isServerGone('Tool "x" is not allowed for this widget')).toBe(false);
+  });
+  test("callTool retries through connect() once — never in a loop", () => {
+    const body = SOURCE.slice(SOURCE.indexOf("const callTool = useCallback"));
+    expect(body).toMatch(
+      /if \(!isServerGone\(e && e\.message\)\) throw e;[\s\S]{0,200}await connect\(\);\s*return call\(\);/,
+    );
+  });
+});
+
+describe("useMcpProvider — the app's own read (internal)", () => {
+  const src = require("fs").readFileSync(
+    require("path").join(__dirname, "useMcpProvider.js"),
+    "utf8",
+  );
+  test("no widget permission to ask, no Issue, no widget events", () => {
+    expect(src).toMatch(/const widgetIdForGate = internal \? null :/);
+    expect(src).toMatch(/if \(internal\) return;/);
+    expect(src).toMatch(
+      /internal \? \{\} : widgetFacts\(widgetData, workspace\)/,
+    );
+    expect(src).toMatch(/if \(!selectedProviderName \|\| internal\) return;/);
+  });
+  test("left while its server started: the hold is let go", () => {
+    expect(src).toMatch(
+      /if \(!mountedRef\.current\) \{[\s\S]{0,200}releaseServer\(dashApi, selectedProviderName, workspaceId, stateKey\)/,
+    );
+  });
+});

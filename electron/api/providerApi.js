@@ -8,6 +8,7 @@ const { ipcRenderer } = require("electron");
 const {
   PROVIDER_SAVE,
   PROVIDER_LIST,
+  PROVIDER_LIST_SUMMARIES,
   PROVIDER_GET,
   PROVIDER_DELETE,
   PROVIDER_APPROVE_RUN,
@@ -68,6 +69,10 @@ const providerApi = {
    * @returns {Promise<Array>} Array of provider objects with name, type, credentials
    */
   listProviders: (appId) => ipcRenderer.invoke(PROVIDER_LIST, { appId }),
+
+  /** The user's providers and their approved tools, nothing decrypted. */
+  listSummaries: (appId) =>
+    ipcRenderer.invoke(PROVIDER_LIST_SUMMARIES, { appId }),
 
   /**
    * getProvider

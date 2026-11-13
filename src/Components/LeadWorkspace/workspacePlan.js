@@ -6,6 +6,7 @@
  */
 import { countsLine, editNote } from "../Create/planChecklist";
 import { planTarget } from "../../utils/teamPlan";
+import { reuseIndex } from "./WidgetWizard/reuseSpec";
 import {
   themeByName,
   themeColors,
@@ -228,10 +229,13 @@ function addedCount(plan) {
 
 /**
  * Yes, build it — or, for a dashboard the user has, Yes, make the changes;
- * for an empty cell, Yes, add it.
+ * for an empty cell, Yes, build it too — approving the plan, not placing it
+ * — or, a widget the user already has, Yes, preview it (nothing to build).
  */
 export function yesLabel(plan, { rawThemes = null, username = null } = {}) {
-  if (plan && plan.cell) return "Yes, add it";
+  if (plan && plan.cell) {
+    return reuseIndex(plan) >= 0 ? "Yes, preview it" : "Yes, build it";
+  }
   if (plan && plan.widgetChange) return "Yes, change it";
   if (isThemeOnly(plan)) return "Yes, make it";
   // A change to a saved theme: a downloaded one becomes a remix.
@@ -405,7 +409,9 @@ export function stillAnswering(messages) {
   const list = Array.isArray(messages) ? messages : [];
   const last = list[list.length - 1];
   if (!last) return false;
-  if (last.who === "you") return true;
+  // Yours, sent to the lead — not a fix for the Builder, or words kept here
+  // (local) at a preview.
+  if (last.who === "you" && !last.fix && !last.local) return true;
   return list.some((m) => m && m.who === "step" && m.status === "asking");
 }
 
@@ -602,8 +608,9 @@ export function nextNeedsYou(next) {
 }
 
 /** Who asks for each Before it builds item: the Planner made the list. */
-export function whoAsks() {
-  return "Planner · Dash team";
+export function whoAsks(item) {
+  // Which provider a widget reads from is the user's choice.
+  return item && item.kind === "choose" ? "You choose" : "Planner · Dash team";
 }
 
 const SOURCE_LINE = {
@@ -693,23 +700,51 @@ export function planRows(
       warn: true,
     });
   }
+  // Which provider a widget reads from: the user picks it before the build.
+  for (const it of checklist || []) {
+    if (!it || it.kind !== "choose") continue;
+    rows.push({
+      main: it.label,
+      sub: "You pick — before it builds",
+      warn: true,
+    });
+  }
   return rows;
 }
 
 /**
- * The Providers line at the foot of the right column: each provider the plan
- * needs and whether it's connected; "none needed" for a plan that needs
- * none.
+ * The Providers line at the foot of the right column: the providers the
+ * plan names (by name), each it still needs connected, and any widget still
+ * to choose for; "none needed" for a plan that needs none.
  */
-export function providersLine(checklist = [], isDone = () => false) {
+export function providersLine(
+  checklist = [],
+  isDone = () => false,
+  plan = null,
+) {
+  const named = [];
+  for (const p of (plan && Array.isArray(plan.pieces) && plan.pieces) || []) {
+    const pins =
+      p && p.provider && typeof p.provider === "object" ? p.provider : {};
+    for (const n of Object.values(pins)) {
+      if (typeof n === "string" && n && !named.includes(n)) named.push(n);
+    }
+    for (const t of (p && Array.isArray(p.tools) && p.tools) || []) {
+      const n = t && t.provider;
+      if (typeof n === "string" && n && !named.includes(n)) named.push(n);
+    }
+  }
   const items = connectItems(checklist);
-  if (!items.length) return "none needed";
-  return items
-    .map(
+  const choose = (checklist || []).filter((it) => it && it.kind === "choose");
+  const parts = [
+    ...named,
+    ...items.map(
       (it) =>
         `${providerName(it)} · ${isDone(it) ? "connected" : "not connected yet"}`,
-    )
-    .join(" · ");
+    ),
+    ...(choose.length ? [`${choose.length} to choose`] : []),
+  ];
+  return parts.length ? parts.join(" · ") : "none needed";
 }
 
 const firstLineOf = (t) =>

@@ -71,14 +71,13 @@ export function buildLlmHistory(messages) {
 }
 
 /**
- * Why this lead can't take a message right now, or null (AC7). A paused or
- * over-budget lead doesn't start a run (US-019 AC4) — say why instead.
+ * Why this lead can't take a message right now, or null (AC7). An
+ * over-budget lead doesn't start a run (US-019 AC4) — say why instead. A
+ * paused one still answers the user: paused only stops what it does on its
+ * own.
  */
 export function availabilityNotice(lead) {
   if (!lead) return null;
-  if (lead.paused) {
-    return `${lead.leadName} is paused — resume it in the Bots view.`;
-  }
   if (lead.overBudget) {
     return `${lead.leadName} is over its budget — keep it running this month from the Bots panel.`;
   }

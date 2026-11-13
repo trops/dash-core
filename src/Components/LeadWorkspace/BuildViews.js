@@ -15,8 +15,10 @@ import {
   InstallReviewDialog,
 } from "../Create/PlanChecklistDialogs";
 import { CellPreview } from "../Create/CellPreview";
+import { ChooseProviderDialog } from "../Create/ProviderPick";
 import { RemoveSummary, TryBots } from "./BuildParts";
 import { OutputCard } from "./PlanViews";
+import { TextLink } from "./WidgetWizard/TextLink";
 import { usePlanBuild } from "./usePlanBuild";
 import {
   buildChat,
@@ -64,6 +66,21 @@ export const BuildWalk = ({ wp, onReady, onCancel }) => {
     wp.setCheck(next, status);
     setChecks((c) => ({ ...c, [next.id]: status }));
   };
+  if (next.kind === "choose") {
+    // Chosen: the plan names it, the item is gone, the walk goes on.
+    return (
+      <ChooseProviderDialog
+        key={next.id}
+        plan={wp.plan}
+        index={next.pieceIndex}
+        onEdit={wp.edit}
+        picked={wp.picked || []}
+        onPicked={wp.notePicked || null}
+        onDone={() => {}}
+        onClose={onCancel}
+      />
+    );
+  }
   if (next.kind === "install") {
     return (
       <InstallReviewDialog
@@ -137,6 +154,9 @@ const BuildStepLine = ({ step }) => {
  *   "preview"); placeInCell: a cell build put in its cell again (6c);
  *   swapInPlace: a new widget put in the changed one's place (6c)
  * @param {string|null} actionError
+ * @param {number} fix   shown under the user's fix (the fix's number): no
+ *   yes, and the step line and words say it's a fix to the widget
+ * @param {boolean} earlier  a fix came after: only what was built then
  */
 export const BuildInChat = ({
   build,
@@ -153,10 +173,32 @@ export const BuildInChat = ({
   change = null,
   // Nothing runs it now (usePlanBuild's restored): Carry on building.
   restored = false,
+  fix = 0,
+  earlier = false,
 }) => {
   const { muted } = useConfigTokens();
-  const chat = chatOf(build, state, { actions, cell, change, restored });
+  const chat = fixChat(
+    chatOf(build, state, { actions, cell, change, restored }),
+    state,
+    fix,
+  );
   const card = chat.card;
+  // A fix came after it: what was built, as it was then — the rest is
+  // under the fix.
+  if (earlier) {
+    const name = previewName(state);
+    return (
+      <div className="flex flex-col gap-3" data-testid="workspace-build">
+        <ChatMessage role="you">{yes}</ChatMessage>
+        <BuildStepLine
+          step={{
+            label: name ? `Builder built ${name}` : "Builder built it",
+            status: "done",
+          }}
+        />
+      </div>
+    );
+  }
   const openCard = () => {
     // A theme it made opens in the theme editor (theme round).
     if (card && card.kind === "theme") {
@@ -177,7 +219,7 @@ export const BuildInChat = ({
   };
   return (
     <div className="flex flex-col gap-3" data-testid="workspace-build">
-      <ChatMessage role="you">{yes}</ChatMessage>
+      {fix ? null : <ChatMessage role="you">{yes}</ChatMessage>}
       {state ? (
         <>
           <BuildStepLine step={chat.step} />
@@ -188,7 +230,9 @@ export const BuildInChat = ({
                 icon={CARD_ICON[card.kind] || CARD_ICON.dashboard}
                 title={card.title}
                 sub={card.sub}
-                bordered={false}
+                // A card to open, as the mockup: an edge, a fill, and
+                // what a click does.
+                go={chat.choices === "preview" ? "Open preview" : "Open"}
                 onClick={openCard}
               />
             </div>
@@ -225,6 +269,67 @@ export const BuildInChat = ({
     </div>
   );
 };
+
+/** The widget the build's preview shows ("Preview Shopping Lite"). */
+function previewName(state) {
+  const at = ((state && state.steps) || []).find((s) => s.kind === "preview");
+  return at ? String(at.label).replace(/^Preview /, "") : "";
+}
+
+/**
+ * Under the user's fix: the Builder changing the widget, then the widget
+ * changed — said as a fix, never as a new build.
+ */
+export function fixChat(chat, state, fix) {
+  if (!fix || !state) return chat;
+  const name = previewName(state) || "it";
+  const steps = state.steps || [];
+  const at = steps.find((s) => s.kind === "preview");
+  // Changing: its build or check isn't done yet (after Looks good they are,
+  // and installing says so in its own words).
+  const changing =
+    !!at &&
+    steps.some(
+      (s) =>
+        (s.id === `build:${at.piece}` || s.id === `check:${at.piece}`) &&
+        s.status !== "done",
+    );
+  if (state.status === "running" && changing) {
+    return {
+      ...chat,
+      step: {
+        label: `Sent to the Builder as a fix · changing ${name}`,
+        status: "asking",
+      },
+      card: null,
+      reply:
+        "The Builder is changing only what you asked — the rest stays as it is.",
+    };
+  }
+  if (state.status === "waiting-for-you") {
+    return {
+      ...chat,
+      step: { label: `Builder changed ${name} · fix ${fix}`, status: "done" },
+      card: {
+        ...(chat.card || { kind: "widget" }),
+        title: name,
+        sub: "Widget · changed · preview ready",
+      },
+      reply: `Done — have a look on the right. Only what you asked changed; the rest of ${name} is as it was. Tell me if anything else should change.`,
+    };
+  }
+  return chat;
+}
+
+/** An earlier fix, under the user's words: what the Builder did. */
+export const PastFix = ({ state, n }) => (
+  <BuildStepLine
+    step={{
+      label: `Builder changed ${previewName(state) || "it"} · fix ${n}`,
+      status: "done",
+    }}
+  />
+);
 
 /** What the chat says about a build (buildChat), as BuildInChat shows it. */
 function chatOf(build, state, { actions = {}, cell, change, restored }) {
@@ -314,13 +419,6 @@ const BuildChoices = ({ chat, state, build, actions }) => {
     return (
       <div data-testid="workspace-build-choices">
         <Button title="Put it in its place" onClick={actions.swapInPlace} />
-      </div>
-    );
-  }
-  if (chat.choices === "place-again" && actions.placeInCell) {
-    return (
-      <div data-testid="workspace-build-choices">
-        <Button2 title="Put it in again" onClick={actions.placeInCell} />
       </div>
     );
   }
@@ -521,6 +619,15 @@ const BuildChoices = ({ chat, state, build, actions }) => {
           title="Change something"
           onClick={() => actions.open("preview")}
         />
+        {actions.changePlan ? (
+          <span className={`text-xs ${muted}`}>
+            Something bigger, like a different provider?{" "}
+            <TextLink
+              title="Change the plan instead"
+              onClick={actions.changePlan}
+            />
+          </span>
+        ) : null}
       </div>
     );
   }
@@ -628,7 +735,7 @@ export const BuildLogOutput = ({ build, state, onRemoved = null }) => {
       />
       {rows.length ? (
         <div
-          className={`flex flex-col rounded-xl border overflow-hidden ${hairline}`}
+          className={`dr-chat-card flex flex-col rounded-xl border overflow-hidden ${hairline}`}
         >
           {rows.map((r, i) => (
             <div
@@ -706,7 +813,7 @@ export const CheckReportOutput = ({ state }) => {
       />
       {rows.length ? (
         <div
-          className={`flex flex-col rounded-xl border overflow-hidden ${hairline}`}
+          className={`dr-chat-card flex flex-col rounded-xl border overflow-hidden ${hairline}`}
         >
           {rows.map((r, i) => (
             <div
@@ -785,7 +892,7 @@ export const PreviewOutput = ({ state, pb, wire = null }) => {
         onApprove={(inputs) => decide(() => pb.approve(at.id, inputs))}
         onRevise={
           steps.some((x) => x.id === `build:${at.piece}`)
-            ? (note) => decide(() => pb.revise(at.id, note))
+            ? (note, marks) => decide(() => pb.revise(at.id, note, marks))
             : null
         }
       />
@@ -807,7 +914,7 @@ export const BuildNeedsYou = ({ types = [], onConnected }) => {
       {types.map((t) => (
         <div
           key={t}
-          className={`flex flex-col gap-2 rounded-xl border px-4 py-3 ${statusTokens.warning.accentBorder}`}
+          className={`dr-chat-card flex flex-col gap-2 rounded-xl border px-4 py-3 ${statusTokens.warning.accentBorder}`}
           data-testid="workspace-build-needs"
         >
           <span className={`text-xs ${muted}`}>Builder · Dash team</span>

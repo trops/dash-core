@@ -12,6 +12,7 @@ const {
   rankLibrary,
   classifyTool,
   describeProvider,
+  toolSignature,
   HandoffCap,
   MAX_HANDOFFS,
 } = require("./roleTools");
@@ -279,7 +280,33 @@ describe("list_providers — can / can't (G9)", () => {
     );
     assert.match(
       res.text,
-      /Slack \(slack\) — not running\n {2}tools: not known until it runs/,
+      /Slack \(slack\) — not running now; it starts by itself[^\n]*never ask the user to start it\n {2}tools: not known until it runs/,
+    );
+  });
+
+  it("says what each tool takes, from its live schema", () => {
+    const tool = {
+      name: "ha_call_service",
+      inputSchema: {
+        type: "object",
+        properties: {
+          domain: { type: "string" },
+          service: { type: "string" },
+          entity_id: { type: "string" },
+          return_response: { type: "boolean" },
+          mode: { enum: ["a", "b"] },
+        },
+        required: ["domain", "service"],
+      },
+    };
+    assert.equal(
+      toolSignature(tool),
+      'ha_call_service(domain: string, service: string, entity_id?: string, return_response?: boolean, mode?: "a" | "b")',
+    );
+    assert.equal(toolSignature("get_x"), "get_x");
+    assert.match(
+      describeProvider({ name: "HA", running: true, tools: [tool] }),
+      /ha_call_service\(domain: string, service: string/,
     );
   });
 

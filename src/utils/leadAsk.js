@@ -16,6 +16,24 @@ function bots() {
     : null;
 }
 
+/** Why the lead's run didn't start, for the user (the runner's reason). */
+export function skipReason(name, reason) {
+  const r = String(reason || "");
+  if (/all bots are paused/i.test(r)) {
+    return "All bots are paused — turn them back on in the Bots page to ask.";
+  }
+  if (/over its budget/i.test(r)) {
+    return `${name} is over its budget — keep it running this month from the Bots panel.`;
+  }
+  if (/active profile/i.test(r)) {
+    return `${name} isn't in the profile you're using now.`;
+  }
+  if (!r || /in progress|busy/i.test(r)) {
+    return `${name} is busy with another run — try again when it finishes.`;
+  }
+  return `${name} can't answer right now: ${r}.`;
+}
+
 /**
  * @param {{ botId, leadName, paused?, overBudget?, running? }} lead
  * @param {string} question
@@ -69,7 +87,7 @@ export async function askTeamLead(
     if (record.skipped) {
       return {
         skipped: true,
-        reason: `${lead.leadName} is busy with another run — try again when it finishes.`,
+        reason: skipReason(lead.leadName, record.reason),
       };
     }
     return {

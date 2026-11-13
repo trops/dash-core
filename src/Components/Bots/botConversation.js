@@ -378,8 +378,10 @@ export function attentionCount({ botIds, approvals, lastRunByBot }) {
 export function skipNotice(name, reason) {
   const who = name || "This bot";
   const r = String(reason || "").toLowerCase();
+  // A paused bot still takes the user's message: only "all bots are
+  // paused" stops it.
   if (r.includes("paused")) {
-    return `${who} is paused — resume it, then send again.`;
+    return "All bots are paused — turn them back on in the Bots page, then send again.";
   }
   if (r.includes("budget")) {
     return `${who} is over its budget — keep it running this month, then send again.`;

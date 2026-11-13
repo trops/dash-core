@@ -80,9 +80,30 @@ describe("its plan", () => {
     expect(planForCell(PLAN, null)).toBe(PLAN);
   });
 
-  test("its words: Yes, add it; in the cell you picked", () => {
+  test("its words: Yes, build it — or, a widget you already have, Yes, preview it; in the cell you picked", () => {
     const p = planForCell(PLAN, cell);
-    expect(yesLabel(p)).toBe("Yes, add it");
+    // The registry's Weather: nothing to build.
+    expect(yesLabel(p)).toBe("Yes, preview it");
+    expect(
+      yesLabel({
+        ...p,
+        pieces: [
+          {
+            kind: "widget",
+            name: "Calendar",
+            source: "ai-built",
+            package: "@ai-built/cal",
+          },
+        ],
+      }),
+    ).toBe("Yes, preview it");
+    // A new one is built.
+    expect(
+      yesLabel({
+        ...p,
+        pieces: [{ kind: "widget", name: "W", source: "new" }],
+      }),
+    ).toBe("Yes, build it");
     expect(planLine(p)).toBe("Plan · 1 added, in the cell you picked");
     expect(buildKind(p)).toBe("cell");
     expect(buildOptions("cell")).toEqual({ cell: true });
@@ -194,8 +215,8 @@ describe("its build", () => {
     expect(chat("placing").choices).toBeNull();
   });
 
-  test("in the cell: Put it in again, for edits that were cancelled", () => {
-    expect(chat(true).choices).toBe("place-again");
+  test("in the cell: done — nothing more to click", () => {
+    expect(chat(true).choices).toBeNull();
   });
 
   test("not being edited any more: says so, Put it in the cell", () => {
@@ -241,12 +262,29 @@ describe("its build", () => {
       {
         status: "waiting-for-you",
         steps: [
+          { kind: "build", label: "Build Weather", status: "done" },
           { kind: "preview", label: "Preview Weather", status: "needs-you" },
         ],
       },
       { kind: "cell" },
     );
     expect(c.reply).toMatch(/before it goes in the cell you picked\.$/);
+  });
+
+  test("a widget you already have: nothing was built — never 'Builder built'", () => {
+    const c = buildChat(
+      {
+        status: "waiting-for-you",
+        steps: [
+          { kind: "preview", label: "Preview Weather", status: "needs-you" },
+        ],
+      },
+      { kind: "cell" },
+    );
+    expect(c.step.label).toBe("Weather is ready to look at");
+    expect(c.card.sub).toBe("Your widget · preview ready");
+    expect(c.reply).toMatch(/the one you already have/);
+    expect(c.reply).not.toMatch(/Builder/);
   });
 });
 

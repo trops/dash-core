@@ -393,15 +393,11 @@ describe("asking a team lead (5e-2a)", () => {
     expect(screen.queryByRole("button", { name: "Open as a plan" })).toBeNull();
   });
 
-  test("a paused lead isn't asked; the note says why", async () => {
+  test("a paused lead is still asked: the user's message goes through", async () => {
     const bots = leadApi();
     render(<AskStep question="Hi" recipient={{ ...LEAD, paused: true }} />);
-    expect(
-      await screen.findByText(
-        "Daily Brief Lead is paused — resume it in the Bots view.",
-      ),
-    ).toBeInTheDocument();
-    expect(bots.askLead).not.toHaveBeenCalled();
+    await waitFor(() => expect(bots.askLead).toHaveBeenCalled());
+    expect(screen.queryByText(/is paused — resume it/)).not.toBeInTheDocument();
   });
 
   test("reopened from Recent: carries on with the same lead", async () => {

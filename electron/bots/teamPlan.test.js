@@ -159,6 +159,35 @@ describe("validatePlan — what it catches", () => {
     assert.match(empty.errors.join(" "), /needs pieces, or questions/);
   });
 
+  it("a question that picks providers names them", () => {
+    const ok = validatePlan({
+      summary: "x",
+      questions: [
+        {
+          question: "Which should it read from?",
+          pick: "providers",
+          options: ["Google Calendar", "Home Assistant MCP"],
+          reasons: { "Home Assistant MCP": "Calendars in Home Assistant" },
+        },
+      ],
+      estimate: { build: "?" },
+    });
+    assert.equal(ok.valid, true);
+    assert.deepEqual(ok.warnings, []);
+    const none = validatePlan({
+      summary: "x",
+      questions: [{ question: "Which?", pick: "providers", options: [] }],
+      estimate: { build: "?" },
+    });
+    assert.match(none.errors.join(" "), /options must be their names/);
+    const odd = validatePlan({
+      summary: "x",
+      questions: [{ question: "Which?", pick: "colours", options: ["a"] }],
+      estimate: { build: "?" },
+    });
+    assert.match(odd.errors.join(" "), /pick must be "providers"/);
+  });
+
   it("bad kinds and sources, missing names and packages", () => {
     const res = validatePlan({
       summary: "x",
@@ -331,6 +360,96 @@ describe("validatePlan — bots and wiring (phase 4d-2)", () => {
       validatePlan(plan([half, bot])).errors.join(" "),
       /needs a bot, a result and a handler/,
     );
+  });
+
+  it("listens can name a bot already on the plan's dashboard, by the id the user picked (not its lead)", () => {
+    const listen = {
+      bot: "Recipe Bot",
+      result: "meal",
+      handler: "showRecipeBotMeal",
+    };
+    // By name only: the build couldn't wire it — it says so.
+    assert.match(
+      validatePlan(
+        { ...plan([{ ...button, listens: [listen] }]), dashboard: { id: "7" } },
+        { dashboards: [{ id: "7", bots: ["Recipe Bot"] }] },
+      ).errors.join(" "),
+      /picked by the user, in Talks to/,
+    );
+    const w = { ...button, listens: [{ ...listen, botId: "bot_recipe" }] };
+    const onHome = { ...plan([w]), dashboard: { id: "7", name: "Home" } };
+    const dashboards = [
+      { id: "7", name: "Home", bots: ["Recipe Bot", "Home Lead (lead)"] },
+    ];
+    assert.deepEqual(validatePlan(onHome, { dashboards }).errors, []);
+    // The renderer's check: the dashboard's bots by name.
+    assert.deepEqual(
+      validatePlan(plan([w]), { bots: ["Recipe Bot"] }).errors,
+      [],
+    );
+    const lead = {
+      ...button,
+      listens: [
+        { bot: "Home Lead", botId: "bot_lead", result: "r", handler: "h" },
+      ],
+    };
+    assert.match(
+      validatePlan(
+        { ...plan([lead]), dashboard: { id: "7", name: "Home" } },
+        { dashboards: [{ id: "7", bots: ["Home Lead (lead)"] }] },
+      ).errors.join(" "),
+      /isn't a bot in the plan/,
+    );
+  });
+
+  it("a cell's widget: a bot the user ticked (its id) is fine", () => {
+    const w = {
+      ...button,
+      listens: [
+        {
+          bot: "Recipe Bot",
+          botId: "bot_recipe",
+          result: "meal",
+          handler: "showRecipeBotMeal",
+        },
+      ],
+    };
+    assert.deepEqual(validatePlan(plan([w]), { cell: true }).errors, []);
+    assert.match(
+      validatePlan(plan([w])).errors.join(" "),
+      /isn't a bot in the plan/,
+    );
+  });
+
+  it("a bot can start on Dash's own events: no warning they aren't listed", () => {
+    const onRead = {
+      ...bot,
+      on: [{ widget: "Ask button", event: "readComplete" }],
+    };
+    assert.deepEqual(validatePlan(plan([button, onRead])).warnings, []);
+  });
+
+  it("preview: { tool, args }, or a warning", () => {
+    const bad = { ...button, preview: "list-events" };
+    assert.match(
+      validatePlan(plan([bad, bot])).warnings.join(" "),
+      /preview should be \{ tool, args \}/,
+    );
+    const ok = { ...button, preview: { tool: "list-events", args: {} } };
+    assert.deepEqual(validatePlan(plan([ok, bot])).warnings, []);
+  });
+
+  it("sends: each { event, when, carries }, or a warning", () => {
+    const w = { ...button, sends: ["askClicked"] };
+    assert.match(
+      validatePlan(plan([w, bot])).warnings.join(" "),
+      /sends should be a list of \{ event, when, carries \}/,
+    );
+    const ok = {
+      ...button,
+      sends: [{ event: "askClicked", when: "when asked", carries: "the text" }],
+    };
+    assert.deepEqual(validatePlan(plan([ok, bot])).warnings, []);
   });
 });
 
@@ -1019,6 +1138,37 @@ describe("a bot's dashboard: one of the user's, or none — never a new one", ()
         { bot: true },
       ).errors,
       [],
+    );
+  });
+});
+
+describe("a new widget, part by part (Review & build)", () => {
+  const widget = (over) => ({
+    summary: "x",
+    pieces: [{ kind: "widget", name: "Shopping List", source: "new", ...over }],
+    checks: ["It shows 3 items"],
+    estimate: { build: "?" },
+  });
+  it("its parts as the Planner says them pass", () => {
+    const res = validatePlan(
+      widget({
+        shows: "The first 3 open items",
+        whenEmpty: "Nothing on the list",
+        reads: ["ha_get_todo"],
+        changes: [],
+        refresh: "every 5 minutes",
+      }),
+    );
+    assert.equal(res.valid, true);
+    assert.deepEqual(res.warnings, []);
+  });
+  it("a part in the wrong shape warns, never blocks building", () => {
+    const res = validatePlan(widget({ shows: 3, reads: "ha_get_todo" }));
+    assert.equal(res.valid, true);
+    assert.match(res.warnings.join(" "), /shows should be a short sentence/);
+    assert.match(
+      res.warnings.join(" "),
+      /reads should be a list of tool names/,
     );
   });
 });

@@ -602,6 +602,45 @@ const providerController = {
   },
 
   /**
+   * The user's providers as providers.json has them — name, kind, class,
+   * the tools approved at setup, default for its kind, a connector's
+   * service — with nothing decrypted. What "which of my providers can do
+   * this" needs; a sign-in that can't be read never hides a provider.
+   *
+   * @param {BrowserWindow} win
+   * @param {string} appId
+   * @returns {{ providers: Array<{ name, type, providerClass, allowedTools,
+   *   isDefaultForType, mcpConfig: { server } | null }> }}
+   */
+  listProviderSummaries: (win, appId) => {
+    try {
+      const filename = path.join(
+        app.getPath("userData"),
+        appName,
+        appId,
+        configFilename,
+      );
+      const data = getFileContents(filename, {});
+      const providers = Object.entries(data || {})
+        .filter(([name, p]) => !name.startsWith(TEST_PREFIX) && p && p.type)
+        .map(([name, p]) => ({
+          name,
+          type: p.type,
+          providerClass: p.providerClass || "credential",
+          allowedTools: Array.isArray(p.allowedTools) ? p.allowedTools : null,
+          isDefaultForType: p.isDefaultForType === true,
+          mcpConfig:
+            p.mcpConfig && p.mcpConfig.server
+              ? { server: p.mcpConfig.server }
+              : null,
+        }));
+      return { providers };
+    } catch (e) {
+      return { providers: [], error: true, message: e.message };
+    }
+  },
+
+  /**
    * listProviders
    * Get list of all providers with decrypted credentials
    *

@@ -62,10 +62,12 @@
 
 const { buildDraft } = require("./botDrafts");
 const { eventNames, settingsOf } = require("./configDiff");
+const { RESERVED_WIDGET_EVENTS, isReservedEvent } = require("./widgetEvents");
 const { parseDashConfig } = require("../utils/dashConfigParser");
 const { planPages, planTarget } = require("./teamPlan");
 const { wireBuildLines, wireCheckLines } = require("./widgetWire");
 const { removeWidgets } = require("../utils/placeWidget");
+const { rememberMarks } = require("./markedSpots");
 
 const AI_BUILT = /@ai-built\/[a-z0-9][a-z0-9-]*/gi;
 
@@ -427,7 +429,23 @@ function planSteps(
   widgets.forEach((p, w) => {
     (Array.isArray(p.listens) ? p.listens : []).forEach((l, j) => {
       const i = botIndex.get(lower(l && l.bot));
-      if (i === undefined || !l.result || !l.handler) return;
+      if (!l || !l.result || !l.handler) return;
+      if (i === undefined) {
+        if (!l.botId) return;
+        add({
+          id: `listen:${w}:${j}`,
+          kind: "listen",
+          bot: null,
+          botId: String(l.botId),
+          piece: w,
+          result: l.result,
+          handler: l.handler,
+          role: "dash",
+          label: `${p.name} shows ${l.bot}'s ${l.result}`,
+          needs: [`place:${w}`],
+        });
+        return;
+      }
       add({
         id: `listen:${w}:${j}`,
         kind: "listen",
@@ -448,6 +466,29 @@ const lower = (v) =>
   String(v || "")
     .trim()
     .toLowerCase();
+
+// The Planner's names for provider kinds → Dash's: the same as the plan
+// screens' (src/Components/Create/planChecklist.js normalizeType), so the
+// build pins what the plan showed.
+const KIND_ALIASES = {
+  gcal: "google-calendar",
+  "google calendar": "google-calendar",
+  googlecalendar: "google-calendar",
+  calendar: "google-calendar",
+  "google drive": "google-drive",
+  gdrive: "google-drive",
+  email: "gmail",
+  "google mail": "gmail",
+  github: "github",
+  gh: "github",
+};
+function normalizeKind(name) {
+  const raw = lower(name);
+  if (!raw) return "";
+  if (KIND_ALIASES[raw]) return KIND_ALIASES[raw];
+  const dashed = raw.replace(/\s+/g, "-");
+  return KIND_ALIASES[dashed.replace(/-/g, "")] || dashed;
+}
 
 /** The plan's new bots — the ones a build saves. */
 function botPieces(plan) {
@@ -507,6 +548,156 @@ function blockersFor(step, steps) {
 }
 
 /**
+ * A planned setting's value, clean: trimmed, without quotes or backticks
+ * around it, and without a label in front of one value ("From
+ * /docs/list.md", "Path: /tmp/a.json") — the AI writes values as it
+ * would in a sentence, and a widget given "From …" as a path fails.
+ */
+function cleanSettingValue(value) {
+  if (typeof value !== "string") return value;
+  let v = value.trim();
+  const wrapped = v.match(/^(["'`])([\s\S]*)\1$/);
+  if (wrapped) v = wrapped[2].trim();
+  const labelled = v.match(
+    /^(?:from|path|file|folder|entity|list|url|id|channel|index)\s*:?\s+(\S+)$/i,
+  );
+  // Only when what follows looks like a path, id or address — "From Alex"
+  // and "List view" are words, kept as they are.
+  if (labelled && /[./_\\]|:\/\//.test(labelled[1])) {
+    v = labelled[1].replace(/^(["'`])(.*)\1$/, "$2");
+  }
+  return v;
+}
+
+/** The plan's settings for a piece, values cleaned: { key: value }. */
+function plannedSettings(piece) {
+  const raw =
+    piece && piece.settings && typeof piece.settings === "object"
+      ? piece.settings
+      : {};
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) out[k] = cleanSettingValue(v);
+  return out;
+}
+
+/**
+ * The plan's values (paths, ids, URLs) as settings the Builder must
+ * declare — never written into the code, so the user can change one.
+ */
+function settingsLines(piece) {
+  const settings = plannedSettings(piece);
+  const keys = Object.keys(settings);
+  if (!keys.length) return [];
+  return [
+    "Settings — declare each one in the widget's .dash.js userConfig with this default and read it from the widget's props; never write the value into the code:",
+    ...keys.map((k) => `- ${k}: ${JSON.stringify(settings[k])}`),
+  ];
+}
+
+const strList = (v) =>
+  (Array.isArray(v) ? v : []).filter((x) => isStr(x) && x.trim());
+
+// The looks (src/Components/LeadWorkspace/WidgetWizard/widgetLooks.js LOOKS).
+const LOOK_PARTS = {
+  list: [
+    "List",
+    "every one in order, one row each",
+    "PanelHeader, list rows, EmptyState",
+  ],
+  timeline: [
+    "Timeline",
+    "times down the side, so the gaps show",
+    "PanelHeader, list rows",
+  ],
+  next: [
+    "Next up",
+    "the first one large; the rest below",
+    "PanelHeader, StatusBadge, list rows",
+  ],
+  cards: ["Cards", "a small card for each, side by side", "PanelHeader, cards"],
+  count: [
+    "Count",
+    "how many there are, large, with the first few below",
+    "PanelHeader, a stat, list rows",
+  ],
+};
+
+/** The look the user picked (step 4), for the Builder and the Checker. */
+function lookLines(look) {
+  const l = look && LOOK_PARTS[look.id];
+  if (!l) return [];
+  const o =
+    (look.options && typeof look.options === "object" && look.options) || {};
+  const fields = strList(o.fields);
+  const opts = [
+    isStr(o.spacing) ? `${o.spacing.toLowerCase()} spacing` : "",
+    isStr(o.header) ? `header: ${o.header.toLowerCase()}` : "",
+    o.markFirst === "On" ? "the next (first) one marked" : "",
+    isStr(o.timeAt) && look.id !== "timeline" && look.id !== "count"
+      ? o.timeAt === "Under the title"
+        ? "time under the title"
+        : "time in a left column"
+      : "",
+  ].filter(Boolean);
+  return [
+    `It looks like this (the user picked it from previews of their data): ${l[0]} — ${l[1]}; built from dash-react's ${l[2]}${opts.length ? `; ${opts.join("; ")}` : ""}`,
+    fields.length
+      ? `For each one it shows: ${fields.join(", ")}, in that order`
+      : "",
+    // Its empty words are the widget's whenEmpty (said once, above).
+  ].filter(Boolean);
+}
+
+/**
+ * What the user reviewed and said yes to (Review & build): what it shows,
+ * its empty words, the tools it reads and may change with, how often it
+ * reads again. Each only when the plan says it.
+ */
+function specLines(piece) {
+  const lines = [];
+  if (isStr(piece.shows) && piece.shows.trim()) {
+    lines.push(`It shows: ${piece.shows.trim()}`);
+  }
+  if (isStr(piece.whenEmpty) && piece.whenEmpty.trim()) {
+    lines.push(
+      `When there's nothing to show, it says: "${piece.whenEmpty.trim()}"`,
+    );
+  }
+  const reads = strList(piece.reads);
+  if (reads.length) {
+    lines.push(`It reads with these tools: ${reads.join(", ")}`);
+  }
+  if (Array.isArray(piece.changes)) {
+    const changes = strList(piece.changes);
+    lines.push(
+      changes.length
+        ? `It may change things only with: ${changes.join(", ")} — each behind a button that asks the user before it first changes anything`
+        : "It only reads: never call a tool that changes anything",
+    );
+  }
+  if (isStr(piece.refresh) && piece.refresh.trim()) {
+    lines.push(`It reads again: ${piece.refresh.trim()}`);
+  }
+  const events = strList(piece.events).filter((e) => !isReservedEvent(e));
+  const sends = Array.isArray(piece.sends) ? piece.sends : [];
+  for (const e of events) {
+    const s = sends.find((x) => x && x.event === e) || {};
+    const when = isStr(s.when) ? s.when.trim() : "";
+    const carries = isStr(s.carries) ? s.carries.trim() : "";
+    lines.push(
+      `It sends ${e}${when ? ` ${when.replace(/^when\b/i, "when")}` : ""}${carries ? `, carrying ${carries}` : ""}`,
+    );
+  }
+  lines.push(...lookLines(piece.look));
+  if (lines.length) {
+    lines.push(
+      `Dash itself sends ${RESERVED_WIDGET_EVENTS.join(", ")} for every widget — don't publish or list those`,
+    );
+  }
+  return lines;
+}
+
+/**
  * The Builder's request for one widget. With `fix` ({ package, problem }) it
  * asks the Builder to fix what it built (Let Builder fix it, 4d-3).
  */
@@ -532,9 +723,7 @@ function buildRequest(
       : `Build a new widget for this plan.`;
   return [
     first,
-    ...(fix
-      ? [`${fix.change ? "What to change" : "What went wrong"}: ${fix.problem}`]
-      : []),
+    ...fixLines(fix),
     ...(cell
       ? [
           standalone
@@ -545,6 +734,8 @@ function buildRequest(
     `Plan: ${plan.summary || ""}`,
     `Widget: ${piece.name}${piece.notes ? ` — ${piece.notes}` : ""}`,
     `Providers: ${providers}`,
+    ...settingsLines(piece),
+    ...specLines(piece),
     ...wiringLines(plan, piece),
     `Use a PascalCase name based on "${piece.name}"${
       fix && (fix.package || fix.draft) ? " (keep the same name)" : ""
@@ -556,6 +747,29 @@ function buildRequest(
         : " (if it says the widget already exists, build it again with update: true)"
     }. It writes a draft (draft:<Name>) — the Checker checks it, then it's installed. Finish with the draft's name.`,
   ].join("\n");
+}
+
+/**
+ * What a fix tells the Builder: what to change (or what went wrong), the
+ * spots the user marked on the preview, and to leave the rest alone — a
+ * change is an edit, never a rebuild.
+ */
+function fixLines(fix) {
+  if (!fix) return [];
+  const lines = [
+    `${fix.change ? "What to change" : "What went wrong"}: ${fix.problem}`,
+  ];
+  if (fix.change && fix.marked) {
+    lines.push(
+      `The user marked ${fix.marked === 1 ? "one spot" : `${fix.marked} spots`} on the running preview. Look at them first: see_marked_spots with widget "${fix.draft || fix.package}".`,
+    );
+  }
+  if (fix.change) {
+    lines.push(
+      "Change only what the user asked for, in the code you already wrote — keep everything else (layout, spacing, settings, events, look) exactly as it is.",
+    );
+  }
+  return lines;
 }
 
 /**
@@ -577,9 +791,7 @@ function editBuildRequest(plan, piece, fix, edit) {
       : `Make a new widget from the user's widget ${name} (package ${pkg}), with a change. ${name} itself stays as it is.`;
   return [
     first,
-    ...(fix
-      ? [`${fix.change ? "What to change" : "What went wrong"}: ${fix.problem}`]
-      : []),
+    ...fixLines(fix),
     `Read it first: read_widget with name "${pkg}" and component "${name}". If it imports other files of its package, read them with read_widget's file.`,
     `Plan: ${plan.summary || ""}`,
     ...(isStr(piece.adds) && piece.adds.trim()
@@ -613,7 +825,7 @@ function eventsToSend(plan, piece) {
         .filter((o) => o && lower(o.widget) === lower(piece.name))
         .map((o) => o.event),
     ),
-  ].filter((e, i, all) => e && all.indexOf(e) === i);
+  ].filter((e, i, all) => e && all.indexOf(e) === i && !isReservedEvent(e));
 }
 
 const isStr = (v) => typeof v === "string";
@@ -645,6 +857,14 @@ function checkRequest(plan, piece, made = {}, { edit = null } = {}) {
   if (isStr(piece.notes) && piece.notes.trim()) {
     lines.push(`What the plan says it does: ${piece.notes.trim()}`);
   }
+  // What the user reviewed: the widget must do that.
+  const spec = specLines(piece);
+  if (spec.length) {
+    lines.push(
+      "What the user approved — check the widget does each:",
+      ...spec.map((l) => `- ${l}`),
+    );
+  }
   const connections = Object.entries(
     piece.provider && typeof piece.provider === "object" ? piece.provider : {},
   ).filter(([type, name]) => type && isStr(name) && name.trim());
@@ -653,11 +873,15 @@ function checkRequest(plan, piece, made = {}, { edit = null } = {}) {
       `It must use the user's ${type} connection "${name.trim()}": a widget that asks for keys in its settings or calls ${type} itself with fetch fails.`,
     );
   }
-  const settings = Object.keys(
-    piece.settings && typeof piece.settings === "object" ? piece.settings : {},
-  );
-  if (settings.length) {
-    lines.push(`The plan sets these settings: ${settings.join(", ")}.`);
+  const settings = plannedSettings(piece);
+  if (Object.keys(settings).length) {
+    lines.push(
+      `The plan sets these settings — each must be a userConfig setting the widget reads, not a value in its code: ${Object.entries(
+        settings,
+      )
+        .map(([k, v]) => `${k} = ${JSON.stringify(v)}`)
+        .join(", ")}.`,
+    );
   }
   const sends = eventsToSend(plan, piece);
   if (sends.length) {
@@ -820,7 +1044,9 @@ function widgetWiring(configCode, componentCode = "") {
     .map((h) => (typeof h === "string" ? h : h && (h.name || h.handler)))
     .filter(Boolean);
   return {
-    events: eventNames(parsed.config),
+    events: [
+      ...new Set([...eventNames(parsed.config), ...RESERVED_WIDGET_EVENTS]),
+    ],
     handlers,
     rawPublish: publishesRaw(componentCode),
   };
@@ -842,23 +1068,40 @@ function settingKeys(configCode) {
 /**
  * A planned widget's connection and settings, checked before it's placed:
  * a connection the user has of that type (any case; its saved name kept),
- * settings the widget has (all kept when its settings can't be read).
- * @param {{ provider?, settings? }} piece
- * @param {{ connections: [{ name, type }], settingKeys: string[]|null }} ctx
+ * settings the widget has (all kept when its settings can't be read). A
+ * Claude connector never backs a widget. A type it needs that the plan
+ * didn't pin gets the user's only provider of that type — never a guess
+ * between several (the plan asks the user which).
+ * @param {{ provider?, providers?, settings? }} piece
+ * @param {{ connections: [{ name, type, providerClass? }], settingKeys: string[]|null }} ctx
  * @returns {{ selectedProviders, userPrefs, dropped: string[] }}
  */
 function placeChoices(piece, { connections = [], settingKeys: keys = null }) {
   const out = { selectedProviders: {}, userPrefs: {}, dropped: [] };
   const provider = (piece && piece.provider) || {};
+  const usable = (connections || []).filter(
+    (c) => c && c.providerClass !== "connector",
+  );
   for (const [type, name] of Object.entries(provider)) {
-    const hit = (connections || []).find(
+    const hit = usable.find(
       (c) =>
-        c && lower(c.type) === lower(type) && lower(c.name) === lower(name),
+        normalizeKind(c.type) === normalizeKind(type) &&
+        lower(c.name) === lower(name),
     );
     if (hit) out.selectedProviders[hit.type] = hit.name;
     else out.dropped.push(`connection "${name}"`);
   }
-  const settings = (piece && piece.settings) || {};
+  const pinned = Object.keys(out.selectedProviders).map(normalizeKind);
+  for (const type of Array.isArray(piece && piece.providers)
+    ? piece.providers
+    : []) {
+    if (!type || pinned.includes(normalizeKind(type))) continue;
+    const same = usable.filter(
+      (c) => normalizeKind(c.type) === normalizeKind(type),
+    );
+    if (same.length === 1) out.selectedProviders[same[0].type] = same[0].name;
+  }
+  const settings = plannedSettings(piece);
   for (const [key, value] of Object.entries(settings)) {
     if (!keys || keys.includes(key)) out.userPrefs[key] = value;
     else out.dropped.push(`setting "${key}"`);
@@ -1136,7 +1379,7 @@ function reuseEarlier(plan, steps, state, earlier) {
       (x) =>
         x.kind === s.kind &&
         x.status === STATUS.done &&
-        x.bot === oldB.get(s.bot) &&
+        (s.botId ? x.botId === s.botId : x.bot === oldB.get(s.bot)) &&
         x.piece === oldW.get(s.piece) &&
         (s.kind === "trigger"
           ? x.event === s.event
@@ -1736,6 +1979,8 @@ function createPlanBuild(plan, deps, opts = {}) {
             ? null
             : (cellOf(step.piece) || {}).col || null,
           provider: piece.provider || null,
+          // The types it needs: an unpinned one gets the user's only one.
+          providers: Array.isArray(piece.providers) ? piece.providers : null,
           settings: piece.settings || null,
         });
         state.made[step.piece] = {
@@ -1805,7 +2050,7 @@ function createPlanBuild(plan, deps, opts = {}) {
           widgetId: made.widgetId,
           component: made.component,
           handler: step.handler,
-          botId: state.bots[step.bot].id,
+          botId: step.botId || state.bots[step.bot].id,
           result: step.result,
         });
         step.detail = `${step.handler} ← ${step.result}`;
@@ -2106,33 +2351,43 @@ function createPlanBuild(plan, deps, opts = {}) {
    * draft as the user asked, the Checker checks it again, and it's
    * previewed again. Doesn't use up the Builder's own fixes.
    */
-  function revise(stepId, note) {
-    if (busy) return Promise.resolve({ error: "The build is still running." });
+  /** Why a change can't go back to the Builder now — or null. */
+  function reviseProblem(stepId, note) {
+    if (busy) return "The build is still running.";
     const step = waitingPreview(stepId);
-    if (!step) return Promise.resolve({ error: "Nothing is waiting there." });
+    if (!step) return "Nothing is waiting there.";
+    const w = step.piece;
+    if (!steps.some((s) => s.id === `build:${w}`)) {
+      return "This widget wasn't built here — ask the Planner for another.";
+    }
+    if (!String(note || "").trim()) return "Say what to change.";
+    if ((state.revisions[w] || 0) >= MAX_REVISIONS) {
+      return `That's ${MAX_REVISIONS} changes — discard it and describe what you want again.`;
+    }
+    return null;
+  }
+
+  function revise(stepId, note, marks = null) {
+    const problem = reviseProblem(stepId, note);
+    if (problem) return Promise.resolve({ error: problem });
+    const step = waitingPreview(stepId);
     const w = step.piece;
     const build = steps.find((s) => s.id === `build:${w}`);
-    if (!build) {
-      return Promise.resolve({
-        error: "This widget wasn't built here — ask the Planner for another.",
-      });
-    }
     const change = String(note || "").trim();
-    if (!change) return Promise.resolve({ error: "Say what to change." });
-    if ((state.revisions[w] || 0) >= MAX_REVISIONS) {
-      return Promise.resolve({
-        error: `That's ${MAX_REVISIONS} changes — discard it and describe what you want again.`,
-      });
-    }
     state.revisions[w] = (state.revisions[w] || 0) + 1;
     const made = state.made[w] || {};
     reset(build);
+    const spots = marks && Array.isArray(marks.spots) ? marks.spots : [];
+    if (spots.length) {
+      rememberMarks(made.draft || made.package || w, marks);
+    }
     build.fix = {
       package: made.package || null,
       draft: made.draft || null,
       installed: false,
       change: true,
       problem: change,
+      ...(spots.length ? { marked: spots.length } : {}),
     };
     build.revision = state.revisions[w];
     if (state.made[w]) delete state.made[w].preview;
@@ -2151,10 +2406,21 @@ function createPlanBuild(plan, deps, opts = {}) {
       deps.abortRole(current.role);
   }
 
-  return { state, run, stop, fix, retry, resume, approve, revise };
+  return {
+    state,
+    run,
+    stop,
+    fix,
+    retry,
+    resume,
+    approve,
+    revise,
+    reviseProblem,
+  };
 }
 
 module.exports = {
+  normalizeKind,
   STATUS,
   MAX_FIXES,
   builtSummary,
@@ -2174,7 +2440,9 @@ module.exports = {
   placeChoices,
   settingKeys,
   buildRequest,
+  specLines,
   checkRequest,
+  cleanSettingValue,
   eventsToSend,
   builtPackage,
   buildOutcome,

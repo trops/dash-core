@@ -210,6 +210,7 @@ export const LayoutBuilder = ({
         scope: targetScope = null,
         userPrefs = null,
         selectedProviders = null,
+        listeners = null,
         onPlaced = null,
       } = e.detail || {};
       if (!widgetComponentName || !cellNumber || !gridItemId) return;
@@ -299,6 +300,10 @@ export const LayoutBuilder = ({
         }
         if (selectedProviders && typeof selectedProviders === "object") {
           newItem.selectedProviders = { ...selectedProviders };
+        }
+        // What it shows from the dashboard's bots: { handler: [event] }.
+        if (listeners && typeof listeners === "object") {
+          newItem.listeners = { ...(newItem.listeners || {}), ...listeners };
         }
         const updatedGrid = newLayout.find((item) => item.id === gridItem.id);
         if (updatedGrid?.grid) {

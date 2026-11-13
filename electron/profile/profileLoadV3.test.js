@@ -534,7 +534,8 @@ describe("loading", () => {
         ["brief", "mac-mini", true],
       ],
     );
-    assert.deepEqual(ok.botsPaused, ["Home lead", "Brief"]);
+    // A lead isn't paused (it works when the user asks it), so isn't listed.
+    assert.deepEqual(ok.botsPaused, ["Brief"]);
     // Providers mapped to this computer's; ones the profile doesn't list dropped.
     const ws = state.workspaces[0];
     assert.deepEqual(ws.selectedProviders, { slack: "Slack" });

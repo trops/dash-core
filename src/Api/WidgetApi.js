@@ -52,6 +52,43 @@ function awaitFileResult(
   errorId = eApi.on(errorEvent, error);
 }
 
+/**
+ * A widget copy's own data file: "<widget>--<copy>.json", in Dash's data
+ * folder. Reading and writing it never asks the user (it's the widget's
+ * own), and a call without a filename uses it — never "undefined.json".
+ * The main process recognises it the same way (electron/security/
+ * ownDataFile.js) — keep the two in step.
+ */
+const safePart = (s) =>
+  String(s == null ? "" : s).replace(/[^A-Za-z0-9._-]/g, "_");
+export function ownDataFilename(widgetName, copyId) {
+  return `${safePart(widgetName)}--${safePart(copyId)}.json`;
+}
+
+// The options storeData / readData take; an object with none of them is
+// the data itself (storeData({ items }) saves { items }).
+const DATA_OPTIONS = [
+  "data",
+  "filename",
+  "callbackComplete",
+  "callbackError",
+  "append",
+  "returnEmpty",
+  "uuid",
+  "widgetId",
+];
+const isOptions = (o) =>
+  !!o &&
+  typeof o === "object" &&
+  !Array.isArray(o) &&
+  DATA_OPTIONS.some((k) => Object.prototype.hasOwnProperty.call(o, k));
+
+// "Nothing saved yet" as the main process reads it: an empty file.
+const isEmptyValue = (v) =>
+  v == null ||
+  (Array.isArray(v) && v.length === 0) ||
+  (typeof v === "object" && !Array.isArray(v) && !Object.keys(v).length);
+
 /** The shared api (no widget behind it) can't read or write files. */
 function refuseUnknownWidget(callbackError) {
   if (callbackError) {
@@ -109,6 +146,52 @@ export const WidgetApi = {
 
   name: function () {
     return this.params.name;
+  },
+
+  /** This copy's own data file (see ownDataFilename). */
+  ownFilename: function () {
+    return ownDataFilename(this.params?.name, this.params?.id);
+  },
+
+  /**
+   * Save this widget's state — any JSON value — in its own file, replacing
+   * what was there. Never asks the user. → Promise of the value saved.
+   */
+  saveState: function (value) {
+    return new Promise((resolve, reject) => {
+      // Kept as { value } so false, 0 and "" save too (the main process
+      // skips a save of a falsy value).
+      this.storeData({
+        data: { value },
+        append: false,
+        callbackComplete: () => resolve(value),
+        callbackError: (e) =>
+          reject(new Error((e && e.message) || "Couldn't save")),
+      });
+    });
+  },
+
+  /**
+   * Load what saveState saved; `fallback` when nothing is saved yet.
+   * → Promise of the value.
+   */
+  loadState: function (fallback = null) {
+    return new Promise((resolve, reject) => {
+      this.readData({
+        callbackComplete: (saved) => {
+          const wrapped =
+            saved &&
+            typeof saved === "object" &&
+            !Array.isArray(saved) &&
+            Object.keys(saved).length === 1 &&
+            Object.prototype.hasOwnProperty.call(saved, "value");
+          if (wrapped) resolve(saved.value);
+          else resolve(isEmptyValue(saved) ? fallback : saved);
+        },
+        callbackError: (e) =>
+          reject(new Error((e && e.message) || "Couldn't load")),
+      });
+    });
   },
 
   settings: function () {
@@ -200,25 +283,36 @@ export const WidgetApi = {
    * @param {object} data
    * @param {object} options filename - name of the file, callbacks for complete and error
    */
-  storeData: function ({
-    data,
-    filename = null,
-    callbackComplete = null,
-    callbackError = null,
-    append = true,
-    returnEmpty = {},
-    uuid,
-    // Package-level identity for the fs gate. Defaults to the
-    // singleton's `params.name` (set by WidgetFactory at mount). An
-    // explicit widgetId passed by the caller wins. The widgetId param
-    // is what the gate's `getGrant(widgetId)` lookup keys on, so it
-    // MUST match the package name used when grants were written
-    // (install consent / Settings → Privacy & Security).
-    widgetId = null,
-  }) {
+  storeData: function (options = {}) {
+    // storeData({ items }) — an object without any of the options is the
+    // data itself, saved in place of what was there.
+    const opts = isOptions(options)
+      ? options
+      : { data: options, append: false };
+    const {
+      data,
+      filename = null,
+      callbackComplete = null,
+      callbackError = null,
+      append = true,
+      returnEmpty = {},
+      uuid,
+      // Package-level identity for the fs gate. Defaults to the
+      // singleton's `params.name` (set by WidgetFactory at mount). An
+      // explicit widgetId passed by the caller wins. The widgetId param
+      // is what the gate's `getGrant(widgetId)` lookup keys on, so it
+      // MUST match the package name used when grants were written
+      // (install consent / Settings → Privacy & Security).
+      widgetId = null,
+    } = opts;
     try {
-      // set the filename
-      const toFilename = filename !== null ? filename : `${uuid}.json`;
+      // set the filename: given, else the uuid's, else the widget's own
+      const toFilename =
+        filename !== null && filename !== undefined
+          ? filename
+          : uuid
+            ? `${uuid}.json`
+            : this.ownFilename();
 
       // grab the electron api
       const eApi = this.electronApi();
@@ -265,16 +359,27 @@ export const WidgetApi = {
    * - callbackError - the handler for dealing with the error callback data
    * - uuid - the UUID for the widget/workspace
    */
-  readData: function ({
-    filename = null,
-    callbackComplete = null,
-    callbackError = null,
-    uuid,
-    // Phase 2 JIT consent — see storeData for the rationale.
-    widgetId = null,
-  }) {
+  readData: function (options = {}, onError = null) {
+    // readData(onComplete, onError) — callbacks in place of the options.
+    const opts =
+      typeof options === "function"
+        ? { callbackComplete: options, callbackError: onError }
+        : options || {};
+    const {
+      filename = null,
+      callbackComplete = null,
+      callbackError = null,
+      uuid,
+      // Phase 2 JIT consent — see storeData for the rationale.
+      widgetId = null,
+    } = opts;
     try {
-      const toFilename = filename !== null ? filename : `${uuid}.json`;
+      const toFilename =
+        filename !== null && filename !== undefined
+          ? filename
+          : uuid
+            ? `${uuid}.json`
+            : this.ownFilename();
       const eApi = this.electronApi();
       if (eApi) {
         // Auto-thread widgetId from this widget's api — same as storeData.

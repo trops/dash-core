@@ -22,6 +22,7 @@ const fs = require("fs");
 const os = require("os");
 const responseCache = require("../utils/responseCache");
 const { gateToolCall, gateToolCallWithJit } = require("../mcp/permissionGate");
+const { checkToolArgs } = require("../mcp/checkToolArgs");
 const {
   findCatalogEntry,
   markReadOnlyTools,
@@ -341,6 +342,13 @@ const activeServers = new Map();
  * Map<string, Promise<result>>
  */
 const pendingStarts = new Map();
+
+// How many screens use each server (startServerForScreen); a server stops
+// when the last one lets it go.
+const screenHolds = new Map();
+// A screen's stop waiting its moment (stopServerForScreen), by key.
+const screenStops = new Map();
+const SCREEN_STOP_DELAY_MS = 4000;
 
 /**
  * MCP Server status constants
@@ -1111,6 +1119,47 @@ const mcpController = {
   },
 
   /**
+   * A screen (a dashboard, a widget preview) starts a server it uses: it's
+   * counted, so another screen letting it go doesn't stop it under this
+   * one. Each screen counts once (its widgets share it in the renderer).
+   */
+  startServerForScreen: async (win, serverName, ...rest) => {
+    // rest: mcpConfig, credentials, workspaceId, pathScope, appId
+    const key = serverKey(rest[2], serverName);
+    screenHolds.set(key, (screenHolds.get(key) || 0) + 1);
+    if (screenStops.has(key)) {
+      clearTimeout(screenStops.get(key));
+      screenStops.delete(key);
+    }
+    return mcpController.startServer(win, serverName, ...rest);
+  },
+
+  /**
+   * A screen lets a server go: it stops only when no screen uses it — a
+   * preview closing can't stop the one the next preview just started.
+   */
+  stopServerForScreen: async (win, serverName, workspaceId) => {
+    const key = serverKey(workspaceId, serverName);
+    const left = (screenHolds.get(key) || 0) - 1;
+    if (left > 0) {
+      screenHolds.set(key, left);
+      return { success: true, serverName, stillInUse: true };
+    }
+    screenHolds.delete(key);
+    // A moment later, and only if no screen took it back meanwhile — a
+    // screen mounted twice (dev) or a preview replaced by the next one
+    // starts it again right away.
+    const timer = setTimeout(() => {
+      screenStops.delete(key);
+      if ((screenHolds.get(key) || 0) > 0) return;
+      mcpController.stopServer(win, serverName, workspaceId).catch(() => {});
+    }, SCREEN_STOP_DELAY_MS);
+    if (timer && typeof timer.unref === "function") timer.unref();
+    screenStops.set(key, timer);
+    return { success: true, serverName, stopping: true };
+  },
+
+  /**
    * stopServer
    * Stop a running MCP server
    *
@@ -1121,6 +1170,8 @@ const mcpController = {
    */
   stopServer: async (win, serverName, workspaceId) => {
     const key = serverKey(workspaceId, serverName);
+    // Stopped outright (a test, a failed sign-in): no screen holds it now.
+    screenHolds.delete(key);
     try {
       // Wait for any in-flight start to finish before stopping
       if (pendingStarts.has(key)) {
@@ -1141,6 +1192,8 @@ const mcpController = {
       }
 
       console.log(`[mcpController] Stopping server: ${key}`);
+      // A start meanwhile mustn't be handed this one as "connected".
+      server.status = STATUS.DISCONNECTED;
 
       // Close the client connection
       if (server.client) {
@@ -1251,6 +1304,33 @@ const mcpController = {
           )}`,
         );
       }
+
+      // Checked against the tool's own schema: a tool it doesn't have or a
+      // required input left out is said plainly, before anything is sent.
+      let argProblem = checkToolArgs(server.tools, toolName, args, {
+        strict: false,
+      });
+      // Not in the tools it listed at start: it may have gained it since
+      // (a hosted server names tools per index) — ask once more.
+      if (
+        argProblem &&
+        !(server.tools || []).some((t) => t && t.name === toolName) &&
+        typeof server.client.listTools === "function"
+      ) {
+        try {
+          const fresh = await server.client.listTools();
+          server.tools = markReadOnlyTools(
+            fresh.tools || [],
+            server.readOnlyTools,
+          );
+          argProblem = checkToolArgs(server.tools, toolName, args, {
+            strict: false,
+          });
+        } catch (_e) {
+          argProblem = null; // couldn't ask: let the server answer
+        }
+      }
+      if (argProblem) throw new Error(argProblem);
 
       const doCall = async () => {
         console.log(`[mcpController] Calling tool: ${key}/${toolName}`);
@@ -1726,4 +1806,5 @@ const mcpController = {
 };
 
 module.exports = mcpController;
+module.exports._screenStopDelay = () => SCREEN_STOP_DELAY_MS;
 module.exports.refreshGoogleOAuthToken = refreshGoogleOAuthToken;

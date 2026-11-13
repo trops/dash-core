@@ -100,6 +100,12 @@ describe("LayoutBuilder — placing a cell build's widget", () => {
       /newItem\.selectedProviders = \{ \.\.\.selectedProviders \};/,
     );
   });
+  test("what it shows from the dashboard's bots goes on it too (Talks to)", () => {
+    expect(source).toMatch(/listeners = null,/);
+    expect(source).toMatch(
+      /newItem\.listeners = \{ \.\.\.\(newItem\.listeners \|\| \{\}\), \.\.\.listeners \};/,
+    );
+  });
   test("a just-installed widget is waited for (briefly) before placing", () => {
     expect(source).toMatch(/if \(tries < 20\)/);
     expect(source).toMatch(/if \(timer\) clearTimeout\(timer\);/);

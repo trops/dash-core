@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Button,
   Button2,
@@ -19,6 +19,7 @@ import { getUserConfigurableProviders } from "../../utils/providerUtils";
 import { previewProviders, defaultProps } from "../AppPages/WidgetPreview";
 import { lineDiff } from "./editCreate";
 import { normalizeUserConfig } from "../../utils/userConfigFields";
+import { MarkSpots, MAX_SPOTS } from "./MarkSpots";
 
 /**
  * The provider each type starts on: what the plan said ({ type: name } or a
@@ -46,7 +47,11 @@ export const PREVIEW_START_TIMEOUT_MS = 10000;
  * per provider it needs, and its settings (its own userConfig, through the
  * same form Edit uses), started from the plan — runs it, and decides:
  *   Looks good        onApprove({ providers, settings }) — install, then place
- *   Change something  onRevise(note) — back to the Builder (built ones only)
+ *   Change something  onRevise(note, marks) — back to the Builder (built
+ *                     ones only); Mark a spot draws numbered boxes on the
+ *                     running preview, and marks = { rect, spots } (the
+ *                     preview's place in the window, the boxes in it) so the
+ *                     app can take a picture for the Builder
  *   Discard           onDiscard() — the cell stays empty; a built widget
  *                     is never installed (a registry one already was, to
  *                     preview it — it stays installed)
@@ -105,6 +110,10 @@ export const CellPreview = ({
   // gets a way out instead of a blank frame (QA 2026-10-22).
   const [mountedRunId, setMountedRunId] = useState(0);
   const [change, setChange] = useState("");
+  // Mark a spot: drawing boxes on the running preview, and the boxes.
+  const [marking, setMarking] = useState(false);
+  const [spots, setSpots] = useState([]);
+  const stage = useRef(null);
   const statusTokens = useStatusTokens();
   // A change's draft (Phase 3): Preview, its Code, or What changed.
   const showsCode = !!(original && made.draft);
@@ -235,13 +244,17 @@ export const CellPreview = ({
   };
 
   const canRun = !!Renderer && !missing && !unchosen;
-  // Nothing to connect: nothing real is called — run it straight away, as
-  // the mockup. With connections it waits for Run preview.
+  // Opening the preview is asking to see it: it runs as soon as it can —
+  // once, so a stopped preview stays stopped. Run preview is for after a
+  // provider is chosen or a run is stopped.
   const connects = needs.length > 0;
+  const autoRan = useRef(false);
   useEffect(() => {
-    if (!connects && canRun && run === "idle") start();
+    if (autoRan.current || !canRun || run !== "idle") return;
+    autoRan.current = true;
+    start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canRun]);
   const hasSettings = Object.keys(userConfig).length > 0;
   const looksGood = () =>
     onApprove({
@@ -398,17 +411,45 @@ export const CellPreview = ({
                 ? "Not installed yet — nothing on your dashboard has changed"
                 : "Not on your dashboard yet"}
           </span>
-          {checked ? (
-            <StatusBadge state="success" label="Checker passed" compact />
-          ) : null}
+          <div className="flex flex-row items-center gap-2">
+            {checked ? (
+              <StatusBadge state="success" label="Checker passed" compact />
+            ) : null}
+            {onRevise && running && view === "preview" ? (
+              marking ? (
+                <Button
+                  size="sm"
+                  title="Marking… — done"
+                  onClick={() => setMarking(false)}
+                />
+              ) : (
+                <Button2
+                  size="sm"
+                  title="Mark a spot"
+                  onClick={() => setMarking(true)}
+                />
+              )
+            ) : null}
+          </div>
         </div>
+        {marking ? (
+          <span
+            className={`text-xs ${statusTokens.info.icon}`}
+            data-testid="cell-preview-marking"
+          >
+            {spots.length >= MAX_SPOTS
+              ? `That's ${MAX_SPOTS} spots — say what's wrong, then send.`
+              : "Drag a box around what's wrong. You can mark more than one spot."}
+          </span>
+        ) : null}
         {view === "code" && codePane ? (
           codePane
         ) : view === "changes" && changesPane ? (
           changesPane
         ) : (
           <div
-            className={`flex flex-col rounded-lg border overflow-hidden ${hairline}`}
+            ref={stage}
+            className={`relative flex flex-col rounded-lg border overflow-hidden ${hairline}`}
             data-testid="cell-preview-stage"
             style={{ height: 440 }}
           >
@@ -430,6 +471,14 @@ export const CellPreview = ({
             ) : null}
             {running ? (
               <div data-testid="cell-preview-frame" className="flex-1 min-h-0">
+                <MarkSpots
+                  active={marking}
+                  spots={spots}
+                  onAdd={(b) => setSpots((prev) => [...prev, b])}
+                  onRemove={(i) =>
+                    setSpots((prev) => prev.filter((_, j) => j !== i))
+                  }
+                />
                 <Renderer
                   key={runId}
                   bundleSource={bundle}
@@ -562,7 +611,9 @@ export const CellPreview = ({
         {onRevise ? (
           <div className="flex flex-col gap-2">
             <span className={`text-sm font-semibold ${strong}`}>
-              Change something
+              {spots.length
+                ? `What's wrong ${spots.length === 1 ? "here" : "in these spots"}?`
+                : "Change something"}
             </span>
             <div className="flex flex-row flex-wrap items-center gap-2">
               <div className="flex-1 min-w-0">
@@ -576,18 +627,38 @@ export const CellPreview = ({
               </div>
               <Button
                 title="Send to the Builder"
-                onClick={() => {
+                onClick={async () => {
                   const text = change.trim();
                   if (!text) return;
+                  // The boxes stay drawn until the picture is taken.
+                  let marks = null;
+                  if (spots.length && stage.current) {
+                    if (stage.current.scrollIntoView) {
+                      stage.current.scrollIntoView({ block: "nearest" });
+                    }
+                    const r = stage.current.getBoundingClientRect();
+                    marks = {
+                      rect: {
+                        x: r.left,
+                        y: r.top,
+                        width: r.width,
+                        height: r.height,
+                      },
+                      spots,
+                    };
+                  }
+                  await onRevise(text, marks);
                   setChange("");
-                  onRevise(text);
+                  setSpots([]);
+                  setMarking(false);
                 }}
                 disabled={deciding || !change.trim()}
               />
             </div>
             <span className={`text-xs ${muted}`}>
-              The Builder changes it, the Checker checks it again, and you see
-              it again here.
+              {spots.length
+                ? "Your words and a picture of the marked spots go to the Builder. It changes only this — the rest of the widget stays."
+                : "The Builder changes only this — the rest stays — the Checker checks it again, and you see it again here."}
             </span>
           </div>
         ) : null}

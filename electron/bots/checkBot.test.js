@@ -81,6 +81,37 @@ describe("checkBot", () => {
     );
   });
 
+  it("a tool its provider doesn't have is refused (when the provider is running)", () => {
+    const toolsOf = (server) =>
+      server === "Gmail" ? ["search_threads", "get_thread"] : null;
+    const r = checkBot(
+      bot({
+        mcpServers: ["Gmail", "Slack"],
+        toolSelections: {
+          Gmail: ["search_threads", "read_inbox"],
+          Slack: ["post"],
+        },
+      }),
+      ctx({ toolsOf }),
+    );
+    assert.deepEqual(r.errors, [
+      'It uses the tool "read_inbox" on Gmail, which Gmail doesn\'t have. Its tools: search_threads, get_thread.',
+    ]);
+    // One it already had only warns.
+    const kept = checkBot(
+      bot({
+        mcpServers: ["Gmail"],
+        toolSelections: { Gmail: ["read_inbox"] },
+      }),
+      ctx({
+        toolsOf,
+        existing: { toolSelections: { Gmail: ["read_inbox"] } },
+      }),
+    );
+    assert.equal(kept.errors.length, 0);
+    assert.equal(kept.warnings.length, 1);
+  });
+
   it("an AI provider the app doesn't know is refused", () => {
     const r = checkBot(bot({ provider: "nope-ai" }), ctx());
     assert.match(r.errors.join(" "), /AI provider "nope-ai"/);
@@ -279,9 +310,10 @@ describe("screens say a new bot is paused, and Turn on", () => {
     );
   });
   it("Resume reads Turn on — in the chat and the bot page", () => {
+    // A paused bot's chat stays open: a message the user sends goes through.
     assert.match(
       read("Components", "Bots", "BotChat.js"),
-      /Turn on \$\{bot\.name\} to message it/,
+      /won&apos;t run on its own\.[\s\S]{0,200}Messages you send here still go through/,
     );
     assert.doesNotMatch(
       read("Components", "Bots", "BotChat.js"),

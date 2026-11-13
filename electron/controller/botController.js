@@ -93,6 +93,9 @@ const {
 } = require("../bots/taskRouting");
 // How long give_task waits for the Dash Lead to pick a team (TEAM-016).
 const ROUTE_WAIT_MS = 60 * 1000;
+// How long the Builder's guide or the Checker waits for a provider to start
+// to learn its live tools; slower, they go on without them.
+const LIVE_TOOLS_WAIT_MS = 20 * 1000;
 const {
   makeRegistryRef,
   readRegistryRef,
@@ -168,6 +171,7 @@ const {
   tierModel,
 } = require("../bots/dashTeam");
 const { userRunOptions } = require("../bots/userRun");
+const { captureMarks } = require("../bots/markedSpots");
 const {
   ROLE_SERVER,
   ROLE_BUILD_SERVER,
@@ -356,6 +360,11 @@ const botController = {
       widgetTools = null,
     } = deps;
     this._widgetTools = widgetTools;
+    // The host checks a widget's provider calls against the user's live
+    // tools (what each takes) — it asks here for them.
+    if (widgetTools && typeof widgetTools.useLiveTools === "function") {
+      widgetTools.useLiveTools((types) => this._liveToolsFor(types));
+    }
     this._notify = typeof notify === "function" ? notify : null;
     this._getWindows = getWindows || (() => []);
     this._getMainWindow = getMainWindow || (() => null);
@@ -1081,14 +1090,9 @@ const botController = {
       }
     }
     // Every new bot starts paused until the user turns it on (Phase 1d) —
-    // the Dash team and leads are the app's own and aren't saved here. A
-    // lead loaded from a profile file isn't the app's own: it's paused too.
-    if (
-      isNew &&
-      saved &&
-      !isDashTeam(saved) &&
-      (saved.role !== "lead" || opts.addToProfile)
-    ) {
+    // never the Dash team or a lead (from a profile file too): a lead
+    // works when the user talks to it, and a paused one left them stuck.
+    if (isNew && saved && !isDashTeam(saved) && saved.role !== "lead") {
       // PauseController logs it (pause-bot).
       this._pause.pauseBot(saved.id);
     }
@@ -1143,6 +1147,15 @@ const botController = {
         );
       },
       botExists: (id) => !!this._store.get(id),
+      // A running provider's tool names; null when it isn't running.
+      toolsOf: (server) => {
+        const live = this._connectedServers().find(
+          (c) => c.serverName === server,
+        );
+        return live && Array.isArray(live.tools)
+          ? live.tools.map((t) => t && t.name).filter(Boolean)
+          : null;
+      },
     };
   },
 
@@ -1184,33 +1197,46 @@ const botController = {
     // Only the Dash team works inside a plan (and so sees its memory).
     const inPlan =
       planId && isDashTeam(this._store.get(botId)) && this._recent.get(planId);
-    // A run the user starts on a paused bot is a test run (Phase 1d): it
-    // goes ahead — tools and all — and the bot stays paused. Not while
-    // everything is paused.
-    // Counted per bot: a second Run now (skipped — one run at a time) can't
-    // end the first test run's exemption.
-    const testRun =
-      this._pause.isPaused(botId) && !this._pause.isGloballyPaused();
-    if (!this._testRuns) this._testRuns = new Map();
-    if (testRun) {
-      this._testRuns.set(botId, (this._testRuns.get(botId) || 0) + 1);
-    }
-    const done = () => {
-      if (!testRun) return;
-      const left = (this._testRuns.get(botId) || 1) - 1;
-      if (left > 0) this._testRuns.set(botId, left);
-      else this._testRuns.delete(botId);
-    };
-    let started;
-    try {
-      started = this._run(
+    return this._asUserRun(botId, () =>
+      this._run(
         botId,
         userRunOptions(this._store.get(botId), {
           prompt: inPlan ? `${prompt}\n\n${MEMORY_NOTE}` : prompt,
           continueConversation,
           planId: inPlan ? planId : null,
         }),
-      );
+      ),
+    );
+  },
+
+  /**
+   * Start a run the user asked for. On a paused bot it's a test run (Phase
+   * 1d): it goes ahead — tools and all — and the bot stays paused; paused
+   * only stops what a bot does on its own. Not while everything is paused.
+   * Counted per bot: a second run (skipped — one run at a time) can't end
+   * the first one's exemption. `_userRuns` says a run the user started is
+   * going, so the bots a lead asks for it go ahead too.
+   */
+  _asUserRun(botId, start) {
+    if (!this._testRuns) this._testRuns = new Map();
+    if (!this._userRuns) this._userRuns = new Map();
+    const testRun =
+      this._pause.isPaused(botId) && !this._pause.isGloballyPaused();
+    const add = (map) => map.set(botId, (map.get(botId) || 0) + 1);
+    const drop = (map) => {
+      const left = (map.get(botId) || 1) - 1;
+      if (left > 0) map.set(botId, left);
+      else map.delete(botId);
+    };
+    if (testRun) add(this._testRuns);
+    add(this._userRuns);
+    const done = () => {
+      if (testRun) drop(this._testRuns);
+      drop(this._userRuns);
+    };
+    let started;
+    try {
+      started = start();
     } catch (err) {
       done();
       throw err;
@@ -1225,6 +1251,11 @@ const botController = {
         throw err;
       },
     );
+  },
+
+  /** A run the user started is going on this bot (see _asUserRun). */
+  _inUserRun(botId) {
+    return !!this._userRuns && this._userRuns.has(botId);
   },
 
   // ── Create's Recent (create-entry CRE-007 AC2, phase 4e-1) ──────────────
@@ -1688,15 +1719,19 @@ const botController = {
     if (!isLead(bot)) {
       return Promise.resolve({ error: "Not a team lead.", status: "failed" });
     }
-    return this._run(botId, {
-      prompt: question,
-      trigger: "ask",
-      continueSession: !!continueConversation,
-      via,
-      // The lead-workspace conversation asking (release 5): the bots it
-      // asks record it on their runs.
-      conversationId,
-    });
+    const start = () =>
+      this._run(botId, {
+        prompt: question,
+        trigger: "ask",
+        continueSession: !!continueConversation,
+        via,
+        // The lead-workspace conversation asking (release 5): the bots it
+        // asks record it on their runs.
+        conversationId,
+      });
+    // Asked in the app, it's the user's run: a paused lead still answers.
+    // Asked over MCP ("mcp", "mcp-task…"), pause holds.
+    return /^mcp/.test(via || "") ? start() : this._asUserRun(botId, start);
   },
 
   /**
@@ -2025,8 +2060,9 @@ const botController = {
         : member.definition;
     for (const member of plan.members) {
       const bot = this.save(definitionOf(member));
-      // Installed in setup state: nothing runs until the user resumes it.
-      this._pause.pauseBot(bot.id);
+      // Installed in setup state: nothing runs on its own until the user
+      // resumes it. Not the lead — it only works when the user asks it.
+      if (bot.role !== "lead") this._pause.pauseBot(bot.id);
       created[member.role] = bot;
     }
     const subs = wireTeam(plan.wiring, created);
@@ -3535,8 +3571,19 @@ const botController = {
     return this._continueBuild(entry.build.approve(stepId, inputs));
   },
 
-  /** Change something (a cell build's preview): back to the Builder. */
-  revisePlanStep(buildId, stepId, note) {
+  /**
+   * Change something (a cell build's preview): back to the Builder. With
+   * marks (Mark a spot), a picture of the preview with the boxes on it is
+   * taken from the window that sent them (webContents) for the Builder;
+   * the chat gets a small copy (thumb).
+   */
+  async revisePlanStep(
+    buildId,
+    stepId,
+    note,
+    marks = null,
+    webContents = null,
+  ) {
     const { entry, step, error } = this._finishedBuild(buildId, stepId);
     if (error) return { error };
     if (!entry.build) return { error: "Continue building first." };
@@ -3544,7 +3591,23 @@ const botController = {
       return { error: "Nothing is waiting there." };
     }
     if (!String(note || "").trim()) return { error: "Say what to change." };
-    return this._continueBuild(entry.build.revise(stepId, note));
+    // Refused (too many changes, still running): said, never a fix.
+    const problem =
+      entry.build.reviseProblem && entry.build.reviseProblem(stepId, note);
+    if (problem) return { error: problem };
+    const shot =
+      marks && webContents && webContents.capturePage
+        ? await captureMarks(webContents, marks)
+        : null;
+    const res = this._continueBuild(entry.build.revise(stepId, note, shot));
+    return shot
+      ? {
+          ...res,
+          marked: shot.spots.length,
+          ...(shot.thumb ? { thumb: shot.thumb } : {}),
+          ...(shot.error ? { pictureError: shot.error } : {}),
+        }
+      : res;
   },
 
   /**
@@ -4354,6 +4417,7 @@ const botController = {
     row = null,
     col = null,
     provider = null,
+    providers = null,
     settings = null,
   }) {
     const full = !!component && String(component).split(".").length >= 3;
@@ -4365,7 +4429,7 @@ const botController = {
     );
     if (resolved.error) throw new Error(resolved.error);
     let choices = { selectedProviders: {}, userPrefs: {}, dropped: [] };
-    if (provider || settings) {
+    if (provider || settings || (providers && providers.length)) {
       let keys = null;
       if (settings) {
         const parts = resolved.component.split(".");
@@ -4384,7 +4448,7 @@ const botController = {
         connections = [];
       }
       choices = placeChoices(
-        { provider, settings },
+        { provider, providers, settings },
         { connections, settingKeys: keys },
       );
     }
@@ -4535,19 +4599,19 @@ const botController = {
   async _planAskRole(role, request, planId = null) {
     const bot = dashTeamBot(this._store.list(), role);
     if (!bot) return { skipped: true, reason: `the ${role} isn't set up` };
-    if (this._pause.isPaused(bot.id)) {
-      return { skipped: true, reason: `the ${bot.name} is paused` };
-    }
     this._takeBuilds(bot.id);
+    // The user pressed Build: a paused role still does its part.
     const record = await this._reviewedRun(bot, request, () =>
-      this._run(bot.id, {
-        prompt: planId ? `${request}\n\n${MEMORY_NOTE}` : request,
-        trigger: "ask",
-        via: "plan-build",
-        approvalPolicy: "allow",
-        // The plan's build memory (4e-1).
-        ...(planId ? { planId: String(planId) } : {}),
-      }),
+      this._asUserRun(bot.id, () =>
+        this._run(bot.id, {
+          prompt: planId ? `${request}\n\n${MEMORY_NOTE}` : request,
+          trigger: "ask",
+          via: "plan-build",
+          approvalPolicy: "allow",
+          // The plan's build memory (4e-1).
+          ...(planId ? { planId: String(planId) } : {}),
+        }),
+      ),
     );
     // What build_widget said during the run — the build step trusts it over
     // the Builder's answer (Create build fixes).
@@ -4660,7 +4724,15 @@ const botController = {
       askRole: (req) => this._askRole(req),
       ...(this._widgetTools
         ? {
-            widgetGuide: (req) => this._widgetTools.guide(req),
+            // With the user's providers' live tools — what each takes,
+            // and a file provider's folders — so calls are written right.
+            widgetGuide: async (req) =>
+              this._widgetTools.guide({
+                ...req,
+                live: await this._liveToolsFor((req && req.providers) || [], {
+                  folders: true,
+                }).catch(() => ({})),
+              }),
             // During a change (Phase 3) the build is held to its widget.
             buildWidget: (req) =>
               this._widgetTools.build({
@@ -4928,6 +5000,110 @@ const botController = {
   },
 
   /**
+   * The user's first provider of each of these types, started if it isn't
+   * running (at most LIVE_TOOLS_WAIT_MS), with its live tools (name,
+   * description, inputSchema) — what a widget calling it must send. With
+   * { folders: true } (the Builder's guide) a file provider also says which
+   * folders it can use. → { [type]: { provider, tools, notes } }; a type
+   * with no running provider is left out.
+   */
+  async _liveToolsFor(types = [], { folders = false } = {}) {
+    const want = new Set((Array.isArray(types) ? types : []).map(String));
+    if (!want.size || !this._mcp || !this._providers) return {};
+    const win = this._getMainWindow();
+    let all = [];
+    try {
+      ({ providers: all = [] } =
+        this._providers.listProviders(win, this._appId) || {});
+    } catch (_e) {
+      all = [];
+    }
+    // The first of each type — the one a widget of that type gets.
+    const mine = [];
+    for (const p of all || []) {
+      if (!p || !p.name || p.providerClass !== "mcp" || !want.has(p.type)) {
+        continue;
+      }
+      if (!mine.some((m) => m.type === p.type)) mine.push(p);
+    }
+    if (!mine.length) return {};
+    if (this._mcp.startServer) {
+      const started = ensureBotServers({
+        bot: { mcpServers: mine.map((p) => p.name) },
+        connected: this._connectedServers(),
+        getProvider: async (name) =>
+          this._providers.getProvider(win, this._appId, name),
+        startServer: (name, mcpConfig, credentials, workspaceId) =>
+          this._mcp.startServer(
+            win,
+            name,
+            mcpConfig,
+            credentials,
+            workspaceId,
+            null,
+            this._appId,
+          ),
+      }).catch(() => null);
+      // A slow start doesn't hold up the Builder or the Checker.
+      await Promise.race([
+        started,
+        new Promise((r) => {
+          const t = setTimeout(r, LIVE_TOOLS_WAIT_MS);
+          if (t && t.unref) t.unref();
+        }),
+      ]);
+    }
+    const connected = this._connectedServers();
+    const out = {};
+    for (const p of mine) {
+      if (out[p.type]) continue; // the first of its type
+      const live =
+        connected.find((c) => c.serverName === p.name && !c.workspaceId) ||
+        connected.find((c) => c.serverName === p.name);
+      if (!live || !Array.isArray(live.tools) || !live.tools.length) continue;
+      const entry = {
+        provider: p.name,
+        tools: live.tools.map((t) => ({
+          name: t.name,
+          description: t.description || "",
+          inputSchema: t.inputSchema || null,
+        })),
+        notes: [],
+      };
+      if (
+        folders &&
+        this._mcp.callTool &&
+        live.tools.some((t) => t.name === "list_allowed_directories")
+      ) {
+        try {
+          const res = await this._mcp.callTool(
+            win,
+            p.name,
+            "list_allowed_directories",
+            {},
+            null,
+            null,
+            live.workspaceId || null,
+          );
+          const text = ((res && res.result && res.result.content) || [])
+            .map((c) => (c && c.type === "text" ? c.text : ""))
+            .join(" ")
+            .trim();
+          if (text) {
+            entry.notes.push(
+              `Folders ${p.name} can use (every path must be inside one): ${text}`,
+            );
+          }
+        } catch (_e) {
+          // Not known; the Checker still checks the calls.
+        }
+      }
+      out[p.type] = entry;
+    }
+    return out;
+  },
+
+  /**
    * The user's providers: MCP ones with each tool's read-only flag when it's
    * known (running servers carry MCP annotations), otherwise just names;
    * credential providers marked as such.
@@ -4989,13 +5165,16 @@ const botController = {
     // asked role answers, with its read tools only. Building happens when
     // the user presses Build (the plan build, which is their consent) — so
     // a hand-off never waits on an approval nobody can see.
-    const record = await this._reviewedRun(target, request, () =>
+    const start = () =>
       this._run(target.id, {
         prompt: `${request}\n\n(Answer only: you can't build, install or place anything here. That happens when the user presses Build on the plan.)`,
         trigger: "ask",
         via: `dash-team:${(caller && caller.role) || "planner"}`,
         adviseOnly: true,
-      }),
+      });
+    // For the user's own request, a paused role still answers.
+    const record = await this._reviewedRun(target, request, () =>
+      this._inUserRun(callerId) ? this._asUserRun(target.id, start) : start(),
     );
     if (!record || record.skipped) {
       return fail(
@@ -5034,7 +5213,11 @@ const botController = {
       // run its bots) and the conversation it's in.
       ...info,
       takeHandoff: () => this._handoffs.take(lead.id, runKey),
-      run: (opts) => this._run(member.id, opts),
+      // For the user's own request, the bot's run is theirs too.
+      run: (opts) =>
+        this._inUserRun(lead.id)
+          ? this._asUserRun(member.id, () => this._run(member.id, opts))
+          : this._run(member.id, opts),
       // Stopping the lead stops the bots it's waiting on (stop()).
       track: (p) => {
         const asked = this._leadAsked.get(lead.id) || new Set();
@@ -5362,7 +5545,10 @@ const botController = {
           store: this._store,
           memory: this._memory,
           isRunning: (id) => this._runner.listActive().includes(id),
-          isPaused: (id) => this._pause.isPaused(id),
+          // Asked for the user's own request, a paused bot still runs.
+          isPaused: (id) =>
+            this._pause.isPaused(id) &&
+            (!this._inUserRun(caller.id) || this._pause.isGloballyPaused()),
           findProviders: (teamCtx, capability) =>
             this._findProviders(teamCtx, capability),
           listProviders: () => this.listToolSources(caller.workspaceId),

@@ -385,7 +385,7 @@ describe("botController — pages, connections and automatic fixes (Create build
   it("a widget is placed on its page with the connection and settings that check out", () => {
     assert.match(
       src,
-      /placeChoices\(\s+\{ provider, settings \},\s+\{ connections, settingKeys: keys \},?\s+\)/,
+      /placeChoices\(\s+\{ provider, providers, settings \},\s+\{ connections, settingKeys: keys \},?\s+\)/,
     );
     assert.match(
       src,
@@ -449,7 +449,10 @@ describe("botController — cell builds (Phase 2b)", () => {
   });
   it("Looks good / Change something only on a waiting preview", () => {
     assert.match(src, /approvePlanStep\(buildId, stepId, inputs = \{\}\) \{/);
-    assert.match(src, /revisePlanStep\(buildId, stepId, note\) \{/);
+    assert.match(
+      src,
+      /async revisePlanStep\(\s*buildId,\s*stepId,\s*note,\s*marks = null,\s*webContents = null,?\s*\) \{/,
+    );
     assert.match(
       src,
       /step\.kind !== "preview" \|\| step\.status !== "needs-you"/,

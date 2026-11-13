@@ -39,6 +39,7 @@ const { requestApproval } = require("../mcp/jitConsent");
 const { approvalErrorReason } = require("../mcp/approvalErrorReason");
 const { lookup: lookupMountToken } = require("./mountTokenRegistry");
 const { resolveSiblings } = require("./resolveSiblings");
+const { isOwnDataFile } = require("./ownDataFile");
 
 function _defaultRegistrySnapshot() {
   try {
@@ -79,6 +80,9 @@ const WRITE_ACTIONS = new Set([
   "readDataFromURL", // writes to toFilepath despite the name
   "transformFile",
 ]);
+
+// Reading and writing a widget's own data file (ownDataFile.js).
+const OWN_FILE_ACTIONS = new Set(["saveToFile", "readFromFile"]);
 
 function isFsWriteAction(action) {
   return WRITE_ACTIONS.has(action);
@@ -121,6 +125,12 @@ function gateFsCall({ widgetId, token, action, args }) {
         JSON.stringify(filename) +
         ")",
     };
+  }
+
+  // Its own data file (saveState / storeData without a filename): the
+  // widget keeping its own state — never a question for the user.
+  if (OWN_FILE_ACTIONS.has(action) && isOwnDataFile(widgetId, filename)) {
+    return { allow: true, reason: "the widget's own data file" };
   }
 
   const grant = getGrant(widgetId);
@@ -294,6 +304,14 @@ async function gateFsCallWithJit(req, opts = {}) {
   const filename =
     req.args && typeof req.args === "object" ? req.args.filename : null;
   if (typeof filename !== "string" || !filename) {
+    return gateFsCall(req);
+  }
+
+  // Its own data file never asks (see gateFsCall).
+  if (
+    OWN_FILE_ACTIONS.has(req.action) &&
+    isOwnDataFile(verifiedWidgetId, filename)
+  ) {
     return gateFsCall(req);
   }
 
