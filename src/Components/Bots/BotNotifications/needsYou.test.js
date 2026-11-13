@@ -62,7 +62,7 @@ test("an approval: who asks, where, and Allow once opens nothing but answers", (
     who: "Inbox Watch · Kitchen Sink",
     where: "",
     // What it wants to do (frame 22).
-    title: "Inbox Watch wants to use gmail_send",
+    title: "Inbox Watch wants to use Gmail send",
     text: "It waits for your answer.",
     open: { key: "lead:lead_7" },
   });

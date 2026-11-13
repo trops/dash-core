@@ -16,6 +16,12 @@ const {
   forgetToolGrant,
   summarizeGrants,
   folderForPathArg,
+  canRemember,
+  rememberBuiltinGrant,
+  builtinAllowed,
+  forgetBuiltinGrant,
+  forgetFolders,
+  alwaysAllowedRows,
 } = require("./rememberGrant");
 
 // Same rules the real gate uses (electron/mcp/permissionGate.js).
@@ -183,5 +189,146 @@ describe("summarizeGrants", () => {
   });
   it("returns {} for no grant", () => {
     assert.deepEqual(summarizeGrants(null), {});
+  });
+});
+
+describe("Always allow for a built-in web fetch", () => {
+  const fetchAsk = (url) => ({
+    botId: "b1",
+    toolName: "WebFetch",
+    input: { url, prompt: "summarize" },
+  });
+
+  it("can be offered for a provider tool or a web fetch — not other built-ins", () => {
+    assert.equal(
+      canRemember({ botId: "b1", serverName: "Gmail", toolName: "search" }),
+      true,
+    );
+    assert.equal(canRemember(fetchAsk("https://news.example.com/today")), true);
+    assert.equal(
+      canRemember({ botId: "b1", toolName: "Bash", input: {} }),
+      false,
+    );
+    assert.equal(canRemember({ botId: "b1", toolName: "WebSearch" }), false);
+    assert.equal(canRemember(fetchAsk("file:///etc/passwd")), false);
+    assert.equal(canRemember(fetchAsk("not a url")), false);
+  });
+
+  it("the whole site: any page at that origin — not other hosts, ports or http", () => {
+    const g = rememberBuiltinGrant(null, {
+      ...fetchAsk("https://News.Example.com/today#top"),
+      scope: "site",
+    });
+    assert.deepEqual(g.domains.webFetch, {
+      hosts: ["https://news.example.com"],
+      urls: [],
+    });
+    assert.equal(g.grantOrigin, "manual");
+    const yes = (u) => builtinAllowed(g, "WebFetch", { url: u });
+    assert.equal(yes("https://news.example.com/other"), true);
+    assert.equal(yes("https://NEWS.example.com:443/x"), true);
+    assert.equal(yes("http://news.example.com/"), false);
+    assert.equal(yes("https://news.example.com:8080/"), false);
+    assert.equal(yes("https://user@news.example.com.evil.test/"), false);
+    assert.equal(yes("https://cdn.news.example.com/x"), false);
+    assert.equal(yes("https://example.com/"), false);
+    assert.equal(
+      builtinAllowed(g, "Bash", { url: "https://news.example.com/" }),
+      false,
+    );
+  });
+
+  it("only this page: that exact page (without its #part), nothing else", () => {
+    const g = rememberBuiltinGrant(null, {
+      ...fetchAsk("https://news.example.com/today#top"),
+      scope: "page",
+    });
+    assert.deepEqual(g.domains.webFetch.urls, [
+      "https://news.example.com/today",
+    ]);
+    const yes = (u) => builtinAllowed(g, "WebFetch", { url: u });
+    assert.equal(yes("https://news.example.com/today"), true);
+    assert.equal(yes("https://news.example.com/today#later"), true);
+    assert.equal(yes("https://news.example.com/tomorrow"), false);
+  });
+
+  it("keeps the bot's provider grants and doesn't change the input", () => {
+    const before = {
+      servers: { Gmail: { tools: ["search"], readPaths: [], writePaths: [] } },
+    };
+    const copy = JSON.parse(JSON.stringify(before));
+    const g = rememberBuiltinGrant(before, fetchAsk("https://a.example/"));
+    assert.deepEqual(before, copy);
+    assert.deepEqual(g.servers, before.servers);
+    assert.equal(
+      rememberBuiltinGrant(before, { toolName: "Bash", input: {} }),
+      null,
+    );
+  });
+
+  it("forgets one site or page; the last one removes the web fetch part", () => {
+    let g = rememberBuiltinGrant(null, fetchAsk("https://a.example/x"));
+    g = rememberBuiltinGrant(g, {
+      ...fetchAsk("https://b.example/y"),
+      scope: "page",
+    });
+    g = forgetBuiltinGrant(g, "WebFetch", { site: "https://a.example" });
+    assert.deepEqual(g.domains.webFetch, {
+      hosts: [],
+      urls: ["https://b.example/y"],
+    });
+    g = forgetBuiltinGrant(g, "WebFetch", { page: "https://b.example/y" });
+    assert.equal(g.domains.webFetch, undefined);
+  });
+
+  it("lists everything the bot runs without asking, one row each", () => {
+    let g = rememberToolGrant(
+      null,
+      {
+        serverName: "Files",
+        toolName: "read_file",
+        args: { path: "/notes/a.md" },
+      },
+      helpers,
+    );
+    g = rememberBuiltinGrant(g, fetchAsk("https://a.example/x"));
+    g = rememberBuiltinGrant(g, {
+      ...fetchAsk("https://b.example/y"),
+      scope: "page",
+    });
+    assert.deepEqual(alwaysAllowedRows(g), [
+      {
+        kind: "tool",
+        provider: "Files",
+        tool: "read_file",
+        folders: ["/notes"],
+      },
+      { kind: "builtin", tool: "WebFetch", site: "https://a.example" },
+      { kind: "builtin", tool: "WebFetch", page: "https://b.example/y" },
+    ]);
+    assert.deepEqual(alwaysAllowedRows(null), []);
+  });
+});
+
+describe("forgetFolders — Undo takes back folders an answer added", () => {
+  it("removes only those folders, keeping tools and other folders", () => {
+    const g = {
+      servers: {
+        Files: {
+          tools: ["read_file"],
+          readPaths: ["/a", "/b"],
+          writePaths: ["/b"],
+        },
+      },
+    };
+    const next = forgetFolders(g, "Files", ["/b"]);
+    assert.deepEqual(next.servers.Files, {
+      tools: ["read_file"],
+      readPaths: ["/a"],
+      writePaths: [],
+    });
+    assert.equal(g.servers.Files.readPaths.length, 2);
+    assert.equal(forgetFolders(g, "Files", []), g);
+    assert.equal(forgetFolders(g, "Nope", ["/a"]), g);
   });
 });

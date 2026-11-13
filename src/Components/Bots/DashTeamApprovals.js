@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Button, Button3 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { ApprovalPreview } from "./ApprovalPreview";
+import { toolWords } from "./alwaysAllow";
 
 function api() {
   return typeof window !== "undefined" && window.mainApi
@@ -13,12 +14,18 @@ function api() {
 const TOOL_WORDS = {
   build_widget: "build and install a widget",
   place_widget: "put a widget on a dashboard",
+  WebFetch: "read a web page",
 };
 
 /** "The Builder wants to build and install a widget: Smart Lights". */
 export function approvalText(request, botName) {
   const r = request || {};
-  const what = TOOL_WORDS[r.toolName] || `use ${r.toolName || "a tool"}`;
+  // Any other tool by its name in words, and where it runs.
+  const what =
+    TOOL_WORDS[r.toolName] ||
+    (r.toolName
+      ? `use ${toolWords(r.toolName)}${r.serverName ? ` on ${r.serverName}` : ""}`
+      : "use a tool");
   const input = r.input && typeof r.input === "object" ? r.input : {};
   const subject =
     input.widget || input.name || input.widgetName || input.component || null;

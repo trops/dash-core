@@ -163,6 +163,9 @@ class BotRunner {
     this._resolveTools = deps.resolveTools;
     this._callTool = deps.callTool;
     this._audit = deps.audit || (() => {});
+    // (request) → boolean: a built-in tool call covered by a remembered
+    // "Always allow" (no approval needed). Optional.
+    this._builtinAllowed = deps.builtinAllowed || (() => false);
     this._now = deps.now || (() => new Date().toISOString());
     this._makeRequestPermission =
       deps.makeRequestPermission || createRequestPermission;
@@ -275,6 +278,22 @@ class BotRunner {
     // › Activity). Names only — never the tool's input.
     const approvalLog = [];
     const createApproval = (request) => {
+      // A built-in tool the user chose Always allow for (a web fetch of a
+      // site or page) runs without asking — logged like any granted call.
+      if (
+        request &&
+        !request.serverName &&
+        this._builtinAllowed({ ...request, botId })
+      ) {
+        this._audit({
+          outcome: "granted",
+          botId,
+          toolName: request.toolName,
+          serverName: null,
+          runStartedAt: startedAt,
+        });
+        return { id: null, promise: Promise.resolve({ allow: true }) };
+      }
       // The run it came from goes with it, for the audit log.
       const pending = this._approvals.create({
         ...request,

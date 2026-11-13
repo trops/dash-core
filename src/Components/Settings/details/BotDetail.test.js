@@ -494,52 +494,95 @@ describe("BotDetail — Providers (the user's Dash MCP providers)", () => {
       schedules: [],
     };
 
-    it("marks remembered tools 'Always allowed' with a Revoke control", async () => {
-      window.mainApi.bots.getGrants = jest.fn().mockResolvedValue({
-        gmail: { tools: ["search_emails"], folders: [] },
-      });
+    it("lists what the bot runs without asking, one row each, with Ask again", async () => {
+      window.mainApi.bots.listAlwaysAllowed = jest.fn().mockResolvedValue([
+        { kind: "tool", provider: "gmail", tool: "search_emails", folders: [] },
+        { kind: "builtin", tool: "WebFetch", site: "news.example.com" },
+      ]);
+      window.mainApi.bots.forgetAlwaysAllowed = jest
+        .fn()
+        .mockResolvedValue([
+          { kind: "builtin", tool: "WebFetch", site: "news.example.com" },
+        ]);
       render(<BotDetail bot={editBot} providers={{}} onSave={jest.fn()} />);
-      expect(await screen.findByText(/Always allowed/)).toBeInTheDocument();
-      expect(window.mainApi.bots.getGrants).toHaveBeenCalledWith("bot_9");
       expect(
-        screen.getByLabelText("Revoke always-allow for Search emails"),
+        await screen.findByText("Runs without asking · 2"),
       ).toBeInTheDocument();
-      // Only the remembered tool is marked.
-      expect(screen.getAllByText(/Always allowed/)).toHaveLength(1);
-    });
-
-    it("Revoke removes the remembered approval", async () => {
-      window.mainApi.bots.getGrants = jest.fn().mockResolvedValue({
-        gmail: { tools: ["search_emails"], folders: [] },
-      });
-      window.mainApi.bots.revokeGrant = jest.fn().mockResolvedValue({});
-      render(<BotDetail bot={editBot} providers={{}} onSave={jest.fn()} />);
-      fireEvent.click(
-        await screen.findByLabelText("Revoke always-allow for Search emails"),
-      );
-      expect(window.mainApi.bots.revokeGrant).toHaveBeenCalledWith(
+      expect(window.mainApi.bots.listAlwaysAllowed).toHaveBeenCalledWith(
         "bot_9",
-        "gmail",
-        "search_emails",
       );
-      await waitFor(() =>
-        expect(screen.queryByText(/Always allowed/)).toBeNull(),
+      expect(screen.getByText("Search emails · gmail")).toBeInTheDocument();
+      expect(screen.getByText("Pages on news.example.com")).toBeInTheDocument();
+      fireEvent.click(
+        screen.getByLabelText("Ask again before Search emails · gmail"),
       );
+      expect(window.mainApi.bots.forgetAlwaysAllowed).toHaveBeenCalledWith(
+        "bot_9",
+        expect.objectContaining({ provider: "gmail", tool: "search_emails" }),
+      );
+      expect(
+        await screen.findByText("Runs without asking · 1"),
+      ).toBeInTheDocument();
     });
 
-    it("lists remembered folders for a provider", async () => {
-      window.mainApi.bots.getGrants = jest.fn().mockResolvedValue({
-        gmail: { tools: ["read_email"], folders: ["/Users/me/Inbox"] },
-      });
+    it("reloads when an Always allow for this bot is answered elsewhere", async () => {
+      window.mainApi.bots.listAlwaysAllowed = jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            kind: "tool",
+            provider: "gmail",
+            tool: "search_emails",
+            folders: [],
+          },
+        ])
+        .mockResolvedValue([
+          {
+            kind: "tool",
+            provider: "gmail",
+            tool: "search_emails",
+            folders: [],
+          },
+          { kind: "builtin", tool: "WebFetch", site: "https://a.example" },
+        ]);
+      render(<BotDetail bot={editBot} providers={{}} onSave={jest.fn()} />);
+      expect(
+        await screen.findByText("Runs without asking · 1"),
+      ).toBeInTheDocument();
+      window.dispatchEvent(
+        new CustomEvent("dash:always-allowed-changed", {
+          detail: { botId: "other" },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent("dash:always-allowed-changed", {
+          detail: { botId: "bot_9" },
+        }),
+      );
+      expect(
+        await screen.findByText("Runs without asking · 2"),
+      ).toBeInTheDocument();
+      expect(window.mainApi.bots.listAlwaysAllowed).toHaveBeenCalledTimes(2);
+    });
+
+    it("shows a provider tool's remembered folders", async () => {
+      window.mainApi.bots.listAlwaysAllowed = jest.fn().mockResolvedValue([
+        {
+          kind: "tool",
+          provider: "gmail",
+          tool: "read_email",
+          folders: ["/Users/me/Inbox"],
+        },
+      ]);
       render(<BotDetail bot={editBot} providers={{}} onSave={jest.fn()} />);
       expect(await screen.findByText(/\/Users\/me\/Inbox/)).toBeInTheDocument();
     });
 
     it("a new (unsaved) bot doesn't look up remembered approvals", async () => {
-      window.mainApi.bots.getGrants = jest.fn().mockResolvedValue({});
+      window.mainApi.bots.listAlwaysAllowed = jest.fn().mockResolvedValue([]);
       render(<BotDetail isCreating providers={{}} onSave={jest.fn()} />);
       await screen.findByLabelText("Gmail");
-      expect(window.mainApi.bots.getGrants).not.toHaveBeenCalled();
+      expect(window.mainApi.bots.listAlwaysAllowed).not.toHaveBeenCalled();
     });
   });
 });

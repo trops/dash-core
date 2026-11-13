@@ -2,7 +2,9 @@ import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Button2,
+  Button3,
   FontAwesomeIcon,
+  RadioGroup,
   SegmentedControl,
   ThemeContext,
   useStatusTokens,
@@ -15,10 +17,20 @@ import { BotAvatar } from "../BotAvatar";
 import { ApprovalPreview } from "../ApprovalPreview";
 import { needsYou, whenText } from "./needsYou";
 import { activityLog } from "./activityLog";
+import {
+  alwaysAllowLine,
+  canAlwaysAllow,
+  pageReach,
+  pageText,
+  savedText,
+  webFetchTarget,
+} from "../alwaysAllow";
 
 const EMPTY = [];
 const RUN_LIMIT = 50;
 const SEEN_KEY = "dash:botNotifications:seenAt";
+// "Always allowed" cards kept in the panel at once.
+const SAVED_KEPT = 3;
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -127,10 +139,27 @@ function openPlace(open) {
   }
 }
 
+/** A bot's Always allow changed here: its open settings list reloads. */
+function announceChange(botId) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("dash:always-allowed-changed", { detail: { botId } }),
+  );
+}
+
+/** A bot's settings, where what it may do without asking is listed. */
+function openBotSettings(botId) {
+  if (typeof window === "undefined" || !botId) return;
+  window.dispatchEvent(
+    new CustomEvent("dash:open-bot", { detail: { botId, tab: "settings" } }),
+  );
+}
+
 /**
  * BotNotificationsPanel — the right rail's bot notifications (lead-workspace
  * release 4, frames 22, 27–29): the shown dashboard's lead and Open
- * conversation; Needs you from every dashboard — Allow once / Deny, Retry or
+ * conversation; Needs you from every dashboard — Allow once / Always allow /
+ * Deny (with Undo), Retry or
  * Reconnect answered here, plans opened in their conversation; and Activity
  * for this dashboard or all of them. Stays mounted while collapsed so the
  * rail's dot (and the panel opening by itself) stay live.
@@ -161,6 +190,10 @@ export const BotNotificationsPanel = ({
   // What's been answered here, for a moment, until the lists catch up.
   const [answered, setAnswered] = useState({});
   const [busy, setBusy] = useState({});
+  // A web fetch's Always allow: the whole site or only the page, per ask.
+  const [reach, setReach] = useState({});
+  // Asks answered with Always allow here: what was saved, with Undo.
+  const [saved, setSaved] = useState([]);
 
   // NEW: since the user last looked — read once when the panel opens.
   const [seenAt, setSeenAt] = useState(() => readSeenAt());
@@ -253,6 +286,46 @@ export const BotNotificationsPanel = ({
       setBusy((b) => ({ ...b, [item.id]: false }));
     }
   };
+  // Always allow: allowed now and saved for later runs; the card says what.
+  const alwaysAllow = (item) =>
+    act(item, async () => {
+      const scope = reach[item.id] || "site";
+      const res = await contacts.approve(item.approvalId, {
+        allow: true,
+        remember: true,
+        ...(webFetchTarget(item.request) ? { scope } : {}),
+      });
+      if (res && res.remembered) announceChange(item.botId);
+      const bot = bots.find((b) => String(b.id) === String(item.botId));
+      // The newest few; older ones have been read.
+      setSaved((list) =>
+        [
+          {
+            id: item.approvalId,
+            request: item.request,
+            botName: (bot && bot.name) || "",
+            scope,
+            // Allowed this once, but not saved: say so.
+            failed: !(res && res.remembered),
+          },
+          ...list,
+        ].slice(0, SAVED_KEPT),
+      );
+    });
+  const undo = async (s) => {
+    let res = null;
+    try {
+      res = await contacts.approve(s.id, { undo: true });
+    } catch (_e) {
+      res = null;
+    }
+    if (res && res.ok) announceChange(s.request.botId);
+    setSaved((list) =>
+      res && res.ok
+        ? list.filter((x) => x.id !== s.id)
+        : list.map((x) => (x.id === s.id ? { ...x, undoFailed: true } : x)),
+    );
+  };
   const reconnect = (item) => {
     if (typeof window === "undefined") return;
     window.dispatchEvent(
@@ -318,6 +391,52 @@ export const BotNotificationsPanel = ({
         >
           {needs.length ? `Needs you · ${needs.length}` : "Needs you"}
         </span>
+        {saved.map((s) => (
+          <div
+            key={s.id}
+            className={`flex flex-col gap-2 rounded-xl border p-3 ${hairline} ${selectedBg} dr-role-surface`}
+            data-testid="bot-notifications-saved"
+          >
+            <span className="flex flex-row items-center gap-2">
+              <FontAwesomeIcon
+                icon={s.failed ? "circle-exclamation" : "circle-check"}
+                className={`h-4 w-4 flex-shrink-0 ${
+                  s.failed
+                    ? statusTokens.warning.icon
+                    : statusTokens.success.icon
+                }`}
+              />
+              <span className={`flex-1 text-sm font-semibold ${strong}`}>
+                {s.failed ? "Allowed this once" : "Always allowed"}
+              </span>
+              {s.failed ? null : (
+                <button
+                  type="button"
+                  onClick={() => undo(s)}
+                  className={`text-xs ${link}`}
+                >
+                  Undo
+                </button>
+              )}
+            </span>
+            <span className={`text-sm ${muted}`}>
+              {s.failed
+                ? "Dash couldn't save Always allow, so it will ask again next time."
+                : s.undoFailed
+                  ? "Dash couldn't undo this — use Ask again in the bot's settings."
+                  : savedText(s.request, s.botName, s.scope)}
+            </span>
+            <span>
+              <button
+                type="button"
+                onClick={() => openBotSettings(s.request.botId)}
+                className={`text-xs ${link}`}
+              >
+                See what it may do without asking ›
+              </button>
+            </span>
+          </div>
+        ))}
         {needs.length ? (
           needs.map((n) => (
             <div
@@ -360,10 +479,51 @@ export const BotNotificationsPanel = ({
               {n.convo ? (
                 <span className={`text-xs ${muted}`}>{n.convo}</span>
               ) : null}
+              {n.kind === "approval" && webFetchTarget(n.request) ? (
+                <div className="flex flex-col gap-1">
+                  <span
+                    className={`text-xs font-semibold uppercase tracking-wider ${muted}`}
+                  >
+                    Always allow covers
+                  </span>
+                  <RadioGroup
+                    name={`reach-${n.id}`}
+                    value={reach[n.id] || "site"}
+                    onChange={(v) => setReach((r) => ({ ...r, [n.id]: v }))}
+                    options={[
+                      {
+                        value: "site",
+                        label: (
+                          <span className="flex flex-col">
+                            <span className={strong}>
+                              Pages on{" "}
+                              {pageText(webFetchTarget(n.request).site)}
+                            </span>
+                            <span className={`text-xs ${muted}`}>
+                              Any page on this site — not other sites
+                            </span>
+                          </span>
+                        ),
+                      },
+                      {
+                        value: "page",
+                        label: (
+                          <span className="flex flex-col">
+                            <span className={strong}>Only this page</span>
+                            <span className={`text-xs ${muted}`}>
+                              {pageReach(webFetchTarget(n.request).url)}
+                            </span>
+                          </span>
+                        ),
+                      },
+                    ]}
+                  />
+                </div>
+              ) : null}
               <div className="flex flex-row flex-wrap items-center gap-2">
                 {n.kind === "approval" ? (
                   <>
-                    <Button
+                    <Button2
                       size="sm"
                       title="Allow once"
                       disabled={!!busy[n.id]}
@@ -373,7 +533,15 @@ export const BotNotificationsPanel = ({
                         )
                       }
                     />
-                    <Button2
+                    {canAlwaysAllow(n.request) ? (
+                      <Button
+                        size="sm"
+                        title="Always allow"
+                        disabled={!!busy[n.id]}
+                        onClick={() => alwaysAllow(n)}
+                      />
+                    ) : null}
+                    <Button3
                       size="sm"
                       title="Deny"
                       disabled={!!busy[n.id]}
@@ -419,9 +587,14 @@ export const BotNotificationsPanel = ({
                   </button>
                 ) : null}
               </div>
+              {n.kind === "approval" && canAlwaysAllow(n.request) ? (
+                <span className={`text-xs ${muted}`}>
+                  {alwaysAllowLine(n.request, reach[n.id] || "site")}
+                </span>
+              ) : null}
             </div>
           ))
-        ) : (
+        ) : saved.length ? null : (
           <span
             className={`text-sm ${muted}`}
             data-testid="bot-notifications-quiet"

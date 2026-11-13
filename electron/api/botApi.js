@@ -35,6 +35,8 @@ const {
   BOTS_CONNECTOR_GIVEN_UP,
   BOTS_GET_GRANTS,
   BOTS_REVOKE_GRANT,
+  BOTS_LIST_ALWAYS_ALLOWED,
+  BOTS_FORGET_ALWAYS_ALLOWED,
   BOTS_ENSURE_LEAD,
   BOTS_BUILTIN_INSTRUCTIONS,
   BOTS_DISMISS_LAYERS_NOTICE,
@@ -235,6 +237,15 @@ const botApi = {
   /** Revoke one remembered tool approval; resolves to the updated summary. */
   revokeGrant: (botId, serverName, toolName) =>
     ipcRenderer.invoke(BOTS_REVOKE_GRANT, { botId, serverName, toolName }),
+  /**
+   * Everything a bot may do without asking, one row each:
+   * { kind: "tool", provider, tool } | { kind: "builtin", tool, site|page }.
+   */
+  listAlwaysAllowed: (botId) =>
+    ipcRenderer.invoke(BOTS_LIST_ALWAYS_ALLOWED, { botId }),
+  /** Ask again for one row; resolves to the new list. */
+  forgetAlwaysAllowed: (botId, row) =>
+    ipcRenderer.invoke(BOTS_FORGET_ALWAYS_ALLOWED, { botId, row }),
 
   // ---- Team leads (bot-teams TEAM-002 / TEAM-003) ----
   /** Make sure a dashboard has its idle lead. → { lead, created, reason? } */

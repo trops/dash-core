@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useContext, useRef } from "react";
 import { keepLatest } from "./botFormMerge";
-import { connectorToolName } from "../../../utils/toolNames";
 import {
   AlertBanner,
   Button,
@@ -49,6 +48,7 @@ import {
 } from "../sections/aiSettingsText";
 import { cleanIpcError } from "../../../utils/errorUtils";
 import { BuiltinInstructions } from "./BuiltinInstructions";
+import { AlwaysAllowedList } from "../../Bots/AlwaysAllowedList";
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -314,50 +314,6 @@ export const BotDetail = ({
   const [providerKind, setProviderKind] = useState(KIND_ALL);
   const [pickedOnly, setPickedOnly] = useState(false);
   const [pickedOnlyNames, setPickedOnlyNames] = useState(null);
-  // Remembered approvals ("Always allow") for a saved bot:
-  // { [provider]: { tools: string[], folders: string[] } }.
-  const [grants, setGrants] = useState({});
-
-  useEffect(() => {
-    let alive = true;
-    const api = getMainApi();
-    if (!bot?.id || !api?.bots?.getGrants) return undefined;
-    Promise.resolve(api.bots.getGrants(bot.id))
-      .then((g) => {
-        if (alive && g && typeof g === "object") setGrants(g);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [bot?.id]);
-
-  // A Claude connector's approvals are kept under the engine's tool name.
-  const grantKey = (serverName, tool) => {
-    const src = toolSources.find((s) => s.name === serverName);
-    return src && src.connector ? connectorToolName(src.server, tool) : tool;
-  };
-  const isRemembered = (serverName, tool) =>
-    !!(
-      grants[serverName] &&
-      (grants[serverName].tools || []).includes(grantKey(serverName, tool))
-    );
-
-  const revokeRemembered = async (serverName, tool) => {
-    const api = getMainApi();
-    if (!bot?.id || !api?.bots?.revokeGrant) return;
-    try {
-      const next = await api.bots.revokeGrant(
-        bot.id,
-        serverName,
-        grantKey(serverName, tool),
-      );
-      setGrants(next && typeof next === "object" ? next : {});
-    } catch (_e) {
-      // Leave the badge as-is; the revoke can be retried.
-    }
-  };
-
   // --- Model options (fetched per provider) ---
   const [modelOptions, setModelOptions] = useState([]);
 
@@ -1145,36 +1101,9 @@ export const BotDetail = ({
                                             )
                                           }
                                         />
-                                        {isRemembered(s.serverName, tool) ? (
-                                          <>
-                                            <span className="text-xs opacity-60">
-                                              Always allowed
-                                            </span>
-                                            <Button3
-                                              title="Revoke"
-                                              size="xs"
-                                              ariaLabel={`Revoke always-allow for ${prettyTool(tool)}`}
-                                              tooltip="Ask again before this tool runs"
-                                              onClick={() =>
-                                                revokeRemembered(
-                                                  s.serverName,
-                                                  tool,
-                                                )
-                                              }
-                                            />
-                                          </>
-                                        ) : null}
                                       </div>
                                     ))}
                                   </div>
-                                  {grants[s.serverName] &&
-                                  (grants[s.serverName].folders || [])
-                                    .length ? (
-                                    <span className="text-xs opacity-50">
-                                      Always-allowed folders:{" "}
-                                      {grants[s.serverName].folders.join(", ")}
-                                    </span>
-                                  ) : null}
                                 </>
                               ) : (
                                 <span className="text-xs opacity-50">
@@ -1235,6 +1164,9 @@ export const BotDetail = ({
               />
               {approvalHint ? (
                 <span className="text-xs opacity-50">{approvalHint}</span>
+              ) : null}
+              {!isCreating && bot && bot.id ? (
+                <AlwaysAllowedList botId={bot.id} />
               ) : null}
               {/* A saved bot's monthly limit and spending (US-019 AC2). */}
               {showBudget && !isCreating && bot && bot.id && !isTeamRole ? (

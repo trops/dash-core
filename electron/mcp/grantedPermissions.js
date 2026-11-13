@@ -205,6 +205,15 @@ function sanitizePerms(perms) {
             (a) => typeof a === "string",
           );
         }
+      } else if (name === "webFetch") {
+        // A bot's "Always allow" for its built-in web fetch: whole sites
+        // (hosts: origins like https://example.com) or single pages (urls).
+        const strings = (list) =>
+          Array.isArray(list) ? list.filter((s) => typeof s === "string") : [];
+        domains.webFetch = {
+          hosts: strings(raw.hosts),
+          urls: strings(raw.urls),
+        };
       }
       // Future domains plug in here. Unknown domain names are dropped.
     }
