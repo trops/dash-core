@@ -299,6 +299,28 @@ test("domains: pre-existing servers grant is preserved when domains added later"
   assert.strictEqual(before.domains, undefined);
 });
 
+// ---- domains.webFetch (a bot's Always allow for its built-in web fetch) ----
+
+test("domains.webFetch: sites and pages round-trip; junk is dropped", () => {
+  resetState();
+  setGrant("bot_web", {
+    grantOrigin: "manual",
+    domains: {
+      webFetch: {
+        hosts: ["news.example.com", 7],
+        urls: ["https://b.example/y", null],
+        extra: "dropped",
+      },
+    },
+  });
+  const got = getGrant("bot_web");
+  assert.deepStrictEqual(got.domains.webFetch, {
+    hosts: ["news.example.com"],
+    urls: ["https://b.example/y"],
+  });
+  assert.deepStrictEqual(got.servers, {});
+});
+
 // ---- domains.network (Phase 3 JIT consent) ----------------------------
 
 test("domains.network: setGrant + getGrant round-trips a network grant", () => {

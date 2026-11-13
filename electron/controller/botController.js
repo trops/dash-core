@@ -263,7 +263,15 @@ const {
   rememberToolGrant,
   forgetToolGrant,
   summarizeGrants,
+  rememberBuiltinGrant,
+  builtinAllowed,
+  forgetBuiltinGrant,
+  forgetFolders,
+  alwaysAllowedRows,
+  webFetchTarget,
 } = require("../bots/rememberGrant");
+// How many recent "Always allow" answers can still be undone.
+const UNDO_KEPT = 50;
 const grantStore = require("../mcp/grantedPermissions");
 const { isWriteTool, PATH_ARG_KEYS } = require("../mcp/permissionGate");
 const {
@@ -546,6 +554,9 @@ const botController = {
         ROLE_SERVER,
       ],
       resolveRunProfile: (bot) => this._resolveRunProfile(bot),
+      // A built-in tool call the user chose Always allow for.
+      builtinAllowed: (req) =>
+        builtinAllowed(grantStore.getGrant(req.botId), req.toolName, req.input),
       // Tools that ran (or were refused) without asking.
       audit: (entry) => {
         const logged = fromGateEntry(entry);
@@ -2773,12 +2784,18 @@ const botController = {
 
   /**
    * Resolve a pending approval. `decision.remember` ("Always allow") also
-   * saves a durable grant for this bot + provider + tool (+ the folder of a
-   * path argument), so later runs use that tool without asking. Only provider
-   * tool approvals can be remembered — built-in agent tools have no provider
-   * and always ask.
+   * saves a durable grant, so later runs go ahead without asking: for a
+   * provider tool, this bot + provider + tool (+ the folder of a path
+   * argument); for a built-in web fetch, this bot + the site
+   * (`decision.scope` "site", the default) or only the page ("page"). Other
+   * built-in tools always ask.
+   *
+   * `decision.undo` takes back the Always allow of an approval answered just
+   * before: the grant goes back to what it was (or, if it changed since,
+   * only what that answer added is removed). The call it allowed has run.
    */
   approve(approvalId, decision = {}) {
+    if (decision.undo) return { ok: this._undoAlwaysAllow(approvalId) };
     if (!decision.allow) {
       return { ok: this._approvals.deny(approvalId, decision.reason) };
     }
@@ -2786,9 +2803,11 @@ const botController = {
     if (decision.remember) {
       const pending = this._approvals.get(approvalId);
       const req = pending && pending.request;
+      const before = req && req.botId ? grantStore.getGrant(req.botId) : null;
+      let next = null;
       if (req && req.botId && req.serverName && req.toolName) {
-        const next = rememberToolGrant(
-          grantStore.getGrant(req.botId),
+        next = rememberToolGrant(
+          before,
           {
             serverName: req.serverName,
             toolName: req.toolName,
@@ -2796,18 +2815,140 @@ const botController = {
           },
           { isWriteTool, pathArgKeys: PATH_ARG_KEYS, dirname: path.dirname },
         );
+      } else if (req && req.botId && req.toolName) {
+        next = rememberBuiltinGrant(before, {
+          toolName: req.toolName,
+          input: req.input,
+          scope: decision.scope,
+        });
+      }
+      if (next) {
         remembered = grantStore.setGrant(req.botId, next) === true;
-        if (remembered) {
-          this._logAudit({
-            type: "grant-saved",
-            botId: req.botId,
-            tool: req.toolName,
-            provider: req.serverName,
-          });
-        }
+      }
+      if (remembered) {
+        const after = grantStore.getGrant(req.botId);
+        // Folders this answer added to the provider (Undo takes them back).
+        const paths = (g) => {
+          const sv = (g && g.servers && g.servers[req.serverName]) || {};
+          return [...(sv.readPaths || []), ...(sv.writePaths || [])];
+        };
+        const had = req.serverName ? paths(before) : [];
+        this._rememberUndo(approvalId, {
+          req,
+          scope: decision.scope,
+          before,
+          after,
+          addedFolders: req.serverName
+            ? paths(after).filter((p) => !had.includes(p))
+            : [],
+        });
+        this._logAudit({
+          type: "grant-saved",
+          botId: req.botId,
+          tool: req.toolName,
+          provider: req.serverName || null,
+        });
       }
     }
-    return { ok: this._approvals.resolve(approvalId, decision), remembered };
+    // The run's record says "always allowed" only when it was saved.
+    return {
+      ok: this._approvals.resolve(approvalId, {
+        ...decision,
+        remember: remembered,
+      }),
+      remembered,
+    };
+  },
+
+  _rememberUndo(approvalId, entry) {
+    if (!this._alwaysUndo) this._alwaysUndo = new Map();
+    this._alwaysUndo.set(approvalId, entry);
+    while (this._alwaysUndo.size > UNDO_KEPT) {
+      this._alwaysUndo.delete(this._alwaysUndo.keys().next().value);
+    }
+  },
+
+  _undoAlwaysAllow(approvalId) {
+    const entry = this._alwaysUndo && this._alwaysUndo.get(approvalId);
+    if (!entry) return false;
+    const { req, scope, before, after, addedFolders = [] } = entry;
+    const current = grantStore.getGrant(req.botId);
+    let ok;
+    if (JSON.stringify(current) === JSON.stringify(after)) {
+      // Nothing else changed since: back to exactly what it was.
+      ok = before
+        ? grantStore.setGrant(req.botId, before) === true
+        : grantStore.revokeGrant(req.botId) === true;
+    } else if (req.serverName) {
+      // Only what this answer added: the tool (unless the bot already had
+      // it) and any folder it added.
+      const had =
+        (before && before.servers && before.servers[req.serverName]) || {};
+      let next = forgetFolders(current, req.serverName, addedFolders);
+      if (!(had.tools || []).includes(req.toolName)) {
+        next = forgetToolGrant(next, req.serverName, req.toolName);
+      }
+      ok = next === current || grantStore.setGrant(req.botId, next) === true;
+    } else {
+      const target = webFetchTarget(req.input);
+      const was = alwaysAllowedRows(before);
+      const added =
+        scope === "page"
+          ? { tool: req.toolName, page: target && target.url }
+          : { tool: req.toolName, site: target && target.site };
+      const kept = was.some(
+        (r) =>
+          r.tool === added.tool &&
+          r.site === added.site &&
+          r.page === added.page,
+      );
+      ok =
+        !target ||
+        kept ||
+        grantStore.setGrant(
+          req.botId,
+          forgetBuiltinGrant(current, req.toolName, added),
+        ) === true;
+    }
+    if (ok) {
+      // Only once it worked, so a failed Undo can be tried again.
+      this._alwaysUndo.delete(approvalId);
+      this._logAudit({
+        type: "grant-revoked",
+        botId: req.botId,
+        tool: req.toolName,
+        provider: req.serverName || null,
+      });
+    }
+    return ok;
+  },
+
+  /**
+   * Everything a bot may do without asking, one row each:
+   * { kind: "tool", provider, tool } or { kind: "builtin", tool, site|page }.
+   */
+  listAlwaysAllowed(botId) {
+    return alwaysAllowedRows(grantStore.getGrant(botId));
+  },
+
+  /** "Ask again" for one row of listAlwaysAllowed; returns the new list. */
+  forgetAlwaysAllowed(botId, row = {}) {
+    const current = grantStore.getGrant(botId);
+    if (current && row.tool) {
+      const next =
+        row.kind === "builtin"
+          ? forgetBuiltinGrant(current, row.tool, row)
+          : forgetToolGrant(current, row.provider, row.tool);
+      if (next !== current && grantStore.setGrant(botId, next) === true) {
+        this._logAudit({
+          type: "grant-revoked",
+          botId,
+          tool: row.tool,
+          provider: row.kind === "builtin" ? null : row.provider,
+        });
+      }
+    }
+    return this.listAlwaysAllowed(botId);
   },
 
   /** Remembered approvals for a bot: { [provider]: { tools, folders } }. */

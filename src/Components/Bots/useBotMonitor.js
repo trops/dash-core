@@ -114,8 +114,10 @@ export function useBotMonitor() {
 
   const approve = useCallback(async (approvalId, decision) => {
     const b = api();
-    if (b && b.approve) await b.approve(approvalId, decision);
+    const res = b && b.approve ? await b.approve(approvalId, decision) : null;
     setApprovals((prev) => prev.filter((a) => a.id !== approvalId));
+    // { ok, remembered } — whether an Always allow was saved.
+    return res;
   }, []);
 
   const stop = useCallback(

@@ -1284,3 +1284,90 @@ describe("BotRunner — what went wrong is kept on the run (issues PRD)", () => 
     assert.equal(record.toolErrors, undefined);
   });
 });
+
+describe("BotRunner — a built-in tool the user always allowed", () => {
+  it("runs without asking (and is logged as granted); anything else still asks", async () => {
+    const created = [];
+    const audited = [];
+    const approvals = {
+      create: (req) => {
+        created.push(req.toolName);
+        return { id: "a1", promise: Promise.resolve({ allow: true }) };
+      },
+    };
+    const answers = [];
+    const engine = {
+      id: "tool-loop",
+      run(ctx) {
+        return (async function* () {
+          answers.push(
+            await ctx.createApproval({
+              toolName: "WebFetch",
+              input: { url: "https://news.example.com/today" },
+            }).promise,
+          );
+          answers.push(
+            await ctx.createApproval({
+              toolName: "WebFetch",
+              input: { url: "https://other.example/" },
+            }).promise,
+          );
+          yield { type: "done" };
+        })();
+      },
+    };
+    const seen = [];
+    const { runner, runs } = makeRunner(engine, {
+      deps: {
+        approvals,
+        audit: (e) => audited.push(e),
+        builtinAllowed: (req) => {
+          seen.push(req);
+          return req.input.url.startsWith("https://news.example.com/");
+        },
+      },
+    });
+    await runner.run("bot_1", {});
+    assert.deepEqual(answers, [{ allow: true }, { allow: true }]);
+    assert.deepEqual(created, ["WebFetch"]);
+    assert.equal(seen[0].botId, "bot_1");
+    assert.ok(
+      audited.some(
+        (e) =>
+          e.outcome === "granted" &&
+          e.toolName === "WebFetch" &&
+          e.botId === "bot_1",
+      ),
+    );
+    // Only the ask that was answered is in the run's approvals.
+    assert.equal(runs[0].run.approvals.length, 1);
+  });
+
+  it("a provider tool's ask never takes the built-in path", async () => {
+    const created = [];
+    const approvals = {
+      create: (req) => {
+        created.push(req.toolName);
+        return { id: "a1", promise: Promise.resolve({ allow: false }) };
+      },
+    };
+    const engine = {
+      id: "tool-loop",
+      run(ctx) {
+        return (async function* () {
+          await ctx.createApproval({
+            serverName: "Web",
+            toolName: "WebFetch",
+            input: {},
+          }).promise;
+          yield { type: "done" };
+        })();
+      },
+    };
+    const { runner } = makeRunner(engine, {
+      deps: { approvals, builtinAllowed: () => true },
+    });
+    await runner.run("bot_1", {});
+    assert.deepEqual(created, ["WebFetch"]);
+  });
+});

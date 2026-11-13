@@ -269,3 +269,163 @@ test("Activity: this dashboard, or All with each tagged (frame 29)", async () =>
     "Index Watch Logged 1,204 searches · Algolia Search",
   );
 });
+
+describe("Always allow in Needs you (always-allow frames 1–3)", () => {
+  const gmailAsk = {
+    id: "a1",
+    createdAt: iso(5),
+    request: {
+      botId: "inbox",
+      serverName: "Gmail",
+      toolName: "search_messages",
+      input: { query: "newer_than:1d" },
+    },
+  };
+  const fetchAsk = {
+    id: "a2",
+    createdAt: iso(4),
+    request: {
+      botId: "inbox",
+      toolName: "WebFetch",
+      input: { url: "https://news.example.com/today", prompt: "headlines" },
+    },
+  };
+
+  test("a provider tool: Allow once, Always allow, Deny — and what Always allow means", async () => {
+    setup({ approvals: [gmailAsk] });
+    const [item] = await screen.findAllByTestId("bot-notifications-item");
+    for (const name of ["Allow once", "Always allow", "Deny"]) {
+      expect(within(item).getByRole("button", { name })).toBeInTheDocument();
+    }
+    expect(item).toHaveTextContent(
+      "Always allow: this bot uses Search messages on Gmail without asking, every run.",
+    );
+  });
+
+  test("a shell command can't be always allowed", async () => {
+    setup({
+      approvals: [
+        {
+          id: "a3",
+          createdAt: iso(5),
+          request: {
+            botId: "inbox",
+            toolName: "Bash",
+            input: { command: "ls" },
+          },
+        },
+      ],
+    });
+    const [item] = await screen.findAllByTestId("bot-notifications-item");
+    expect(
+      within(item).queryByRole("button", { name: "Always allow" }),
+    ).toBeNull();
+    expect(item).not.toHaveTextContent("Always allow:");
+  });
+
+  test("Always allow saves it; the card says what, with Undo", async () => {
+    setup({ approvals: [gmailAsk] });
+    window.mainApi.bots.approve.mockResolvedValue({
+      ok: true,
+      remembered: true,
+    });
+    const [item] = await screen.findAllByTestId("bot-notifications-item");
+    fireEvent.click(within(item).getByRole("button", { name: "Always allow" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.approve).toHaveBeenCalledWith("a1", {
+        allow: true,
+        remember: true,
+      }),
+    );
+    const card = await screen.findByTestId("bot-notifications-saved");
+    expect(card).toHaveTextContent("Always allowed");
+    expect(card).toHaveTextContent(
+      "Inbox Watch uses Search messages on Gmail without asking, from now on.",
+    );
+    expect(screen.queryByTestId("bot-notifications-quiet")).toBeNull();
+
+    const opened = jest.fn();
+    window.addEventListener("dash:open-bot", opened);
+    fireEvent.click(
+      within(card).getByRole("button", {
+        name: "See what it may do without asking ›",
+      }),
+    );
+    window.removeEventListener("dash:open-bot", opened);
+    expect(opened.mock.calls[0][0].detail).toEqual({
+      botId: "inbox",
+      tab: "settings",
+    });
+
+    fireEvent.click(within(card).getByRole("button", { name: "Undo" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.approve).toHaveBeenCalledWith("a1", {
+        undo: true,
+      }),
+    );
+    expect(screen.queryByTestId("bot-notifications-saved")).toBeNull();
+  });
+
+  test("not saved: the card says it was allowed once, with no Undo", async () => {
+    setup({ approvals: [gmailAsk] });
+    window.mainApi.bots.approve.mockResolvedValue({ ok: true });
+    const [item] = await screen.findAllByTestId("bot-notifications-item");
+    fireEvent.click(within(item).getByRole("button", { name: "Always allow" }));
+    const card = await screen.findByTestId("bot-notifications-saved");
+    expect(card).toHaveTextContent("Allowed this once");
+    expect(card).toHaveTextContent("couldn't save Always allow");
+    expect(within(card).queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  test("an Undo that didn't work keeps the card and says what to do", async () => {
+    setup({ approvals: [gmailAsk] });
+    window.mainApi.bots.approve.mockImplementation((id, d) =>
+      Promise.resolve(
+        d && d.undo ? { ok: false } : { ok: true, remembered: true },
+      ),
+    );
+    const [item] = await screen.findAllByTestId("bot-notifications-item");
+    fireEvent.click(within(item).getByRole("button", { name: "Always allow" }));
+    const card = await screen.findByTestId("bot-notifications-saved");
+    fireEvent.click(within(card).getByRole("button", { name: "Undo" }));
+    await waitFor(() =>
+      expect(card).toHaveTextContent(
+        "couldn't undo this — use Ask again in the bot's settings",
+      ),
+    );
+  });
+
+  test("a web fetch: choose the whole site or only this page", async () => {
+    setup({ approvals: [fetchAsk] });
+    window.mainApi.bots.approve.mockResolvedValue({
+      ok: true,
+      remembered: true,
+    });
+    const [item] = await screen.findAllByTestId("bot-notifications-item");
+    expect(item).toHaveTextContent("Always allow covers");
+    expect(item).toHaveTextContent("Pages on news.example.com");
+    expect(item).toHaveTextContent(
+      "news.example.com/today — and any page on this site it redirects to",
+    );
+    expect(item).toHaveTextContent(
+      "reads pages on news.example.com without asking",
+    );
+    fireEvent.click(within(item).getByLabelText(/Only this page/));
+    expect(item).toHaveTextContent(
+      "reads news.example.com/today without asking",
+    );
+    fireEvent.click(within(item).getByRole("button", { name: "Always allow" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.approve).toHaveBeenCalledWith("a2", {
+        allow: true,
+        remember: true,
+        scope: "page",
+      }),
+    );
+    expect(
+      await screen.findByTestId("bot-notifications-saved"),
+    ).toHaveTextContent(
+      "Inbox Watch reads news.example.com/today without asking, from now on.",
+    );
+  });
+});

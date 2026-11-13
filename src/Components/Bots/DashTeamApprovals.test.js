@@ -126,6 +126,12 @@ test("approvalText", () => {
     ),
   ).toBe("Builder wants to put a widget on a dashboard: Clock on Home.");
   expect(approvalText({ toolName: "x" })).toBe(
-    "A Dash team bot wants to use x.",
+    "A Dash team bot wants to use X.",
   );
+  expect(
+    approvalText(
+      { serverName: "Gmail", toolName: "search_messages" },
+      "Inbox Watch",
+    ),
+  ).toBe("Inbox Watch wants to use Search messages on Gmail.");
 });
