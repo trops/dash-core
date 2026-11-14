@@ -74,8 +74,8 @@ export const PublishBotDialog = ({
   error = null,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
-  const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
-  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
+  const hairline = `${currentTheme["border-neutral-dark"] || "border-gray-700"} dr-role-hairline`;
+  const muted = `${currentTheme["text-neutral-medium"] || "text-gray-400"} dr-role-muted`;
   // The Modal is only a frame — the panel brings the theme's background.
   const panel = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,

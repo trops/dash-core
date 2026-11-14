@@ -66,7 +66,7 @@ export const EditBotsRow = ({
               <span className="flex flex-col">
                 <span className="text-sm font-semibold">{name}</span>
                 <span
-                  className={`text-xs ${currentTheme["text-primary-medium"] || ""}`}
+                  className={`text-xs ${currentTheme["text-primary-medium"] || ""} dr-role-accent`}
                 >
                   {`${modelLabel(bot.model) || "Default model"} · ${formatMonthCost(
                     spend,

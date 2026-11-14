@@ -320,9 +320,9 @@ export const WidgetCardHeader = ({
   // Theme tokens (light + dark). The header has no border or fill of its
   // own — it sits inside the cell's one frame (GridCellFrame); the merge
   // selection ring lives on the grid cell.
-  const strong = currentTheme["text-neutral-light"] || "";
-  const muted = currentTheme["text-neutral-medium"] || "";
-  const hairline = currentTheme["border-neutral-dark"] || "";
+  const strong = `${currentTheme["text-neutral-light"] || ""} dr-role-text`;
+  const muted = `${currentTheme["text-neutral-medium"] || ""} dr-role-muted`;
+  const hairline = `${currentTheme["border-neutral-dark"] || ""} dr-role-hairline`;
   const accentBorder = currentTheme["border-primary-medium"] || "";
 
   return (

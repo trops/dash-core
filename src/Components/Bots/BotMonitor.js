@@ -70,9 +70,9 @@ export const BotMonitor = ({
   onOpenSettings = null,
 }) => {
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
-  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
-  const strong = currentTheme["text-neutral-light"] || "text-gray-200";
-  const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
+  const muted = `${currentTheme["text-neutral-medium"] || "text-gray-400"} dr-role-muted`;
+  const strong = `${currentTheme["text-neutral-light"] || "text-gray-200"} dr-role-text`;
+  const hairline = `${currentTheme["border-neutral-dark"] || "border-gray-700"} dr-role-hairline`;
   const statusTokens = useStatusTokens();
   const dotClass = (status) =>
     STATUS_TONE[status]

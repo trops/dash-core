@@ -89,7 +89,7 @@ export const WidgetIssueChip = ({
           data-testid="widget-issue-card"
           className={`absolute ${align === "right" ? "right-0" : "left-0"} top-full mt-1 z-30 w-80 flex flex-col gap-1.5 p-3 rounded-lg border shadow-lg text-left ${hairline} ${
             currentTheme["bg-neutral-very-dark"] || ""
-          }`}
+          } dr-role-surface`}
         >
           <span className="flex flex-row items-center gap-2">
             <IssueDot severity={newest.severity} />

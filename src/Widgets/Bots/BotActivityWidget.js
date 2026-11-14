@@ -49,9 +49,9 @@ function summaryLine(run) {
  */
 export const BotActivityContent = ({ dashboardId, team }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
-  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
-  const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
-  const strong = currentTheme["text-neutral-light"] || "";
+  const muted = `${currentTheme["text-neutral-medium"] || "text-gray-400"} dr-role-muted`;
+  const hairline = `${currentTheme["border-neutral-dark"] || "border-gray-700"} dr-role-hairline`;
+  const strong = `${currentTheme["text-neutral-light"] || ""} dr-role-text`;
   const statusTokens = useStatusTokens();
   const [rows, setRows] = useState(null);
 

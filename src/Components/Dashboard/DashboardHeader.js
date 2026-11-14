@@ -136,7 +136,7 @@ export const DashboardHeader = ({
                 </span>
                 {selectionKind && (
                   <span
-                    className={`text-xs ${currentTheme["text-primary-medium"] || ""}`}
+                    className={`text-xs ${currentTheme["text-primary-medium"] || ""} dr-role-accent`}
                   >
                     {selectionKind}
                   </span>

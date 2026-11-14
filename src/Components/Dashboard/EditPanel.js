@@ -106,7 +106,7 @@ export const EditPanel = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionKey]);
   const act = (...args) => onWidgetAction && onWidgetAction(...args);
-  const muted = currentTheme["text-neutral-medium"] || "";
+  const muted = `${currentTheme["text-neutral-medium"] || ""} dr-role-muted`;
   const status = useStatusTokens();
   const widgetName =
     selection?.kind === "widget" ? selection.label || selection.component : "";
@@ -134,7 +134,7 @@ export const EditPanel = ({
       aria-label="Edit dashboard"
       className={`chrome-glass flex flex-col w-80 flex-shrink-0 h-full min-h-0 border-l ${
         currentTheme["border-neutral-dark"] || ""
-      } ${currentTheme["bg-neutral-very-dark"] || ""}`}
+      } dr-role-hairline ${currentTheme["bg-neutral-very-dark"] || ""} dr-role-surface`}
     >
       <Tabs3
         value={tab}
@@ -250,7 +250,7 @@ export const EditPanel = ({
                 <div className="flex flex-col gap-2">
                   <span
                     role="status"
-                    className={`text-xs ${currentTheme["text-neutral-light"] || ""}`}
+                    className={`text-xs ${currentTheme["text-neutral-light"] || ""} dr-role-text`}
                   >
                     Choose a cell in the same grid: click it, or Tab to it and
                     press Enter. An empty cell takes the widget; a full one
@@ -390,7 +390,7 @@ export const EditPanel = ({
               <SectionLabel>Providers, listeners and bots</SectionLabel>
               {configUnresolvedCount > 0 && (
                 <span
-                  className={`text-sm ${currentTheme["text-neutral-medium"] || ""}`}
+                  className={`text-sm ${currentTheme["text-neutral-medium"] || ""} dr-role-muted`}
                 >
                   {configUnresolvedCount} widget
                   {configUnresolvedCount === 1 ? " needs" : "s need"} a
@@ -420,7 +420,7 @@ export const EditPanel = ({
             />
           ) : (
             <span
-              className={`text-sm ${currentTheme["text-neutral-medium"] || ""}`}
+              className={`text-sm ${currentTheme["text-neutral-medium"] || ""} dr-role-muted`}
             >
               No themes yet.
             </span>
