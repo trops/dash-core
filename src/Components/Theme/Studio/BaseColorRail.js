@@ -45,7 +45,8 @@ const BaseColorRail = ({ theme, themeVariant = "dark", onEditChannel }) => (
       editor that opens.
     </div>
     {CHANNELS.map((c) => {
-      const value = theme?.[themeVariant]?.[c.key];
+      // A raw (unmodelled) theme keeps its channels at the top level.
+      const value = theme?.[themeVariant]?.[c.key] || theme?.[c.key];
       const display = swatchDisplay(value);
       return (
         <div key={c.key} className="flex flex-col space-y-1">

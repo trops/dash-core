@@ -214,8 +214,10 @@ export const ThemeManagerModal = ({
           setSelectedMethod(null);
           const newThemes = message["themes"];
           if (newThemes && newThemes[key]) {
+            // Saved themes come back raw; the editor reads the model's
+            // per-variant colours (empty boxes otherwise).
             setThemeKeySelected(key);
-            setThemeSelected(newThemes[key]);
+            setThemeSelected(ThemeModel(finalTheme));
             setRawThemeSelected(finalTheme);
           }
         },
