@@ -24,6 +24,12 @@ import {
   deriveShades,
   TAILWIND_PALETTE,
 } from "@trops/dash-react";
+import {
+  auroraTokens,
+  paletteOf,
+  STRENGTHS,
+  DEFAULT_STRENGTH,
+} from "../utils/auroraTokens";
 
 /**
  * Last-resort family for ANY channel whose value can't be resolved
@@ -183,6 +189,12 @@ export const ThemeModel = (themeItem = {}) => {
     theme.shadeBorderFrom =
       "shadeBorderFrom" in obj ? obj["shadeBorderFrom"] : 100;
     theme.shadeTo = "shadeTo" in obj ? obj["shadeTo"] : 700;
+
+    // How much of the theme's colour Aurora's surfaces take (Themes page
+    // › Strength): subtle | balanced | bold.
+    theme.strength = STRENGTHS.includes(obj.strength)
+      ? obj.strength
+      : DEFAULT_STRENGTH;
 
     // somehow generate the colors based on the theme inputs...
     // light, medium, dark for each?
@@ -471,8 +483,56 @@ export const ThemeModel = (themeItem = {}) => {
     // Merge base channel vars with per-token override vars (collected
     // by applyOverride above). Each variant gets its own merged map
     // because dark and light variants may carry different overrides.
-    const darkVars = { ...cssVarsAll, ...ovrVarsByVariant.dark };
-    const lightVars = { ...cssVarsAll, ...ovrVarsByVariant.light };
+    // Aurora's surfaces and accent from this theme, at its strength — the
+    // app theme sets them on <html>, a dashboard's theme on its own wrapper,
+    // so every dash-react component inside takes them.
+    const palettes = {};
+    ["primary", "secondary", "tertiary"].forEach((type) => {
+      palettes[type] = paletteOf(
+        (t, shade) => cssValueFor(t, shade, theme[t]),
+        type,
+      );
+    });
+    const darkVars = {
+      ...cssVarsAll,
+      ...ovrVarsByVariant.dark,
+      ...auroraTokens(palettes, "dark", theme.strength),
+    };
+    const lightVars = {
+      ...cssVarsAll,
+      ...ovrVarsByVariant.light,
+      ...auroraTokens(palettes, "light", theme.strength),
+    };
+    theme["dark"].strength = theme.strength;
+    theme["light"].strength = theme.strength;
+
+    // Tags read at 4.5:1 or better on any palette. dash-react's Tag uses
+    // the same channel's medium shade for fill and text (rose-600 on
+    // rose-300 in light, 2.3:1). Fill and text two shades apart instead —
+    // dark 800 / 200, light 200 / 800 (5.4:1 at worst across Tailwind's
+    // families) — each tag keeping its own channel. A theme's own tag
+    // colours win.
+    const TAG_ITEMS = {
+      tag: "primary",
+      "tag-2": "secondary",
+      "tag-3": "tertiary",
+    };
+    const TAG_LEVELS = {
+      dark: { bg: "dark", text: "medium" },
+      light: { bg: "light", text: "very-light" },
+    };
+    ["dark", "light"].forEach((variant) => {
+      const lv = TAG_LEVELS[variant];
+      Object.entries(TAG_ITEMS).forEach(([item, type]) => {
+        if (theme[variant][item]) return;
+        theme[variant][item] = {
+          backgroundColor: `bg-${type}-${lv.bg}`,
+          textColor: `text-${type}-${lv.text}`,
+          hoverBackgroundColor: `hover-bg-${type}-${lv.bg}`,
+          hoverTextColor: `hover-text-${type}-${lv.text}`,
+        };
+      });
+    });
     if (Object.keys(darkVars).length > 0) {
       theme["dark"].cssVars = darkVars;
     }

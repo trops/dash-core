@@ -10,16 +10,19 @@ import { ThemeContext, DASH_ROLES } from "@trops/dash-react";
  */
 export function useConfigTokens() {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
-  const key = (role) => currentTheme?.[DASH_ROLES[role].key];
+  // The role class rides along so Aurora paints the theme's own (tinted)
+  // surfaces and text, as dash-react components do.
+  const key = (role, fallback) =>
+    `${currentTheme?.[DASH_ROLES[role].key] || fallback} ${DASH_ROLES[role].role}`;
   return {
-    muted: key("muted") || "text-gray-400",
-    strong: key("text") || "text-gray-200",
-    hairline: key("hairline") || "border-gray-700",
-    selectedBg: key("surface") || "bg-gray-800",
+    muted: key("muted", "text-gray-400"),
+    strong: key("text", "text-gray-200"),
+    hairline: key("hairline", "border-gray-700"),
+    selectedBg: key("surface", "bg-gray-800"),
     selectedBorder: currentTheme?.["border-primary-dark"] || "border-gray-600",
-    fieldBg: key("well") || "bg-gray-900",
+    fieldBg: key("well", "bg-gray-900"),
     // A link's colour (the theme's accent).
-    accent: key("accent") || "text-indigo-300",
+    accent: key("accent", "text-indigo-300"),
   };
 }
 

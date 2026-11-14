@@ -1,10 +1,11 @@
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Button3,
   SearchInput,
   SegmentedControl,
-  ThemeContext,
+  useStatusTokens,
 } from "@trops/dash-react";
+import { useConfigTokens } from "../Dashboard/ConfigListRow";
 
 const TYPE_OPTIONS = [
   { value: "all", label: "All" },
@@ -41,9 +42,8 @@ function summaryLine(p) {
  *   Back (making a bot in Create): no title, Close or frame of its own
  */
 export const RegistryBrowse = ({ onPick, onClose, embedded = false }) => {
-  const { currentTheme = {} } = useContext(ThemeContext) || {};
-  const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
-  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
+  const { hairline, muted } = useConfigTokens();
+  const status = useStatusTokens();
 
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
@@ -102,7 +102,7 @@ export const RegistryBrowse = ({ onPick, onClose, embedded = false }) => {
         className={`flex-1 min-h-0 overflow-y-auto ${embedded ? "py-4" : "px-5 py-4"} flex flex-col gap-2`}
       >
         {error ? (
-          <span className="text-xs text-red-400">
+          <span className={`text-xs ${status.error.icon}`}>
             {`Couldn't search the registry: ${error}`}
           </span>
         ) : null}

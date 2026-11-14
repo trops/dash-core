@@ -1,6 +1,5 @@
 import React, {
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -15,7 +14,6 @@ import {
   ChatToolCall,
   EmptyState,
   FontAwesomeIcon,
-  ThemeContext,
   useStatusTokens,
 } from "@trops/dash-react";
 import { extractHandoff, withoutHandoff } from "../../utils/handoff";
@@ -32,6 +30,7 @@ import { appendAnswerText } from "../../utils/answerText";
 import { runCostLabel } from "../../utils/runCostLabel";
 import { shortToolName } from "../../utils/toolNames";
 import { ApprovalPreview } from "./ApprovalPreview";
+import { useConfigTokens } from "../Dashboard/ConfigListRow";
 
 /**
  * BotChat — a bot's conversation in the Bots view and the Bots dock
@@ -112,11 +111,8 @@ export const BotChat = ({
   const waiting = waitingText(queuedEvents);
   // A bot that runs on its own: what a message here does.
   const jobNote = jobRunNote(bot, isLead);
-  const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
-  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
-  const strong = currentTheme["text-neutral-light"] || "text-gray-200";
+  const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
-  const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
 
   const [runs, setRuns] = useState(null);
   const [live, setLive] = useState(null);
@@ -382,7 +378,7 @@ export const BotChat = ({
         return (
           <div
             key={i}
-            className="rounded-md border border-red-800 px-3 py-2 text-sm text-red-300 flex flex-col gap-2"
+            className={`rounded-md border px-3 py-2 text-sm flex flex-col gap-2 ${statusTokens.error.border} ${statusTokens.error.bg} ${statusTokens.error.text}`}
           >
             <span>{t.text}</span>
             <div className="flex flex-row flex-wrap gap-2">
