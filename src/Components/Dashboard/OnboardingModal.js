@@ -280,7 +280,7 @@ export const OnboardingModal = ({
 
   const bgPanel = currentTheme?.["bg-primary-medium"] || "bg-gray-900";
   const textPrimary = currentTheme?.["text-primary-light"] || "text-gray-100";
-  const textMuted = currentTheme?.["text-primary-medium"] || "text-gray-400";
+  const textMuted = `${currentTheme?.["text-primary-medium"] || "text-gray-400"} dr-role-accent`;
   const borderPanel =
     currentTheme?.["border-primary-medium"] || "border-gray-700";
 

@@ -305,9 +305,9 @@ const Answer = ({
  */
 export const BotResultsContent = ({ botId, dashboardId, widgetId, team }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
-  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
-  const strong = currentTheme["text-neutral-light"] || "";
-  const hairline = currentTheme["border-neutral-dark"] || "";
+  const muted = `${currentTheme["text-neutral-medium"] || "text-gray-400"} dr-role-muted`;
+  const strong = `${currentTheme["text-neutral-light"] || ""} dr-role-text`;
+  const hairline = `${currentTheme["border-neutral-dark"] || ""} dr-role-hairline`;
   const [linked, setLinked] = useState(botId || null);
   const [busy, setBusy] = useState(false);
   const [compact, rootRef] = useNarrow();

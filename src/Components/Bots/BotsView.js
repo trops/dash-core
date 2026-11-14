@@ -160,12 +160,12 @@ export const BotsView = ({
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   const appContext = useContext(AppContext);
   const providers = appContext?.providers || {};
-  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
-  const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
-  const selectedBg = currentTheme["bg-neutral-very-dark"] || "bg-gray-800";
+  const muted = `${currentTheme["text-neutral-medium"] || "text-gray-400"} dr-role-muted`;
+  const hairline = `${currentTheme["border-neutral-dark"] || "border-gray-700"} dr-role-hairline`;
+  const selectedBg = `${currentTheme["bg-neutral-very-dark"] || "bg-gray-800"} dr-role-surface`;
   const selectedBorder =
     currentTheme["border-primary-dark"] || "border-gray-600";
-  const strong = currentTheme["text-neutral-light"] || "text-gray-200";
+  const strong = `${currentTheme["text-neutral-light"] || "text-gray-200"} dr-role-text`;
 
   const rootRef = useRef(null);
   const isNarrow = useNarrow(rootRef, narrow);

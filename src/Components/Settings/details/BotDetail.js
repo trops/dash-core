@@ -400,7 +400,7 @@ export const BotDetail = ({
   const [triggerAdded, setTriggerAdded] = useState(false);
 
   const { currentTheme = {} } = useContext(ThemeContext) || {};
-  const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
+  const hairline = `${currentTheme["border-neutral-dark"] || "border-gray-700"} dr-role-hairline`;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   // "Saved" shows after a successful save until the next edit.

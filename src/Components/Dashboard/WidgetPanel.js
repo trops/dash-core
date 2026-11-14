@@ -514,7 +514,7 @@ export const WidgetPanel = ({
       <code
         className={`font-mono text-xs break-all px-2 py-1 rounded ${
           currentTheme?.["bg-neutral-very-dark"] || ""
-        }`}
+        } dr-role-surface`}
       >
         {pictures[0].address}
       </code>

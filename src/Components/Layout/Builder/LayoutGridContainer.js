@@ -325,10 +325,10 @@ export const LayoutGridContainer = memo(
     const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
     const status = useStatusTokens();
     const tokens = {
-      muted: currentTheme["text-neutral-medium"] || "",
-      strong: currentTheme["text-neutral-light"] || "",
-      hairline: currentTheme["border-neutral-dark"] || "",
-      surface: currentTheme["bg-neutral-very-dark"] || "",
+      muted: `${currentTheme["text-neutral-medium"] || ""} dr-role-muted`,
+      strong: `${currentTheme["text-neutral-light"] || ""} dr-role-text`,
+      hairline: `${currentTheme["border-neutral-dark"] || ""} dr-role-hairline`,
+      surface: `${currentTheme["bg-neutral-very-dark"] || ""} dr-role-surface`,
       activeBg: currentTheme["bg-neutral-dark"] || "",
       hoverBg: currentTheme["hover-bg-neutral-very-dark"] || "",
       hoverText: currentTheme["hover-text-neutral-light"] || "",
@@ -1730,7 +1730,7 @@ export const LayoutGridContainer = memo(
         scrollable={false}
         className={
           editing
-            ? `rounded-lg overflow-x-clip border ${currentTheme["border-neutral-dark"] || ""} min-h-24 z-10`
+            ? `rounded-lg overflow-x-clip border ${currentTheme["border-neutral-dark"] || ""} dr-role-hairline min-h-24 z-10`
             : ""
         }
         space={false}
@@ -1947,7 +1947,7 @@ export const LayoutGridContainer = memo(
             width={"w-full"}
             height={"h-full"}
             scrollable={false}
-            className={`rounded-lg overflow-x-clip border ${currentTheme["border-neutral-dark"] || ""} min-h-24 z-10`}
+            className={`rounded-lg overflow-x-clip border ${currentTheme["border-neutral-dark"] || ""} dr-role-hairline min-h-24 z-10`}
             space={false}
           >
             <LayoutContainer

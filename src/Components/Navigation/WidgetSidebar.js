@@ -75,10 +75,10 @@ export function widgetTitle(widgetKey, widget = {}) {
 function useSidebarTokens() {
   const currentTheme = (useContext(ThemeContext) || {}).currentTheme || {};
   return {
-    muted: currentTheme["text-neutral-medium"] || "",
-    strong: currentTheme["text-neutral-light"] || "",
-    hairline: currentTheme["border-neutral-dark"] || "",
-    field: currentTheme["bg-neutral-very-dark"] || "",
+    muted: `${currentTheme["text-neutral-medium"] || ""} dr-role-muted`,
+    strong: `${currentTheme["text-neutral-light"] || ""} dr-role-text`,
+    hairline: `${currentTheme["border-neutral-dark"] || ""} dr-role-hairline`,
+    field: `${currentTheme["bg-neutral-very-dark"] || ""} dr-role-well`,
     hoverBg: currentTheme["hover-bg-neutral-very-dark"] || "",
   };
 }

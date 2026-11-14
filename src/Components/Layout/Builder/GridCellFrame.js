@@ -106,7 +106,7 @@ export function GridCellFrame({
   // rounded-lg box; the header and footer sit inside it with no borders or
   // fills of their own. Theme tokens only (they follow light/dark); the
   // border carries the state, dimmed fades the whole card.
-  const hairline = currentTheme["border-neutral-dark"] || "";
+  const hairline = `${currentTheme["border-neutral-dark"] || ""} dr-role-hairline`;
   const borderClass =
     state === "selected"
       ? `border-2 ${currentTheme["border-primary-medium"] || ""}`

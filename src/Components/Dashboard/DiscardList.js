@@ -10,7 +10,7 @@ import { ThemeContext } from "../../Context";
 export const DiscardList = ({ changes }) => {
   const { currentTheme = {} } = useContext(ThemeContext);
   const text = currentTheme["text-primary-light"] || "";
-  const muted = currentTheme["text-primary-medium"] || "";
+  const muted = `${currentTheme["text-primary-medium"] || ""} dr-role-accent`;
   return (
     <div className="flex flex-col gap-3 text-sm">
       <span className={text}>These changes haven't been saved:</span>

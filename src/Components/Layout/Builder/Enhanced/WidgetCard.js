@@ -148,7 +148,7 @@ export const WidgetCard = ({
   // border; the selected empty cell gets the theme's primary border.
   const border = highlighted
     ? `border-2 ${currentTheme["border-primary-medium"] || ""}`
-    : `border border-dashed ${currentTheme["border-neutral-dark"] || ""}`;
+    : `border border-dashed ${currentTheme["border-neutral-dark"] || ""} dr-role-hairline`;
   return (
     <WidgetCardContext.Provider value={{ preview }}>
       <div

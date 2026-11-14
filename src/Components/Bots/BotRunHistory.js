@@ -197,7 +197,7 @@ function startedBy(run) {
 export const RunProblems = ({ run, bot, onRunAgain = null }) => {
   const status = useStatusTokens();
   const { currentTheme = {} } = useContext(ThemeContext) || {};
-  const muted = currentTheme["text-neutral-medium"] || "";
+  const muted = `${currentTheme["text-neutral-medium"] || ""} dr-role-muted`;
   const warnings = runWarningList(run);
   const toolErrors = runToolErrors(run);
   const failed = (Array.isArray(run && run.toolCalls) ? run.toolCalls : [])
@@ -307,7 +307,7 @@ export const RunDetails = ({
   showProblems = true,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
-  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
+  const muted = `${currentTheme["text-neutral-medium"] || "text-gray-400"} dr-role-muted`;
   const status = useStatusTokens();
   const convo = runConversation(run, bot, nameOf);
   const runAgain = (prompt) => {
@@ -449,9 +449,9 @@ export const BotRunHistory = ({
   compact = false,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
-  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
-  const strong = currentTheme["text-neutral-light"] || "text-gray-200";
-  const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
+  const muted = `${currentTheme["text-neutral-medium"] || "text-gray-400"} dr-role-muted`;
+  const strong = `${currentTheme["text-neutral-light"] || "text-gray-200"} dr-role-text`;
+  const hairline = `${currentTheme["border-neutral-dark"] || "border-gray-700"} dr-role-hairline`;
   const [runs, setRuns] = useState(null);
   const [open, setOpen] = useState(null);
 
