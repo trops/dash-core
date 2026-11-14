@@ -32,19 +32,19 @@ describe("useConfigTokens", () => {
       "text-primary-medium": "text-indigo-600",
     });
     expect(t).toEqual({
-      muted: "text-gray-600",
-      strong: "text-gray-700",
-      hairline: "border-gray-200",
-      selectedBg: "bg-gray-100",
+      muted: "text-gray-600 dr-role-muted",
+      strong: "text-gray-700 dr-role-text",
+      hairline: "border-gray-200 dr-role-hairline",
+      selectedBg: "bg-gray-100 dr-role-surface",
       selectedBorder: "border-indigo-200",
-      fieldBg: "bg-gray-100",
-      accent: "text-indigo-600",
+      fieldBg: "bg-gray-100 dr-role-well",
+      accent: "text-indigo-600 dr-role-accent",
     });
   });
 
   test("falls back to Tailwind shades without a theme", () => {
     const t = tokensFor(null);
-    expect(t.muted).toBe("text-gray-400");
-    expect(t.fieldBg).toBe("bg-gray-900");
+    expect(t.muted).toBe("text-gray-400 dr-role-muted");
+    expect(t.fieldBg).toBe("bg-gray-900 dr-role-well");
   });
 });

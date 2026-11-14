@@ -262,3 +262,47 @@ describe("ThemesPage actions (NAV-009 AC3)", () => {
     );
   });
 });
+
+describe("ThemesPage — Strength (theme strength frames 1–4)", () => {
+  it("each theme says its strength in the list; Balanced when unset", () => {
+    setup(
+      {},
+      {
+        themes: {
+          ...themes,
+          "theme-b": processed("Bravo", { strength: "bold" }),
+        },
+      },
+    );
+    expect(within(row("Aurora")).getByText("Balanced")).toBeInTheDocument();
+    expect(within(row("Bravo")).getByText("Bold")).toBeInTheDocument();
+  });
+
+  it("choosing a strength saves it on the theme and refreshes the themes", () => {
+    const { dashApi, ctx } = setup();
+    const box = within(detail()).getByTestId("theme-strength");
+    expect(box).toHaveTextContent("How much of this theme's colour");
+    fireEvent.click(within(box).getByRole("radio", { name: "Subtle" }));
+    expect(dashApi.saveTheme).toHaveBeenCalledWith(
+      "app",
+      "theme-a",
+      { ...rawThemes["theme-a"], strength: "subtle" },
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(ctx.changeThemesForApplication).toHaveBeenCalled();
+  });
+
+  it("the preview says which strength it shows", () => {
+    setup(
+      {},
+      {
+        themes: {
+          ...themes,
+          "theme-a": processed("Aurora", { strength: "bold" }),
+        },
+      },
+    );
+    expect(within(detail()).getByText("Preview · Bold")).toBeInTheDocument();
+  });
+});

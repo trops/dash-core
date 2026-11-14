@@ -56,3 +56,31 @@ describe("ThemePreview", () => {
     expect(screen.getByText("No preview for this theme")).toBeInTheDocument();
   });
 });
+
+test("a theme with Aurora tokens is drawn as the app shows it, at its strength", () => {
+  const tokens = {
+    "--bg": "#101010",
+    "--raised": "#202020",
+    "--accent": "#ff0066",
+    "--accent-grad": "linear-gradient(135deg, #cc0044, #cc0044)",
+  };
+  render(
+    <ThemePreview
+      theme={{
+        name: "Rose",
+        strength: "bold",
+        dark: { strength: "bold", cssVars: tokens, cssValue: {} },
+      }}
+      variant="dark"
+    />,
+  );
+  const box = screen.getByTestId("theme-preview");
+  expect(box).toHaveAttribute("data-strength", "bold");
+  expect(box.style.getPropertyValue("--raised")).toBe("#202020");
+  expect(screen.getByTestId("preview-button").style.background).toContain(
+    "var(--accent-grad)",
+  );
+  expect(screen.getAllByTestId("preview-card")[0].style.background).toBe(
+    "var(--raised)",
+  );
+});

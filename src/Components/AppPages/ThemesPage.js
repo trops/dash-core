@@ -53,6 +53,17 @@ const CHIPS = [
   { value: "inUse", label: "In use" },
   { value: "notUsed", label: "Not used" },
 ];
+// How much of the theme's colour backgrounds, cards and panels take.
+const STRENGTH_OPTIONS = [
+  { value: "subtle", label: "Subtle" },
+  { value: "balanced", label: "Balanced" },
+  { value: "bold", label: "Bold" },
+];
+const strengthName = (theme) =>
+  (
+    STRENGTH_OPTIONS.find((o) => o.value === (theme && theme.strength)) ||
+    STRENGTH_OPTIONS[1]
+  ).label;
 const VARIANTS = [
   { value: "dark", label: "Dark" },
   { value: "light", label: "Light" },
@@ -78,8 +89,9 @@ const ThemeDetailPanel = ({
   onDuplicate,
   onDelete,
   onOpenWorkspace,
+  onStrength,
 }) => {
-  const { muted, strong } = useConfigTokens();
+  const { muted, strong, hairline } = useConfigTokens();
   const [variant, setVariant] = useState(appVariant || "dark");
   const [publishOpen, setPublishOpen] = useState(false);
   const theme = row.theme || {};
@@ -144,9 +156,29 @@ const ThemeDetailPanel = ({
         </div>
       </div>
 
+      <div
+        className={`flex flex-row flex-wrap items-center gap-4 rounded-xl border p-4 ${hairline}`}
+        data-testid="theme-strength"
+      >
+        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+          <span className={`text-sm font-semibold ${strong}`}>Strength</span>
+          <span className={`text-xs ${muted}`}>
+            How much of this theme's colour the backgrounds, cards and panels
+            take. Buttons, links and highlights always use it, and text always
+            stays readable.
+          </span>
+        </div>
+        <SegmentedControl
+          ariaLabel="Strength"
+          options={STRENGTH_OPTIONS}
+          value={theme.strength || "balanced"}
+          onChange={(value) => onStrength && onStrength(row.key, value)}
+        />
+      </div>
+
       <div className="flex flex-col gap-2">
         <div className="flex flex-row items-center justify-between gap-3">
-          <SectionLabel text="Preview" />
+          <SectionLabel text={`Preview · ${strengthName(theme)}`} />
           <SegmentedControl
             ariaLabel="Preview variant"
             options={VARIANTS}
@@ -294,6 +326,22 @@ export const ThemesPage = ({
     );
   };
 
+  // Strength saves on the theme; the app and its dashboards update at once.
+  const setStrength = (key, strength) => {
+    if (!dashApi || !appId) return;
+    const raw = (rawThemes && rawThemes[key]) || {};
+    dashApi.saveTheme(
+      appId,
+      key,
+      { ...raw, strength },
+      (e, message) => applyThemes(message),
+      (e, err) => {
+        console.error("Error saving theme strength:", err);
+        flash("Couldn't save the strength.");
+      },
+    );
+  };
+
   const confirmDelete = () => {
     const target = deleteTarget;
     setDeleteTarget(null);
@@ -348,6 +396,7 @@ export const ThemesPage = ({
         onDuplicate={duplicate}
         onDelete={setDeleteTarget}
         onOpenWorkspace={onOpenWorkspace}
+        onStrength={setStrength}
       />
     );
   } else {
@@ -419,6 +468,9 @@ export const ThemesPage = ({
                   <span className={`text-xs truncate ${muted}`}>
                     {usageText(row)}
                   </span>
+                </span>
+                <span className={`text-xs ${muted}`}>
+                  {strengthName(row.theme)}
                 </span>
                 {row.isApp ? (
                   <FontAwesomeIcon icon="check" className="text-green-400" />

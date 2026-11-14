@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useState } from "react";
 import {
   AlertBanner,
   Button,
@@ -6,8 +6,9 @@ import {
   Checkbox,
   SectionLabel,
   SelectInput,
-  ThemeContext,
+  useStatusTokens,
 } from "@trops/dash-react";
+import { useConfigTokens } from "../Dashboard/ConfigListRow";
 
 const POLICY_LABELS = {
   ask: "Ask before external actions",
@@ -66,9 +67,8 @@ export const TeamImportReview = ({
   // there; more than one is a team, which needs a dashboard.
   noDashboard = false,
 }) => {
-  const { currentTheme = {} } = useContext(ThemeContext) || {};
-  const hairline = currentTheme["border-neutral-dark"] || "border-gray-700";
-  const muted = currentTheme["text-neutral-medium"] || "text-gray-400";
+  const { hairline, muted } = useConfigTokens();
+  const status = useStatusTokens();
 
   const { manifest, plan, fileName, source } = preview || {};
   const [choices, setChoices] = useState({});
@@ -119,7 +119,7 @@ export const TeamImportReview = ({
   const providerLine = (role, need) => {
     if (!need.options.length) {
       return (
-        <span key={need.type} className="text-xs text-red-400">
+        <span key={need.type} className={`text-xs ${status.error.icon}`}>
           {`${need.type}: none set up — add one on the Providers page`}
         </span>
       );
@@ -179,12 +179,12 @@ export const TeamImportReview = ({
           <div className="flex flex-col gap-1">
             <SectionLabel text="Installing only some of the team" />
             {dropped.map((w, i) => (
-              <span key={`d${i}`} className="text-xs text-red-400">
+              <span key={`d${i}`} className={`text-xs ${status.error.icon}`}>
                 {`${names[w.role]} normally runs when ${names[w.on.role]} ${eventVerb(w.on.event)} — that trigger won't be set up.`}
               </span>
             ))}
             {memoryRoles.map((r) => (
-              <span key={`m${r}`} className="text-xs text-red-400">
+              <span key={`m${r}`} className={`text-xs ${status.error.icon}`}>
                 {`${names[r]} shares results with its teammates through team memory — that hand-off won't work for the bots you left out.`}
               </span>
             ))}

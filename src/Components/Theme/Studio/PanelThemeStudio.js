@@ -48,8 +48,10 @@ export const PanelThemeStudio = ({
 
   // Write the in-edit theme's CSS custom properties to :root so any
   // hex-channel tokens (`bg-[var(--primary-700)]` etc.) emitted by
-  // ThemeModel resolve everywhere the LivePreview renders. Cleanup
-  // restores the saved active theme's vars when the editor closes.
+  // ThemeModel resolve everywhere the LivePreview renders. On cleanup the
+  // editor's values come off and the app theme writes its own back (its
+  // latest version — it may have been saved while the editor was open),
+  // Aurora's tokens included.
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
     const root = document.documentElement;
@@ -64,6 +66,9 @@ export const PanelThemeStudio = ({
     return () => {
       for (const name of written) {
         root.style.removeProperty(name);
+      }
+      if (written.length && typeof window !== "undefined") {
+        window.dispatchEvent(new Event("dash:theme-vars-restore"));
       }
     };
   }, [themeSelected, themeVariant]);

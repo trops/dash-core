@@ -95,8 +95,66 @@ describe("ThemeModel — hex colors", () => {
         /^#[0-9a-f]{6}$/,
       );
     }
-    // Dark and light variants share the same cssVars (same shade map)
-    expect(theme.dark.cssVars).toEqual(theme.light.cssVars);
+    // Dark and light share the same shade map; Aurora's tokens are per mode.
+    const shadesOnly = (vars) =>
+      Object.fromEntries(
+        Object.entries(vars).filter(([k]) => /^--primary-\d+$/.test(k)),
+      );
+    expect(shadesOnly(theme.dark.cssVars)).toEqual(
+      shadesOnly(theme.light.cssVars),
+    );
+    expect(theme.dark.cssVars["--bg"]).not.toEqual(theme.light.cssVars["--bg"]);
+  });
+
+  test("tags read: fill and text two shades apart, each tag its own channel", () => {
+    const theme = ThemeModel({
+      primary: "rose",
+      secondary: "amber",
+      tertiary: "teal",
+    });
+    expect(theme.dark.tag).toEqual(
+      expect.objectContaining({
+        backgroundColor: "bg-primary-dark",
+        textColor: "text-primary-medium",
+      }),
+    );
+    expect(theme.light["tag-2"]).toEqual(
+      expect.objectContaining({
+        backgroundColor: "bg-secondary-light",
+        textColor: "text-secondary-very-light",
+      }),
+    );
+    // Resolved: dark rose-800 / rose-200, light rose-200 / rose-800.
+    expect(theme.dark["bg-primary-dark"]).toBe("bg-rose-800");
+    expect(theme.dark["text-primary-medium"]).toBe("text-rose-200");
+    expect(theme.light["bg-primary-light"]).toBe("bg-rose-200");
+    expect(theme.light["text-primary-very-light"]).toBe("text-rose-800");
+    // A theme's own tag colours win.
+    const own = ThemeModel({
+      primary: "rose",
+      dark: { tag: { textColor: "text-primary-light" } },
+    });
+    expect(own.dark.tag).toEqual({ textColor: "text-primary-light" });
+  });
+
+  test("every theme carries Aurora's tokens at its strength", () => {
+    const balanced = ThemeModel({ primary: "rose", secondary: "amber" });
+    const bold = ThemeModel({ primary: "rose", strength: "bold" });
+    expect(balanced.strength).toBe("balanced");
+    expect(balanced.dark.strength).toBe("balanced");
+    expect(bold.strength).toBe("bold");
+    for (const v of ["dark", "light"]) {
+      for (const key of ["--bg", "--raised", "--solid", "--accent", "--mesh"]) {
+        expect(balanced[v].cssVars[key]).toBeTruthy();
+      }
+    }
+    expect(bold.dark.cssVars["--raised"]).not.toEqual(
+      balanced.dark.cssVars["--raised"],
+    );
+    // An unknown strength is Balanced.
+    expect(ThemeModel({ primary: "rose", strength: "loud" }).strength).toBe(
+      "balanced",
+    );
   });
 
   test("mixed theme: hex channel gets full ramp, named channel gets accent-500", () => {

@@ -276,6 +276,15 @@ export const ThemeWrapper = ({
             );
             setChosenTheme(() => activeTheme);
             setThemeName(() => activeKey);
+          } else if (
+            themeName &&
+            themeName in themesChecked &&
+            JSON.stringify(themesChecked[themeName]) !==
+              JSON.stringify(chosenTheme)
+          ) {
+            // The active theme was saved with a change (its Strength, say):
+            // use the new version now, not after a restart.
+            setChosenTheme(() => themesChecked[themeName]);
           }
         }
       }
@@ -395,12 +404,17 @@ export const ThemeWrapper = ({
     const root = document.documentElement;
     const cssVars = chosenTheme?.[themeVariant]?.cssVars;
     const written = [];
-    if (cssVars && typeof cssVars === "object") {
+    const write = () => {
+      if (!cssVars || typeof cssVars !== "object") return;
       for (const [name, value] of Object.entries(cssVars)) {
         root.style.setProperty(name, value);
-        written.push(name);
+        if (!written.includes(name)) written.push(name);
       }
-    }
+    };
+    write();
+    // Something that wrote its own values here for a while (the theme
+    // editor's live preview) took them off: put the app theme's back.
+    window.addEventListener("dash:theme-vars-restore", write);
     // Expose the active light/dark variant as a data attribute so the
     // design system (dash-electron's design.css `[data-mode="light"]`
     // block) can flip its surface/text tokens to match. Nothing else
@@ -408,6 +422,7 @@ export const ThemeWrapper = ({
     const prevMode = root.getAttribute("data-mode");
     root.setAttribute("data-mode", themeVariant);
     return () => {
+      window.removeEventListener("dash:theme-vars-restore", write);
       for (const name of written) {
         root.style.removeProperty(name);
       }
