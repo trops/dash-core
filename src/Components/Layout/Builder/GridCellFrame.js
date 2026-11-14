@@ -1,9 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
-import {
-  FontAwesomeIcon,
-  ThemeContext,
-  useStatusTokens,
-} from "@trops/dash-react";
+import { ButtonIcon3, ThemeContext, useStatusTokens } from "@trops/dash-react";
 import { useWidgetIssues, isIssueOfWidget } from "../../../hooks/useIssues";
 import { WidgetIssueChip } from "../../Issues/WidgetIssueChip";
 import { RETRY_WIDGET_EVENT } from "../../Issues/issueActions";
@@ -166,23 +162,23 @@ export function GridCellFrame({
             />
           ) : null}
           {showPopout ? (
-            <button
-              type="button"
-              aria-label="Pop out widget"
-              title="Pop out widget"
-              className={`p-1 rounded transition-opacity bg-black/60 hover:bg-black/80 text-gray-300 hover:text-white z-10 ${
+            // A quiet, square icon action: the theme's text colour, filled
+            // only on hover (dr-row-actions).
+            <span
+              className={`dr-row-actions z-10 transition-opacity ${
                 hovered ? "opacity-100" : "opacity-0 pointer-events-none"
               }`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onPopout();
-              }}
             >
-              <FontAwesomeIcon
+              <ButtonIcon3
                 icon="arrow-up-right-from-square"
-                className="h-3 w-3"
+                ariaLabel="Pop out widget"
+                className="h-7 w-7"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPopout();
+                }}
               />
-            </button>
+            </span>
           ) : null}
         </span>
       ) : null}
