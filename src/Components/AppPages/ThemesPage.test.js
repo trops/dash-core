@@ -20,9 +20,26 @@ jest.mock("../Settings/details/PublishThemeModal", () => ({
   PublishThemeModal: ({ isOpen, themeKey }) =>
     isOpen ? <div data-testid="publish">{themeKey}</div> : null,
 }));
-jest.mock("../Theme/ThemeManagerModal", () => ({
-  ThemeManagerModal: ({ open }) =>
-    open ? <div data-testid="theme-wizard" /> : null,
+jest.mock("../Theme/NewTheme/NewThemeModal", () => ({
+  NewThemeModal: ({ open, onCreated, onClose }) =>
+    open ? (
+      <div data-testid="theme-wizard">
+        <button
+          type="button"
+          onClick={() => {
+            onCreated({
+              key: "theme-c",
+              name: "Coral",
+              usedForApp: true,
+              previousAppKey: "theme-a",
+            });
+            onClose();
+          }}
+        >
+          fake create
+        </button>
+      </div>
+    ) : null,
 }));
 
 import { ThemesPage } from "./ThemesPage";
@@ -143,6 +160,49 @@ describe("ThemesPage list (NAV-009 AC1)", () => {
     setup({ createRequested: true, onCreateAcknowledged });
     expect(screen.getByTestId("theme-wizard")).toBeInTheDocument();
     expect(onCreateAcknowledged).toHaveBeenCalled();
+  });
+
+  it("after Create the new theme is selected, says so, and Undo takes it back", () => {
+    const { ctx, dashApi } = setup(
+      { createRequested: true },
+      { themeKey: "theme-c" },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "fake create" }));
+    expect(screen.queryByTestId("theme-wizard")).toBeNull();
+    expect(
+      within(detail()).getByRole("heading", { name: "Coral" }),
+    ).toBeInTheDocument();
+    expect(
+      within(detail()).getByText("Coral is made and is now your app theme."),
+    ).toBeInTheDocument();
+    fireEvent.click(within(detail()).getByRole("button", { name: "Undo" }));
+    expect(ctx.changeCurrentTheme).toHaveBeenCalledWith("theme-a");
+    expect(dashApi.deleteTheme).toHaveBeenCalledWith(
+      "app",
+      "theme-c",
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(
+      screen.queryByText("Coral is made and is now your app theme."),
+    ).toBeNull();
+  });
+
+  it("Undo is only for right after: picking another theme ends it", () => {
+    setup({ createRequested: true });
+    fireEvent.click(screen.getByRole("button", { name: "fake create" }));
+    fireEvent.click(row("Bravo"));
+    fireEvent.click(row("Coral"));
+    expect(within(detail()).queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("Undo on a theme that isn't the app theme only removes it", () => {
+    // The new theme was saved without becoming the app theme.
+    const { ctx, dashApi } = setup({ createRequested: true });
+    fireEvent.click(screen.getByRole("button", { name: "fake create" }));
+    fireEvent.click(within(detail()).getByRole("button", { name: "Undo" }));
+    expect(ctx.changeCurrentTheme).not.toHaveBeenCalled();
+    expect(dashApi.deleteTheme).toHaveBeenCalled();
   });
 });
 

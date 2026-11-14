@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import {
+  AlertBanner,
   Button,
   Button3,
   ConfirmationModal,
@@ -11,7 +12,7 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { ThemeColorDots } from "../Theme/ThemeColorDots";
-import { ThemeManagerModal } from "../Theme/ThemeManagerModal";
+import { NewThemeModal } from "../Theme/NewTheme/NewThemeModal";
 import { DiscoverThemesDetail } from "../Settings/details/DiscoverThemesDetail";
 import { PublishThemeModal } from "../Settings/details/PublishThemeModal";
 import { ColorSwatchGrid } from "../Theme/ColorSwatchGrid";
@@ -276,6 +277,8 @@ export const ThemesPage = ({
   const [wizardOpen, setWizardOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [status, setStatus] = useState(null);
+  // Just made in New theme: { key, name, usedForApp, previousAppKey }.
+  const [made, setMade] = useState(null);
 
   // The header's New Theme opens the creation wizard (all five ways to make
   // a theme live there).
@@ -342,6 +345,38 @@ export const ThemesPage = ({
     );
   };
 
+  // Undo a theme just made: the new theme goes; if it is the app theme
+  // now, the one before it comes back first.
+  const undoMade = () => {
+    const m = made;
+    setMade(null);
+    if (!m || !dashApi || !appId) return;
+    const wasApp = appThemeKey === m.key;
+    if (wasApp && !m.previousAppKey) return;
+    if (wasApp && changeCurrentTheme) changeCurrentTheme(m.previousAppKey);
+    dashApi.deleteTheme(
+      appId,
+      m.key,
+      (e, message) => {
+        applyThemes(message);
+        setSelectedKey(m.previousAppKey || null);
+      },
+      (e, err) => {
+        console.error("Error undoing the new theme:", err);
+        flash(
+          wasApp
+            ? `Your app theme is back, but "${m.name}" couldn't be removed.`
+            : `"${m.name}" couldn't be removed.`,
+        );
+      },
+    );
+  };
+  // Undo is only for right after making it: any other choice ends it.
+  useEffect(() => {
+    if (made && selectedKey !== made.key) setMade(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey, mode]);
+
   const confirmDelete = () => {
     const target = deleteTarget;
     setDeleteTarget(null);
@@ -383,21 +418,38 @@ export const ThemesPage = ({
       />
     );
   } else if (selected) {
+    const madeNow = made && made.key === selected.key ? made : null;
     detail = (
-      <ThemeDetailPanel
-        key={selected.key}
-        row={selected}
-        rawTheme={rawThemes ? rawThemes[selected.key] : null}
-        appVariant={themeVariant}
-        workspaces={workspaces}
-        appId={appId}
-        onUseAsApp={(key) => changeCurrentTheme && changeCurrentTheme(key)}
-        onEdit={(key) => onOpenThemeEditor && onOpenThemeEditor(key)}
-        onDuplicate={duplicate}
-        onDelete={setDeleteTarget}
-        onOpenWorkspace={onOpenWorkspace}
-        onStrength={setStrength}
-      />
+      <div className="flex flex-col gap-4">
+        {madeNow ? (
+          <AlertBanner
+            variant="success"
+            size="compact"
+            message={
+              madeNow.usedForApp
+                ? `${madeNow.name} is made and is now your app theme.`
+                : `${madeNow.name} is made and saved.`
+            }
+            onClose={() => setMade(null)}
+          >
+            <Button3 title="Undo" size="sm" onClick={undoMade} />
+          </AlertBanner>
+        ) : null}
+        <ThemeDetailPanel
+          key={selected.key}
+          row={selected}
+          rawTheme={rawThemes ? rawThemes[selected.key] : null}
+          appVariant={themeVariant}
+          workspaces={workspaces}
+          appId={appId}
+          onUseAsApp={(key) => changeCurrentTheme && changeCurrentTheme(key)}
+          onEdit={(key) => onOpenThemeEditor && onOpenThemeEditor(key)}
+          onDuplicate={duplicate}
+          onDelete={setDeleteTarget}
+          onOpenWorkspace={onOpenWorkspace}
+          onStrength={setStrength}
+        />
+      </div>
     );
   } else {
     detail = (
@@ -495,14 +547,16 @@ export const ThemesPage = ({
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-      <ThemeManagerModal
+      <NewThemeModal
         open={wizardOpen}
-        setIsOpen={(next) => {
-          // Called with a value or a toggle function depending on the site.
-          if (typeof next === "function") setWizardOpen((prev) => next(prev));
-          else setWizardOpen(next === true);
+        onClose={() => setWizardOpen(false)}
+        onCreated={(m) => {
+          setMode(null);
+          setQuery("");
+          setChip("all");
+          setSelectedKey(m.key);
+          setMade(m);
         }}
-        startInCreate={true}
       />
     </ManageLayout>
   );

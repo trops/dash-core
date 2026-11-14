@@ -323,6 +323,16 @@ const DASH_ROLES = {
   accentSoft: { key: "bg-primary-very-dark", role: "dr-role-accent-soft" },
 };
 
+// Mirrors dash-react getDashTokens(currentTheme): role → class string.
+function getDashTokens(currentTheme) {
+  const theme = currentTheme || {};
+  const out = {};
+  for (const [name, { key, role }] of Object.entries(DASH_ROLES)) {
+    out[name] = theme[key] ? `${theme[key]} ${role}` : role;
+  }
+  return out;
+}
+
 // Mirrors dash-react useStatusTokens() shape (Utils/statusColors.js), dark palette.
 function useStatusTokens() {
   const make = (c) => ({
@@ -493,6 +503,21 @@ function Card2({
       "aria-selected": selected,
       className: className,
       ...clickable,
+    },
+    children,
+  );
+}
+
+// A plain card, or a button card with onClick (like dash-react Card).
+function Card({ children, selected, onClick, className, ariaLabel, testId }) {
+  return React.createElement(
+    onClick ? "button" : "div",
+    {
+      "data-testid": testId || "card",
+      "aria-pressed": onClick ? !!selected : undefined,
+      "aria-label": ariaLabel || undefined,
+      onClick: onClick || undefined,
+      className: className,
     },
     children,
   );
@@ -1280,10 +1305,12 @@ module.exports = {
   useStatusTokens,
   Table,
   DASH_ROLES,
+  getDashTokens,
   AlertBanner,
   Code,
   Code2: Code,
   Code3: Code,
+  Card,
   Card2,
   Card3,
   Tag,
