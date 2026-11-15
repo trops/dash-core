@@ -113,7 +113,16 @@ const ALL_ICON_NAMES = Object.keys(DashReact)
 
 const CURATED_SET = new Set(FOLDER_ICONS);
 
-export const IconPicker = ({ selectedIcon, onSelectIcon }) => {
+// allWhenSearching: the full set shows only once you search (a compact
+// picker); gridClassName: the icon grid's columns.
+export const IconPicker = ({
+  selectedIcon,
+  onSelectIcon,
+  allWhenSearching = false,
+  gridClassName = "grid grid-cols-6 gap-2",
+  // How many suggested icons show before you search (all, if not set).
+  suggestedLimit = null,
+}) => {
   const [search, setSearch] = useState("");
   const query = search.trim().toLowerCase();
 
@@ -121,14 +130,17 @@ export const IconPicker = ({ selectedIcon, onSelectIcon }) => {
     () =>
       query
         ? FOLDER_ICONS.filter((name) => name.includes(query))
-        : FOLDER_ICONS,
-    [query],
+        : suggestedLimit
+          ? FOLDER_ICONS.slice(0, suggestedLimit)
+          : FOLDER_ICONS,
+    [query, suggestedLimit],
   );
 
   const remainingIcons = useMemo(() => {
     const all = ALL_ICON_NAMES.filter((name) => !CURATED_SET.has(name));
-    return query ? all.filter((name) => name.includes(query)) : all;
-  }, [query]);
+    if (!query) return allWhenSearching ? [] : all;
+    return all.filter((name) => name.includes(query));
+  }, [query, allWhenSearching]);
 
   const hasResults = filteredCurated.length > 0 || remainingIcons.length > 0;
 
@@ -150,7 +162,9 @@ export const IconPicker = ({ selectedIcon, onSelectIcon }) => {
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Search icons..."
+          placeholder={
+            allWhenSearching ? "Search all icons…" : "Search icons..."
+          }
         />
       </div>
 
@@ -164,7 +178,7 @@ export const IconPicker = ({ selectedIcon, onSelectIcon }) => {
         {filteredCurated.length > 0 && (
           <div className="flex flex-col space-y-1.5">
             <span className="text-xs font-medium opacity-50">Suggested</span>
-            <div className="grid grid-cols-6 gap-2">
+            <div className={gridClassName}>
               {filteredCurated.map(renderIcon)}
             </div>
           </div>
@@ -173,7 +187,7 @@ export const IconPicker = ({ selectedIcon, onSelectIcon }) => {
         {remainingIcons.length > 0 && (
           <div className="flex flex-col space-y-1.5">
             <span className="text-xs font-medium opacity-50">All Icons</span>
-            <div className="grid grid-cols-6 gap-2">
+            <div className={gridClassName}>
               {remainingIcons.map(renderIcon)}
             </div>
           </div>

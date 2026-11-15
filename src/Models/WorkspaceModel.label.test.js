@@ -26,4 +26,11 @@ describe("WorkspaceModel — label", () => {
       source.indexOf("workspace.label ="),
     );
   });
+
+  // Newest-first lists and "updated … ago" read it (NAV-017).
+  test("keeps when it was last saved", () => {
+    expect(source).toMatch(
+      /if \(obj\.updatedAt\) workspace\.updatedAt = obj\.updatedAt;/,
+    );
+  });
 });

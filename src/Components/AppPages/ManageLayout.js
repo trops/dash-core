@@ -26,10 +26,15 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
  *                                  the pane height) instead of filling it
  * @param {node}      empty         shown instead of toolbar + panes (the
  *                                  page has nothing at all yet)
+ * @param {node}      aside         optional narrow column before the list
+ *                                  (the Dashboards page's folders)
+ * @param {string}    asideLabel    the aside's accessible name
  * @param {node}      children      modals
  */
 export const ManageLayout = ({
   testId,
+  aside = null,
+  asideLabel,
   toolbar = null,
   list = null,
   listLabel,
@@ -59,33 +64,44 @@ export const ManageLayout = ({
           <div className="flex-shrink-0 flex flex-row flex-wrap items-center gap-2">
             {toolbar}
           </div>
-          <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
-            <div
-              data-testid={testId ? `${testId}-list-pane` : undefined}
-              className={`min-h-0 flex flex-col rounded-lg border ${hairline}`}
-            >
-              <div
-                role="list"
-                aria-label={listLabel}
-                className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 p-2"
+          <div className="flex-1 min-h-0 flex flex-row gap-4">
+            {aside ? (
+              <nav
+                aria-label={asideLabel}
+                data-testid={testId ? `${testId}-aside` : undefined}
+                className={`w-56 flex-shrink-0 min-h-0 overflow-y-auto p-2 rounded-lg border ${hairline}`}
               >
-                {list}
-              </div>
-              {listFooter ? (
-                <div className={`flex-shrink-0 border-t p-3 ${hairline}`}>
-                  {listFooter}
+                <div className="flex flex-col gap-0.5">{aside}</div>
+              </nav>
+            ) : null}
+            <div className="flex-1 min-w-0 min-h-0 grid grid-cols-3 gap-4">
+              <div
+                data-testid={testId ? `${testId}-list-pane` : undefined}
+                className={`min-h-0 flex flex-col rounded-lg border ${hairline}`}
+              >
+                <div
+                  role="list"
+                  aria-label={listLabel}
+                  className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 p-2"
+                >
+                  {list}
                 </div>
-              ) : null}
-            </div>
-            <div
-              data-testid={detailTestId}
-              className={`col-span-2 min-h-0 rounded-lg border ${hairline} ${
-                detailFlush
-                  ? "flex flex-col overflow-hidden"
-                  : "overflow-y-auto p-5"
-              } ${detailFit ? "self-start max-h-full" : ""}`}
-            >
-              {detail}
+                {listFooter ? (
+                  <div className={`flex-shrink-0 border-t p-3 ${hairline}`}>
+                    {listFooter}
+                  </div>
+                ) : null}
+              </div>
+              <div
+                data-testid={detailTestId}
+                className={`col-span-2 min-h-0 rounded-lg border ${hairline} ${
+                  detailFlush
+                    ? "flex flex-col overflow-hidden"
+                    : "overflow-y-auto p-5"
+                } ${detailFit ? "self-start max-h-full" : ""}`}
+              >
+                {detail}
+              </div>
             </div>
           </div>
         </>

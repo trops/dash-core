@@ -172,6 +172,9 @@ export const WorkspaceModel = (workspaceItem) => {
   workspace.selectedProviders =
     "selectedProviders" in obj ? obj["selectedProviders"] : {};
   workspace.themeKey = "themeKey" in obj ? obj["themeKey"] : null;
+  // When it was last saved (the main process stamps it): newest-first lists
+  // and "updated … ago" read it.
+  if (obj.updatedAt) workspace.updatedAt = obj.updatedAt;
 
   // Cross-dashboard contamination cleanup. Some earlier code path
   // (most likely a shared sidebarLayout array reference between two

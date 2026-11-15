@@ -117,15 +117,18 @@ const menuItems = [
 ];
 
 function setup(props = {}) {
-  const dashApi = {
+  const dashApi = props.dashApi || {
     saveWorkspace: jest.fn((appId, ws, ok) => ok && ok()),
     deleteWorkspace: jest.fn((appId, id, ok) => ok && ok()),
+    saveMenuItem: jest.fn((appId, item, ok) => ok && ok(null, {})),
+    deleteMenuItem: jest.fn((appId, id, ok) => ok && ok(null, {})),
   };
   const handlers = {
     onOpenWorkspace: jest.fn(),
     onOpenBotsView: jest.fn(),
     onOpenDashboardConfig: jest.fn(),
     onReloadWorkspaces: jest.fn(),
+    onReloadMenuItems: jest.fn(),
   };
   render(
     <ThemeContext.Provider
@@ -163,15 +166,53 @@ const pick = (name) =>
     within(list()).getByRole("button", { name: new RegExp(name) }),
   );
 
+const aside = () => screen.getByRole("navigation", { name: "Folders" });
+const column = (key) => screen.getByTestId(`folder-${key}`);
+const names = () =>
+  within(list())
+    .queryAllByTestId("dashboard-row")
+    .map((r) => r.querySelector("[data-name]").textContent);
+
+// A drag's dataTransfer, as the browser hands it over.
+function dataTransfer() {
+  const data = {};
+  return {
+    types: [],
+    setData(k, v) {
+      data[k] = v;
+      this.types = Object.keys(data);
+    },
+    getData: (k) => data[k],
+    effectAllowed: "",
+  };
+}
+function drag(name, onto) {
+  const dt = dataTransfer();
+  const row = within(list())
+    .getAllByTestId("dashboard-row")
+    .find((r) => r.querySelector("[data-name]").textContent === name);
+  fireEvent.dragStart(row, { dataTransfer: dt });
+  fireEvent.dragOver(onto, { dataTransfer: dt });
+  fireEvent.drop(onto, { dataTransfer: dt });
+}
+
 describe("DashboardsPage — list", () => {
-  it("groups dashboards by folder, with counts and an attention dot", () => {
-    setup();
+  it("opens on All dashboards, newest first, with each one's folder and an attention dot", () => {
+    setup({
+      workspaces: [
+        { ...sales, updatedAt: "2026-11-01T00:00:00Z" },
+        { ...ks, updatedAt: "2026-11-14T00:00:00Z" },
+        loose,
+      ],
+    });
+    expect(names()).toEqual(["Kitchen Sink", "Sales", "Loose"]);
     const l = list();
-    expect(within(l).getByText("Work")).toBeInTheDocument();
-    expect(within(l).getByText("Experiments")).toBeInTheDocument();
-    expect(within(l).getByText("Uncategorized")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-list-head")).toHaveTextContent(
+      "All dashboards · 3 dashboards · newest first",
+    );
     const row = within(l).getByRole("button", { name: /Kitchen Sink/ });
     expect(row).toHaveTextContent("2 pages · 3 widgets");
+    expect(row).toHaveTextContent("Work");
     expect(within(row).getByTestId("dashboard-attention")).toHaveTextContent(
       "Needs attention",
     );
@@ -191,22 +232,273 @@ describe("DashboardsPage — list", () => {
     expect(within(list()).queryByText("Sales")).toBeNull();
   });
 
-  it("filters by folder", () => {
+  it("there's no Dashboards / Folders switch, Folder filter or Grouped / A-Z", () => {
     setup();
-    const folder = screen.getByRole("group", { name: "Folder filter" });
-    fireEvent.click(within(folder).getByLabelText("Experiments"));
-    expect(within(list()).getByText("Sales")).toBeInTheDocument();
-    expect(within(list()).queryByText("Kitchen Sink")).toBeNull();
+    expect(screen.queryByRole("radio", { name: "A-Z" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Folder filter" })).toBeNull();
   });
+});
 
-  it("A-Z lists every dashboard alphabetically without folders", () => {
+describe("DashboardsPage — folder column (NAV-017)", () => {
+  it("lists All dashboards, Not in a folder and each folder A–Z with counts", () => {
     setup();
-    fireEvent.click(screen.getByRole("radio", { name: "A-Z" }));
-    expect(within(list()).queryByText("Work")).toBeNull();
-    const names = within(list())
+    const rows = within(aside())
       .getAllByRole("button")
       .map((b) => b.querySelector("[data-name]").textContent);
-    expect(names).toEqual(["Kitchen Sink", "Loose", "Sales"]);
+    expect(rows).toEqual([
+      "All dashboards",
+      "Not in a folder",
+      "Experiments",
+      "Work",
+      "New folder",
+    ]);
+    expect(column("all")).toHaveTextContent("3");
+    expect(column("none")).toHaveTextContent("1");
+    expect(column("1")).toHaveTextContent("1");
+  });
+
+  it("picking a folder shows only its dashboards — ids saved as text match too", () => {
+    setup({
+      workspaces: [
+        sales,
+        ks,
+        loose,
+        { ...loose, id: 10, name: "Text id", menuId: "1" },
+      ],
+    });
+    fireEvent.click(within(column("1")).getByRole("button"));
+    expect(names().sort()).toEqual(["Kitchen Sink", "Text id"]);
+    expect(screen.getByTestId("dashboard-list-head")).toHaveTextContent(
+      "Work · 2 dashboards",
+    );
+    expect(column("1")).toHaveTextContent("2");
+  });
+
+  it("Not in a folder holds dashboards with no folder or one that's gone", () => {
+    setup({
+      workspaces: [
+        sales,
+        ks,
+        loose,
+        { ...loose, id: 11, name: "Orphan", menuId: 99 },
+      ],
+    });
+    fireEvent.click(within(column("none")).getByRole("button"));
+    expect(names().sort()).toEqual(["Loose", "Orphan"]);
+  });
+
+  it("a folder link opens the page on that folder", () => {
+    setup({ folderLink: { folder: "2", nonce: 1 } });
+    expect(names()).toEqual(["Sales"]);
+  });
+
+  it("an empty folder says how to fill it", () => {
+    setup({ menuItems: [...menuItems, { id: 3, name: "Home" }] });
+    fireEvent.click(within(column("3")).getByRole("button"));
+    expect(screen.getByTestId("list-empty")).toHaveTextContent(
+      "Nothing in Home yet. Drag a dashboard onto it, or use Edit folder to pick some.",
+    );
+  });
+
+  it("dragging a dashboard onto a folder moves it (the folder's own id)", async () => {
+    const h = setup();
+    drag("Loose", column("1"));
+    expect(h.dashApi.saveWorkspace).toHaveBeenCalledTimes(1);
+    expect(h.dashApi.saveWorkspace.mock.calls[0][1].menuId).toBe(1);
+    await waitFor(() => expect(h.onReloadWorkspaces).toHaveBeenCalled());
+  });
+
+  it("dragging onto Not in a folder takes it out; onto its own folder does nothing", () => {
+    const h = setup();
+    drag("Kitchen Sink", column("1"));
+    expect(h.dashApi.saveWorkspace).not.toHaveBeenCalled();
+    drag("Kitchen Sink", column("none"));
+    expect(h.dashApi.saveWorkspace.mock.calls[0][1].menuId).toBeNull();
+  });
+});
+
+describe("DashboardsPage — New folder / Edit folder", () => {
+  it("New folder: name, icon, tick dashboards — saves the folder, then moves those", async () => {
+    const h = setup();
+    fireEvent.click(
+      within(screen.getByTestId("new-folder")).getByRole("button"),
+    );
+    const panel = screen.getByTestId("folder-panel");
+    expect(panel).toHaveTextContent("New folder");
+    fireEvent.change(within(panel).getByLabelText("Name"), {
+      target: { value: "Home" },
+    });
+    fireEvent.click(within(panel).getByLabelText("Loose"));
+    fireEvent.click(within(panel).getByLabelText("Sales"));
+    expect(panel).toHaveTextContent("Home, with Sales and Loose.");
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Create folder" }),
+    );
+    await waitFor(() =>
+      expect(h.dashApi.saveWorkspace).toHaveBeenCalledTimes(2),
+    );
+    const folder = h.dashApi.saveMenuItem.mock.calls[0][1];
+    expect(folder).toEqual(
+      expect.objectContaining({ name: "Home", icon: "folder" }),
+    );
+    const moved = h.dashApi.saveWorkspace.mock.calls.map((c) => [
+      c[1].name,
+      c[1].menuId,
+    ]);
+    expect(moved.sort()).toEqual(
+      [
+        ["Loose", folder.id],
+        ["Sales", folder.id],
+      ].sort(),
+    );
+    expect(h.onReloadMenuItems).toHaveBeenCalled();
+  });
+
+  it("New folder without a name says so and saves nothing", () => {
+    const h = setup();
+    fireEvent.click(
+      within(screen.getByTestId("new-folder")).getByRole("button"),
+    );
+    const panel = screen.getByTestId("folder-panel");
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Create folder" }),
+    );
+    expect(within(panel).getByRole("alert")).toHaveTextContent(
+      "Give the folder a name.",
+    );
+    expect(h.dashApi.saveMenuItem).not.toHaveBeenCalled();
+  });
+
+  it("Edit folder starts with its dashboards ticked; unticking takes one out", async () => {
+    const h = setup();
+    fireEvent.click(within(column("1")).getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: "Work actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit folder" }));
+    const panel = screen.getByTestId("folder-panel");
+    const box = within(panel).getByLabelText("Kitchen Sink");
+    expect(box).toBeChecked();
+    fireEvent.click(box);
+    fireEvent.click(within(panel).getByRole("button", { name: "Save folder" }));
+    await waitFor(() =>
+      expect(h.dashApi.saveWorkspace).toHaveBeenCalledTimes(1),
+    );
+    expect(h.dashApi.saveMenuItem.mock.calls[0][1]).toEqual({
+      id: 1,
+      name: "Work",
+      icon: "folder",
+    });
+    expect(h.dashApi.saveWorkspace.mock.calls[0][1].menuId).toBeNull();
+  });
+
+  it("a folder that doesn't save says so and moves nothing", async () => {
+    const h = setup({
+      dashApi: {
+        saveWorkspace: jest.fn((a, ws, ok) => ok && ok()),
+        deleteWorkspace: jest.fn(),
+        saveMenuItem: jest.fn(
+          (a, item, ok, fail) => fail && fail(null, new Error("disk")),
+        ),
+        deleteMenuItem: jest.fn(),
+      },
+    });
+    fireEvent.click(
+      within(screen.getByTestId("new-folder")).getByRole("button"),
+    );
+    const panel = screen.getByTestId("folder-panel");
+    fireEvent.change(within(panel).getByLabelText("Name"), {
+      target: { value: "Home" },
+    });
+    fireEvent.click(within(panel).getByLabelText("Loose"));
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Create folder" }),
+    );
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(
+      "Couldn't save the folder. Try again.",
+    );
+    expect(h.dashApi.saveWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("Delete folder keeps its dashboards (they move to Not in a folder)", async () => {
+    const h = setup();
+    fireEvent.click(within(column("1")).getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: "Work actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete folder" }));
+    const confirm = screen.getByTestId("confirmation-modal");
+    expect(confirm).toHaveTextContent('Delete folder "Work"');
+    expect(confirm).toHaveTextContent(
+      "Its 1 dashboard stays — it moves to Not in a folder.",
+    );
+    fireEvent.click(
+      within(confirm).getByRole("button", { name: "Delete folder" }),
+    );
+    await waitFor(() =>
+      expect(h.dashApi.deleteMenuItem).toHaveBeenCalledWith(
+        "app",
+        1,
+        expect.any(Function),
+        expect.any(Function),
+      ),
+    );
+    expect(h.onReloadMenuItems).toHaveBeenCalled();
+    expect(h.onReloadWorkspaces).toHaveBeenCalled();
+  });
+
+  it("trying Save again after a dashboard didn't move updates the same folder", async () => {
+    let fail = true;
+    const h = setup({
+      dashApi: {
+        saveWorkspace: jest.fn((a, ws, ok, bad) => {
+          if (fail) {
+            fail = false;
+            return bad && bad(null, new Error("disk"));
+          }
+          return ok && ok();
+        }),
+        deleteWorkspace: jest.fn(),
+        saveMenuItem: jest.fn((a, item, ok) => ok && ok(null, {})),
+        deleteMenuItem: jest.fn(),
+      },
+    });
+    fireEvent.click(
+      within(screen.getByTestId("new-folder")).getByRole("button"),
+    );
+    const panel = screen.getByTestId("folder-panel");
+    fireEvent.change(within(panel).getByLabelText("Name"), {
+      target: { value: "Home" },
+    });
+    fireEvent.click(within(panel).getByLabelText("Loose"));
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Create folder" }),
+    );
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(
+      "Saved the folder, but 1 dashboard didn't move. Try Save again.",
+    );
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Create folder" }),
+    );
+    await waitFor(() =>
+      expect(h.dashApi.saveMenuItem).toHaveBeenCalledTimes(2),
+    );
+    const [first, second] = h.dashApi.saveMenuItem.mock.calls.map((c) => c[1]);
+    expect(second.id).toBe(first.id);
+  });
+
+  it("dropping on the folder it's already in does nothing, whichever way its id was saved", () => {
+    const h = setup({
+      workspaces: [
+        sales,
+        ks,
+        loose,
+        { ...loose, id: 10, name: "Text id", menuId: "1" },
+      ],
+    });
+    drag("Text id", column("1"));
+    expect(h.dashApi.saveWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("a New folder link opens the panel", () => {
+    setup({ folderLink: { newFolder: true, nonce: 2 } });
+    expect(screen.getByTestId("folder-panel")).toHaveTextContent("New folder");
   });
 });
 
@@ -311,14 +603,14 @@ describe("DashboardsPage — detail", () => {
     expect(h.dashApi.saveWorkspace.mock.calls[0][1].menuId).toBe(1);
   });
 
-  it("a dashboard outside every folder shows No folder, and can go back to none", () => {
+  it("a dashboard outside every folder shows Not in a folder, and can go back to none", () => {
     const h = setup();
     pick("Loose");
     const folder = within(detail()).getByLabelText("Folder");
     expect(folder).toHaveValue("");
     // Once, not twice (QA 2026-10-23: the placeholder option repeated it).
     expect(
-      [...folder.options].filter((o) => o.textContent === "No folder"),
+      [...folder.options].filter((o) => o.textContent === "Not in a folder"),
     ).toHaveLength(1);
     pick("Sales");
     fireEvent.change(within(detail()).getByLabelText("Folder"), {

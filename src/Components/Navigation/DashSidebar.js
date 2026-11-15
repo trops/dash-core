@@ -1,9 +1,11 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  ButtonIcon3,
   ConfirmationModal,
   FontAwesomeIcon,
   ListRow,
+  SearchInput,
   Sidebar,
   ThemeContext,
   getStylesForItem,
@@ -19,6 +21,15 @@ const CollapsibleContent = ({ children }) => {
 import { Popover, Transition } from "@headlessui/react";
 import { AppContext } from "../../Context/App/AppContext";
 import { APP_PAGES } from "./appPages";
+import { ListGroupLabel } from "../AppPages/ManageLayout";
+import {
+  NOT_IN_A_FOLDER,
+  dashboardsIn,
+  folderIcon,
+  folderOf,
+  newestFirst,
+  sortedFolders,
+} from "../../utils/dashboardFolders";
 
 /**
  * A Manage page's icon. With something waiting (e.g. bot approvals) it gets
@@ -56,6 +67,8 @@ export const DashSidebar = ({
   // and per-page attention counts ({ bots: pendingApprovals }).
   activePageKey = null,
   onOpenPage = null,
+  // A folder's name: the Dashboards page on that folder (NAV-017).
+  onOpenFolder = null,
   pageAttention = {},
 }) => {
   const { themeVariant, changeThemeVariant, currentTheme } =
@@ -66,17 +79,16 @@ export const DashSidebar = ({
   const toneOf = (key) =>
     key === "issues" ? statusTokens.error : statusTokens.warning;
 
-  const workspacesForFolder = (folderId) =>
-    workspaces.filter((ws) => ws.menuId === folderId);
-
-  const orphanedWorkspaces = workspaces.filter(
-    (ws) => !menuItems.some((mi) => mi.id === ws.menuId),
-  );
+  const [openFolders, toggleFolder] = useOpenFolders();
+  const folders = navFolders(workspaces, menuItems);
 
   // Filter recents: only show workspaces that still exist, max 5
   const visibleRecents = recentDashboards
     .filter((r) => workspaces.some((ws) => ws.id === r.workspaceId))
     .slice(0, 5);
+  const recentWorkspaces = visibleRecents
+    .map((r) => workspaces.find((ws) => ws.id === r.workspaceId))
+    .filter(Boolean);
 
   return (
     <Sidebar
@@ -98,7 +110,8 @@ export const DashSidebar = ({
         </div>
       </Sidebar.Header>
 
-      <Sidebar.Content>
+      {/* min-h-0: a long folder list scrolls instead of hiding under Account. */}
+      <Sidebar.Content className="min-h-0">
         {/* Search */}
         <Sidebar.Item
           icon={
@@ -152,6 +165,27 @@ export const DashSidebar = ({
         <Sidebar.Group label="Manage">
           {APP_PAGES.map((page) => {
             const attention = pageAttention[page.key] || 0;
+            if (page.key === "dashboards" && collapsed) {
+              return (
+                <DashboardsMenu
+                  key={page.key}
+                  icon={<PageIcon icon={page.icon} attention={attention} />}
+                  active={page.key === activePageKey}
+                  workspaces={workspaces}
+                  menuItems={menuItems}
+                  recents={recentWorkspaces}
+                  activeTabId={activeTabId}
+                  onOpenWorkspace={onOpenWorkspace}
+                  openFolders={openFolders}
+                  onToggleFolder={toggleFolder}
+                  onOpenAll={() =>
+                    onOpenFolder
+                      ? onOpenFolder("all")
+                      : onOpenPage && onOpenPage(page.key)
+                  }
+                />
+              );
+            }
             return (
               <Sidebar.Item
                 key={page.key}
@@ -177,52 +211,23 @@ export const DashSidebar = ({
           })}
         </Sidebar.Group>
 
-        {/* Dashboard folders (only when expanded) */}
+        {/* Folders, folded (only when expanded) — NAV-017 */}
         <CollapsibleContent>
-          {menuItems.map((menuItem) => {
-            const folderWorkspaces = workspacesForFolder(menuItem.id);
-            const folderIcon = menuItem.icon || menuItem.folder || "folder";
-            if (folderWorkspaces.length === 0) return null;
-            return (
-              <Sidebar.Group key={menuItem.id} label={menuItem.name}>
-                {folderWorkspaces.map((ws) => (
-                  <Sidebar.Item
-                    key={ws.id}
-                    icon={
-                      <FontAwesomeIcon
-                        icon={folderIcon}
-                        className="h-3.5 w-3.5"
-                      />
-                    }
-                    active={ws.id === activeTabId}
-                    onClick={() => onOpenWorkspace(ws)}
-                  >
-                    {(ws.name || "Untitled").replace(/^./, (c) =>
-                      c.toUpperCase(),
-                    )}
-                  </Sidebar.Item>
-                ))}
-              </Sidebar.Group>
-            );
-          })}
-          {orphanedWorkspaces.length > 0 && (
-            <Sidebar.Group label="Uncategorized">
-              {orphanedWorkspaces.map((ws) => (
-                <Sidebar.Item
-                  key={ws.id}
-                  icon={
-                    <FontAwesomeIcon icon="clone" className="h-3.5 w-3.5" />
-                  }
-                  active={ws.id === activeTabId}
-                  onClick={() => onOpenWorkspace(ws)}
-                >
-                  {(ws.name || "Untitled").replace(/^./, (c) =>
-                    c.toUpperCase(),
-                  )}
-                </Sidebar.Item>
+          {folders.length ? (
+            <Sidebar.Group label="Folders">
+              {folders.map((folder) => (
+                <NavFolder
+                  key={folder.key}
+                  folder={folder}
+                  open={openFolders.has(folder.key)}
+                  onToggle={() => toggleFolder(folder.key)}
+                  onOpenFolder={onOpenFolder}
+                  onOpenWorkspace={onOpenWorkspace}
+                  activeTabId={activeTabId}
+                />
               ))}
             </Sidebar.Group>
-          )}
+          ) : null}
         </CollapsibleContent>
       </Sidebar.Content>
 
@@ -239,6 +244,339 @@ export const DashSidebar = ({
         />
       </Sidebar.Footer>
     </Sidebar>
+  );
+};
+
+// ─── Folders in the nav (app-navigation NAV-017) ─────────────────────
+const MENU_HEIGHT = 520;
+// Folded by default; which ones you left open is remembered (per computer).
+const OPEN_FOLDERS_KEY = "dash.nav.openFolders";
+
+function readOpenFolders() {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(OPEN_FOLDERS_KEY) || "[]");
+    return new Set(Array.isArray(v) ? v.map(String) : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+export function useOpenFolders() {
+  const [open, setOpen] = useState(readOpenFolders);
+  const toggle = (key) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        window.localStorage.setItem(
+          OPEN_FOLDERS_KEY,
+          JSON.stringify([...next]),
+        );
+      } catch (e) {
+        // Not saved; it's only a convenience.
+      }
+      return next;
+    });
+  return [open, toggle];
+}
+
+const capName = (name) =>
+  (name || "Untitled").replace(/^./, (c) => c.toUpperCase());
+
+/** The nav's folders: each one folded line, plus Not in a folder. */
+function navFolders(workspaces, menuItems) {
+  const list = sortedFolders(menuItems).map((f) => ({
+    key: String(f.id),
+    name: f.name || "Untitled",
+    icon: folderIcon(f),
+    dashboards: newestFirst(dashboardsIn(f.id, workspaces, menuItems)),
+  }));
+  const loose = newestFirst(
+    dashboardsIn(NOT_IN_A_FOLDER, workspaces, menuItems),
+  );
+  if (loose.length) {
+    list.push({
+      key: NOT_IN_A_FOLDER,
+      name: "Not in a folder",
+      icon: "inbox",
+      dashboards: loose,
+    });
+  }
+  return list;
+}
+
+/**
+ * One folder in the expanded nav: the arrow opens it in place (its
+ * dashboards under it); the name opens the Dashboards page on it.
+ */
+const NavFolder = ({
+  folder,
+  open,
+  onToggle,
+  onOpenFolder,
+  onOpenWorkspace,
+  activeTabId,
+}) => (
+  <div data-testid={`nav-folder-${folder.key}`}>
+    <div className="flex flex-row items-center">
+      {/* Quiet until hovered, like other row actions. */}
+      <span className="dr-row-actions flex-shrink-0">
+        <ButtonIcon3
+          icon={open ? "chevron-down" : "chevron-right"}
+          ariaLabel={`${open ? "Hide" : "Show"} dashboards in ${folder.name}`}
+          className="h-6 w-6"
+          onClick={onToggle}
+        />
+      </span>
+      <div className="flex-1 min-w-0">
+        <Sidebar.Item
+          icon={<FontAwesomeIcon icon={folder.icon} className="h-3.5 w-3.5" />}
+          badge={String(folder.dashboards.length)}
+          onClick={() => onOpenFolder && onOpenFolder(folder.key)}
+        >
+          {folder.name}
+        </Sidebar.Item>
+      </div>
+    </div>
+    {open
+      ? folder.dashboards.map((ws) => (
+          <Sidebar.Item
+            key={ws.id}
+            className="pl-8"
+            icon={
+              <FontAwesomeIcon
+                icon="table-cells-large"
+                className="h-3.5 w-3.5"
+              />
+            }
+            active={ws.id === activeTabId}
+            onClick={() => onOpenWorkspace(ws)}
+          >
+            {capName(ws.name)}
+          </Sidebar.Item>
+        ))
+      : null}
+  </div>
+);
+
+/**
+ * The collapsed nav's Dashboards icon: a menu beside the bar with Recents,
+ * the folders (open one in place), Find, and All dashboards.
+ */
+const DashboardsMenu = ({
+  icon,
+  active,
+  workspaces,
+  menuItems,
+  recents,
+  activeTabId,
+  onOpenWorkspace,
+  onOpenAll,
+  // Shared with the expanded nav, so a folder opened here shows open there.
+  openFolders,
+  onToggleFolder: toggleFolder,
+}) => {
+  const anchorRef = useRef(null);
+  const panelRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const { currentTheme } = useContext(ThemeContext) || {};
+  const panelStyles = getStylesForItem(
+    themeObjects.DROPDOWN_PANEL,
+    currentTheme,
+    {},
+  );
+  const dividerStyles = getStylesForItem(
+    themeObjects.DROPDOWN_PANEL_DIVIDER,
+    currentTheme,
+    {},
+  );
+  const muted = (currentTheme || {})["text-neutral-medium"] || "";
+
+  // Focus goes back to the Dashboards icon when the menu closes.
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+    const button =
+      anchorRef.current && anchorRef.current.querySelector("button");
+    if (button) button.focus();
+  };
+  // …and into Find when it opens.
+  useEffect(() => {
+    if (!open || !panelRef.current) return;
+    const input = panelRef.current.querySelector("input");
+    if (input) input.focus();
+  }, [open]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const pick = (ws) => {
+    close();
+    onOpenWorkspace(ws);
+  };
+  const dashRow = (ws, meta = null, className = "") => (
+    <ListRow
+      key={ws.id}
+      icon="table-cells-large"
+      selected={ws.id === activeTabId}
+      onClick={() => pick(ws)}
+      title={capName(ws.name)}
+      meta={meta}
+      className={className}
+    />
+  );
+
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? newestFirst(
+        workspaces.filter((ws) => (ws.name || "").toLowerCase().includes(q)),
+      ).slice(0, 12)
+    : [];
+  const rect =
+    open && anchorRef.current
+      ? anchorRef.current.getBoundingClientRect()
+      : null;
+  const top = rect
+    ? Math.max(8, Math.min(rect.top, window.innerHeight - MENU_HEIGHT - 8))
+    : 0;
+
+  return (
+    <div ref={anchorRef}>
+      <Sidebar.Item
+        icon={icon}
+        active={active || open}
+        onClick={() => (open ? close() : setOpen(true))}
+      >
+        Dashboards
+      </Sidebar.Item>
+      {open && rect
+        ? createPortal(
+            <>
+              <div
+                className="fixed inset-0"
+                style={{ zIndex: 9998 }}
+                onClick={close}
+              />
+              <div
+                ref={panelRef}
+                role="dialog"
+                aria-label="Dashboards"
+                data-testid="nav-dashboards-menu"
+                className={`fixed w-72 flex flex-col rounded-lg border shadow-xl ${panelStyles.borderColor || ""} ${panelStyles.backgroundColor || ""} ${panelStyles.textColor || ""}`}
+                style={{
+                  zIndex: 9999,
+                  left: rect.right + 8,
+                  top,
+                  maxHeight: MENU_HEIGHT,
+                }}
+              >
+                <div className="flex flex-col gap-2 p-2">
+                  <span className="px-1 text-sm font-semibold">Dashboards</span>
+                  <SearchInput
+                    value={query}
+                    onChange={setQuery}
+                    placeholder="Find a dashboard…"
+                  />
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto px-1 pb-1">
+                  <div className="flex flex-col gap-0.5">
+                    {q ? (
+                      matches.length ? (
+                        matches.map((ws) => {
+                          const f = folderOf(ws, menuItems);
+                          return dashRow(ws, f ? f.name : "Not in a folder");
+                        })
+                      ) : (
+                        <span className={`text-sm px-2 py-1 ${muted}`}>
+                          No dashboards match.
+                        </span>
+                      )
+                    ) : (
+                      <>
+                        {recents.length ? (
+                          <ListGroupLabel text="Recents" />
+                        ) : null}
+                        {recents.map((ws) => dashRow(ws))}
+                        <ListGroupLabel text="Folders" />
+                        {navFolders(workspaces, menuItems).map((f) => {
+                          const isOpen = openFolders.has(f.key);
+                          return (
+                            <div
+                              key={f.key}
+                              data-testid={`menu-folder-${f.key}`}
+                            >
+                              {/* The count and arrow always show (ListRow's
+                                trailing slot is for hover actions). */}
+                              <div className="flex flex-row items-center">
+                                <div className="flex-1 min-w-0">
+                                  <ListRow
+                                    icon={f.icon}
+                                    onClick={() => toggleFolder(f.key)}
+                                    ariaLabel={`${isOpen ? "Hide" : "Show"} dashboards in ${f.name}`}
+                                    title={f.name}
+                                  />
+                                </div>
+                                <span
+                                  aria-hidden="true"
+                                  className={`flex flex-row items-center gap-2 px-2 text-xs ${muted}`}
+                                >
+                                  {f.dashboards.length}
+                                  <FontAwesomeIcon
+                                    icon={
+                                      isOpen ? "chevron-down" : "chevron-right"
+                                    }
+                                    className="h-3 w-3"
+                                  />
+                                </span>
+                              </div>
+                              {isOpen
+                                ? f.dashboards.map((ws) =>
+                                    dashRow(ws, null, "pl-4"),
+                                  )
+                                : null}
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div
+                  className={`border-t p-1 ${dividerStyles.borderColor || ""}`}
+                >
+                  <div className="flex flex-row items-center">
+                    <div className="flex-1 min-w-0">
+                      <ListRow
+                        icon="clone"
+                        onClick={() => {
+                          close();
+                          onOpenAll();
+                        }}
+                        title="All dashboards"
+                        testId="menu-all-dashboards"
+                      />
+                    </div>
+                    <span
+                      aria-hidden="true"
+                      className={`text-xs px-2 ${muted}`}
+                    >
+                      {workspaces.length}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
+    </div>
   );
 };
 
