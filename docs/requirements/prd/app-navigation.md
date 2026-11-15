@@ -1,7 +1,7 @@
 # PRD: App Navigation — Manage pages in the left nav
 
-**Status:** Implemented (NAV-001–012, NAV-015, NAV-016). Open: NAV-008 AC4 / NAV-011 slice B (Add to dashboard), NAV-013, NAV-014.
-**Last Updated:** 2026-10-22
+**Status:** Implemented (NAV-001–012, NAV-015–017). Open: NAV-008 AC4 / NAV-011 slice B (Add to dashboard), NAV-013, NAV-014.
+**Last Updated:** 2026-11-14
 **Owner:** John
 **Related PRDs:** [bot-teams.md](./bot-teams.md) (Bots view, TEAM-011), [command-palette-navigation.md](./command-palette-navigation.md), [widget-installation-model.md](./widget-installation-model.md), [scoped-widget-ids.md](./scoped-widget-ids.md)
 
@@ -192,6 +192,28 @@ As a user, I want Manage pages to use the whole main area in a consistent layout
 - [x] AC6: A dashboard's Bots view shows the same page for the selected bot beside its team diagram. _Implemented: `BotsView` renders `BotPage` for saved bots, with the team's ⋯ actions (Show on dashboard, Publish bot…, Remove from team, Delete; Turn off lead) through its `actions`/`below` slots. A new bot keeps the bot form. The bot page now says where an installed bot came from, and an error's "Open Settings › Providers" opens the app's settings everywhere (it had opened the bot's own Settings tab)._ (A lead's drafts: superseded by the lead's hand-off to the Dash team, 2026-10-22 — consolidation Phase 2c-2 removed drafts; see Appendix: history.)
 
 - [x] AC7 (consolidation Phase 4a, 2026-10-21): **The Dash team's page.** The Bots panel's pinned **Dash team** row opens it in the same large modal (`BotPageModal` with `{ dashTeam: true, tab }`, from the `dash:open-dash-team` event; `Bots/DashTeamPage.js`). Header: the team, "Planner · Scout · Builder · Checker". **Conversation** (default): your questions, one thread each — the questions kept in Create's Recent (`questionThreads`), newest first, a lead's marked "asked <lead>" — and **New conversation**. A thread is AskStep: the Planner answers, follow-ups stay in the thread, and an answer that plans something has **Open as a plan** (closes the modal, opens Create on it). Plans and builds the team runs in Create aren't threads (a thread is a question, not the Planner's run history). A paused Planner shows "The Dash team is paused" with **Turn on** instead of the box. **Settings**: the four roles (Planner, Scout, Builder, Checker), each On / Paused with its job · model · when it last ran; one opens its DashTeamPanel (pause, model, last run) and **Edit** its form. Unsaved role edits are never dropped silently: another tab, back or close asks "Discard unsaved changes?", and the modal ignores outside clicks while there are some. Create's Recent keeps the newest 20 of each kind (plans, questions), so asking a lot never pushes plans out. The sidebar's Create panel no longer has an Ask box (create-entry CRE-007).
+
+**NAV-017: Dashboards and folders in one place** _(implemented 2026-11-14 — mockup "Dashboards and folders (proposed)", option 3 + left nav, frames 3·1–3·6, approved 2026-11-14)_
+
+**User Story:** As a user, I want clicking Dashboards to show my dashboards, and my folders right beside them, so I can find a dashboard and organize them without a separate Folders view.
+
+**Acceptance Criteria:**
+
+- [x] AC1: Clicking Dashboards always shows the dashboards. The Dashboards / Folders switch is gone (it remembered the last view, so the page could open on an empty Folders view), and the app no longer jumps to Folders at startup when there are none. Settings › Folders and the command palette's New folder land on the Dashboards page.
+- [x] AC2: A folder column beside the list: **All dashboards**, **Not in a folder**, each folder A–Z with its icon and count, **New folder**. Picking one lists only its dashboards, newest first; under All dashboards each row says its folder.
+- [x] AC3: A folder's ⋯ (in the list's header) has **Edit folder** and **Delete folder**. Deleting asks first and keeps its dashboards — they move to Not in a folder. An empty folder says how to fill it.
+- [x] AC4: Moving a dashboard: drag it onto a folder (or onto Not in a folder), or use the **Folder** field in its details.
+- [x] AC5: **New folder / Edit folder** in the detail: a name, the app's icon picker (suggested folder icons; the whole Font Awesome set when you search), and the dashboards in it as checkboxes with Select all and Find — many moved in one save. A folder that doesn't save says so and moves nothing; dashboards that don't move are counted.
+- [x] AC6: Left nav, expanded: under Manage, **Folders** — each folder one folded line with its icon and count (empty ones too), then Not in a folder. The arrow opens a folder in place (its dashboards, newest first); which are open is remembered on this computer. The name opens the Dashboards page on that folder.
+- [x] AC7: Left nav, collapsed: the Dashboards icon opens a menu beside the bar — Recents, the folders (open one in place), **Find a dashboard…**, and **All dashboards** (the page). Escape or a click outside closes it.
+- [x] AC8: Folder ids saved as text ("1777165825716") match folders saved as numbers, everywhere (the page, the nav, the Folder field) — three of the user's dashboards had shown as unfiled. Nothing on disk is rewritten.
+
+**Implementation notes (NAV-017, 2026-11-14):**
+
+- `utils/dashboardFolders.js` (pure, tested): `sameId` (ids as text), `folderOf`, `dashboardsIn(key)` for `all` / `none` / a folder id, `newestFirst`, `withFolder` (keeps the folder's own id).
+- `ManageLayout` takes an `aside` (the folder column, `w-56`). `DashboardsPage` owns saving (`saveFolder`, `saveDashboard` as promises) and the drag (`application/x-dash-dashboard`); `FolderPanel` is New / Edit folder; `IconPicker` gained `allWhenSearching` and `gridClassName`.
+- `AppPage` lost the switch and `FoldersSection` (the file stays). `DashboardStage` passes `folderLink { folder, newFolder, nonce }` from the nav, Settings › Folders and the command palette.
+- `DashSidebar`: `NavFolder` (dash-react `ButtonIcon3` arrow + `Sidebar.Item`), open folders in `localStorage` (`dash.nav.openFolders`), `DashboardsMenu` (portal beside the collapsed bar, the account menu's dropdown colours).
 
 ### Nice-to-Have (P2)
 
@@ -388,6 +410,7 @@ NAV-011 slice A and NAV-012 shipped (2026-10-04; ownership needed no org fix). O
 | 1.15    | 2026-10-21 | John   | NAV-016 AC7: the Dash team's page (Phase 4a)               |
 | 1.16    | 2026-10-21 | John   | NAV-008 AC5 drill-in list, NAV-011 runs by itself (4b)     |
 | 1.17    | 2026-10-22 | John   | Phase 5 reconciliation: status, NAV-001–005 ticked, Create |
+| 1.18    | 2026-11-14 | John   | NAV-017: dashboards and folders in one place, nav folders  |
 
 ---
 

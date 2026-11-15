@@ -299,7 +299,8 @@ const DashboardStageInner = ({
   const activePageKey = pageKeyOf(activeTabId);
   // Settings deep links carried into a page: Dashboards' Folders view, and a
   // provider to select / create (a new nonce re-applies it).
-  const [pageSubsection, setPageSubsection] = useState(null);
+  // The Dashboards page's folder link { folder, newFolder, nonce } (NAV-017).
+  const [folderLink, setFolderLink] = useState(null);
   const [providerLink, setProviderLink] = useState(null);
   // Widgets page install deep link { action, nonce }.
   const [widgetLink, setWidgetLink] = useState(null);
@@ -935,8 +936,9 @@ const DashboardStageInner = ({
     const page = pageForSettingsSection(section);
     if (page) {
       handleOpenPageGuarded(page.key, {
-        subsection:
-          section === "folders" || section === "dashboards" ? section : null,
+        // Settings › Folders lands on the Dashboards page's folder column.
+        folderLink:
+          section === "folders" ? { folder: "all", nonce: Date.now() } : null,
         providerLink:
           section === "providers" &&
           (providerName || createProvider || providerType)
@@ -1578,7 +1580,8 @@ const DashboardStageInner = ({
     setOpenTabs((prev) => openPageTab(prev, key).tabs);
     setActiveTabId(pageTabId(key));
     setPreviewMode(true);
-    setPageSubsection(opts.subsection || null);
+    // Used once: a plain Dashboards click opens on All dashboards.
+    setFolderLink(opts.folderLink || null);
     if (opts.providerLink) setProviderLink(opts.providerLink);
     if (opts.widgetLink) setWidgetLink(opts.widgetLink);
     if (opts.issueLink) setIssueLink(opts.issueLink);
@@ -2709,7 +2712,6 @@ const DashboardStageInner = ({
       console.log("list menu items complete ", e, message);
       setMenuItems(() => message.menuItems);
       setIsLoadingMenuItems(() => false);
-      if (message.menuItems.length === 0) openAppSettings("folders");
     } catch (error) {
       console.log("handle list menu items error ", error);
     }
@@ -3240,6 +3242,11 @@ const DashboardStageInner = ({
                 onSignOut={handleSidebarSignOut}
                 activePageKey={activePageKey}
                 onOpenPage={handleOpenPageGuarded}
+                onOpenFolder={(folder) =>
+                  handleOpenPageGuarded("dashboards", {
+                    folderLink: { folder, nonce: Date.now() },
+                  })
+                }
                 pageAttention={{
                   bots: pendingApprovals,
                   providers: providersNeedingSetup,
@@ -3449,7 +3456,7 @@ const DashboardStageInner = ({
                 // dashboard's theme) — app-navigation NAV-003.
                 <AppPage
                   pageKey={activePageKey}
-                  subsection={pageSubsection}
+                  folderLink={folderLink}
                   providerLink={providerLink}
                   widgetLink={widgetLink}
                   issueLink={issueLink}
@@ -3955,7 +3962,11 @@ const DashboardStageInner = ({
           onOpenPage={handleOpenPageGuarded}
           onOpenWorkspace={handleOpenTab}
           onCreateNewWorkspace={openDashLead}
-          onCreateNewFolder={() => openAppSettings("folders")}
+          onCreateNewFolder={() =>
+            handleOpenPageGuarded("dashboards", {
+              folderLink: { newFolder: true, nonce: Date.now() },
+            })
+          }
           onLoadDashboard={() => setIsDashboardLoaderOpen(true)}
           providers={appContext?.providers || {}}
           onCreateNewProvider={() => openAppSettings("providers", null, true)}

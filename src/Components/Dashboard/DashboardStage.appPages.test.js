@@ -143,3 +143,19 @@ describe("DashboardStage — Dashboards page actions (NAV-005 AC3)", () => {
     );
   });
 });
+
+describe("DashboardStage — folder links (NAV-017)", () => {
+  it("a folder link is used once: a plain Dashboards click opens on All dashboards", () => {
+    expect(src).toMatch(/setFolderLink\(opts\.folderLink \|\| null\)/);
+  });
+
+  it("no jump to Folders at startup; nav and command palette open the page", () => {
+    expect(src).not.toMatch(
+      /menuItems\.length === 0\) openAppSettings\("folders"\)/,
+    );
+    expect(src).toMatch(/onOpenFolder=\{\(folder\) =>/);
+    expect(src).toMatch(
+      /folderLink: \{ newFolder: true, nonce: Date\.now\(\) \}/,
+    );
+  });
+});

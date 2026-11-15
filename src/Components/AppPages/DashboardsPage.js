@@ -1,16 +1,15 @@
-import React, { useContext, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Button3,
   ConfirmationModal,
   EmptyState,
-  FilterMenu,
   FontAwesomeIcon,
   InputText,
   ListRow,
   SearchInput,
   SectionLabel,
-  SegmentedControl,
+  Sidebar,
   SelectInput,
   StatusBadge,
   ThemeContext,
@@ -32,8 +31,21 @@ import { useApprovalsByDashboard } from "./useApprovalsByDashboard";
 import { exportedText } from "./exportedText";
 import { saveErrorText } from "../../utils/saveErrorText";
 import { dashboardCopy } from "../../utils/dashboardCopy";
+import {
+  ALL_DASHBOARDS,
+  NOT_IN_A_FOLDER,
+  dashboardsIn,
+  folderIcon,
+  folderOf,
+  newestFirst,
+  sameId,
+  sortedFolders,
+  withFolder,
+} from "../../utils/dashboardFolders";
+import { FolderPanel } from "./FolderPanel";
 
-const UNCATEGORIZED = "Uncategorized";
+// What a dragged dashboard row carries (its id).
+const DRAG_TYPE = "application/x-dash-dashboard";
 // Empty, so it takes the select's placeholder place ("No folder" once).
 const NO_FOLDER = "";
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -435,19 +447,20 @@ const DashboardDetailPanel = ({
           label="Folder"
           // A dashboard outside every folder (or in a folder that is gone)
           // shows "No folder", not a blank select.
-          value={
-            menuItems.some((m) => m.id === ws.menuId)
-              ? String(ws.menuId)
-              : NO_FOLDER
-          }
+          value={folderOf(ws, menuItems) ? String(ws.menuId) : NO_FOLDER}
           onChange={(val) =>
-            save({
-              ...ws,
-              menuId: val && val !== NO_FOLDER ? Number(val) : null,
-            })
+            save(
+              withFolder(
+                ws,
+                (val && menuItems.find((m) => sameId(m.id, val))) || null,
+              ),
+            )
           }
-          options={[{ label: "No folder", value: NO_FOLDER }, ...folderOptions]}
-          placeholder="No folder"
+          options={[
+            { label: "Not in a folder", value: NO_FOLDER },
+            ...folderOptions,
+          ]}
+          placeholder="Not in a folder"
         />
         <SelectInput
           label="Theme"
@@ -487,10 +500,13 @@ const DashboardDetailPanel = ({
 
 /**
  * DashboardsPage — every dashboard as list + detail (app-navigation PRD
- * NAV-005): grouped by folder (or A–Z), search across dashboard and widget
- * names, a Folder filter; the detail shows the layout per page, widgets,
- * bots, providers and what needs attention, with Open / Bots view /
- * Dashboard Config and Rename / Duplicate / Export / Publish / Delete.
+ * NAV-005), with a folder column (NAV-017): All dashboards, Not in a
+ * folder, each folder with its icon and count, + New folder. Pick one and
+ * the list shows only its dashboards, newest first. Drag a dashboard onto a
+ * folder to move it (or use the Folder field in its details); a folder's
+ * ⋯ has Edit folder and Delete folder. The detail shows the dashboard
+ * (layout per page, widgets, bots, providers, what needs attention) or the
+ * New / Edit folder panel.
  */
 export const DashboardsPage = ({
   workspaces = [],
@@ -498,6 +514,9 @@ export const DashboardsPage = ({
   dashApi = null,
   credentials = null,
   onReloadWorkspaces = null,
+  onReloadMenuItems = null,
+  // Open on a folder / with New folder open: { folder, newFolder, nonce }.
+  folderLink = null,
   onOpenWorkspace = () => {},
   onOpenBotsView = () => {},
   onOpenDashboardConfig = () => {},
@@ -505,18 +524,29 @@ export const DashboardsPage = ({
   const { muted } = useConfigTokens();
   const themeCtx = useContext(ThemeContext) || {};
   const themes = themeCtx.themes || {};
+  const dropRing = (themeCtx.currentTheme || {})["border-primary-medium"] || "";
   const appContext = useContext(AppContext) || {};
   const appProviders = appContext.providers || {};
   const approvalsFor = useApprovalsByDashboard();
   const appId = credentials?.appId;
 
   const [query, setQuery] = useState("");
-  const [folders, setFolders] = useState([]);
-  const [view, setView] = useState("grouped");
+  const [folderKey, setFolderKey] = useState(ALL_DASHBOARDS);
   const [selectedId, setSelectedId] = useState(null);
+  // The detail shows a folder form instead: { kind: "new" | "edit", id }.
+  const [panel, setPanel] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState(null);
   const [removeTarget, setRemoveTarget] = useState(null);
   const profiles = useProfiles(appId);
+
+  // A link from the left nav / Settings › Folders / New folder.
+  useEffect(() => {
+    if (!folderLink) return;
+    if (folderLink.folder) setFolderKey(String(folderLink.folder));
+    setPanel(folderLink.newFolder ? { kind: "new" } : null);
+  }, [folderLink?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const summaries = useMemo(() => {
     const map = new Map();
@@ -534,56 +564,108 @@ export const DashboardsPage = ({
     return map;
   }, [workspaces, appProviders, appContext.providersLoaded]);
 
-  const folderNameOf = (ws) =>
-    menuItems.find((m) => m.id === ws.menuId)?.name || UNCATEGORIZED;
+  const folders = sortedFolders(menuItems);
+  const currentFolder =
+    folderKey === ALL_DASHBOARDS || folderKey === NOT_IN_A_FOLDER
+      ? null
+      : folders.find((f) => sameId(f.id, folderKey)) || null;
+  // A folder that was deleted elsewhere falls back to All dashboards.
+  const key =
+    folderKey === ALL_DASHBOARDS || folderKey === NOT_IN_A_FOLDER
+      ? folderKey
+      : currentFolder
+        ? folderKey
+        : ALL_DASHBOARDS;
 
   const q = query.trim().toLowerCase();
-  const visible = workspaces.filter((ws) => {
-    if (folders.length && !folders.includes(folderNameOf(ws))) return false;
-    if (!q) return true;
-    const s = summaries.get(ws.id);
-    const haystack = [
-      ws.name || "",
-      ...(s ? s.widgets.map((w) => `${w.name} ${w.component || ""}`) : []),
-    ]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(q);
-  });
-
-  const groups =
-    view === "grouped"
-      ? [
-          ...menuItems.map((m) => ({
-            name: m.name,
-            items: visible.filter((ws) => ws.menuId === m.id),
-          })),
-          {
-            name: UNCATEGORIZED,
-            items: visible.filter(
-              (ws) => !menuItems.some((m) => m.id === ws.menuId),
-            ),
-          },
-        ].filter((g) => g.items.length)
-      : [
-          {
-            name: null,
-            items: [...visible].sort((a, b) =>
-              (a.name || "Untitled").localeCompare(b.name || "Untitled"),
-            ),
-          },
-        ];
-  const ordered = groups.flatMap((g) => g.items);
+  const ordered = newestFirst(
+    dashboardsIn(key, workspaces, menuItems).filter((ws) => {
+      if (!q) return true;
+      const s = summaries.get(ws.id);
+      const haystack = [
+        ws.name || "",
+        ...(s ? s.widgets.map((w) => `${w.name} ${w.component || ""}`) : []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    }),
+  );
   const selected =
     ordered.find((ws) => ws.id === selectedId) || ordered[0] || null;
 
-  const folderOptions = [...menuItems.map((m) => m.name), UNCATEGORIZED].map(
-    (name) => ({
-      value: name,
-      label: name,
-      count: workspaces.filter((ws) => folderNameOf(ws) === name).length,
-    }),
-  );
+  const notify = (title, err) =>
+    window.dispatchEvent(
+      new CustomEvent("dash:notify", {
+        detail: {
+          type: "error",
+          title,
+          message: saveErrorText(err) || "Try again.",
+          duration: 8000,
+        },
+      }),
+    );
+
+  const saveDashboard = (ws) =>
+    new Promise((resolve, reject) => {
+      if (!dashApi || !appId) return reject(new Error("Not ready"));
+      dashApi.saveWorkspace(
+        appId,
+        forSave(ws),
+        () => resolve(),
+        (e, err) => reject(err || e),
+      );
+    });
+
+  const saveFolder = (folder) =>
+    new Promise((resolve, reject) => {
+      if (!dashApi || !appId) return reject(new Error("Not ready"));
+      dashApi.saveMenuItem(
+        appId,
+        folder,
+        (e, result) =>
+          result && result.error ? reject(result) : resolve(result),
+        (e, err) => reject(err || e),
+      );
+    });
+
+  // Drag a dashboard onto a folder (or onto Not in a folder).
+  const moveTo = (wsId, targetKey) => {
+    const ws = workspaces.find((w) => String(w.id) === String(wsId));
+    if (!ws) return;
+    const folder =
+      targetKey === NOT_IN_A_FOLDER
+        ? null
+        : menuItems.find((m) => sameId(m.id, targetKey)) || null;
+    if (targetKey !== NOT_IN_A_FOLDER && !folder) return;
+    const now = folderOf(ws, menuItems);
+    if ((now && folder && sameId(now.id, folder.id)) || (!now && !folder))
+      return;
+    saveDashboard(withFolder(ws, folder))
+      .then(() => onReloadWorkspaces && onReloadWorkspaces())
+      .catch((err) => notify("Couldn't move the dashboard", err));
+  };
+
+  const dropProps = (targetKey) => ({
+    onDragOver: (e) => {
+      if (!Array.from(e.dataTransfer?.types || []).includes(DRAG_TYPE)) return;
+      e.preventDefault();
+      if (dragOver !== targetKey) setDragOver(targetKey);
+    },
+    onDragLeave: () => setDragOver((k) => (k === targetKey ? null : k)),
+    onDrop: (e) => {
+      e.preventDefault();
+      setDragOver(null);
+      const id = e.dataTransfer?.getData(DRAG_TYPE);
+      if (id) moveTo(id, targetKey);
+    },
+  });
+
+  const pickFolder = (k) => {
+    setFolderKey(k);
+    setSelectedId(null);
+    setPanel(null);
+  };
 
   const confirmDelete = () => {
     const target = deleteTarget;
@@ -597,6 +679,26 @@ export const DashboardsPage = ({
         onReloadWorkspaces && onReloadWorkspaces();
       },
       (e, err) => console.error("Delete dashboard error:", err),
+    );
+  };
+
+  // Its dashboards stay: they're without a folder, on disk.
+  const confirmDeleteFolder = () => {
+    const target = deleteFolderTarget;
+    setDeleteFolderTarget(null);
+    if (!target || !dashApi || !appId) return;
+    const failed = (err) =>
+      notify(`Couldn't delete the folder "${target.name}"`, err);
+    dashApi.deleteMenuItem(
+      appId,
+      target.id,
+      (e, result) => {
+        if (result && result.error) return failed(result);
+        pickFolder(ALL_DASHBOARDS);
+        onReloadMenuItems && onReloadMenuItems();
+        onReloadWorkspaces && onReloadWorkspaces();
+      },
+      (e, err) => failed(err),
     );
   };
 
@@ -626,16 +728,200 @@ export const DashboardsPage = ({
     ? profiles.otherHolders("dashboards", removeTarget.id)
     : [];
 
+  const folderCount = (k) => dashboardsIn(k, workspaces, menuItems).length;
+  const deleteFolderCount = deleteFolderTarget
+    ? folderCount(deleteFolderTarget.id)
+    : 0;
+
+  // ─── Folder column ───────────────────────────────────────────────
+  const columnRow = (k, label, icon, droppable) => {
+    const on = k === key && !panel;
+    return (
+      <div
+        key={k}
+        data-testid={`folder-${k}`}
+        data-drop={dragOver === k ? "over" : undefined}
+        className={`rounded-md border-2 ${
+          dragOver === k ? dropRing : "border-transparent"
+        }`}
+        {...(droppable ? dropProps(k) : {})}
+      >
+        <Sidebar.Item
+          icon={<FontAwesomeIcon icon={icon} className="h-3.5 w-3.5" />}
+          active={on}
+          onClick={() => pickFolder(k)}
+          badge={String(folderCount(k))}
+        >
+          <span data-name>{label}</span>
+        </Sidebar.Item>
+      </div>
+    );
+  };
+  const aside = (
+    <>
+      {columnRow(ALL_DASHBOARDS, "All dashboards", "clone", false)}
+      {columnRow(NOT_IN_A_FOLDER, "Not in a folder", "inbox", true)}
+      {folders.length ? <ListGroupLabel text="Folders" /> : null}
+      {folders.map((f) =>
+        columnRow(String(f.id), f.name || "Untitled", folderIcon(f), true),
+      )}
+      <div data-testid="new-folder" className="pt-2">
+        <Sidebar.Item
+          icon={<FontAwesomeIcon icon="folder-plus" className="h-3.5 w-3.5" />}
+          active={panel?.kind === "new"}
+          onClick={() => setPanel({ kind: "new" })}
+        >
+          <span data-name>New folder</span>
+        </Sidebar.Item>
+      </div>
+    </>
+  );
+
+  // ─── List ────────────────────────────────────────────────────────
+  const listTitle =
+    key === ALL_DASHBOARDS
+      ? "All dashboards"
+      : key === NOT_IN_A_FOLDER
+        ? "Not in a folder"
+        : currentFolder.name || "Untitled";
+  const list = (
+    <>
+      <div
+        data-testid="dashboard-list-head"
+        className="flex flex-row items-center gap-2 px-2 h-8"
+      >
+        <span className={`flex-1 text-xs font-semibold truncate ${muted}`}>
+          {listTitle} · {plural(ordered.length, "dashboard")}
+          {key === ALL_DASHBOARDS && ordered.length ? " · newest first" : ""}
+        </span>
+        {currentFolder ? (
+          <OverflowMenu
+            ariaLabel={`${currentFolder.name} actions`}
+            items={[
+              {
+                label: "Edit folder",
+                icon: "pen",
+                onClick: () =>
+                  setPanel({ kind: "edit", id: String(currentFolder.id) }),
+              },
+              {
+                label: "Delete folder",
+                icon: "trash-can",
+                onClick: () => setDeleteFolderTarget(currentFolder),
+              },
+            ]}
+          />
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {ordered.map((ws) => {
+          const s = summaries.get(ws.id);
+          const needs =
+            (s && s.unresolvedProviders > 0) || approvalsFor(ws.id) > 0;
+          const active = !panel && selected && ws.id === selected.id;
+          const theme = ws.themeKey ? themes[ws.themeKey] : null;
+          const inFolder =
+            key === ALL_DASHBOARDS ? folderOf(ws, menuItems) : null;
+          const meta = [
+            s
+              ? `${plural(s.pages.length, "page")} · ${plural(
+                  s.widgets.length,
+                  "widget",
+                )}`
+              : "",
+            updatedText(ws),
+            inFolder ? inFolder.name : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <div
+              key={ws.id}
+              draggable
+              data-testid="dashboard-row"
+              onDragStart={(e) => {
+                e.dataTransfer.setData(DRAG_TYPE, String(ws.id));
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragEnd={() => setDragOver(null)}
+            >
+              <ListRow
+                icon="table-cells-large"
+                selected={!!active}
+                onClick={() => {
+                  setSelectedId(ws.id);
+                  setPanel(null);
+                }}
+                title={<span data-name>{ws.name || "Untitled"}</span>}
+                meta={
+                  <span className="flex flex-row flex-wrap items-center gap-x-2 gap-y-1">
+                    <span>{meta}</span>
+                    {theme ? <ThemeColorDots theme={theme} /> : null}
+                    {needs ? (
+                      <span data-testid="dashboard-attention">
+                        <StatusBadge
+                          state="warning"
+                          compact
+                          label="Needs attention"
+                        />
+                      </span>
+                    ) : null}
+                  </span>
+                }
+              />
+            </div>
+          );
+        })}
+        {!ordered.length ? (
+          <span className={`text-sm px-2 ${muted}`} data-testid="list-empty">
+            {q
+              ? "No dashboards match."
+              : currentFolder
+                ? `Nothing in ${currentFolder.name} yet. Drag a dashboard onto it, or use Edit folder to pick some.`
+                : key === NOT_IN_A_FOLDER
+                  ? "Every dashboard is in a folder."
+                  : "No dashboards yet."}
+          </span>
+        ) : null}
+      </div>
+    </>
+  );
+
+  // ─── Detail ──────────────────────────────────────────────────────
   let detail;
-  if (selected) {
+  const editing =
+    panel?.kind === "edit"
+      ? menuItems.find((m) => sameId(m.id, panel.id)) || null
+      : null;
+  if (panel && (panel.kind === "new" || editing)) {
+    detail = (
+      <FolderPanel
+        key={panel.kind === "new" ? "new" : `edit-${panel.id}`}
+        folder={editing}
+        workspaces={workspaces}
+        menuItems={menuItems}
+        saveFolder={saveFolder}
+        saveDashboard={saveDashboard}
+        onDone={(id) => {
+          onReloadMenuItems && onReloadMenuItems();
+          onReloadWorkspaces && onReloadWorkspaces();
+          setPanel(null);
+          setFolderKey(id);
+          setSelectedId(null);
+        }}
+        onCancel={() => setPanel(null)}
+      />
+    );
+  } else if (selected) {
     const theme = selected.themeKey ? themes[selected.themeKey] : null;
+    const inFolder = folderOf(selected, menuItems);
     detail = (
       <DashboardDetailPanel
         key={selected.id}
         ws={selected}
         summary={summaries.get(selected.id)}
         approvals={approvalsFor(selected.id)}
-        folderName={folderNameOf(selected)}
+        folderName={inFolder ? inFolder.name : "Not in a folder"}
         themeName={theme ? theme.name || selected.themeKey : null}
         menuItems={menuItems}
         themes={themes}
@@ -655,9 +941,11 @@ export const DashboardsPage = ({
   } else {
     detail = (
       <span className={`text-sm ${muted}`}>
-        {q || folders.length
-          ? "No dashboards match these filters."
-          : "No dashboards yet."}
+        {q
+          ? "No dashboards match."
+          : workspaces.length
+            ? "Pick a dashboard to see its details."
+            : "No dashboards yet."}
       </span>
     );
   }
@@ -665,90 +953,22 @@ export const DashboardsPage = ({
   return (
     <ManageLayout
       testId="dashboards-page"
+      aside={aside}
+      asideLabel="Folders"
       listLabel="Dashboards"
       detailTestId="dashboard-detail"
+      // The folder form scrolls itself and keeps its save bar in view.
+      detailFlush={!!(panel && (panel.kind === "new" || editing))}
       toolbar={
-        <>
-          <div className="w-72">
-            <SearchInput
-              value={query}
-              onChange={setQuery}
-              placeholder="Search dashboards or widgets…"
-            />
-          </div>
-          <FilterMenu
-            label="Folder"
-            options={folderOptions}
-            selected={folders}
-            onChange={setFolders}
+        <div className="w-72">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search dashboards or widgets…"
           />
-          <SegmentedControl
-            ariaLabel="Order"
-            options={[
-              { value: "grouped", label: "Grouped" },
-              { value: "alphabetical", label: "A-Z" },
-            ]}
-            value={view}
-            onChange={setView}
-          />
-        </>
+        </div>
       }
-      list={
-        <>
-          {groups.map((g) => (
-            <div key={g.name || "all"} className="flex flex-col gap-0.5">
-              {g.name ? <ListGroupLabel text={g.name} /> : null}
-              {g.items.map((ws) => {
-                const s = summaries.get(ws.id);
-                const needs =
-                  (s && s.unresolvedProviders > 0) || approvalsFor(ws.id) > 0;
-                const active = selected && ws.id === selected.id;
-                const theme = ws.themeKey ? themes[ws.themeKey] : null;
-                const meta = [
-                  s
-                    ? `${plural(s.pages.length, "page")} · ${plural(
-                        s.widgets.length,
-                        "widget",
-                      )}`
-                    : "",
-                  updatedText(ws),
-                ]
-                  .filter(Boolean)
-                  .join(" · ");
-                return (
-                  <ListRow
-                    key={ws.id}
-                    icon="table-cells-large"
-                    selected={!!active}
-                    onClick={() => setSelectedId(ws.id)}
-                    title={<span data-name>{ws.name || "Untitled"}</span>}
-                    meta={
-                      <span className="flex flex-row flex-wrap items-center gap-x-2 gap-y-1">
-                        <span>{meta}</span>
-                        {theme ? <ThemeColorDots theme={theme} /> : null}
-                        {needs ? (
-                          <span data-testid="dashboard-attention">
-                            <StatusBadge
-                              state="warning"
-                              compact
-                              label="Needs attention"
-                            />
-                          </span>
-                        ) : null}
-                      </span>
-                    }
-                  />
-                );
-              })}
-            </div>
-          ))}
-          {!ordered.length ? (
-            <span className={`text-sm px-2 ${muted}`}>
-              No dashboards match.
-            </span>
-          ) : null}
-        </>
-      }
+      list={list}
       detail={detail}
     >
       <ConfirmationModal
@@ -762,6 +982,22 @@ export const DashboardsPage = ({
         variant="danger"
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+      <ConfirmationModal
+        isOpen={!!deleteFolderTarget}
+        setIsOpen={() => setDeleteFolderTarget(null)}
+        title={`Delete folder "${deleteFolderTarget?.name || ""}"`}
+        message={
+          deleteFolderCount
+            ? deleteFolderCount === 1
+              ? "Its 1 dashboard stays — it moves to Not in a folder."
+              : `Its ${deleteFolderCount} dashboards stay — they move to Not in a folder.`
+            : "It's empty. Nothing else changes."
+        }
+        confirmLabel="Delete folder"
+        variant="danger"
+        onConfirm={confirmDeleteFolder}
+        onCancel={() => setDeleteFolderTarget(null)}
       />
       <ConfirmationModal
         isOpen={!!removeTarget}

@@ -31,6 +31,10 @@ const renderMock = (name, props) => (
     {props.initialProviderType ? (
       <span data-testid="provider-type">{props.initialProviderType}</span>
     ) : null}
+    {props.folderLink ? (
+      <span data-testid="folder-link">{JSON.stringify(props.folderLink)}</span>
+    ) : null}
+    {props.onReloadMenuItems ? <span data-testid="reload-folders" /> : null}
     {props.onOpenThemeEditor ? (
       <button onClick={() => props.onOpenThemeEditor("theme-b")}>
         edit theme
@@ -61,9 +65,6 @@ const renderMock = (name, props) => (
 // Slice 2: the Dashboards page (list + detail) replaced DashboardsSection.
 jest.mock("./DashboardsPage", () => ({
   DashboardsPage: mockSection("dashboards"),
-}));
-jest.mock("../Settings/sections/FoldersSection", () => ({
-  FoldersSection: mockSection("folders"),
 }));
 // Slice 3a: the Bots page (list + detail) replaced BotsSection.
 jest.mock("./BotsPage", () => ({
@@ -134,17 +135,26 @@ describe("AppPage", () => {
     expect(screen.getByTestId("create")).toHaveTextContent("false");
   });
 
-  it("Dashboards switches between Dashboards and Folders", () => {
-    render(<AppPage pageKey="dashboards" />);
+  it("Dashboards always shows the dashboards — no Dashboards / Folders switch (NAV-017)", () => {
+    render(<AppPage pageKey="dashboards" onReloadMenuItems={() => {}} />);
     expect(screen.getByTestId("section-dashboards")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("radio", { name: "Folders" }));
-    expect(screen.getByTestId("section-folders")).toBeInTheDocument();
-    expect(screen.getByText("New Folder")).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Folders" })).toBeNull();
+    expect(screen.queryByText("New Folder")).toBeNull();
+    // Folders are saved from the page itself.
+    expect(screen.getByTestId("reload-folders")).toBeInTheDocument();
   });
 
-  it("opens on Folders when asked (Settings › Folders links)", () => {
-    render(<AppPage pageKey="dashboards" subsection="folders" />);
-    expect(screen.getByTestId("section-folders")).toBeInTheDocument();
+  it("passes a folder link (left nav, Settings › Folders, New folder) to the Dashboards page", () => {
+    render(
+      <AppPage
+        pageKey="dashboards"
+        folderLink={{ folder: "42", nonce: 7 }}
+        onReloadMenuItems={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("folder-link")).toHaveTextContent(
+      '{"folder":"42","nonce":7}',
+    );
   });
 
   it("passes provider deep links to Providers", () => {
@@ -257,18 +267,5 @@ describe("AppPage", () => {
     expect(screen.getByRole("heading", { name: "Themes" })).toHaveClass(
       "tok-strong",
     );
-  });
-
-  it("Dashboards / Folders is a segmented control showing the current view", () => {
-    render(<AppPage pageKey="dashboards" />);
-    expect(screen.getByRole("radio", { name: "Dashboards" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    expect(screen.getByRole("radio", { name: "Folders" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
-    expect(screen.queryByRole("tab")).toBeNull();
   });
 });
