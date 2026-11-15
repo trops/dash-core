@@ -303,6 +303,40 @@ export const ThemeModel = (themeItem = {}) => {
       });
     });
 
+    // Fixed shades, the same in Dark and Light (`bg-tertiary-700`): what
+    // the Edit theme window gives a part when you pick one of the theme's
+    // colours at a shade (utils/themeParts.js).
+    const FIXED_SHADES = [100, 300, 500, 700, 900];
+    colorTypes.forEach((type) => {
+      const channelValue = theme[type];
+      ["dark", "light"].forEach((variant) => {
+        FIXED_SHADES.forEach((shade) => {
+          [
+            ["bg", "bg", false],
+            ["text", "text", false],
+            ["border", "border", false],
+            ["hover-bg", "bg", true],
+            ["hover-text", "text", true],
+            ["hover-border", "border", true],
+          ].forEach(([key, prefix, hover]) => {
+            const token = `${key}-${type}-${shade}`;
+            theme[variant][token] = classFor(
+              prefix,
+              type,
+              shade,
+              channelValue,
+              hover,
+            );
+            theme[variant].cssValue[token] = cssValueFor(
+              type,
+              shade,
+              channelValue,
+            );
+          });
+        });
+      });
+    });
+
     // Gradients — primary/secondary/tertiary, 8 directions × 2 variants.
     // Each gradient goes from the variant's medium shade via medium to dark.
     // For hex channels, the gradient stops use `from-[var(--type-shade)]` etc.
@@ -524,12 +558,16 @@ export const ThemeModel = (themeItem = {}) => {
     ["dark", "light"].forEach((variant) => {
       const lv = TAG_LEVELS[variant];
       Object.entries(TAG_ITEMS).forEach(([item, type]) => {
-        if (theme[variant][item]) return;
+        const own =
+          theme[variant][item] && typeof theme[variant][item] === "object"
+            ? theme[variant][item]
+            : {};
         theme[variant][item] = {
           backgroundColor: `bg-${type}-${lv.bg}`,
           textColor: `text-${type}-${lv.text}`,
           hoverBackgroundColor: `hover-bg-${type}-${lv.bg}`,
           hoverTextColor: `hover-text-${type}-${lv.text}`,
+          ...own,
         };
       });
     });

@@ -27,6 +27,8 @@ export const ThemeManagerModal = ({
   // description, create-entry phase 5c) — nothing is saved until Create
   // Theme.
   initialTheme = null,
+  // Edit opens the Edit theme window on the theme (else the old studio).
+  onEditTheme = null,
 }) => {
   const {
     changeThemesForApplication,
@@ -416,7 +418,14 @@ export const ThemeManagerModal = ({
                   <Button onClick={handleDeleteTheme} title="Delete" />
                 )}
                 {themeSelected !== null && (
-                  <Button onClick={() => setIsEditing(true)} title="Edit" />
+                  <Button
+                    onClick={() =>
+                      onEditTheme
+                        ? onEditTheme(themeKeySelected)
+                        : setIsEditing(true)
+                    }
+                    title="Edit"
+                  />
                 )}
                 {themeSelected !== null && (
                   <Button onClick={handleActivateTheme} title="Activate" />

@@ -91,9 +91,12 @@ describe("DashboardStage — Manage pages", () => {
     );
   });
 
-  it("Edit theme opens the theme editor on the theme the Themes page picked", () => {
+  it("Edit theme opens the Edit theme window on the theme the Themes page picked", () => {
     expect(src).toMatch(
-      /function handleOpenThemeManager\(themeKey = null\) \{[\s\S]*?setThemeEditorKey\(typeof themeKey === "string" \? themeKey : null\);[\s\S]*?setIsThemeManagerOpen\(true\);/,
+      /function handleOpenThemeManager\(themeKey = null\) \{[\s\S]*?if \(typeof themeKey === "string"\) \{\s*setEditThemeKey\(themeKey\);\s*return;\s*\}[\s\S]*?setIsThemeManagerOpen\(true\);/,
+    );
+    expect(src).toMatch(
+      /<EditThemeModal\s+open=\{!!editThemeKey\}\s+themeKey=\{editThemeKey\}/,
     );
     expect(src).toMatch(
       /<AppPage[\s\S]*?onOpenThemeEditor=\{handleOpenThemeManager\}/,

@@ -1259,7 +1259,30 @@ function PanelHeader({
   );
 }
 
+// Edit theme preview pieces.
+function Alert({ message, title, children }) {
+  return React.createElement(
+    "div",
+    { role: "alert" },
+    title,
+    message,
+    children,
+  );
+}
+function Panel({ children }) {
+  return React.createElement("div", { "data-testid": "panel" }, children);
+}
+function Paragraph2({ text, children }) {
+  return React.createElement("p", null, text, children);
+}
+
 module.exports = {
+  Alert,
+  Panel,
+  Paragraph: Paragraph2,
+  Paragraph2,
+  MenuItem: MenuItem2,
+  Tabs: Tabs3,
   ChatMessage,
   ChatToolCall,
   ChatComposer,
