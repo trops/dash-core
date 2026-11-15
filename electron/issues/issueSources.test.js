@@ -121,6 +121,43 @@ describe("issue builders", () => {
       "Weather couldn't show",
     );
   });
+  it("a bot whose retired model has no known replacement: ran on the default, said so", () => {
+    const [issue] = botRunIssues({
+      bot: { id: "bot_r", name: "Recipe Bot", workspaceId: 1 },
+      run: {
+        status: "completed",
+        modelSwap: {
+          from: "claude-fable-5-preview",
+          to: "claude-haiku-5-5",
+          known: false,
+          label: "your Bots default (Latest Haiku, now Haiku 5.5)",
+        },
+      },
+    });
+    assert.equal(issue.cause, "model");
+    assert.equal(issue.severity, "warning");
+    assert.equal(issue.title, "Recipe Bot's model was retired");
+    assert.match(
+      issue.message,
+      /set to claude-fable-5-preview, .* it ran on your Bots default \(Latest Haiku, now Haiku 5\.5\) and finished\./,
+    );
+    assert.deepEqual(issue.model, {
+      from: "claude-fable-5-preview",
+      to: "claude-haiku-5-5",
+    });
+    // A known replacement isn't an issue: Settings moves those.
+    assert.deepEqual(
+      botRunIssues({
+        bot: { id: "b", name: "B" },
+        run: {
+          status: "completed",
+          modelSwap: { from: "a", to: "b", known: true },
+        },
+      }),
+      [],
+    );
+  });
+
   it("a bot run: its failure with the failed call, and each warning", () => {
     const issues = botRunIssues({
       bot: { id: "bot_m", name: "Morning Email Summary", workspaceId: 7301 },

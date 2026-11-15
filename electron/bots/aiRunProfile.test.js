@@ -50,6 +50,9 @@ function fake({ ai, bots = [] } = {}) {
     _modelPick(bot, s) {
       return botController._modelPick.call(this, bot, s);
     },
+    _replacementPick(gone) {
+      return botController._replacementPick.call(this, gone);
+    },
     _pause: { isPaused: () => false },
     _notifyListChanged() {
       this.notified = (this.notified || 0) + 1;
@@ -249,6 +252,60 @@ describe("which model ran it — one pick for runs and the team list", () => {
     assert.equal(p.chosen, false);
   });
 
+  it("a job default of Latest Haiku runs on the newest Haiku", () => {
+    const self = fake({
+      ai: { defaults: { bots: { model: "latest:haiku" } } },
+    });
+    const p = pick(self, {});
+    assert.equal(p.model, "claude-haiku-5-5");
+    assert.equal(p.chosen, true);
+    const own = pick(self, { model: "latest:sonnet" });
+    assert.equal(own.model, "claude-sonnet-5-5");
+  });
+
+  it("a retired job default runs on its replacement instead of being ignored", () => {
+    const self = fake({
+      ai: { defaults: { bots: { model: "claude-sonnet-4-20250514" } } },
+    });
+    const p = pick(self, {});
+    assert.equal(p.model, "claude-sonnet-5-5");
+    assert.equal(p.chosen, true);
+  });
+
+  it("a run whose model is gone: its replacement, else its job's default", async () => {
+    const self = fake({
+      ai: { defaults: { bots: { model: "latest:haiku" } } },
+    });
+    self._modelList = { checkNow: async () => null };
+    const replace = (gone) => botController._replacementModel.call(self, gone);
+    assert.deepEqual(
+      await replace({
+        botId: "x",
+        providerId: "claude-code",
+        model: "claude-sonnet-4-20250514",
+      }),
+      { model: "claude-sonnet-5-5", known: true, takesEffort: true },
+    );
+    const withBot = fake({
+      ai: { defaults: { bots: { model: "latest:haiku" } } },
+      bots: [{ id: "b1", model: "claude-gone-1" }],
+    });
+    withBot._modelList = { checkNow: async () => null };
+    assert.deepEqual(
+      await botController._replacementModel.call(withBot, {
+        botId: "b1",
+        providerId: "claude-code",
+        model: "claude-gone-1",
+      }),
+      {
+        model: "claude-haiku-5-5",
+        known: false,
+        label: "your Bots default (Latest Haiku, now Haiku 5.5)",
+        takesEffort: true,
+      },
+    );
+  });
+
   it("built in: a role's tier, a lead's fast tier, else the provider's default", () => {
     const self = fake();
     const planner = pick(self, { system: "dash-team", role: "planner" });
@@ -299,6 +356,79 @@ describe("which model ran it — one pick for runs and the team list", () => {
     assert.equal(self.notified, 1);
     botController.setBotSettings.call(self, { keepAwake: true });
     assert.equal(self.notified, 1);
+  });
+});
+
+describe("moving a retired model's saved choices", () => {
+  const OLD = "claude-sonnet-4-20250514";
+  function moving() {
+    const self = fake({
+      ai: { defaults: { checker: { model: OLD } } },
+      bots: [
+        { id: "b1", name: "Recipe Bot", model: OLD },
+        { id: "b2", name: "Agenda", model: null },
+      ],
+    });
+    const saved = [];
+    const ws = {
+      id: 7,
+      name: "Kitchen Sink",
+      layout: [
+        // Its Model is the "model" type: it can follow the newest.
+        {
+          id: 1,
+          component: "Chat",
+          userPrefs: { model: OLD },
+          widgetConfig: { userConfig: { model: { type: "model" } } },
+        },
+      ],
+    };
+    self._modelUsageInput = () => ({
+      settings: self.settings(),
+      bots: [...self._store.list()],
+      workspaces: [ws],
+    });
+    self._saveWorkspace = (w) => {
+      saved.push(w);
+      return { ok: true };
+    };
+    self._broadcast = () => {};
+    self.modelListStatus = () => null;
+    return { self, saved };
+  }
+
+  it("lists where it's saved", () => {
+    const { self } = moving();
+    const { retired } = botController.modelUsage.call(self);
+    assert.equal(retired.length, 1);
+    assert.equal(retired[0].to, "latest:sonnet");
+    assert.equal(retired[0].count, 3);
+    assert.deepEqual(retired[0].bots, [{ id: "b1", name: "Recipe Bot" }]);
+    assert.deepEqual(
+      retired[0].dashboards.map((d) => d.name),
+      ["Kitchen Sink"],
+    );
+  });
+
+  it("Move all writes the replacement into the saved settings", () => {
+    const { self, saved } = moving();
+    const res = botController.moveRetiredModel.call(self, OLD);
+    assert.deepEqual(res, {
+      moved: 3,
+      to: "latest:sonnet",
+      dashboards: 1,
+      failed: 0,
+      exact: 0,
+    });
+    assert.equal(self.settings().ai.defaults.checker.model, "latest:sonnet");
+    assert.equal(self.bot("b1").model, "latest:sonnet");
+    assert.equal(self.bot("b2").model, null);
+    assert.equal(saved[0].layout[0].userPrefs.model, "latest:sonnet");
+  });
+
+  it("refuses a model Dash can't run", () => {
+    const { self } = moving();
+    assert.ok(botController.moveRetiredModel.call(self, OLD, "gpt-x").error);
   });
 });
 

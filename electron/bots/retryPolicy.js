@@ -119,9 +119,31 @@ function errorDetails(err) {
   return out;
 }
 
+/**
+ * Did the run fail because its model isn't offered any more (retired, or
+ * never served)? Another model can fix that; another try on it can't.
+ * @param {{ message?: string, code?: string, status?: number }} err
+ */
+function isModelGone(err) {
+  const e = err || {};
+  const text = `${e.message || ""} ${e.code || ""}`;
+  if (
+    /model_not_found|model.{0,40}(not found|does not exist|not available|unrecognized|retired|deprecated)/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  return (
+    (e.status === 404 || /\b404\b|not_found_error/.test(text)) &&
+    /model/i.test(text)
+  );
+}
+
 module.exports = {
   MAX_ATTEMPTS,
   classifyError,
+  isModelGone,
   retryDelay,
   errorDetails,
 };

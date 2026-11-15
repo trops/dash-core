@@ -20,6 +20,16 @@ import { useSpending } from "../../Bots/useSpending";
 import { money } from "../../Bots/spendingText";
 import { BotModelsList } from "./BotModelsList";
 import { useAiSettings } from "./useAiSettings";
+import { ModelPicker } from "../ModelPicker";
+import { NewModelNotice } from "../NewModelNotice";
+import { RetiredModelNotice } from "../RetiredModelNotice";
+import { FollowNewestModal } from "../FollowNewestModal";
+import {
+  choiceLabel,
+  choiceNow,
+  choiceText,
+  followNewestRows,
+} from "../modelChoices";
 import {
   JOB_ROWS,
   STYLE_OPTIONS,
@@ -27,6 +37,7 @@ import {
   cheaperDefaults,
   effectiveJobModel,
   isMostExpensive,
+  listStatusText,
   perRunText,
   shortModel,
 } from "./aiSettingsText";
@@ -46,7 +57,7 @@ const COST_SUFFIX = {
 export const AiAssistantSection = () => {
   const appContext = useContext(AppContext) || {};
   const { muted, strong, hairline } = useConfigTokens();
-  const { ai, models, bots, leads, team, save, saveBot, reload } =
+  const { ai, models, bots, leads, team, save, saveBot, reload, modelList } =
     useAiSettings();
   const { summary, setBudget } = useSpending();
   const [view, setView] = useState("settings");
@@ -54,6 +65,8 @@ export const AiAssistantSection = () => {
   const [confirmApi, setConfirmApi] = useState(false);
   const [useCheaper, setUseCheaper] = useState(true);
   const [error, setError] = useState(null);
+  // The one-time "Keep your models up to date?", closed for now.
+  const [followClosed, setFollowClosed] = useState(false);
 
   // The Anthropic API key: the Anthropic provider (Settings › Providers).
   const providers = appContext.providers || {};
@@ -143,6 +156,12 @@ export const AiAssistantSection = () => {
       setConfirmApi(false);
     });
 
+  // Defaults set to one exact model, once: follow the newest instead?
+  const followRows =
+    !ai.followAsked && models.length && !followClosed
+      ? followNewestRows(ai.defaults, models)
+      : [];
+
   const ownModelBots = bots.filter((b) => b.model);
   const defaultBotModel = effectiveJobModel("bots", ai, models);
   const overall = summary && summary.overall;
@@ -190,6 +209,26 @@ export const AiAssistantSection = () => {
         <AlertBanner variant="error" size="compact" message={error} />
       ) : null}
 
+      <NewModelNotice
+        models={models}
+        added={(modelList.status && modelList.status.added) || []}
+        ai={ai}
+        bots={bots}
+        widgetCount={(alias) =>
+          (modelList.usage &&
+            modelList.usage.widgetsFollowing &&
+            modelList.usage.widgetsFollowing[alias]) ||
+          0
+        }
+        onDismiss={modelList.seen}
+      />
+
+      <RetiredModelNotice
+        models={models}
+        usage={modelList.usage}
+        onMove={modelList.move}
+      />
+
       <section className="flex flex-col gap-3">
         <SubHeading3 title="Run AI with" padding={false} />
         <span className={`text-sm ${muted}`}>
@@ -210,13 +249,32 @@ export const AiAssistantSection = () => {
       <section
         className={`flex flex-col gap-2 rounded-lg border p-4 ${hairline}`}
       >
-        <SubHeading3 title="Default models" padding={false} />
+        <div className="flex flex-row items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <SubHeading3 title="Default models" padding={false} />
+          </div>
+          <span
+            className={`text-xs ${muted}`}
+            role="status"
+            data-testid="ai-model-list-status"
+          >
+            {modelList.checking
+              ? "Checking for new models…"
+              : listStatusText(modelList.status)}
+          </span>
+          <Button3
+            title="Check now"
+            size="sm"
+            disabled={modelList.checking}
+            onClick={modelList.check}
+          />
+        </div>
         <span className={`text-sm ${muted}`}>
-          Used by everything that doesn&apos;t pick its own. Style sets how much
-          it thinks and writes: Brief, Normal or Thorough.{" "}
-          {onApi
-            ? "Costs are estimates for one run on your API key."
-            : "On your subscription these are included in your plan."}
+          Used by everything that doesn&apos;t pick its own.{" "}
+          <span className={`font-semibold ${strong}`}>Latest</span> moves up by
+          itself when a newer model of that family comes out. Pick an exact
+          version to stay on it.
+          {onApi ? " Costs are estimates for one run on your API key." : ""}
         </span>
         <div className="flex flex-col" role="list">
           {JOB_ROWS.map((row) => (
@@ -226,6 +284,7 @@ export const AiAssistantSection = () => {
               ai={ai}
               models={models}
               onApi={onApi}
+              newIds={(modelList.status && modelList.status.added) || []}
               botCount={bots.length}
               leadCount={leads.length}
               onSave={(patch) =>
@@ -246,8 +305,8 @@ export const AiAssistantSection = () => {
             data-testid="ai-bot-models-summary"
           >
             {ownModelBots.length
-              ? `${bots.length - ownModelBots.length} of ${bots.length} bots use the default (${shortModel(models, defaultBotModel)}). ${ownModelBots.length} ${ownModelBots.length === 1 ? "picks its" : "pick their"} own.`
-              : `All ${bots.length} bots use the default (${shortModel(models, defaultBotModel)}).`}
+              ? `${bots.length - ownModelBots.length} of ${bots.length} bots use the default (${choiceText(models, defaultBotModel)}). ${ownModelBots.length} ${ownModelBots.length === 1 ? "picks its" : "pick their"} own.`
+              : `All ${bots.length} bots use the default (${choiceText(models, defaultBotModel)}).`}
             {isMostExpensive(models, defaultBotModel)
               ? " That's the most expensive model."
               : ""}
@@ -331,6 +390,25 @@ export const AiAssistantSection = () => {
         />
       </section>
 
+      {followRows.length ? (
+        <FollowNewestModal
+          rows={followRows}
+          models={models}
+          onFollow={(chosen) =>
+            run(() =>
+              save({
+                followAsked: true,
+                defaults: Object.fromEntries(
+                  chosen.map((r) => [r.job, { model: r.to }]),
+                ),
+              }),
+            )
+          }
+          onKeep={() => run(() => save({ followAsked: true }))}
+          onClose={() => setFollowClosed(true)}
+        />
+      ) : null}
+
       {confirmApi ? (
         <ConfirmationModal
           isOpen
@@ -405,7 +483,16 @@ function expensiveNote(ai, models) {
 }
 
 /** One job's default model and style, with its cost per run. */
-function JobRow({ row, ai, models, onApi, botCount, leadCount, onSave }) {
+function JobRow({
+  row,
+  ai,
+  models,
+  onApi,
+  newIds,
+  botCount,
+  leadCount,
+  onSave,
+}) {
   const { muted, strong, hairline } = useConfigTokens();
   const d = ai.defaults[row.job] || {};
   const model = effectiveJobModel(row.job, ai, models);
@@ -415,12 +502,6 @@ function JobRow({ row, ai, models, onApi, botCount, leadCount, onSave }) {
       : row.job === "leads"
         ? `${leadCount} ${leadCount === 1 ? "lead" : "leads"} · ${row.sub.toLowerCase()}`
         : row.sub;
-  const modelOptions = [
-    ...(d.model
-      ? []
-      : [{ value: "", label: `${shortModel(models, model)} (built in)` }]),
-    ...models.map((m) => ({ value: m.value, label: m.label })),
-  ];
   return (
     <div
       role="listitem"
@@ -434,12 +515,24 @@ function JobRow({ row, ai, models, onApi, botCount, leadCount, onSave }) {
       {isMostExpensive(models, model) ? (
         <StatusBadge state="warning" label="Most expensive" />
       ) : null}
-      <div className="w-48">
-        <SelectInput
+      <div className="w-56">
+        <ModelPicker
           ariaLabel={`${row.name} model`}
+          models={models}
           value={d.model || ""}
+          newIds={newIds}
           onChange={(v) => onSave({ model: v || null })}
-          options={modelOptions}
+          first={
+            d.model
+              ? []
+              : [
+                  {
+                    value: "",
+                    label: `${choiceLabel(models, model)} (built in)`,
+                    description: choiceNow(models, model),
+                  },
+                ]
+          }
         />
       </div>
       <div className="w-32">

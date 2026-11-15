@@ -301,6 +301,19 @@ function botRunIssues({ bot, run }) {
       });
     }
   }
+  // Its model was retired and nothing known replaces it: it ran on the
+  // default instead — say so, with what to use from now on.
+  const swap = run.modelSwap;
+  if (run.status !== "failed" && swap && swap.from && !swap.known) {
+    out.push({
+      asset,
+      severity: "warning",
+      cause: "model",
+      title: `${asset.name}'s model was retired`,
+      message: `${asset.name} was set to ${swap.from}, which is no longer offered, and Dash doesn't know what replaced it. So the run wasn't wasted, it ran on ${swap.label || swap.to} and finished.`,
+      model: { from: swap.from, to: swap.to },
+    });
+  }
   for (const w of warningsOf(run)) {
     const message = typeof w === "string" ? w : w && w.message;
     if (!message) continue;

@@ -32,6 +32,7 @@ Implementation Guides (code)
 
 ## Existing PRDs
 
+- **[Models stay current](./prd/models-stay-current.md)** - Status: Draft - 2026-11-15
 | PRD | Status | Summary |
 |-----|--------|---------|
 | [Dash Profiles](./prd/dash-profiles.md) | In Progress | Separate, switchable setups per install; save to a file, load on another machine, later sync with your account |

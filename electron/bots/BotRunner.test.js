@@ -1099,6 +1099,93 @@ describe("BotRunner — retries (US-023 AC1/AC2)", () => {
     assert.deepEqual(waits, [12000]);
   });
 
+  it("a model that's gone: runs once more on its replacement and records it", async () => {
+    const gone = {
+      type: "error",
+      message:
+        'API Error: 404 {"type":"not_found_error","message":"model: claude-opus-4-8"}',
+    };
+    const engine = scriptedEngine([[gone], ok]);
+    const seen = [];
+    engine.run = ((run) => (ctx) => {
+      seen.push(ctx.model);
+      return run(ctx);
+    })(engine.run);
+    const asked = [];
+    const { runner } = makeRunner(engine, {
+      deps: {
+        ...fastDeps([]),
+        replacementModel: async (g) => {
+          asked.push(g);
+          return "claude-opus-5-5";
+        },
+      },
+    });
+    const { events, record } = await collectEmit((emit) =>
+      runner.run("bot_1", { emit }),
+    );
+    assert.deepEqual(seen, ["claude-opus-4-8", "claude-opus-5-5"]);
+    assert.deepEqual(asked, [
+      { botId: "bot_1", providerId: "anthropic", model: "claude-opus-4-8" },
+    ]);
+    assert.equal(record.status, "completed");
+    assert.equal(record.model, "claude-opus-5-5");
+    const retrying = events.find((e) => e.type === "retrying");
+    assert.equal(retrying.reason, "Model unavailable");
+  });
+
+  it("a replacement without an effort setting runs without one, named in words", async () => {
+    const gone = { type: "error", message: "model_not_found: claude-x" };
+    const engine = scriptedEngine([[gone], ok]);
+    const efforts = [];
+    engine.run = ((run) => (ctx) => {
+      efforts.push(ctx.effort);
+      return run(ctx);
+    })(engine.run);
+    const { runner } = makeRunner(engine, {
+      deps: {
+        ...fastDeps([]),
+        resolveRunProfile: async () => ({
+          providerId: "anthropic",
+          engineId: "tool-loop",
+          model: "claude-x",
+          effort: "high",
+          credentials: {},
+        }),
+        replacementModel: async () => ({
+          model: "claude-haiku-4-5",
+          known: true,
+          takesEffort: false,
+        }),
+        modelName: (_p, id) => (id === "claude-haiku-4-5" ? "Haiku 4.5" : "X"),
+      },
+    });
+    const { events } = await collectEmit((emit) =>
+      runner.run("bot_1", { emit }),
+    );
+    assert.deepEqual(efforts, ["high", null]);
+    assert.equal(
+      events.find((e) => e.type === "retrying").message,
+      "X isn't available any more. Running on Haiku 4.5 instead.",
+    );
+  });
+
+  it("a model that's gone with nothing to run instead fails at once", async () => {
+    const gone = {
+      type: "error",
+      message: "model_not_found: claude-x",
+    };
+    const engine = scriptedEngine([[gone], ok]);
+    const { runner } = makeRunner(engine, {
+      deps: { ...fastDeps([]), replacementModel: async () => null },
+    });
+    const { record } = await collectEmit((emit) =>
+      runner.run("bot_1", { emit }),
+    );
+    assert.equal(engine.calls, 1);
+    assert.equal(record.status, "failed");
+  });
+
   it("stops retrying when the bot is paused or over budget meanwhile", async () => {
     const engine = scriptedEngine([[overloaded], ok]);
     let blocked = null;

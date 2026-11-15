@@ -280,6 +280,9 @@ const {
   getDefaultModel,
   getCuratedModels,
   migrateModelId,
+  isKnownModel,
+  modelText,
+  latestAlias,
 } = require("../llm/modelProviders");
 const {
   resolveBotProviderId,
@@ -290,6 +293,8 @@ const {
   mergeAiSettings,
   backendProvider,
   defaultModelFor,
+  jobOf,
+  JOB_NAMES,
   styleFor,
   runLimitsFor,
   defaultMonthlyLimitFor,
@@ -308,6 +313,14 @@ const {
   BOT_MCP_TASKS_CHANGED,
   CREATE_RECENT_CHANGED,
 } = require("../events/botEvents");
+const { LLM_MODEL_LIST_CHANGED } = require("../events/llmEvents");
+const { startModelList } = require("../llm/modelListHost");
+const {
+  retiredUsage,
+  moveTarget,
+  countFollowing,
+  planMove,
+} = require("../llm/modelUsage");
 
 // The Dash Lead's routing log keeps this many (TEAM-016).
 const MAX_ROUTES = 50;
@@ -599,6 +612,10 @@ const botController = {
           botId,
           (this._store.get(botId) || {}).workspaceId,
         ),
+      // A run whose model is gone: check the list, then run on what replaces
+      // it, else on its job's default.
+      replacementModel: (gone) => this._replacementModel(gone),
+      modelName: (providerId, id) => modelText(providerId, id),
       // The run's cost on its record — the same rule as the monthly totals.
       costOf: ({ providerId, model, usage }) =>
         runCost({ providerId, usage, pricing: pricingFor(providerId, model) }),
@@ -670,6 +687,13 @@ const botController = {
     this.followDefaultOnce();
 
     this._ready = true;
+    // The fresh model list: checked now, daily and on wake (modelList.js).
+    if (!this._modelList) {
+      this._modelList = startModelList({
+        getApiKey: async () => this._anthropicKey(),
+        onChange: (status) => this._broadcast(LLM_MODEL_LIST_CHANGED, status),
+      });
+    }
     // Events kept for bots that are no longer held (resumed before Dash
     // last quit, or a new month for an over-budget bot) run now.
     setImmediate(() => this._drainQueued());
@@ -3325,6 +3349,198 @@ const botController = {
     this._broadcast(BOT_RUN_ACTIVE, { count: running.length, running });
   },
 
+  /** The fresh model list: where it came from and when it was checked. */
+  modelListStatus() {
+    return this._modelList ? this._modelList.status() : null;
+  },
+
+  /** Check for new and retired models now. */
+  checkModelList() {
+    return this._modelList ? this._modelList.check() : Promise.resolve(null);
+  },
+
+  /** Settings, bots and dashboards: where models are saved. */
+  _modelUsageInput() {
+    // Every dashboard on this computer — a retired model can sit in a
+    // profile that isn't open — and which ones the active profile shows.
+    let workspaces = [];
+    let activeIds = null;
+    try {
+      const { getAppFilePath } = require("../utils/appPaths");
+      const { getFileContents } = require("../utils/file");
+      const all = getFileContents(
+        getAppFilePath(this._appId, "workspaces.json"),
+      );
+      workspaces = Array.isArray(all) ? all : [];
+      const res =
+        require("./workspaceController").listWorkspacesForApplication(
+          this._getMainWindow(),
+          this._appId,
+        ) || {};
+      activeIds = new Set((res.workspaces || []).map((w) => String(w.id)));
+    } catch (_e) {
+      workspaces = [];
+      activeIds = null;
+    }
+    return {
+      settings: this._store.getSettings() || {},
+      bots: this._store.list() || [],
+      workspaces,
+      activeIds,
+    };
+  },
+
+  /**
+   * Where retired models are still saved (Settings › AI's notice), and how
+   * many widgets follow each family (the new-model note).
+   * @returns {{ retired: object[], widgetsFollowing: object }}
+   */
+  modelUsage() {
+    const input = this._modelUsageInput();
+    const retired = retiredUsage(input).map(({ choices, ...u }) => ({
+      ...u,
+      bots: choices
+        .filter((c) => c.kind === "bot")
+        .map((c) => ({ id: c.botId, name: c.name })),
+      // Settings › AI defaults, and the Dash team's older per-role picks.
+      defaultJobs: choices
+        .filter((c) => c.kind === "default" || c.kind === "teamPick")
+        .map((c) =>
+          c.kind === "default"
+            ? JOB_NAMES[c.job] || c.job
+            : `Create · ${c.role}`,
+        ),
+    }));
+    const families = [
+      ...new Set(
+        getCuratedModels("claude-code")
+          .map((m) => m.family)
+          .filter(Boolean),
+      ),
+    ];
+    const widgetsFollowing = {};
+    for (const f of families) {
+      widgetsFollowing[latestAlias(f)] = countFollowing(
+        input,
+        latestAlias(f),
+        "widget",
+      );
+    }
+    return { retired, widgetsFollowing };
+  },
+
+  /**
+   * Move every saved choice of a retired model — job defaults, bots, the
+   * Dash team's picks and widgets on every dashboard — to `to` (else what
+   * replaces it). Written to the saved settings, so they say what runs.
+   * @returns {{ moved: number, to: string, dashboards: number,
+   *   failed: number } | { error: string }}
+   */
+  moveRetiredModel(from, to = null, { forAll = false } = {}) {
+    const target = to || moveTarget(from);
+    if (!target) return { error: "Choose a model to move them to." };
+    if (!isKnownModel("claude-code", target)) {
+      return { error: `${target} isn't a model Dash can run.` };
+    }
+    const input = this._modelUsageInput();
+    const plan = planMove(input, from, target, { forAll });
+    const current = this._store.getSettings() || {};
+    const next = {};
+    if (Object.keys(plan.aiDefaults).length) {
+      next.ai = mergeAiSettings(current.ai, { defaults: plan.aiDefaults });
+    }
+    if (plan.teamPicks) {
+      next.dashTeam = { ...(current.dashTeam || {}), models: plan.teamPicks };
+    }
+    if (Object.keys(next).length) this._store.setSettings(next);
+    for (const b of plan.bots) this._store.update(b.id, { model: b.model });
+    let failed = 0;
+    for (const ws of plan.workspaces) {
+      const res = this._saveWorkspace(ws);
+      if (res && res.error) failed++;
+    }
+    if (this._notifyListChanged) this._notifyListChanged();
+    this._broadcast(LLM_MODEL_LIST_CHANGED, this.modelListStatus());
+    return {
+      moved: plan.count,
+      to: target,
+      dashboards: plan.workspaces.length - failed,
+      failed,
+      exact: plan.exact,
+    };
+  },
+
+  /** Settings showed the new-model note. */
+  modelListSeen() {
+    return this._modelList ? this._modelList.clearAdded() : null;
+  },
+
+  /**
+   * The saved Anthropic API key, only while Settings › AI runs on one: it
+   * narrows the model list to what the key can use.
+   */
+  _anthropicKey() {
+    try {
+      if (readAi(this._store.getSettings()).backend !== "api") return null;
+      const win = this._getMainWindow();
+      const { providers = [] } =
+        this._providers.listProviders(win, this._appId) || {};
+      const match =
+        providers.find((p) => p.type === "anthropic" && p.isDefaultForType) ||
+        providers.find((p) => p.type === "anthropic");
+      return (match && match.credentials && match.credentials.apiKey) || null;
+    } catch (_e) {
+      return null;
+    }
+  },
+
+  /**
+   * A run found its model gone: check the list again, then run on what
+   * replaces it — else on the bot's job default, else the provider's.
+   * `label` says which default, for the issue the run records.
+   * @returns {Promise<{ model: string, known: boolean, label?: string }|null>}
+   */
+  async _replacementModel(gone) {
+    const pick = await this._replacementPick(gone);
+    if (!pick) return null;
+    const takesEffort = getCuratedModels(gone.providerId).some(
+      (m) =>
+        m.value === pick.model &&
+        m.reasoning &&
+        m.reasoning.control === "effort",
+    );
+    return { ...pick, takesEffort };
+  },
+
+  async _replacementPick({ botId, providerId, model }) {
+    if (this._modelList) await this._modelList.checkNow();
+    const next = migrateModelId(providerId, model);
+    if (next && next !== model) return { model: next, known: true };
+    const bot = this._store.get(botId);
+    if (bot) {
+      const settings = this._store.getSettings();
+      const fallback = this._modelPick({ ...bot, model: null }, settings);
+      if (fallback.model && fallback.model !== model) {
+        const job = jobOf(bot);
+        const saved = defaultModelFor(
+          { ...bot, model: null },
+          readAi(settings),
+        );
+        return {
+          model: fallback.model,
+          known: false,
+          label: fallback.chosen
+            ? `your ${JOB_NAMES[job] || "job's"} default (${modelText(providerId, saved || fallback.model)})`
+            : modelText(providerId, fallback.model),
+        };
+      }
+    }
+    const def = getDefaultModel(providerId);
+    return def && def !== model
+      ? { model: def, known: false, label: modelText(providerId, def) }
+      : null;
+  },
+
   _broadcast(channel, payload) {
     for (const win of this._getWindows()) {
       if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -3352,11 +3568,10 @@ const botController = {
     const ai = readAi(settings);
     const providerId = resolveBotProviderId(bot, backendProvider(ai));
     const jobDefault = defaultModelFor(bot, ai);
+    // A job default this provider can run: a family ("Latest Haiku"), a
+    // listed model, or a retired one with a known replacement.
     const jobModel =
-      jobDefault &&
-      getCuratedModels(providerId).some((m) => m.value === jobDefault)
-        ? jobDefault
-        : null;
+      jobDefault && isKnownModel(providerId, jobDefault) ? jobDefault : null;
     let model;
     if (bot.model) {
       model = migrateModelId(providerId, bot.model);

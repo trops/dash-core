@@ -27,6 +27,7 @@ const CAUSES = new Set([
   "crash",
   "run",
   "warning",
+  "model",
 ]);
 const RAW_LIMIT = 4000;
 const SECRET_KEY = /key|token|secret|password|passwd|credential|auth|cookie/i;
@@ -149,12 +150,20 @@ function cleanInput(input) {
     hint: clip(input.hint || "", 400),
     shown: clip(input.shown || "", 300),
     // What kind of failure, said by its source — never guessed from text:
-    // "sign-in" | "start" | "provider" | "call" | "crash" | "run" | "warning".
+    // "sign-in" | "start" | "provider" | "call" | "crash" | "run" | "warning"
+    // | "model" (its model was retired: `model` says from what, to what).
     cause: CAUSES.has(input.cause) ? input.cause : "",
     // A provider behind it (a bot warning about a server): Reconnect it.
     related:
       input.related && input.related.provider
         ? { provider: clip(input.related.provider, 120) }
+        : null,
+    model:
+      input.model && input.model.from
+        ? {
+            from: clip(input.model.from, 120),
+            to: clip(input.model.to || "", 120),
+          }
         : null,
   };
 }

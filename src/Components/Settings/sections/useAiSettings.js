@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useModelList } from "../useModelList";
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -8,16 +9,20 @@ function botsApi() {
 
 /**
  * useAiSettings — Settings › AI's data: the `ai` settings (filled in, as
- * the main process reads them), the model list with tiers and prices, and
- * the bots, leads and Dash team it applies to.
+ * the main process reads them), the model list with tiers and prices (and
+ * the fresh list's status: useModelList), and the bots, leads and Dash team
+ * it applies to.
  *
  * @returns {{ ai: object|null, models: object[], bots: object[],
  *   leads: object[], team: object[], save: (patch) => Promise,
- *   saveBot: (definition) => Promise, reload: () => Promise }}
+ *   saveBot: (definition) => Promise, reload: () => Promise,
+ *   modelList: { status, checking, usage, check, seen, move } }}
  */
 export function useAiSettings() {
+  const { models, status, checking, usage, check, seen, move } = useModelList({
+    withUsage: true,
+  });
   const [ai, setAi] = useState(null);
-  const [models, setModels] = useState([]);
   const [bots, setBots] = useState([]);
   const [leads, setLeads] = useState([]);
   const [team, setTeam] = useState([]);
@@ -46,17 +51,6 @@ export function useAiSettings() {
 
   useEffect(() => {
     reload();
-    // The curated list: it carries each model's tier and price (a live
-    // fetch doesn't), which the costs and "most expensive" need.
-    const llm =
-      typeof window !== "undefined" && window.mainApi
-        ? window.mainApi.llm
-        : null;
-    if (llm && llm.listModels) {
-      Promise.resolve(llm.listModels("anthropic"))
-        .then((res) => setModels((res && res.models) || []))
-        .catch(() => setModels([]));
-    }
     const b = botsApi();
     const id = b && b.onListChanged ? b.onListChanged(() => reload()) : null;
     return () => {
@@ -80,5 +74,27 @@ export function useAiSettings() {
     return b.save(definition);
   }, []);
 
-  return { ai, models, bots, leads, team, save, saveBot, reload };
+  return {
+    ai,
+    models,
+    bots,
+    leads,
+    team,
+    save,
+    saveBot,
+    reload,
+    modelList: {
+      status,
+      checking,
+      usage,
+      check,
+      seen,
+      // Moving changes the defaults and bots shown here too.
+      move: async (from, to, opts) => {
+        const res = await move(from, to, opts);
+        await reload();
+        return res;
+      },
+    },
+  };
 }
