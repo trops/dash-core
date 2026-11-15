@@ -12,10 +12,11 @@ import {
   getDashTokens,
 } from "@trops/dash-react";
 import { ThemeModel } from "../../../Models/ThemeModel";
+import { ThemePartsStyle } from "../ThemePartsStyle";
 
 // Aurora's dark base (dash-react designSystem.css :root), so a Dark preview
 // stays dark inside a light app; Light comes from [data-mode="light"].
-const DARK_BASE = {
+export const DARK_BASE = {
   "--raised-2": "rgba(0, 0, 0, 0.25)",
   "--hairline-strong": "rgba(255, 255, 255, 0.14)",
   "--text": "#f0f1f5",
@@ -62,9 +63,11 @@ export const NewThemePreview = ({ theme, variant = "dark" }) => {
       <div
         data-mode={variant}
         data-testid="new-theme-preview"
+        data-own-theme="new-theme-preview"
         className={`rounded-xl overflow-hidden border ${t.hairline}`}
         style={style}
       >
+        <ThemePartsStyle variantModel={v} scope="new-theme-preview" />
         <div
           className={`flex flex-row items-center gap-2 px-4 py-2.5 border-b ${t.hairline}`}
         >

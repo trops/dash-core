@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, useMemo } from "react";
 import { AppContext } from "../Context";
 import { ThemeContext } from "@trops/dash-react"; // Use ThemeContext from dash-react, not local
 import { ThemeModel } from "../Models";
+import { useAppThemeParts } from "../Components/Theme/ThemePartsStyle";
 
 /**
  * themes
@@ -393,6 +394,9 @@ export const ThemeWrapper = ({
     );
     return () => window.mainApi?.removeListener?.("themes:changed", id);
   }, []);
+
+  // The parts the app theme changed (Edit theme), app-wide.
+  useAppThemeParts(chosenTheme?.[themeVariant] || null);
 
   // Write the active theme's CSS custom properties to :root so any
   // hex-channel tokens (`bg-[var(--primary-700)]` etc. emitted by

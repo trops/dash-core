@@ -129,12 +129,13 @@ describe("ThemeModel — hex colors", () => {
     expect(theme.dark["text-primary-medium"]).toBe("text-rose-200");
     expect(theme.light["bg-primary-light"]).toBe("bg-rose-200");
     expect(theme.light["text-primary-very-light"]).toBe("text-rose-800");
-    // A theme's own tag colours win.
+    // A theme's own tag colours win; what it leaves out stays readable.
     const own = ThemeModel({
       primary: "rose",
       dark: { tag: { textColor: "text-primary-light" } },
     });
-    expect(own.dark.tag).toEqual({ textColor: "text-primary-light" });
+    expect(own.dark.tag.textColor).toBe("text-primary-light");
+    expect(own.dark.tag.backgroundColor).toBe("bg-primary-dark");
   });
 
   test("every theme carries Aurora's tokens at its strength", () => {

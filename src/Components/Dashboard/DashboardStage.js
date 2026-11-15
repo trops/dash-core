@@ -30,6 +30,7 @@ import {
 } from "@trops/dash-react";
 import { LayoutModel, DashboardModel } from "../../Models";
 import { ThemeManagerModal } from "../../Components/Theme";
+import { EditThemeModal } from "../../Components/Theme/EditTheme/EditThemeModal";
 import { PublishThemeModal } from "../Settings/details/PublishThemeModal";
 import { AppSettingsModal } from "../../Components/Settings";
 
@@ -873,6 +874,8 @@ const DashboardStageInner = ({
   // The theme the editor opens on (Themes page › Edit theme); null = the
   // app theme.
   const [themeEditorKey, setThemeEditorKey] = useState(null);
+  // The theme open in the Edit theme window (Themes page › Edit theme).
+  const [editThemeKey, setEditThemeKey] = useState(null);
   const [isDashboardLoaderOpen, setIsDashboardLoaderOpen] = useState(false);
   const [isLayoutPickerOpen, setIsLayoutPickerOpen] = useState(false);
   // The New Dashboard modal opened on a step ("import") — Start from's
@@ -3102,8 +3105,13 @@ const DashboardStageInner = ({
   }
 
   function handleOpenThemeManager(themeKey = null) {
-    // Also used as a click handler, so ignore anything but a key.
-    setThemeEditorKey(typeof themeKey === "string" ? themeKey : null);
+    // Also used as a click handler, so ignore anything but a key. A theme
+    // asked for by key opens in the Edit theme window.
+    if (typeof themeKey === "string") {
+      setEditThemeKey(themeKey);
+      return;
+    }
+    setThemeEditorKey(null);
     setIsThemeManagerOpen(true);
   }
 
@@ -3784,6 +3792,16 @@ const DashboardStageInner = ({
                 setIsThemeManagerOpen(() => false);
                 setThemeInitial(null);
               }}
+              onEditTheme={(themeKey) => {
+                setIsThemeManagerOpen(false);
+                setThemeInitial(null);
+                setEditThemeKey(themeKey);
+              }}
+            />
+            <EditThemeModal
+              open={!!editThemeKey}
+              themeKey={editThemeKey}
+              onClose={() => setEditThemeKey(null)}
             />
 
             <DashboardLoaderModal

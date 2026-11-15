@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useMemo } from "react";
 import { ThemeContext } from "@trops/dash-react";
+import { ThemePartsStyle } from "../Components/Theme/ThemePartsStyle";
 
 /**
  * Broadcasts the active dashboard theme so components rendered outside
@@ -107,7 +108,12 @@ export const DashboardThemeProvider = ({ themeKey, children }) => {
           ...(contextValue.currentTheme.cssVars || {}),
         }}
         data-dashboard-theme={themeKey}
+        data-own-theme={themeKey}
       >
+        <ThemePartsStyle
+          variantModel={contextValue.currentTheme}
+          scope={themeKey}
+        />
         {children}
       </div>
     </ThemeContext.Provider>

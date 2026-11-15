@@ -62,7 +62,7 @@ const pickLook = (on, hairline, accentSoft) =>
   on ? `border-2 ${accentSoft}` : `border ${hairline}`;
 
 /** A color you can click: the color itself is the content. */
-const Swatch = ({ hex, selected, onClick, size = "h-6 w-6", label }) => (
+export const Swatch = ({ hex, selected, onClick, size = "h-6 w-6", label }) => (
   <button
     type="button"
     aria-label={label || `Pick ${BASE_COLOR_NAMES[hex] || hex}`}
@@ -77,7 +77,7 @@ const Swatch = ({ hex, selected, onClick, size = "h-6 w-6", label }) => (
 );
 
 /** Paste a color: a hex box and Use. */
-const HexInput = ({ onUse, label = "Or paste a color" }) => {
+export const HexInput = ({ onUse, label = "Or paste a color" }) => {
   const { muted } = useConfigTokens();
   const [text, setText] = useState("");
   const hex = hexOrNull(text);
