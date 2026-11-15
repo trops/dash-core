@@ -59,7 +59,7 @@ describe("modelProviders", () => {
         "claude-opus-5-5",
         "claude-sonnet-5-5",
         "claude-haiku-5-5",
-        "claude-fable-5-1",
+        "claude-fable-5-2",
       ]);
       assert.ok(!ids.includes("claude-fable-5"));
       // The CLI provider offers the same models and default.
@@ -70,11 +70,11 @@ describe("modelProviders", () => {
       assert.equal(mp.getDefaultModel("claude-code"), "claude-opus-5-5");
     });
 
-    it("Fable 5 self-heals to Fable 5.1", () => {
+    it("Fable 5 self-heals to the newest Fable", () => {
       const mp = loadModule(NOOP_SDK);
       assert.equal(
         mp.migrateModelId("anthropic", "claude-fable-5"),
-        "claude-fable-5-1",
+        "claude-fable-5-2",
       );
     });
 
@@ -90,15 +90,15 @@ describe("modelProviders", () => {
   });
 
   describe("migrateModelId", () => {
-    it("maps retired ids to current replacements", () => {
+    it("maps retired ids to the newest of their family", () => {
       const mp = loadModule(NOOP_SDK);
       assert.equal(
         mp.migrateModelId("anthropic", "claude-sonnet-4-20250514"),
-        "claude-sonnet-4-6",
+        "claude-sonnet-5-5",
       );
       assert.equal(
         mp.migrateModelId("anthropic", "claude-opus-4-20250514"),
-        "claude-opus-4-8",
+        "claude-opus-5-5",
       );
     });
 
@@ -130,7 +130,7 @@ describe("modelProviders", () => {
   });
 
   describe("listModels", () => {
-    it("live fetch maps id/display_name and reports source=live", async () => {
+    it("live fetch narrows the list to what the key offers, adding unknown ones", async () => {
       const mp = loadModule(
         mockSdk(async () => ({
           data: [
@@ -141,10 +141,13 @@ describe("modelProviders", () => {
       );
       const res = await mp.listModels("anthropic", { apiKey: "sk-test" });
       assert.equal(res.source, "live");
-      assert.deepEqual(res.models, [
-        { value: "claude-opus-4-8", label: "Claude Opus 4.8" },
-        { value: "claude-xyz", label: "Claude XYZ" },
-      ]);
+      assert.deepEqual(
+        res.models.map((m) => [m.value, m.family]),
+        [
+          ["claude-opus-4-8", "opus"],
+          ["claude-xyz", "xyz"],
+        ],
+      );
     });
 
     it("falls back to curated when no apiKey (no live fetch)", async () => {
@@ -180,6 +183,93 @@ describe("modelProviders", () => {
       const res = await mp.listModels("does-not-exist", {});
       assert.equal(res.source, "curated");
       assert.ok(res.models.some((m) => m.value === "claude-opus-4-8"));
+    });
+  });
+
+  describe("families and the fresh list", () => {
+    it("every built-in model has a family and a status", () => {
+      const mp = loadModule(NOOP_SDK);
+      const statuses = new Set(["current", "older", "retiring", "retired"]);
+      for (const m of mp.getCuratedModels("anthropic")) {
+        assert.ok(m.family, `no family for ${m.value}`);
+        assert.ok(statuses.has(m.status), `bad status for ${m.value}`);
+      }
+    });
+
+    it("Latest <family> runs on the newest of that family", () => {
+      const mp = loadModule(NOOP_SDK);
+      assert.equal(mp.latestAlias("opus"), "latest:opus");
+      assert.equal(
+        mp.migrateModelId("claude-code", "latest:haiku"),
+        "claude-haiku-5-5",
+      );
+      assert.equal(
+        mp.migrateModelId("anthropic", "latest:fable"),
+        "claude-fable-5-2",
+      );
+      // A family the provider doesn't have: the default.
+      assert.equal(
+        mp.migrateModelId("anthropic", "latest:nope"),
+        "claude-opus-5-5",
+      );
+    });
+
+    it("a fresh list replaces the built-in one for both Claude providers", () => {
+      const mp = loadModule(NOOP_SDK);
+      mp.setFreshList("anthropic", {
+        models: [
+          { value: "claude-opus-6", family: "opus", status: "current" },
+          { value: "claude-opus-5-5", family: "opus", status: "older" },
+        ],
+        retiredMap: { "claude-sonnet-5-5": "claude-opus-6" },
+      });
+      assert.equal(
+        mp.migrateModelId("claude-code", "latest:opus"),
+        "claude-opus-6",
+      );
+      assert.equal(
+        mp.migrateModelId("anthropic", "claude-sonnet-5-5"),
+        "claude-opus-6",
+      );
+      assert.deepEqual(
+        mp.getCuratedModels("claude-code").map((m) => m.value),
+        ["claude-opus-6", "claude-opus-5-5"],
+      );
+      mp.setFreshList("anthropic", null);
+      assert.equal(
+        mp.migrateModelId("anthropic", "latest:opus"),
+        "claude-opus-5-5",
+      );
+    });
+
+    it("a retired model follows its replacement until one runs, without looping", () => {
+      const mp = loadModule(NOOP_SDK);
+      mp.setFreshList("anthropic", {
+        models: [
+          { value: "a", family: "x", status: "retired", replacedBy: "b" },
+          { value: "b", family: "x", status: "retired", replacedBy: "c" },
+          { value: "c", family: "x", status: "current" },
+          { value: "p", family: "y", status: "retired", replacedBy: "q" },
+          { value: "q", family: "y", status: "retired", replacedBy: "p" },
+        ],
+        retiredMap: {},
+      });
+      assert.equal(mp.migrateModelId("anthropic", "a"), "c");
+      assert.ok(["p", "q"].includes(mp.migrateModelId("anthropic", "p")));
+      assert.equal(mp.isKnownRetired("anthropic", "a"), true);
+      assert.equal(mp.newestOfFamily("anthropic", "x"), "c");
+    });
+
+    it("isKnownModel accepts families, listed and retired ids only", () => {
+      const mp = loadModule(NOOP_SDK);
+      assert.equal(mp.isKnownModel("claude-code", "latest:sonnet"), true);
+      assert.equal(mp.isKnownModel("claude-code", "claude-haiku-4-5"), true);
+      assert.equal(
+        mp.isKnownModel("claude-code", "claude-sonnet-4-20250514"),
+        true,
+      );
+      assert.equal(mp.isKnownModel("claude-code", "gpt-4o"), false);
+      assert.equal(mp.isKnownModel("claude-code", "latest:nope"), false);
     });
   });
 
@@ -227,6 +317,28 @@ describe("modelProviders", () => {
       const p = mp.getProvider("xai");
       assert.equal(p.adapter, "openai-compatible");
       assert.equal(p.baseURL, "https://api.x.ai/v1");
+    });
+  });
+
+  describe("an API key's own list", () => {
+    it("narrows only: a model the list doesn't know is older, never retired", () => {
+      const mp2 = loadModule(NOOP_SDK);
+      const out = mp2.mergeLive(
+        mp2.getCuratedModels("anthropic"),
+        [
+          { value: "claude-opus-5-5", label: "Claude Opus 5.5" },
+          { value: "claude-haiku-9-dated", label: "Claude Haiku 9" },
+          { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+        ],
+        { "claude-sonnet-4-20250514": "latest:sonnet" },
+      );
+      assert.deepEqual(
+        out.map((m) => [m.value, m.status]),
+        [
+          ["claude-opus-5-5", "current"],
+          ["claude-haiku-9-dated", "older"],
+        ],
+      );
     });
   });
 });

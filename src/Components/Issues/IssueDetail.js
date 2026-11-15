@@ -10,6 +10,7 @@ import {
   useRetryWidget,
 } from "./IssueParts";
 import { IssueKindBadge } from "./IssueRow";
+import { IssueModelChoice } from "./IssueModelChoice";
 import {
   assetName,
   detailLine,
@@ -204,15 +205,19 @@ export const IssueDetail = ({
         rows={[
           ...(issue.call
             ? callRows(issue, { withProvider: true })
-            : [
-                {
-                  label: "Error",
-                  value: error,
-                  raw: rawErrorText(issue),
-                  mono: true,
-                  bad: true,
-                },
-              ]),
+            : issue.cause === "model"
+              ? // Its model was retired, but the run finished: what happened,
+                // in words — not an error.
+                [{ label: "What happened", value: issue.message }]
+              : [
+                  {
+                    label: "Error",
+                    value: error,
+                    raw: rawErrorText(issue),
+                    mono: true,
+                    bad: true,
+                  },
+                ]),
           issue.shown && kind === "widget"
             ? { label: "Widget showed", value: `"${issue.shown}"` }
             : null,
@@ -261,6 +266,11 @@ export const IssueDetail = ({
         </div>
       ) : null}
 
+      {issue.cause === "model" && kind === "bot" && open ? (
+        // Its model was retired: what it uses from now on (saving resolves it).
+        <IssueModelChoice issue={issue} onSaved={() => resolveIssue(issue)} />
+      ) : null}
+
       {note || retryNote ? (
         <span role="status" className={`text-sm ${muted}`}>
           {note || retryNote}
@@ -287,7 +297,9 @@ export const IssueDetail = ({
         {kind === "widget" ? (
           <Button2 title="Retry the call" onClick={() => retry()} />
         ) : null}
-        <Button2 title="Fix with AI" onClick={() => fixWithAi(issue)} />
+        {issue.cause === "model" ? null : (
+          <Button2 title="Fix with AI" onClick={() => fixWithAi(issue)} />
+        )}
         {kind === "widget" && a.workspaceId != null ? (
           <Button2
             title="Open the widget"

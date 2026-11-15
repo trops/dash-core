@@ -112,7 +112,7 @@ no_temp_leaks node --test electron/utils/mcpStartError.test.js electron/controll
 
 # 6a-llm. Run LLM model-provider tests
 step "Running LLM model-provider tests"
-no_temp_leaks node --test electron/llm/modelProviders.test.js
+no_temp_leaks node --test electron/llm/modelProviders.test.js electron/llm/modelList.test.js electron/llm/modelUsage.test.js
 
 # 6a-bots. Run Bot Factory tests
 #   Slice 1: engine interface, tool-loop engine, provider adapters, event stream

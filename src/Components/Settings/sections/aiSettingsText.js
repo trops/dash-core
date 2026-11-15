@@ -4,6 +4,7 @@
  * labels). Pure, so it's tested on its own.
  */
 import { scheduleLabel } from "../../Create/planChecklist";
+import { latestOf, resolveModel } from "../modelChoices";
 
 /** Each job with a default model and style, in Settings' order. */
 export const JOB_ROWS = [
@@ -55,11 +56,14 @@ export const STYLE_OPTIONS = [
 ];
 
 const tierModel = (models, tier) =>
-  (models || []).find((m) => m.tier === tier) || null;
+  (models || []).find((m) => m.tier === tier && m.status !== "retired") || null;
 
-/** The model list entry for an id, or null. */
+/**
+ * The model list entry an id runs on, or null: "latest:haiku" is the
+ * newest Haiku.
+ */
 export function modelInfo(models, id) {
-  return (models || []).find((m) => m.value === id) || null;
+  return resolveModel(models, id);
 }
 
 /** "Claude Haiku 5.5" → "Haiku 5.5"; an unknown id stays as it is. */
@@ -121,7 +125,8 @@ export function cheaperDefaults(models, ai = null) {
     const own = (ai && ai.defaults && ai.defaults[job]) || {};
     const m = tierModel(models, tier);
     const row = {};
-    if (!own.model && m) row.model = m.value;
+    // The family's newest, kept current: "Latest Haiku".
+    if (!own.model && m) row.model = m.family ? latestOf(m.family) : m.value;
     if (!own.style) row.style = style;
     if (Object.keys(row).length) out[job] = row;
   }
@@ -152,4 +157,32 @@ export function runsText(bot) {
 export function monthText(spent, limit) {
   const money = (n) => "$" + (Number(n) || 0).toFixed(2);
   return limit ? `${money(spent)} of ${money(limit)}` : money(spent);
+}
+
+/** "today at 9:12" / "yesterday at 9:12" / "Nov 3 at 9:12". */
+export function whenText(ms, now = Date.now()) {
+  const d = new Date(ms);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const day = (x) => new Date(x).toDateString();
+  if (day(ms) === day(now)) return `today at ${time}`;
+  if (day(ms) === day(now - 86400000)) return `yesterday at ${time}`;
+  const date = d.toLocaleDateString([], { month: "short", day: "numeric" });
+  return `${date} at ${time}`;
+}
+
+/**
+ * The model list's line in Settings › AI: when it was last checked, that it
+ * just changed, or why the last check failed (the last good list is kept).
+ */
+export function listStatusText(status, now = Date.now()) {
+  if (!status) return "";
+  if (status.error) {
+    return status.checkedAt
+      ? `Last checked ${whenText(status.checkedAt, now)} · couldn't reach the list`
+      : "Couldn't reach the model list · using the one built in";
+  }
+  if (!status.checkedAt) return "Checking the model list…";
+  return status.added && status.added.length
+    ? `Model list updated ${whenText(status.checkedAt, now)}`
+    : `Model list up to date · checked ${whenText(status.checkedAt, now)}`;
 }

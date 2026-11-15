@@ -1497,9 +1497,9 @@ describe("BotDetail — Settings › AI defaults", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole("option", {
-        name: "Default · Haiku 5.5 (from Settings › AI)",
-      }),
+      // Its job's default, first in the one model list (the model it is
+      // shows under it in dash-react's picker).
+      await screen.findByRole("option", { name: "Bots default" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("option", {

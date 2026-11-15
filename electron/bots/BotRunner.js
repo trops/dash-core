@@ -34,7 +34,12 @@ const {
   connectorNeedsSubscriptionMessage,
 } = require("./claudeConnectors");
 
-const { MAX_ATTEMPTS, classifyError, retryDelay } = require("./retryPolicy");
+const {
+  MAX_ATTEMPTS,
+  classifyError,
+  isModelGone,
+  retryDelay,
+} = require("./retryPolicy");
 const { redactArgs } = require("../issues/issueStore");
 
 const QUIT = Symbol("quit");
@@ -191,6 +196,14 @@ class BotRunner {
       ...(deps.retry || {}),
     };
     this._sleep = deps.sleep || abortableSleep;
+    // ({ botId, providerId, model }) → Promise<{ model, known, label? } |
+    // model | null>: the model to run on when this one turns out to be gone
+    // (the list is checked again first). `known`: it replaces the gone one;
+    // otherwise it's the job's default (`label` says which). `takesEffort`
+    // false: the model has no effort setting. Optional.
+    this._replacementModel = deps.replacementModel || null;
+    // (providerId, model) → its name in words ("Haiku 5.5"). Optional.
+    this._modelName = deps.modelName || ((_p, id) => id);
     /** @type {Map<string, AbortController>} */
     this._active = new Map();
     /** @type {Map<string, string>} botId → ISO start of its in-flight run */
@@ -337,6 +350,8 @@ class BotRunner {
     let usage = null;
     let errorMessage = null;
     let runProfile = null;
+    // Its model was gone and it ran on another: { from, to, known, label }.
+    let modelSwap = null;
     // The run's answer (its text), kept on the run record — what a team lead
     // reads back. Capped to the last 8 KB; the store seals it at rest.
     let answer = "";
@@ -556,6 +571,7 @@ class BotRunner {
       // Attempts (US-023 AC1): a run that fails on temporary trouble — before
       // it used any tool — is tried again after a growing wait. An attempt's
       // error is held back until we know it's final.
+      let swappedModel = false;
       for (;;) {
         attempts++;
         let failure = null;
@@ -630,6 +646,62 @@ class BotRunner {
           errorMessage = failure.message;
           emit(failure);
           break;
+        }
+        // Its model is gone: check the list, and run once more on what
+        // replaces it — before any tool ran, so nothing happens twice.
+        if (
+          !usedTool &&
+          !swappedModel &&
+          this._replacementModel &&
+          isModelGone(failure)
+        ) {
+          let pick = null;
+          try {
+            pick = await this._replacementModel({
+              botId,
+              providerId: profile.providerId,
+              model: ctx.model,
+            });
+          } catch (_e) {
+            pick = null;
+          }
+          if (controller.signal.aborted) break;
+          const next =
+            pick && typeof pick === "object" ? pick.model : pick || null;
+          if (next && next !== ctx.model) {
+            swappedModel = true;
+            modelSwap = {
+              from: ctx.model,
+              to: next,
+              known: !(
+                pick &&
+                typeof pick === "object" &&
+                pick.known === false
+              ),
+              label: (pick && typeof pick === "object" && pick.label) || null,
+            };
+            emit({
+              type: "retrying",
+              reason: "Model unavailable",
+              attempt: attempts + 1,
+              of: attempts + 1,
+              delayMs: 0,
+              message: `${this._modelName(profile.providerId, ctx.model)} isn't available any more. Running on ${this._modelName(profile.providerId, next)} instead.`,
+            });
+            ctx.model = next;
+            if (
+              pick &&
+              typeof pick === "object" &&
+              pick.takesEffort === false
+            ) {
+              ctx.effort = null;
+            }
+            // Recorded as the model it ran on.
+            profile.model = next;
+            answer = "";
+            afterTool = false;
+            continue;
+          }
         }
         const { transient, label } = classifyError(failure);
         const blocked = transient ? this._startBlocker(botId) : null;
@@ -712,6 +784,8 @@ class BotRunner {
       style: runProfile ? runProfile.style || null : null,
       // The user picked that model, rather than it being built in.
       modelChosen: runProfile ? !!runProfile.modelChosen : false,
+      // Its model was gone, so it ran on another (models stay current).
+      ...(modelSwap ? { modelSwap } : {}),
       cost:
         usage && runProfile && this._costOf
           ? this._costOf({

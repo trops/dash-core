@@ -566,3 +566,68 @@ test("Muted: the muted issue, how often since, and Unmute", async () => {
     expect(within(rows()[0]).getByText("Shopping List")).toBeInTheDocument(),
   );
 });
+
+test("a bot whose model was retired: what happened, and what to use from now on", async () => {
+  __resetIssuesStore();
+  const modelIssue = {
+    id: "i9",
+    status: "open",
+    severity: "warning",
+    cause: "model",
+    title: "Recipe Bot's model was retired",
+    message:
+      "Recipe Bot was set to claude-fable-5-preview, which is no longer offered, and Dash doesn't know what replaced it. So the run wasn't wasted, it ran on your Bots default (Latest Haiku, now Haiku 5.5) and finished.",
+    model: { from: "claude-fable-5-preview", to: "claude-haiku-5-5" },
+    call: null,
+    firstAt: today(7, 2),
+    lastAt: today(7, 2),
+    count: 1,
+    recent: [],
+    asset: { kind: "bot", name: "Recipe Bot", botId: "b9", workspaceId: "7" },
+  };
+  const bots = {
+    getSettings: jest.fn(async () => ({
+      aiResolved: { defaults: { bots: { model: "latest:haiku" } } },
+    })),
+    list: jest.fn(async () => [{ id: "b9", name: "Recipe Bot" }]),
+    save: jest.fn(async (d) => d),
+  };
+  const llm = {
+    listModels: jest.fn(async () => ({
+      models: [
+        {
+          value: "claude-haiku-5-5",
+          label: "Claude Haiku 5.5",
+          family: "haiku",
+          status: "current",
+        },
+        {
+          value: "claude-sonnet-5-5",
+          label: "Claude Sonnet 5.5",
+          family: "sonnet",
+          status: "current",
+        },
+      ],
+    })),
+  };
+  t = mockIssuesApi([modelIssue], { bots, llm });
+  renderPage();
+  const detail = await screen.findByTestId("issue-detail");
+  expect(detail).toHaveTextContent("Recipe Bot's model was retired");
+  expect(detail).toHaveTextContent("What happened");
+  expect(within(detail).queryByText("Error")).toBeNull();
+  const choice = within(detail).getByTestId("issue-model-choice");
+  await waitFor(() =>
+    expect(within(choice).getByLabelText("Use from now on")).toHaveTextContent(
+      "Bots default (Latest Haiku)",
+    ),
+  );
+  fireEvent.change(within(choice).getByLabelText("Use from now on"), {
+    target: { value: "latest:sonnet" },
+  });
+  await act(async () => {
+    fireEvent.click(within(choice).getByRole("button", { name: "Save" }));
+  });
+  expect(bots.save).toHaveBeenCalledWith({ id: "b9", model: "latest:sonnet" });
+  expect(t.api.resolve).toHaveBeenCalledWith("i9");
+});

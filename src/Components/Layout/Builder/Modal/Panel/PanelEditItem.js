@@ -17,6 +17,7 @@ import {
   validateSettings,
 } from "../../../../../utils/userConfigValidation";
 import { useConfigTokens } from "../../../../Dashboard/ConfigListRow";
+import { ModelField } from "../../../../Settings/ModelField";
 
 // How long typing stops before a field's check shows.
 const TYPING_PAUSE_MS = 800;
@@ -317,6 +318,17 @@ export const PanelEditItem = ({
             <option>{configItem["optionsValues"]}</option>
           )}
         </SelectMenu>
+      );
+    } else if (type === "model") {
+      // An AI model: Latest of a family or one version, from the one list.
+      field = (
+        <ModelField
+          id={fieldId}
+          value={value}
+          defaultValue={configItem.defaultValue}
+          ariaLabel={displayName || key}
+          onChange={(v) => onChange(key, v)}
+        />
       );
     } else if (type === "secret") {
       field = text({ type: "password" });

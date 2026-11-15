@@ -5,18 +5,18 @@ import {
   Button3,
   Checkbox,
   SegmentedControl,
-  SelectInput,
   StatusBadge,
   SubHeading3,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
+import { ModelPicker } from "../ModelPicker";
+import { choiceLabel, choiceNow, choiceText } from "../modelChoices";
 import {
   effectiveJobModel,
   isMostExpensive,
   monthText,
   perRunText,
   runsText,
-  shortModel,
 } from "./aiSettingsText";
 
 const PROVIDER_NAMES = { openai: "OpenAI", xai: "xAI" };
@@ -51,7 +51,17 @@ export const BotModelsList = ({
   if (!ai) return <span className={`text-sm ${muted}`}>Loading…</span>;
 
   const defaultModel = effectiveJobModel("bots", ai, models);
-  const defaultLabel = `Default · ${shortModel(models, defaultModel)}`;
+  // "Bots default · Latest Haiku · now Haiku 5.5": first in every picker.
+  const defaultChoice = {
+    value: "",
+    label: "Bots default",
+    description: [
+      choiceLabel(models, defaultModel),
+      choiceNow(models, defaultModel),
+    ]
+      .filter((x) => x && x !== "exact version")
+      .join(" · "),
+  };
   const own = bots.filter((b) => b.model);
   const shown =
     filter === "own"
@@ -90,10 +100,6 @@ export const BotModelsList = ({
     }
   };
 
-  const modelOptions = [
-    { value: "", label: defaultLabel },
-    ...models.map((m) => ({ value: m.value, label: m.label })),
-  ];
   const leadsOwn = leads.filter((l) => l.model).length;
   const leadModel = effectiveJobModel("leads", ai, models);
 
@@ -138,11 +144,12 @@ export const BotModelsList = ({
           </span>
           <span className={`text-sm ${muted}`}>Set them to</span>
           <div className="w-56">
-            <SelectInput
+            <ModelPicker
               ariaLabel="Model for the selected bots"
+              models={models}
               value={bulkModel}
               onChange={setBulkModel}
-              options={modelOptions}
+              first={[defaultChoice]}
             />
           </div>
           <Button
@@ -214,11 +221,12 @@ export const BotModelsList = ({
                   </span>
                 ) : (
                   <span className="flex-1 min-w-0">
-                    <SelectInput
+                    <ModelPicker
                       ariaLabel={`${b.name} model`}
+                      models={models}
                       value={b.model || ""}
                       onChange={(v) => apply([b.id], v)}
-                      options={modelOptions}
+                      first={[defaultChoice]}
                     />
                   </span>
                 )}
@@ -253,8 +261,8 @@ export const BotModelsList = ({
           </span>
           <span className={`w-56 text-xs ${muted}`}>
             {leadsOwn
-              ? `${leads.length - leadsOwn} use the default · ${shortModel(models, leadModel)} · ${leadsOwn} ${leadsOwn === 1 ? "picks its" : "pick their"} own`
-              : `All use the default · ${shortModel(models, leadModel)}`}
+              ? `${leads.length - leadsOwn} use the default · ${choiceText(models, leadModel)} · ${leadsOwn} ${leadsOwn === 1 ? "picks its" : "pick their"} own`
+              : `All use the default · ${choiceText(models, leadModel)}`}
           </span>
           <span className={`w-16 text-right text-xs ${muted}`}>
             {perRunText(models, leadModel, "")}

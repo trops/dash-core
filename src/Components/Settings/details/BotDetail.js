@@ -41,11 +41,13 @@ import { dashboardOptions, offTeamSubscriptions } from "../../Bots/teamUtils";
 import { resultNameFor } from "./resultNames";
 import { BotBudgetSection } from "../../Bots/BotBudgetSection";
 import {
+  JOB_ROWS,
   STYLE_LABELS,
   STYLE_OPTIONS,
   effectiveJobModel,
-  shortModel,
 } from "../sections/aiSettingsText";
+import { ModelPicker } from "../ModelPicker";
+import { choiceLabel, choiceNow, isLatest } from "../modelChoices";
 import { cleanIpcError } from "../../../utils/errorUtils";
 import { BuiltinInstructions } from "./BuiltinInstructions";
 import { AlwaysAllowedList } from "../../Bots/AlwaysAllowedList";
@@ -603,18 +605,18 @@ export const BotDetail = ({
     : null;
   const defaultHint = (v, unit = "") =>
     v ? `Default · ${unit === "$" ? "$" + v : v + unit}` : "Default · no limit";
-  const modelSelectOptions = [
-    {
-      value: "",
-      label: jobModel
-        ? `Default · ${shortModel(modelOptions, jobModel)} (from Settings › AI)`
-        : "Default (from Settings › AI)",
-    },
-    ...(model && !modelOptions.some((m) => m.value === model)
-      ? [{ value: model, label: model }]
-      : []),
-    ...modelOptions,
-  ];
+  // First in the list: its job's default ("Bots default · Latest Haiku ·
+  // now Haiku 5.5"); then Latest of a family; then one exact version.
+  const jobName = (JOB_ROWS.find((r) => r.job === job) || {}).name || "Its";
+  const defaultChoice = {
+    value: "",
+    label: `${jobName} default`,
+    description: jobModel
+      ? isLatest(jobModel)
+        ? `${choiceLabel(modelOptions, jobModel)} · ${choiceNow(modelOptions, jobModel)}`
+        : choiceLabel(modelOptions, jobModel)
+      : "from Settings › AI",
+  };
 
   const toggleServer = (serverName) => {
     setSelectedServers((prev) =>
@@ -920,12 +922,12 @@ export const BotDetail = ({
                   </span>
                 </div>
 
-                <SelectInput
+                <ModelPicker
                   label="Model"
+                  models={modelOptions}
                   value={model}
                   onChange={setModel}
-                  options={modelSelectOptions}
-                  placeholder="Default (from Settings › AI)"
+                  first={[defaultChoice]}
                 />
 
                 <SelectInput

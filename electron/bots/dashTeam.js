@@ -512,9 +512,11 @@ function planEnsureDashTeam(bots) {
   return out;
 }
 
-/** The provider's first curated model in a tier, or null. */
+/** The provider's first model in a tier that still runs, or null. */
 function tierModel(providerId, tier) {
-  const hit = getCuratedModels(providerId).find((m) => m.tier === tier);
+  const hit = getCuratedModels(providerId).find(
+    (m) => m.tier === tier && m.status !== "retired",
+  );
   return hit ? hit.value : null;
 }
 

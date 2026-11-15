@@ -11,6 +11,7 @@ const {
   classifyError,
   retryDelay,
   errorDetails,
+  isModelGone,
 } = require("./retryPolicy");
 
 describe("classifyError — temporary trouble is retried", () => {
@@ -126,5 +127,25 @@ describe("errorDetails — status and retry-after from an SDK error", () => {
   it("nothing for a plain error", () => {
     assert.deepEqual(errorDetails(new Error("x")), {});
     assert.deepEqual(errorDetails(null), {});
+  });
+});
+
+describe("isModelGone", () => {
+  it("a model the API no longer serves", () => {
+    assert.equal(
+      isModelGone({
+        message:
+          'API Error: 404 {"type":"not_found_error","message":"model: claude-x"}',
+      }),
+      true,
+    );
+    assert.equal(isModelGone({ message: "x", code: "model_not_found" }), true);
+    assert.equal(isModelGone({ status: 404, message: "model claude-x" }), true);
+  });
+
+  it("not other failures", () => {
+    assert.equal(isModelGone({ message: "API Error: 529 overloaded" }), false);
+    assert.equal(isModelGone({ status: 404, message: "no such file" }), false);
+    assert.equal(isModelGone(null), false);
   });
 });

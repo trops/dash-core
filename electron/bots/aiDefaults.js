@@ -27,6 +27,17 @@ const JOBS = [
   "dashLead",
 ];
 
+/** Each job's name, as Settings › AI shows it. */
+const JOB_NAMES = {
+  bots: "Bots",
+  leads: "Dashboard leads",
+  planner: "Create · Planner",
+  builder: "Create · Builder",
+  checker: "Create · Checker",
+  scout: "Create · Scout",
+  dashLead: "Dash Lead",
+};
+
 // Style → the effort Claude puts in, plus a line on how long to answer.
 const STYLES = {
   brief: {
@@ -84,6 +95,8 @@ function readAi(settings) {
     defaults,
     limits,
     migrated: !!ai.migrated,
+    // The one-time "Keep your models up to date?" was answered.
+    followAsked: !!ai.followAsked,
   };
 }
 
@@ -127,6 +140,7 @@ function mergeAiSettings(current, patch) {
     next.limits = limits;
   }
   if (p.migrated !== undefined) next.migrated = !!p.migrated;
+  if (p.followAsked !== undefined) next.followAsked = !!p.followAsked;
   return next;
 }
 
@@ -216,6 +230,7 @@ function planFollowDefault(bots) {
 module.exports = {
   BACKENDS,
   JOBS,
+  JOB_NAMES,
   STYLES,
   LIMIT_DEFAULTS,
   jobOf,

@@ -6,6 +6,7 @@
  * A setting (one `userConfig` entry) can say, all plain values — never code,
  * so the config stays safe to parse (the AST allowlist):
  *   type        "text" | "secret" | "number" | "select" | "url" | "email"
+ *               | "model" (an AI model: the same list as Settings › AI)
  *   required    true → empty isn't allowed
  *   pattern     a regular expression the value must match, with
  *   patternMessage  what to say when it doesn't
@@ -22,6 +23,7 @@ export const KNOWN_TYPES = [
   "select",
   "url",
   "email",
+  "model",
 ];
 
 // A "text" setting that clearly holds a web address or an email (widgets

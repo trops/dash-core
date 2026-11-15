@@ -15,6 +15,12 @@ const {
   LLM_CLI_SESSION_STATUS,
   LLM_CLI_END_SESSION,
   LLM_LIST_MODELS,
+  LLM_MODEL_LIST_STATUS,
+  LLM_MODEL_LIST_CHECK,
+  LLM_MODEL_LIST_SEEN,
+  LLM_MODEL_LIST_CHANGED,
+  LLM_MODEL_USAGE,
+  LLM_MODEL_MOVE,
   LLM_STREAM_DELTA,
   LLM_STREAM_TOOL_CALL,
   LLM_STREAM_TOOL_RESULT,
@@ -83,6 +89,36 @@ const llmApi = {
    */
   listModels: (providerId, apiKey = null) =>
     ipcRenderer.invoke(LLM_LIST_MODELS, { providerId, apiKey }),
+
+  /**
+   * The fresh model list: { source, checkedAt, attemptedAt, error, updated,
+   * added } — where the list came from, when it was last checked, and why
+   * the last check failed.
+   */
+  modelListStatus: () => ipcRenderer.invoke(LLM_MODEL_LIST_STATUS),
+
+  /** Check for new and retired models now (Settings › AI). */
+  checkModelList: () => ipcRenderer.invoke(LLM_MODEL_LIST_CHECK),
+
+  /** The new-model note has been seen. */
+  modelListSeen: () => ipcRenderer.invoke(LLM_MODEL_LIST_SEEN),
+
+  /**
+   * Where retired models are still saved: { retired: [{ model, to, count,
+   * kinds, dashboards, bots }], widgetsFollowing: { "latest:opus": n } }.
+   */
+  modelUsage: () => ipcRenderer.invoke(LLM_MODEL_USAGE),
+
+  /**
+   * Move every saved choice of a retired model (to its replacement).
+   * opts.forAll: widgets whose Model lists versions get `to` too.
+   */
+  moveRetiredModel: (from, to = null, opts = {}) =>
+    ipcRenderer.invoke(LLM_MODEL_MOVE, { from, to, opts }),
+
+  /** @returns {string} listener ID — the list changed or was checked. */
+  onModelListChanged: (callback) =>
+    _addListener(LLM_MODEL_LIST_CHANGED, callback),
 
   /**
    * clearCliSession
