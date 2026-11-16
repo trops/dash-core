@@ -32,6 +32,7 @@ function setup({
   runs = [],
 } = {}) {
   window.localStorage.removeItem("dash:botNotifications:seenAt");
+  window.localStorage.removeItem("dash:botNotifications:dismissed");
   window.mainApi = {
     bots: {
       list: jest.fn().mockResolvedValue(BOTS),
@@ -427,5 +428,89 @@ describe("Always allow in Needs you (always-allow frames 1–3)", () => {
     ).toHaveTextContent(
       "Inbox Watch reads news.example.com/today without asking, from now on.",
     );
+  });
+});
+
+describe("taking cards off Needs you (conversation cleanup, frames 2.1–2.3)", () => {
+  const PLANS = [
+    {
+      id: "q1",
+      kind: "question",
+      planned: true,
+      title: "My calendar for today",
+      updatedAt: iso(16),
+    },
+    {
+      id: "q2",
+      kind: "question",
+      planned: true,
+      title: "A clock",
+      updatedAt: iso(60 * 48),
+    },
+  ];
+
+  test("× takes a plan off the list, says it's still in Recents, and Undo brings it back", async () => {
+    setup({ recents: PLANS });
+    const items = await screen.findAllByTestId("bot-notifications-item");
+    expect(items).toHaveLength(2);
+    expect(screen.getByText("Needs you · 2")).toBeInTheDocument();
+    fireEvent.click(within(items[0]).getByRole("button", { name: "Dismiss" }));
+    expect(screen.getAllByTestId("bot-notifications-item")).toHaveLength(1);
+    expect(screen.getByTestId("bot-notifications-undo")).toHaveTextContent(
+      "Dismissed “My calendar for today”. It's still in Recents.",
+    );
+    // Nothing is deleted.
+    expect(window.mainApi.bots.removeCreateRecent).toBeUndefined();
+    // Remembered for next time.
+    expect(
+      JSON.parse(
+        window.localStorage.getItem("dash:botNotifications:dismissed"),
+      ),
+    ).toHaveProperty("plan:q1");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getAllByTestId("bot-notifications-item")).toHaveLength(2);
+    expect(screen.queryByTestId("bot-notifications-undo")).toBeNull();
+  });
+
+  test("Clear all takes every plan and failed run off; nothing needs you", async () => {
+    setup({
+      recents: PLANS,
+      lastRuns: {
+        index: { at: iso(20), status: "failed", error: "Timed out." },
+      },
+    });
+    await screen.findAllByTestId("bot-notifications-item");
+    fireEvent.click(screen.getByTestId("bot-notifications-clear"));
+    expect(screen.queryAllByTestId("bot-notifications-item")).toHaveLength(0);
+    expect(screen.getByTestId("bot-notifications-undo")).toHaveTextContent(
+      "Cleared 3. Plans are still in Recents, runs in Activity.",
+    );
+    expect(screen.getByTestId("bot-notifications-quiet")).toBeInTheDocument();
+    expect(screen.queryByTestId("bot-notifications-clear")).toBeNull();
+  });
+
+  test("an ask for permission has no ×, and Clear all leaves it", async () => {
+    setup({
+      recents: [PLANS[0]],
+      approvals: [
+        {
+          id: "a1",
+          createdAt: iso(5),
+          request: {
+            botId: "inbox",
+            kind: "tool",
+            tool: "send_email",
+            server: "Gmail",
+          },
+        },
+      ],
+    });
+    const items = await screen.findAllByTestId("bot-notifications-item");
+    const ask = items.find((i) => i.getAttribute("data-kind") === "approval");
+    expect(within(ask).queryByRole("button", { name: "Dismiss" })).toBeNull();
+    fireEvent.click(screen.getByTestId("bot-notifications-clear"));
+    const left = screen.getAllByTestId("bot-notifications-item");
+    expect(left).toHaveLength(1);
+    expect(left[0].getAttribute("data-kind")).toBe("approval");
   });
 });

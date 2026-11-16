@@ -132,6 +132,21 @@ export const DashSidebar = ({
           Create
         </Sidebar.Item>
 
+        {/* Conversations — every lead's conversations in one Recents
+            (lead-workspace: the left nav's Conversations). */}
+        <Sidebar.Item
+          icon={<FontAwesomeIcon icon="comments" className="h-3.5 w-3.5" />}
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent("dash:open-workspace", {
+                detail: { key: "role:dashlead", all: true },
+              }),
+            )
+          }
+        >
+          Conversations
+        </Sidebar.Item>
+
         {/* Recents (only when expanded and has items) */}
         <CollapsibleContent>
           {visibleRecents.length > 0 && (
