@@ -225,6 +225,7 @@ const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
 const profileMembership = require("../profile/profileMembership");
 const {
   checkChain,
+  rootCause,
   causeFromEvent,
   sourceFromEvent,
   composeEventPrompt,
@@ -243,6 +244,13 @@ const {
 } = require("../bots/lastAnswers");
 const { cleanWire, withWireProblems } = require("../bots/widgetWire");
 const issueController = require("./issueController");
+const goalController = require("./goalController");
+const {
+  GOALS_SERVER,
+  GOAL_TOOLS,
+  LEAD_GOAL_TOOLS,
+  handleGoalTool,
+} = require("../goals/goalTools");
 const { botRunIssues } = require("../issues/issueSources");
 const {
   listToolSources,
@@ -565,6 +573,8 @@ const botController = {
         TEAM_SERVER,
         RESULTS_SERVER,
         ROLE_SERVER,
+        // The dashboard's own goals ledger (goals-ledger PRD).
+        GOALS_SERVER,
       ],
       resolveRunProfile: (bot) => this._resolveRunProfile(bot),
       // A built-in tool call the user chose Always allow for.
@@ -644,6 +654,23 @@ const botController = {
       },
     });
 
+    // A goal's runs live with the bots' runs: the ledger finds them by
+    // goal id, and deleting a goal removes them.
+    goalController.useRuns({
+      runsFor: (goalId) => this._store.runsForGoal(goalId),
+      removeRuns: (goalId) => this._store.removeRunsForGoal(goalId),
+      // A run still working on a deleted goal drops its id, so the record
+      // it saves and the events it sends don't bring the goal back.
+      forget: (goalId) => {
+        for (const g of (this._runGoals || new Map()).values()) {
+          if (g && g.goalId === goalId) {
+            g.goalId = null;
+            g.taskId = null;
+          }
+        }
+      },
+    });
+
     this._scheduler = new BotScheduler({
       Cron,
       runBot: (botId, opts) => this._run(botId, opts),
@@ -661,6 +688,8 @@ const botController = {
     // is removed: it has nothing left to lead.
     if (this._offWorkspaceDeleted) this._offWorkspaceDeleted();
     this._offWorkspaceDeleted = onWorkspaceDeleted((workspaceId) => {
+      // Its goals go with it: tasks, evidence, work files and their runs.
+      goalController.forgetWorkspace(workspaceId);
       unassignTeam(
         {
           store: this._store,
@@ -1276,6 +1305,8 @@ const botController = {
     grantStore.revokeGrant(botId);
     // Its issues too — there's nothing left to fix (issues PRD).
     issueController.forgetAsset({ kind: "bot", botId });
+    // Tasks it held go back for another bot (goals ledger).
+    goalController.release(botId);
     // Deleting a lead counts as turning it off for that dashboard, so it isn't
     // silently re-created the next time the dashboard opens (TEAM-002).
     if (isLead(bot) && bot.workspaceId) {
@@ -1423,8 +1454,11 @@ const botController = {
     return { id: entry.id, title: entry.title };
   },
 
-  /** Remove a conversation from Recent, and its plan memory with it. */
-  removeCreateRecent(id) {
+  /**
+   * Remove a conversation from Recent, and its plan memory with it — and,
+   * when asked (`deleteGoals`), the goals it started (goals ledger).
+   */
+  removeCreateRecent(id, opts = {}) {
     const entry = this._recent.get(id);
     if (!entry) return { error: "It isn't in Recent." };
     const buildId = entry.build && entry.build.buildId;
@@ -1435,6 +1469,21 @@ const botController = {
     // A lead still answering in it would save it back when it finishes.
     if (this._answeringIn(id)) {
       return { error: "It's still answering — stop it first." };
+    }
+    // Its goals first: one a bot is still working on keeps the
+    // conversation too, so nothing is half deleted.
+    if (opts && opts.deleteGoals) {
+      const ids = goalController.forConversation(id).map((g) => g.id);
+      if (ids.length) {
+        const busy = ids.filter((g) => goalController.store().isBusy(g));
+        if (busy.length) {
+          return {
+            error:
+              "A bot is still working on one of its goals — stop it first.",
+          };
+        }
+        goalController.delete(ids);
+      }
     }
     if (live) this._builds.delete(buildId);
     this._recent.remove(id);
@@ -3251,7 +3300,18 @@ const botController = {
       !isLead(this._store.get(botId)) &&
       !isDashTeam(this._store.get(botId));
     const alreadyRunning = !publishes;
-    if (!alreadyRunning) this._events.startRun(botId, opts.cause);
+    // The goal this run works on (goals ledger): carried from the event
+    // that started it, or set by the goal tools when the bot claims a task.
+    // The same object rides on the cause, so the run's events carry it.
+    // A bot asked by its lead starts on the lead's goal (its own copy).
+    const cause =
+      opts.cause ||
+      (opts.goal && opts.goal.goalId
+        ? { ...rootCause(), goal: { goalId: opts.goal.goalId, taskId: null } }
+        : rootCause());
+    const goal = cause.goal || { goalId: null, taskId: null };
+    cause.goal = goal;
+    if (!alreadyRunning) this._events.startRun(botId, cause);
     // Who started the bot's current run — a lead asked from outside Dash
     // can't run its bots (leadAsk.js). Only a run that will start counts.
     let viaEntry = null;
@@ -3262,6 +3322,9 @@ const botController = {
         conversationId: opts.conversationId || null,
       };
       this._runVia.set(botId, viaEntry);
+      // The run's goal, so a goal deleted mid-run is forgotten by it.
+      if (!this._runGoals) this._runGoals = new Map();
+      this._runGoals.set(botId, goal);
     }
     const p = this._runner.run(botId, {
       prompt: opts.prompt,
@@ -3287,6 +3350,7 @@ const botController = {
       // tools, and its memory calls go to the plan's bucket (4e-1). Dropped
       // here before, so the prompt's MEMORY_NOTE named tools it never had.
       ...(opts.planId ? { planId: String(opts.planId) } : {}),
+      goal,
       emit: (event) => {
         if (!alreadyRunning) this._events.onRunEvent(botId, event);
         this._broadcast(BOT_STREAM, { botId, event });
@@ -3311,6 +3375,12 @@ const botController = {
       .finally(() => {
         if (viaEntry && this._runVia.get(botId) === viaEntry) {
           this._runVia.delete(botId);
+        }
+        // A task the run claimed but never wrote a done record for is let
+        // go, so the next bot can pick it up (only for a run that started).
+        if (viaEntry) {
+          goalController.release(botId);
+          if (this._runGoals.get(botId) === goal) this._runGoals.delete(botId);
         }
         this._broadcastRunActive();
       });
@@ -5773,6 +5843,7 @@ const botController = {
     const runKey = this._runner.startedAt(lead.id) || "idle";
     if (!this._leadAsked) this._leadAsked = new Map();
     const info = leadRunInfo(this._runVia ? this._runVia.get(lead.id) : null);
+    const leadGoal = this._runGoals ? this._runGoals.get(lead.id) : null;
     const result = await askTeamBot({
       lead,
       member,
@@ -5780,6 +5851,8 @@ const botController = {
       // Who started the lead's run (its `via` — an outside caller can't
       // run its bots) and the conversation it's in.
       ...info,
+      // The goal the lead is working on: the bot's run is recorded under it.
+      goal: leadGoal && leadGoal.goalId ? leadGoal : null,
       takeHandoff: () => this._handoffs.take(lead.id, runKey),
       // For the user's own request, the bot's run is theirs too.
       run: (opts) =>
@@ -5872,13 +5945,20 @@ const botController = {
       return { tools: [], resolveServer: () => null };
     }
     // A team lead gets ONLY its read-only team tools — no providers, no memory
-    // writes (bot-teams TEAM-002 AC4). The runner also strips engine built-ins.
+    // writes (bot-teams TEAM-002 AC4) — plus, on a dashboard, the goal tools
+    // that start and follow goals (goals-ledger GOAL-002). The runner also
+    // strips engine built-ins.
     if (isLead(bot)) {
       const toolServer = {};
       for (const tool of TEAM_TOOLS) toolServer[tool.name] = TEAM_SERVER;
+      const goalTools =
+        bot.workspaceId != null && bot.workspaceId !== ""
+          ? LEAD_GOAL_TOOLS
+          : [];
+      for (const tool of goalTools) toolServer[tool.name] = GOALS_SERVER;
       this._allowedByBot.set(bot.id, {});
       return {
-        tools: [...TEAM_TOOLS],
+        tools: [...TEAM_TOOLS, ...goalTools],
         resolveServer: (toolName) => toolServer[toolName] || null,
       };
     }
@@ -5960,6 +6040,14 @@ const botController = {
     for (const tool of resultToolsFor(bot)) {
       tools.push(tool);
       toolServer[tool.name] = RESULTS_SERVER;
+    }
+    // The dashboard's goals ledger, for a bot on a dashboard (goals-ledger
+    // PRD). A bot on no dashboard has no ledger.
+    if (bot.workspaceId != null && bot.workspaceId !== "") {
+      for (const tool of GOAL_TOOLS) {
+        tools.push(tool);
+        toolServer[tool.name] = GOALS_SERVER;
+      }
     }
     return {
       tools,
@@ -6128,6 +6216,29 @@ const botController = {
           workspaceId: opts.workspaceId,
           botId: opts.botId,
           planId: opts.planId || null,
+        },
+        toolName,
+        args,
+      );
+    }
+    if (serverName === GOALS_SERVER) {
+      if (
+        isLead(this._store.get(opts.botId)) &&
+        !LEAD_GOAL_TOOLS.some((t) => t.name === toolName)
+      ) {
+        return {
+          text: "A team lead starts goals and hands their tasks to the team; the team's bots claim them.",
+          isError: true,
+        };
+      }
+      return handleGoalTool(
+        goalController.store(),
+        {
+          workspaceId: opts.workspaceId,
+          botId: opts.botId,
+          botName: opts.botName || null,
+          conversationId: opts.conversationId || null,
+          goal: opts.goal || null,
         },
         toolName,
         args,

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActionMenu,
   Button,
@@ -9,12 +9,33 @@ import {
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
+const goalsApi = () =>
+  (typeof window !== "undefined" && window.mainApi && window.mainApi.goals) ||
+  null;
+
+/** The goals these conversations started (goals ledger), or []. */
+async function goalsOf(ids) {
+  const api = goalsApi();
+  if (!api || typeof api.forConversation !== "function") return [];
+  const out = [];
+  for (const id of ids) {
+    try {
+      const list = await api.forConversation(id);
+      if (Array.isArray(list)) out.push(...list);
+    } catch (_e) {
+      // No ledger: delete the conversation as before.
+    }
+  }
+  return out;
+}
+
 /**
  * The workspace's Recents, with delete (conversation cleanup, frames 3.1–3.3):
  * a row's … menu deletes it; Select ticks several (Select all) to delete at
  * once. Always confirmed: the messages and plan go for good, what they
- * built stays. One still answering or building can't be ticked — the run
- * would save it back when it finishes.
+ * built stays. Goals a conversation started go with it, listed in the
+ * confirmation (goals-ledger PRD, frame 8). One still answering or
+ * building can't be ticked — the run would save it back when it finishes.
  *
  * @param {object} p
  * @param {object[]} p.threads      the contact's conversations, newest first
@@ -22,7 +43,7 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
  * @param {string|null} p.selectedId
  * @param {(t) => boolean} p.isBusy still answering or building
  * @param {(t) => void} p.onOpen
- * @param {(ids: string[]) => Promise<{ failed: { id, error }[] }>} p.onDelete
+ * @param {(ids: string[], opts: { deleteGoals: boolean }) => Promise<{ failed: { id, error }[] }>} p.onDelete
  * @param {React.ReactNode} p.before  rows above the list (New conversation)
  * @param {React.ReactNode} p.empty   shown when there are none
  * @param {string} p.muted
@@ -44,6 +65,22 @@ export function RecentsList({
   const [confirm, setConfirm] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
+  // The goals the conversations waiting for Delete started. Delete waits
+  // for the lookup, so a quick click never leaves their goals behind.
+  const [goals, setGoals] = useState([]);
+  const lookupRef = useRef(Promise.resolve([]));
+  useEffect(() => {
+    let live = true;
+    setGoals([]);
+    lookupRef.current =
+      confirm && confirm.length ? goalsOf(confirm) : Promise.resolve([]);
+    lookupRef.current.then((list) => {
+      if (live) setGoals(list);
+    });
+    return () => {
+      live = false;
+    };
+  }, [confirm]);
 
   const free = threads.filter((t) => !isBusy(t));
   const busyOnes = threads.filter((t) => isBusy(t));
@@ -71,7 +108,9 @@ export function RecentsList({
     setDeleting(true);
     setError(null);
     try {
-      const res = (await onDelete(ids)) || {};
+      const found = await lookupRef.current;
+      const res =
+        (await onDelete(ids, { deleteGoals: found.length > 0 })) || {};
       const failed = Array.isArray(res.failed) ? res.failed : [];
       if (failed.length) {
         setError(
@@ -90,6 +129,7 @@ export function RecentsList({
   };
 
   const n = confirm ? confirm.length : 0;
+  const g = goals.length;
   const closesOpen = !!(confirm && selectedId && confirm.includes(selectedId));
 
   return (
@@ -207,9 +247,13 @@ export function RecentsList({
           setIsOpen={(o) => (o ? null : setConfirm(null))}
           variant="danger"
           title={
-            n === 1
-              ? "Delete this conversation?"
-              : `Delete ${plural(n, "conversation", "conversations")}?`
+            g
+              ? n === 1
+                ? `Delete this conversation and its ${g === 1 ? "goal" : "goals"}?`
+                : `Delete ${plural(n, "conversation", "conversations")} and their goals?`
+              : n === 1
+                ? "Delete this conversation?"
+                : `Delete ${plural(n, "conversation", "conversations")}?`
           }
           message={`${
             n === 1
@@ -227,7 +271,44 @@ export function RecentsList({
           }
           onConfirm={runDelete}
           onCancel={() => setConfirm(null)}
-        />
+        >
+          {g ? (
+            <div
+              className="flex flex-col gap-2 text-sm"
+              data-testid="recents-delete-goals"
+            >
+              <span className={muted}>
+                {`${n === 1 ? "It" : "They"} started ${plural(g, "goal", "goals")}. Deleting removes it all from this computer, and it can't be brought back.${
+                  closesOpen
+                    ? " The open one closes and you start a new conversation."
+                    : ""
+                }`}
+              </span>
+              <span className={`text-xs font-semibold uppercase pt-1 ${muted}`}>
+                Removed
+              </span>
+              <span>
+                {n === 1
+                  ? "The conversation's messages and plan"
+                  : "The conversations' messages and plans"}
+              </span>
+              {goals.map((x) => (
+                <span
+                  key={x.id}
+                >{`Goal “${x.title}”: ${plural((x.tasks || []).length, "task", "tasks")} and their records`}</span>
+              ))}
+              <span>{`The runs, proof and work files of ${g === 1 ? "that goal" : `those ${g} goals`}`}</span>
+              <span className={`text-xs font-semibold uppercase pt-1 ${muted}`}>
+                Stays
+              </span>
+              <span>
+                What they made elsewhere: widgets, dashboards, pull requests,
+                sent messages
+              </span>
+              <span>What the bots learned while working on them</span>
+            </div>
+          ) : null}
+        </ConfirmationModal>
       ) : null}
     </>
   );

@@ -343,9 +343,100 @@ describe("deleting conversations from Recents (conversation cleanup, frames 3.1�
     );
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() =>
-      expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith("q1"),
+      expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith(
+        "q1",
+        {
+          deleteGoals: false,
+        },
+      ),
     );
     expect(screen.getByTestId("workspace-start")).toBeInTheDocument();
+  });
+
+  test("a conversation that started a goal: the goal is listed and deleted with it (goals ledger, frame 8)", async () => {
+    window.mainApi.bots.removeCreateRecent = jest
+      .fn()
+      .mockResolvedValue({ ok: true });
+    window.mainApi.goals = {
+      forConversation: jest.fn(async (id) =>
+        id === "q1"
+          ? [
+              {
+                id: "goal_abc123",
+                title: "Fix the Recents menu",
+                tasks: [{ id: "task_1" }, { id: "task_2" }],
+              },
+            ]
+          : [],
+      ),
+    };
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    await screen.findByText("Anything urgent?");
+    const row = screen.getByTestId("workspace-thread");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Conversation options" }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /Delete conversation/ }),
+    );
+    expect(
+      await screen.findByText("Delete this conversation and its goal?"),
+    ).toBeInTheDocument();
+    const list = screen.getByTestId("recents-delete-goals");
+    expect(list).toHaveTextContent(
+      "Goal “Fix the Recents menu”: 2 tasks and their records",
+    );
+    expect(list).toHaveTextContent("What the bots learned");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith(
+        "q1",
+        {
+          deleteGoals: true,
+        },
+      ),
+    );
+    delete window.mainApi.goals;
+  });
+
+  test("Delete clicked before the goal lookup answers still deletes the goals", async () => {
+    window.mainApi.bots.removeCreateRecent = jest
+      .fn()
+      .mockResolvedValue({ ok: true });
+    let answer = () => {};
+    window.mainApi.goals = {
+      forConversation: jest.fn(
+        () =>
+          new Promise((resolve) => {
+            answer = () =>
+              resolve([{ id: "goal_late01", title: "Late", tasks: [] }]);
+          }),
+      ),
+    };
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    await screen.findByText("Anything urgent?");
+    const row = screen.getByTestId("workspace-thread");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Conversation options" }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /Delete conversation/ }),
+    );
+    // Delete before the lookup answers: it waits, then deletes the goals too.
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(window.mainApi.bots.removeCreateRecent).not.toHaveBeenCalled();
+    answer();
+    await waitFor(() =>
+      expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith(
+        "q1",
+        { deleteGoals: true },
+      ),
+    );
+    delete window.mainApi.goals;
   });
 
   test("Select: one still answering can't be ticked, and says why", async () => {

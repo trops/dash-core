@@ -364,7 +364,8 @@ describe("botController — Recent and build memory are wired", () => {
     // Refused before anything is removed …
     assert.match(
       ctrl,
-      /if \(this\._answeringIn\(id\)\) \{\s*return \{ error: "It's still answering — stop it first\." \};\s*\}\s*if \(live\) this\._builds\.delete\(buildId\);\s*this\._recent\.remove\(id\);/,
+      // (Its goals, when asked, go first — refused too while a bot works on one.)
+      /if \(this\._answeringIn\(id\)\) \{\s*return \{ error: "It's still answering — stop it first\." \};\s*\}[\s\S]{0,700}?if \(live\) this\._builds\.delete\(buildId\);\s*this\._recent\.remove\(id\);/,
     );
     // A late save of a deleted one (a window switching away) is refused.
     assert.match(

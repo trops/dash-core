@@ -124,7 +124,12 @@ function causeFromEvent(event) {
   const chain = Array.isArray(event && event.chain) ? event.chain : [];
   const depth =
     event && typeof event.depth === "number" ? event.depth : chain.length;
-  return { chain: [...chain], depth };
+  const cause = { chain: [...chain], depth };
+  // The goal the work belongs to (goals ledger) carries on to the next bot.
+  if (event && event.goalId) {
+    cause.goal = { goalId: event.goalId, taskId: event.taskId || null };
+  }
+  return cause;
 }
 
 /**
@@ -142,6 +147,7 @@ function sourceFromEvent(bot, event) {
     label: (sub && sub.label) || null,
     originBotId: event.originBotId || null,
     chain: Array.isArray(event.chain) ? [...event.chain] : [],
+    ...(event.goalId ? { goalId: event.goalId } : {}),
   };
 }
 
@@ -161,6 +167,14 @@ function buildBotEventMessage(bot, event, payload, cause = rootCause()) {
   };
   if (bot.workspaceId != null && bot.workspaceId !== "") {
     msg.workspaceId = String(bot.workspaceId);
+  }
+  // The goal the run is working on, so the next bot's run carries it too.
+  const goal = cause.goal;
+  if (goal && goal.goalId) {
+    msg.goalId = goal.goalId;
+    msg.taskId = goal.taskId || null;
+    msg.content.goalId = goal.goalId;
+    msg.content.taskId = goal.taskId || null;
   }
   return msg;
 }

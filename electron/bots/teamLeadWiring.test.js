@@ -21,10 +21,15 @@ const api = fs.readFileSync(
 );
 
 describe("botController — team lead wiring", () => {
-  it("gives a lead ONLY its team tools (no providers, no memory)", () => {
+  it("gives a lead ONLY its team tools and goal tools (no providers, no memory)", () => {
     assert.match(
       ctrl,
-      /if \(isLead\(bot\)\) \{[\s\S]{0,400}tools: \[\.\.\.TEAM_TOOLS\]/,
+      /if \(isLead\(bot\)\) \{[\s\S]{0,700}tools: \[\.\.\.TEAM_TOOLS, \.\.\.goalTools\]/,
+    );
+    // On a dashboard only, and only the four that start and follow goals.
+    assert.match(
+      ctrl,
+      /const goalTools =\s*bot\.workspaceId != null && bot\.workspaceId !== ""\s*\? LEAD_GOAL_TOOLS\s*: \[\];/,
     );
   });
 
@@ -138,7 +143,12 @@ describe("botController — a lead asks its bots (team_ask_bot)", () => {
     // (leadAsk.test.js), never the entry object itself.
     assert.match(
       ctrl,
-      /const info = leadRunInfo\(this\._runVia \? this\._runVia\.get\(lead\.id\) : null\);\s*const result = await askTeamBot\(\{\s*lead,\s*member,\s*request,[\s\S]{0,200}\.\.\.info,/,
+      /const info = leadRunInfo\(this\._runVia \? this\._runVia\.get\(lead\.id\) : null\);\s*const leadGoal = [^\n]*\n\s*const result = await askTeamBot\(\{\s*lead,\s*member,\s*request,[\s\S]{0,200}\.\.\.info,/,
+    );
+    // The lead's goal goes with the request (goals ledger).
+    assert.match(
+      ctrl,
+      /goal: leadGoal && leadGoal\.goalId \? leadGoal : null,/,
     );
     assert.doesNotMatch(ctrl, /leadVia: this\._runVia/);
   });

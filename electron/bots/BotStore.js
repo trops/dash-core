@@ -300,6 +300,49 @@ class BotStore {
     });
   }
 
+  /**
+   * Every bot's runs that worked on a goal (goals ledger), oldest first:
+   * what the goal shows of them — never the sealed answer or prompt.
+   */
+  runsForGoal(goalId) {
+    if (!goalId) return [];
+    const { runs } = this._load();
+    const out = [];
+    for (const botId of Object.keys(runs || {})) {
+      for (const r of runs[botId] || []) {
+        if (!r || r.goalId !== goalId) continue;
+        out.push({
+          botId,
+          goalId,
+          taskId: r.taskId || null,
+          trigger: r.trigger || null,
+          status: r.status || null,
+          startedAt: r.startedAt || null,
+          endedAt: r.endedAt || null,
+          model: r.model || null,
+        });
+      }
+    }
+    return out.sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+  }
+
+  /** Remove the runs that worked on a deleted goal. @returns {number} */
+  removeRunsForGoal(goalId) {
+    if (!goalId) return 0;
+    const data = this._load();
+    let removed = 0;
+    for (const botId of Object.keys(data.runs || {})) {
+      const list = data.runs[botId] || [];
+      const kept = list.filter((r) => !(r && r.goalId === goalId));
+      if (kept.length !== list.length) {
+        removed += list.length - kept.length;
+        data.runs[botId] = kept;
+      }
+    }
+    if (removed) this._save(data);
+    return removed;
+  }
+
   // ---- Latest results (team-dashboards TD-002) -------------------------
 
   /**

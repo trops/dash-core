@@ -232,7 +232,7 @@ describe("BotRunner.run — happy path", () => {
       {
         serverName: "github",
         toolName: "search_repositories",
-        opts: { workspaceId: "ws_1", botId: "bot_1" },
+        opts: { workspaceId: "ws_1", botId: "bot_1", botName: null },
       },
     ]);
   });
