@@ -1378,6 +1378,16 @@ const botController = {
    * one gets its id. Its facts go to the plan's memory (no AI).
    */
   saveCreateRecent(req = {}) {
+    // Deleted: a late save (a window switching away from it) doesn't bring
+    // it back.
+    if (
+      req &&
+      req.id &&
+      this._removedRecent &&
+      this._removedRecent.has(req.id)
+    ) {
+      return { error: "It was deleted." };
+    }
     // A plan from the Create window carried on as a conversation (release
     // 6c): its build moves with it; not while it's still building.
     if (req && req.carryFrom) {
@@ -1422,10 +1432,28 @@ const botController = {
     if (live && isBuildBusy(live.state)) {
       return { error: "It's still building — stop it first." };
     }
+    // A lead still answering in it would save it back when it finishes.
+    if (this._answeringIn(id)) {
+      return { error: "It's still answering — stop it first." };
+    }
     if (live) this._builds.delete(buildId);
     this._recent.remove(id);
     this._memory.forget("plan", id);
+    if (!this._removedRecent) this._removedRecent = new Set();
+    this._removedRecent.add(id);
     return { ok: true };
+  },
+
+  /** Is a bot's run, asked from this conversation, still going? */
+  _answeringIn(conversationId) {
+    if (!conversationId || !this._runVia) return false;
+    const active = new Set(this._runner.listActive());
+    for (const [botId, via] of this._runVia) {
+      if (via && via.conversationId === conversationId && active.has(botId)) {
+        return true;
+      }
+    }
+    return false;
   },
 
   _writePlanMemory(planId, facts) {

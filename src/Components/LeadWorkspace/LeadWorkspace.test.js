@@ -39,7 +39,10 @@ jest.mock("../Settings/sections/ProvidersSection", () => ({
 }));
 
 let mockAskProps = null;
+// Conversations the Planner is still answering in (tests set it).
+const mockAsking = new Set();
 jest.mock("../Create/AskStep", () => ({
+  isAsking: (id) => mockAsking.has(id),
   AskStep: (props) => {
     mockAskProps = props;
     return (
@@ -174,6 +177,87 @@ test("opens on the lead you picked, with only its own conversations", async () =
   );
 });
 
+describe("All conversations (the left nav's Conversations)", () => {
+  test("every lead's conversations, each saying whose; opening one goes on with its lead", async () => {
+    render(
+      <LeadWorkspace
+        request={{ key: "role:dashlead", all: true }}
+        onClose={jest.fn()}
+      />,
+    );
+    const switcher = screen.getByTestId("workspace-switcher");
+    expect(switcher).toHaveTextContent("All conversations");
+    expect(await screen.findByText("Anything urgent?")).toBeInTheDocument();
+    expect(screen.getByText("Do I have a clock?")).toBeInTheDocument();
+    const rows = screen.getAllByTestId("workspace-thread");
+    expect(rows[0]).toHaveTextContent("Kitchen Sink Lead");
+    expect(rows[1]).toHaveTextContent("Dash Lead");
+    expect(switcher).toHaveTextContent("Every lead · 2 conversations");
+    // A new one starts with the Dash Lead, and says so.
+    expect(screen.getByTestId("workspace-start")).toHaveTextContent(
+      "What should we make?",
+    );
+    expect(
+      screen.getByRole("button", { name: "+ New conversation with Dash Lead" }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(rows[0]).getByText("Anything urgent?"));
+    expect(screen.getByTestId("ask-step")).toHaveTextContent("thread q1");
+    await waitFor(() => expect(mockAskProps.recipient.botId).toBe("lead_7"));
+    // Recents still shows all of them; a new one now goes to that lead.
+    expect(screen.getByText("Do I have a clock?")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "+ New conversation with Kitchen Sink Lead",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  test("the lead box: All conversations, or one lead's", async () => {
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    await screen.findByText("Anything urgent?");
+    expect(screen.queryByText("Do I have a clock?")).toBeNull();
+    fireEvent.click(screen.getByTestId("workspace-switcher"));
+    // Each lead's count; a bot with none shows nothing.
+    expect(
+      screen.getByRole("button", {
+        name: "Kitchen Sink Lead, 1 conversation (current)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Dash Lead, 1 conversation" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Word Keeper" }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("workspace-switcher-all")).getByText(
+        "2 conversations · newest first",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByTestId("workspace-switcher-all")).getByText(
+        "All conversations",
+      ),
+    );
+    expect(screen.getByTestId("workspace-switcher")).toHaveTextContent(
+      "All conversations",
+    );
+    expect(screen.getByText("Do I have a clock?")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("workspace-switcher"));
+    fireEvent.click(
+      within(screen.getByTestId("workspace-switcher-menu")).getByText(
+        "Kitchen Sink Lead",
+      ),
+    );
+    expect(screen.getByTestId("workspace-switcher")).toHaveTextContent(
+      "Kitchen Sink Lead",
+    );
+    expect(screen.queryByText("Do I have a clock?")).toBeNull();
+  });
+});
+
 test("the switcher lists the Dash Lead, dashboard leads and lone bots; switching follows", async () => {
   render(
     <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
@@ -231,6 +315,57 @@ test("a starter asks it straight away; a thread reopens", async () => {
   );
   fireEvent.click(await screen.findByText("Anything urgent?"));
   expect(screen.getByTestId("ask-step")).toHaveTextContent("thread q1");
+});
+
+describe("deleting conversations from Recents (conversation cleanup, frames 3.1–3.3)", () => {
+  afterEach(() => mockAsking.clear());
+
+  test("… › Delete conversation, confirmed: the open one closes and it's removed", async () => {
+    window.mainApi.bots.removeCreateRecent = jest
+      .fn()
+      .mockResolvedValue({ ok: true });
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    fireEvent.click(await screen.findByText("Anything urgent?"));
+    expect(screen.getByTestId("ask-step")).toHaveTextContent("thread q1");
+    const row = screen.getByTestId("workspace-thread");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Conversation options" }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /Delete conversation/ }),
+    );
+    expect(
+      screen.getByText(/Its messages and plan are removed from this computer/),
+    ).toHaveTextContent(
+      "The open one closes and you start a new conversation.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(window.mainApi.bots.removeCreateRecent).toHaveBeenCalledWith("q1"),
+    );
+    expect(screen.getByTestId("workspace-start")).toBeInTheDocument();
+  });
+
+  test("Select: one still answering can't be ticked, and says why", async () => {
+    mockAsking.add("q1");
+    window.mainApi.bots.removeCreateRecent = jest.fn();
+    render(
+      <LeadWorkspace request={{ key: "lead:lead_7" }} onClose={jest.fn()} />,
+    );
+    await screen.findByText("Anything urgent?");
+    fireEvent.click(screen.getByTestId("workspace-recents-select"));
+    const pick = screen.getByTestId("workspace-thread-pick");
+    expect(within(pick).getByRole("checkbox")).toBeDisabled();
+    expect(pick).toHaveTextContent("Running");
+    expect(
+      screen.getByText(
+        "“Anything urgent?” is still working on an answer. Stop it first to delete it.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+  });
 });
 
 test("a bot on no dashboard: its own chat, and its runs on the right", async () => {

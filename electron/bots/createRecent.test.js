@@ -360,6 +360,27 @@ describe("botController — Recent and build memory are wired", () => {
       /this\._memory\.delete\("workspace", dashboardId, "about"\)/,
     );
   });
+  it("one still answering isn't removed: the run would save it back", () => {
+    // Refused before anything is removed …
+    assert.match(
+      ctrl,
+      /if \(this\._answeringIn\(id\)\) \{\s*return \{ error: "It's still answering — stop it first\." \};\s*\}\s*if \(live\) this\._builds\.delete\(buildId\);\s*this\._recent\.remove\(id\);/,
+    );
+    // A late save of a deleted one (a window switching away) is refused.
+    assert.match(
+      ctrl,
+      /this\._removedRecent\.add\(id\);[\s\S]{0,40}return \{ ok: true \};/,
+    );
+    assert.match(
+      ctrl,
+      /saveCreateRecent\(req = \{\}\) \{[\s\S]{0,200}?this\._removedRecent\.has\(req\.id\)[\s\S]{0,40}?return \{ error: "It was deleted\." \};/,
+    );
+    // … while a bot asked from that conversation is still running.
+    assert.match(
+      ctrl,
+      /_answeringIn\(conversationId\) \{[\s\S]{0,200}?this\._runner\.listActive\(\)[\s\S]{0,200}?via\.conversationId === conversationId && active\.has\(botId\)/,
+    );
+  });
 });
 
 describe("questions in Recent (phase 5e)", () => {

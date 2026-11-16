@@ -44,6 +44,11 @@ import {
 const leadOf = (r) => (r && r.botId && !r.role ? r : null);
 const roleOf = (r) => (r && r.role && r.role !== "planner" ? r : null);
 
+/** Is the Planner still answering in this conversation? */
+export function isAsking(conversationId) {
+  return !!conversationId && directRuns.has(conversationId);
+}
+
 /**
  * AskStep — a question to the Dash team's Planner (create-entry PRD CRE-007
  * AC4 / CRE-011 AC6, phase 5e). It reads the user's bot results and runs

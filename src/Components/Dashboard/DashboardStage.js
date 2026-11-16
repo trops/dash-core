@@ -767,6 +767,9 @@ const DashboardStageInner = ({
         seed: d.seed || null,
         // A conversation to open on (the notifications panel, release 4).
         recentId: d.recentId || null,
+        // Recents shows every lead's conversations (the left nav's
+        // Conversations).
+        all: !!d.all,
         // A page's New (release 6c): { kind, from } — what's being made.
         making: d.making && typeof d.making === "object" ? d.making : null,
         // Words for its reply box (release 6c: a lead's hand-off, the

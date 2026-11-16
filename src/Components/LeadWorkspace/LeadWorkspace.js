@@ -17,13 +17,16 @@ import {
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useAllBots } from "../AppPages/useAllBots";
 import { useTeamLeads } from "../AiAssistant/components/RecipientPicker";
-import { AskStep } from "../Create/AskStep";
+import { AskStep, isAsking } from "../Create/AskStep";
 import { BotChat } from "../Bots/BotChat";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { questionThreads } from "../Create/recentRows";
+import { RecentsList } from "./RecentsList";
 import {
   contactGroups,
   contactThreads,
+  allContactThreads,
+  ownerOf,
   findContact,
 } from "./workspaceContacts";
 import { WorkspaceSide } from "./WorkspaceSide";
@@ -345,6 +348,9 @@ export const LeadWorkspace = ({
     [all.dashTeam, leads, all.bots],
   );
   const [key, setKey] = useState((request && request.key) || "role:dashlead");
+  // Recents shows every lead's conversations (the left nav's
+  // Conversations); a new one goes to the lead in `key`.
+  const [allMode, setAllMode] = useState(!!(request && request.all));
   // An empty cell's Build with AI (release 6c, frame 38):
   // { workspaceId, gridItemId, cellNumber, pageId, scope, span? } — talked
   // over with that dashboard's lead (the Dash Lead when it has none), once
@@ -553,6 +559,15 @@ export const LeadWorkspace = ({
     if (!drawerOpen || typeof window === "undefined") return undefined;
     const onKey = (e) => {
       if (e.key !== "Escape") return;
+      // A row's menu closes itself first; the drawer stays.
+      if (
+        e.target &&
+        typeof e.target.closest === "function" &&
+        e.target.closest('[role="menu"]') &&
+        !e.target.closest('[data-testid="workspace-switcher-menu"]')
+      ) {
+        return;
+      }
       e.stopImmediatePropagation();
       e.stopPropagation();
       e.preventDefault();
@@ -611,10 +626,33 @@ export const LeadWorkspace = ({
     storageKey: "dash:leadWorkspace:sideWidth",
   });
 
-  const threads = useMemo(
-    () => questionThreads(contactThreads(entries, contact && contact.key), now),
-    [entries, now, contact],
-  );
+  // Each lead's number of conversations, for the lead box.
+  const convCounts = useMemo(() => {
+    const m = new Map();
+    for (const e of allContactThreads(entries, groups)) {
+      const o = ownerOf(e);
+      m.set(o, (m.get(o) || 0) + 1);
+    }
+    return m;
+  }, [entries, groups]);
+  const convTotal = [...convCounts.values()].reduce((a, n) => a + n, 0);
+  const countLine = (n) =>
+    n ? `${n} conversation${n === 1 ? "" : "s"}` : null;
+  const threads = useMemo(() => {
+    if (!allMode) {
+      return questionThreads(
+        contactThreads(entries, contact && contact.key),
+        now,
+      );
+    }
+    // Each with its lead (`owner`), to open it with and name on its row.
+    const list = allContactThreads(entries, groups);
+    const owners = new Map(list.map((e) => [e.id, ownerOf(e)]));
+    return questionThreads(list, now).map((t) => ({
+      ...t,
+      owner: owners.get(t.id) || null,
+    }));
+  }, [entries, now, contact, allMode, groups]);
 
   // Edit the code yourself: the Widget Builder on this widget, by hand
   // (dash-electron hears dash:edit-widget-code), with this copy's settings
@@ -747,7 +785,7 @@ export const LeadWorkspace = ({
   // right, and its build (if any) with Carry on building. The old entry goes
   // once this one is saved (the main process moves its build over).
   const carrying = useRef(null);
-  const carryOverCreatePlan = async (id) => {
+  const carryOverCreatePlan = async (id, lead = contact) => {
     // Once at a time: a second click doesn't carry it twice.
     if (carrying.current) return;
     carrying.current = id;
@@ -758,7 +796,7 @@ export const LeadWorkspace = ({
       moves.current === at &&
       setSeedError(why || "That plan from Create couldn't be opened.");
     try {
-      if (!b || !b.getCreateRecent || !b.saveCreateRecent || !contact) {
+      if (!b || !b.getCreateRecent || !b.saveCreateRecent || !lead) {
         lost();
         return;
       }
@@ -792,7 +830,7 @@ export const LeadWorkspace = ({
         // Its name in Recents stays what it was (the plan's).
         prompt: entry.title || entry.prompt || "From Create",
         conversation: {
-          recipient: contact.recipient,
+          recipient: lead.recipient,
           messages,
           ...(plan
             ? {
@@ -850,6 +888,62 @@ export const LeadWorkspace = ({
             error: `${dashboard.name} didn't come over. Pick it again, or click Ask AI instead.`,
           },
     );
+  // A Recents row: open that conversation.
+  const openThread = (t) => {
+    setNavOpen(false);
+    if (open && t.id === selectedId) return;
+    // A Create plan being carried on: one at a time.
+    if (carrying.current) return;
+    // From all of them: it goes on with its own lead.
+    if (t.owner && t.owner !== key) setKey(t.owner);
+    setSelectedId(t.id);
+    setMessages(EMPTY);
+    setAskBusy(false);
+    setSideOpen(null);
+    setMakingOn(false);
+    moveOn();
+    // A plan from the Create window: carried on as a conversation
+    // (release 6c).
+    if (t.fromCreate) {
+      // The start shows while it's carried (and says so if it can't be).
+      setOpen(null);
+      carryOverCreatePlan(
+        t.id,
+        (t.owner && findContact(groups, t.owner)) || contact,
+      );
+      return;
+    }
+    setOpen({ key: t.id, recentId: t.id });
+  };
+  // Still answering or building: can't be deleted until it stops.
+  const threadBusy = (t) =>
+    t.built === "building" ||
+    isAsking(t.id) ||
+    (open && t.id === selectedId && askBusy);
+  // Delete from Recents, for good (conversation cleanup, frame 3.3); the
+  // open one closes first.
+  const deleteThreads = async (ids) => {
+    const b = botsApi();
+    const failed = [];
+    if (!b || !b.removeCreateRecent) {
+      return {
+        failed: ids.map((id) => ({ id, error: "Dash couldn't delete it." })),
+      };
+    }
+    if (open && ids.includes(selectedId)) startNew();
+    for (const id of ids) {
+      try {
+        const res = await b.removeCreateRecent(id);
+        if (res && res.error) failed.push({ id, error: res.error });
+      } catch (err) {
+        failed.push({
+          id,
+          error: (err && err.message) || "Dash couldn't delete it.",
+        });
+      }
+    }
+    return { failed };
+  };
   const startNew = () => {
     moveOn();
     setNavOpen(false);
@@ -2844,7 +2938,12 @@ export const LeadWorkspace = ({
               className={`flex flex-row items-center gap-3 rounded-lg border p-2 text-left ${raised}`}
               data-testid="workspace-switcher"
             >
-              {contact ? (
+              {allMode ? (
+                <BotAvatar
+                  bot={{ id: "all-conversations", name: "All conversations" }}
+                  icon="comments"
+                />
+              ) : contact ? (
                 <BotAvatar
                   bot={{ id: contact.botId, name: contact.name }}
                   icon={
@@ -2854,13 +2953,27 @@ export const LeadWorkspace = ({
               ) : null}
               <span className="flex-1 min-w-0 flex flex-col">
                 <span className={`text-sm font-semibold truncate ${strong}`}>
-                  {contact ? contact.name : "No one to talk to yet"}
+                  {allMode
+                    ? "All conversations"
+                    : contact
+                      ? contact.name
+                      : "No one to talk to yet"}
                 </span>
                 <span
                   className={`text-xs truncate ${muted}`}
-                  title={contact ? contact.line || contact.sub : undefined}
+                  title={
+                    !allMode && contact
+                      ? contact.line || contact.sub
+                      : undefined
+                  }
                 >
-                  {contact ? contact.line || contact.sub : ""}
+                  {allMode
+                    ? `Every lead · ${threads.length} conversation${
+                        threads.length === 1 ? "" : "s"
+                      }`
+                    : contact
+                      ? contact.line || contact.sub
+                      : ""}
                 </span>
               </span>
               <FontAwesomeIcon
@@ -2877,13 +2990,59 @@ export const LeadWorkspace = ({
                 style={{ top: 76, maxHeight: "calc(100% - 88px)" }}
                 data-testid="workspace-switcher-menu"
               >
+                <ListRow
+                  testId="workspace-switcher-all"
+                  icon={
+                    <BotAvatar
+                      bot={{
+                        id: "all-conversations",
+                        name: "All conversations",
+                      }}
+                      icon="comments"
+                    />
+                  }
+                  title={
+                    <span className="flex flex-row items-center gap-2">
+                      <span className="truncate">All conversations</span>
+                      {allMode ? (
+                        <span
+                          role="img"
+                          aria-label="Current"
+                          className="flex-shrink-0"
+                        >
+                          <FontAwesomeIcon icon="check" className="h-3 w-3" />
+                        </span>
+                      ) : null}
+                    </span>
+                  }
+                  ariaLabel={
+                    allMode
+                      ? "All conversations (current)"
+                      : "All conversations"
+                  }
+                  meta={[countLine(convTotal), "newest first"]
+                    .filter(Boolean)
+                    .join(" · ")}
+                  className={allMode ? raised : ""}
+                  onClick={() => {
+                    setAllMode(true);
+                    // A bot's chat isn't in Recents: back to the Dash Lead.
+                    if (contact && contact.kind === "bot") {
+                      switchTo("role:dashlead");
+                    } else {
+                      setSwitchOpen(false);
+                      setNavOpen(false);
+                    }
+                  }}
+                />
                 {groups.map((g) => (
                   <div key={g.label} className="flex flex-col gap-0.5">
                     <span className={`px-2 pt-1 text-xs ${muted}`}>
                       {g.label}
                     </span>
                     {g.items.map((c) => {
-                      const current = c.key === (contact && contact.key);
+                      const current =
+                        !allMode && c.key === (contact && contact.key);
                       return (
                         <ListRow
                           key={c.key}
@@ -2915,21 +3074,34 @@ export const LeadWorkspace = ({
                               ) : null}
                             </span>
                           }
-                          ariaLabel={current ? `${c.name} (current)` : c.name}
-                          // One line: its dashboard and its bots.
+                          ariaLabel={`${c.name}${
+                            convCounts.get(c.key)
+                              ? `, ${countLine(convCounts.get(c.key))}`
+                              : ""
+                          }${current ? " (current)" : ""}`}
+                          // One line: how many conversations (none,
+                          // nothing), its dashboard and its bots.
                           meta={
                             <span
                               className="block truncate"
                               // A long team is cut short: hover for all of it.
                               title={c.menuLine || c.line || c.sub}
                             >
-                              {c.menuLine || c.line || c.sub}
+                              {[
+                                countLine(convCounts.get(c.key)),
+                                c.menuLine || c.line || c.sub,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
                             </span>
                           }
                           // The one you are on, in the theme's colour (the
                           // check mark says so too).
                           className={current ? raised : ""}
-                          onClick={() => switchTo(c.key)}
+                          onClick={() => {
+                            setAllMode(false);
+                            switchTo(c.key);
+                          }}
                         />
                       );
                     })}
@@ -2943,79 +3115,69 @@ export const LeadWorkspace = ({
                 <div className="mt-2">
                   <Button3
                     size="sm"
-                    title="+ New conversation"
+                    // From all of them, say who a new one goes to.
+                    title={
+                      allMode && contact
+                        ? `+ New conversation with ${contact.name}`
+                        : "+ New conversation"
+                    }
                     onClick={startNew}
                   />
                 </div>
-                <span className={`px-2 pt-3 pb-1 text-xs ${muted}`}>
-                  Recents
-                </span>
-                <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
-                  {/* A conversation not started yet is the first one (frame 13). */}
-                  {open ? null : (
-                    <ListRow
-                      testId="workspace-thread-new"
-                      title="New conversation"
-                      selected
-                    />
-                  )}
-                  {threads.length ? (
-                    threads.map((t) => (
+                <RecentsList
+                  threads={threads}
+                  muted={muted}
+                  selectedId={open ? selectedId : null}
+                  isBusy={threadBusy}
+                  metaOf={(t) =>
+                    // Its age; "asked <this lead>" would repeat on every row.
+                    // From all of them, whose it is first.
+                    [
+                      allMode && t.owner
+                        ? (findContact(groups, t.owner) || {}).name
+                        : null,
+                      String(t.sub || "").split(" · ")[0],
+                      t.fromCreate
+                        ? `From Create${
+                            BUILT_TAG[t.fromCreate]
+                              ? ` · ${BUILT_TAG[t.fromCreate]}`
+                              : ""
+                          }`
+                        : t.id === selectedId && wp.waitingForPick
+                          ? "Waiting for you"
+                          : t.built
+                            ? BUILT_TAG[t.built] || null
+                            : t.planned
+                              ? "Plan"
+                              : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  }
+                  onOpen={openThread}
+                  onDelete={deleteThreads}
+                  before={
+                    // A conversation not started yet is the first one (frame 13).
+                    open ? null : (
                       <ListRow
-                        key={t.id}
-                        testId="workspace-thread"
-                        title={t.title}
-                        // Its age; "asked <this lead>" would repeat on every row.
-                        meta={[
-                          String(t.sub || "").split(" · ")[0],
-                          t.fromCreate
-                            ? `From Create${
-                                BUILT_TAG[t.fromCreate]
-                                  ? ` · ${BUILT_TAG[t.fromCreate]}`
-                                  : ""
-                              }`
-                            : t.id === selectedId && wp.waitingForPick
-                              ? "Waiting for you"
-                              : t.built
-                                ? BUILT_TAG[t.built] || null
-                                : t.planned
-                                  ? "Plan"
-                                  : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                        selected={t.id === selectedId}
-                        onClick={() => {
-                          setNavOpen(false);
-                          if (open && t.id === selectedId) return;
-                          // A Create plan being carried on: one at a time.
-                          if (carrying.current) return;
-                          setSelectedId(t.id);
-                          setMessages(EMPTY);
-                          setAskBusy(false);
-                          setSideOpen(null);
-                          setMakingOn(false);
-                          moveOn();
-                          // A plan from the Create window: carried on as a
-                          // conversation (release 6c).
-                          if (t.fromCreate) {
-                            // The start shows while it's carried (and says
-                            // so if it can't be).
-                            setOpen(null);
-                            carryOverCreatePlan(t.id);
-                            return;
-                          }
-                          setOpen({ key: t.id, recentId: t.id });
-                        }}
+                        testId="workspace-thread-new"
+                        title="New conversation"
+                        selected
                       />
-                    ))
-                  ) : open ? (
-                    <span className={`px-2 py-2 text-xs ${muted}`}>
-                      Your conversations with {contact ? contact.name : "them"}{" "}
-                      show here.
-                    </span>
-                  ) : null}
-                </div>
+                    )
+                  }
+                  empty={
+                    open ? (
+                      <span className={`px-2 py-2 text-xs ${muted}`}>
+                        {allMode
+                          ? "Your conversations with every lead show here."
+                          : `Your conversations with ${
+                              contact ? contact.name : "them"
+                            } show here.`}
+                      </span>
+                    ) : null
+                  }
+                />
               </>
             )}
           </nav>
@@ -3025,7 +3187,7 @@ export const LeadWorkspace = ({
             aria-label="Conversation"
             // Lifted above the quiet sides: the conversation is the focus.
             className={`dr-chat-stage flex-1 min-w-0 flex flex-col min-h-0 ${
-              narrow ? "" : "my-2 rounded-xl border overflow-hidden"
+              narrow ? "" : "mx-3 my-3 rounded-xl border overflow-hidden"
             } ${hairline} ${panel.backgroundColor || ""}`}
           >
             <header
@@ -3442,7 +3604,7 @@ export const LeadWorkspace = ({
 
           {/* Right: outputs and the team, resizable */}
           {narrow || wizardStage === "looks" ? null : (
-            <ResizeHandle {...handleProps} ariaLabel="Resize outputs" />
+            <ResizeHandle {...handleProps} quiet ariaLabel="Resize outputs" />
           )}
           <aside
             ref={asideRef}

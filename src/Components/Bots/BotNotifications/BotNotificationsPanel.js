@@ -18,6 +18,13 @@ import { ApprovalPreview } from "../ApprovalPreview";
 import { needsYou, whenText } from "./needsYou";
 import { activityLog } from "./activityLog";
 import {
+  canDismiss,
+  isDismissed,
+  readDismissed,
+  withDismissed,
+  writeDismissed,
+} from "./dismissedNeeds";
+import {
   alwaysAllowLine,
   canAlwaysAllow,
   pageReach,
@@ -31,6 +38,27 @@ const RUN_LIMIT = 50;
 const SEEN_KEY = "dash:botNotifications:seenAt";
 // "Always allowed" cards kept in the panel at once.
 const SAVED_KEPT = 3;
+// How long the Undo line stays after a dismissal.
+const UNDO_MS = 8000;
+
+/** What the Undo line says after dismissing `items`. */
+export function dismissedText(items) {
+  const list = items || [];
+  const plans = list.filter((n) => n.kind === "plan").length;
+  if (list.length === 1) {
+    const n = list[0];
+    return n.kind === "plan"
+      ? `Dismissed “${String(n.title || "").replace(/^A plan is ready: /, "")}”. It's still in Recents.`
+      : `Dismissed “${n.title}”. Its run is still in Activity.`;
+  }
+  const where =
+    plans === list.length
+      ? "They're still in Recents."
+      : plans
+        ? "Plans are still in Recents, runs in Activity."
+        : "Their runs are still in Activity.";
+  return `Cleared ${list.length}. ${where}`;
+}
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
@@ -194,6 +222,14 @@ export const BotNotificationsPanel = ({
   const [reach, setReach] = useState({});
   // Asks answered with Always allow here: what was saved, with Undo.
   const [saved, setSaved] = useState([]);
+  // Cards taken off the list with ×, and the Undo line for the last one.
+  const [dismissed, setDismissed] = useState(() => readDismissed());
+  const [undoLine, setUndoLine] = useState(null);
+  useEffect(() => {
+    if (!undoLine) return undefined;
+    const t = setTimeout(() => setUndoLine(null), UNDO_MS);
+    return () => clearTimeout(t);
+  }, [undoLine]);
 
   // NEW: since the user last looked — read once when the panel opens.
   const [seenAt, setSeenAt] = useState(() => readSeenAt());
@@ -238,8 +274,18 @@ export const BotNotificationsPanel = ({
         dashboards,
         current,
         seenAt,
-      }).filter((n) => !answered[n.id]),
-    [contacts, bots, recents, leads, dashboards, current, seenAt, answered],
+      }).filter((n) => !answered[n.id] && !isDismissed(n, dismissed)),
+    [
+      contacts,
+      bots,
+      recents,
+      leads,
+      dashboards,
+      current,
+      seenAt,
+      answered,
+      dismissed,
+    ],
   );
   const log = useMemo(
     () =>
@@ -275,6 +321,22 @@ export const BotNotificationsPanel = ({
   const lead = current
     ? (leads || []).find((l) => String(l.dashboardId) === current) || null
     : null;
+  // × and Clear all: off the list (not deleted), with Undo.
+  const dismiss = (items) => {
+    const list = (items || []).filter(canDismiss);
+    if (!list.length) return;
+    const next = withDismissed(dismissed, list);
+    setUndoLine({ text: dismissedText(list), prev: dismissed });
+    setDismissed(next);
+    writeDismissed(next);
+  };
+  const undoDismiss = () => {
+    if (!undoLine) return;
+    setDismissed(undoLine.prev);
+    writeDismissed(undoLine.prev);
+    setUndoLine(null);
+  };
+  const dismissable = needs.filter(canDismiss);
   const act = async (item, call, done = true) => {
     setBusy((b) => ({ ...b, [item.id]: true }));
     try {
@@ -386,11 +448,39 @@ export const BotNotificationsPanel = ({
         className="flex flex-col gap-2"
         data-testid="bot-notifications-needs"
       >
-        <span
-          className={`text-xs font-semibold uppercase tracking-wider ${statusTokens.warning.icon}`}
-        >
-          {needs.length ? `Needs you · ${needs.length}` : "Needs you"}
-        </span>
+        <div className="flex flex-row items-center gap-2">
+          <span
+            className={`flex-1 text-xs font-semibold uppercase tracking-wider ${statusTokens.warning.icon}`}
+          >
+            {needs.length ? `Needs you · ${needs.length}` : "Needs you"}
+          </span>
+          {dismissable.length ? (
+            <button
+              type="button"
+              onClick={() => dismiss(dismissable)}
+              className={`text-xs ${link}`}
+              data-testid="bot-notifications-clear"
+            >
+              Clear all
+            </button>
+          ) : null}
+        </div>
+        {undoLine ? (
+          <div
+            role="status"
+            className={`flex flex-row items-center gap-2 rounded-xl border px-3 py-2 text-sm ${hairline} ${muted}`}
+            data-testid="bot-notifications-undo"
+          >
+            <span className="flex-1 min-w-0">{undoLine.text}</span>
+            <button
+              type="button"
+              onClick={undoDismiss}
+              className={`text-sm ${link}`}
+            >
+              Undo
+            </button>
+          </div>
+        ) : null}
         {saved.map((s) => (
           <div
             key={s.id}
@@ -471,6 +561,18 @@ export const BotNotificationsPanel = ({
                 <span className={`flex-shrink-0 text-xs ${muted}`}>
                   {whenText(n.at)}
                 </span>
+                {canDismiss(n) ? (
+                  <button
+                    type="button"
+                    aria-label="Dismiss"
+                    title="Dismiss"
+                    onClick={() => dismiss([n])}
+                    className={`flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-md ${muted}`}
+                    data-testid="bot-notifications-dismiss"
+                  >
+                    <FontAwesomeIcon icon="xmark" className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
               </span>
               {n.kind === "approval" ? (
                 <ApprovalPreview request={n.request} />

@@ -6,6 +6,8 @@ import {
   contactGroups,
   findContact,
   contactThreads,
+  allContactThreads,
+  ownerOf,
 } from "./workspaceContacts";
 import {
   stepFromCall,
@@ -143,6 +145,70 @@ test("contactThreads: only that contact's questions, newest first", () => {
   expect(contactThreads(entries, "lead:lead_7").map((e) => e.id)).toEqual([
     "q3",
     "q1",
+  ]);
+});
+
+test("ownerOf / allContactThreads: every lead's, newest first; a bot's or unknown lead's left out", () => {
+  const groups = [
+    { label: "Dash team", items: [{ key: "role:dashlead", kind: "dashlead" }] },
+    {
+      label: "Team leads",
+      items: [
+        { key: "lead:lead_7", kind: "lead" },
+        { key: "bot:w1", kind: "bot" },
+      ],
+    },
+  ];
+  const entries = [
+    {
+      id: "q1",
+      kind: "question",
+      with: "lead:lead_7",
+      updatedAt: "2026-10-28T09:00:00Z",
+    },
+    {
+      id: "q2",
+      kind: "question",
+      with: "role:planner",
+      updatedAt: "2026-10-28T10:00:00Z",
+    },
+    {
+      id: "q3",
+      kind: "question",
+      with: "bot:w1",
+      updatedAt: "2026-10-28T11:00:00Z",
+    },
+    {
+      id: "q4",
+      kind: "question",
+      with: "lead:gone",
+      updatedAt: "2026-10-28T12:00:00Z",
+    },
+    {
+      id: "p1",
+      kind: "plan",
+      status: "draft",
+      updatedAt: "2026-10-28T08:00:00Z",
+    },
+    {
+      id: "p2",
+      kind: "plan",
+      status: "built",
+      updatedAt: "2026-10-28T13:00:00Z",
+    },
+  ];
+  expect(ownerOf(entries[1])).toBe("role:dashlead");
+  expect(ownerOf(entries[4])).toBe("role:dashlead");
+  expect(ownerOf(entries[5])).toBeNull();
+  expect(allContactThreads(entries, groups).map((e) => e.id)).toEqual([
+    "q2",
+    "q1",
+    "p1",
+  ]);
+  // A lead's own list is unchanged.
+  expect(contactThreads(entries, "role:dashlead").map((e) => e.id)).toEqual([
+    "q2",
+    "p1",
   ]);
 });
 

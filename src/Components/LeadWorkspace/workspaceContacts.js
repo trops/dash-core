@@ -140,17 +140,40 @@ export function isUnfinishedCreatePlan(e) {
  * @param {object[]} entries  bots.listCreateRecent()
  */
 export function contactThreads(entries, key) {
-  const mine = (w) =>
-    w === key ||
-    (key === "role:dashlead" && typeof w === "string" && w.startsWith("role:"));
+  return threadsWhere(entries, (e) => ownerOf(e) === key);
+}
+
+/**
+ * Whose conversation a Recent entry is: the lead it was asked of; the
+ * Dash Lead for the Dash team roles' questions and the unfinished Create
+ * plans; null for anything else.
+ */
+export function ownerOf(e) {
+  if (!e) return null;
+  if (e.kind === "plan") {
+    return isUnfinishedCreatePlan(e) ? "role:dashlead" : null;
+  }
+  if (e.kind !== "question" || typeof e.with !== "string") return null;
+  return e.with.startsWith("role:") ? "role:dashlead" : e.with;
+}
+
+/**
+ * Every lead's conversations (the left nav's Conversations), newest first —
+ * only those of a lead in `groups`, since one opens with its lead.
+ * @param {object[]} entries  bots.listCreateRecent()
+ * @param {object[]} groups   contactGroups(…)
+ */
+export function allContactThreads(entries, groups) {
+  const leads = new Set();
+  for (const g of groups || []) {
+    for (const c of g.items || []) if (c.kind !== "bot") leads.add(c.key);
+  }
+  return threadsWhere(entries, (e) => leads.has(ownerOf(e)));
+}
+
+function threadsWhere(entries, keep) {
   return (entries || [])
-    .filter(
-      (e) =>
-        e &&
-        e.id &&
-        ((e.kind === "question" && mine(e.with)) ||
-          (key === "role:dashlead" && isUnfinishedCreatePlan(e))),
-    )
+    .filter((e) => e && e.id && keep(e))
     .sort((a, b) =>
       String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")),
     );
