@@ -85,6 +85,9 @@ import { MissingWidgetsModal } from "../../Widget/MissingWidgetsModal";
 import { DashboardConfigModal } from "./DashboardConfigModal";
 import { useTeamBots } from "../Bots/useTeamBots";
 import { BotsView } from "../Bots/BotsView";
+import { GoalsView } from "../Goals/GoalsView";
+import { useGoals } from "../../hooks/useGoals";
+import { goalCounts } from "../Goals/goalText";
 import { BotPageModal } from "../Bots/BotPageModal";
 import { NewBotModal } from "../Bots/NewBotModal";
 import { dashboardCopy } from "../../utils/dashboardCopy";
@@ -347,6 +350,9 @@ const DashboardStageInner = ({
   const team = useTeamBots(workspaceSelected?.id ?? null);
   const teamRefreshRef = useRef(team.refresh);
   teamRefreshRef.current = team.refresh;
+  // Its goals ledger: how many wait for the user, on the Goals switch.
+  const { goals: dashboardGoals } = useGoals(workspaceSelected?.id ?? null);
+  const goalsAttention = goalCounts(dashboardGoals)["needs-you"];
 
   // Dashboard | Bots, per dashboard. The Bots view is a viewing mode: it
   // shows in preview and in popouts, never in edit mode. A popout opened from
@@ -3285,6 +3291,7 @@ const DashboardStageInner = ({
                         : null
                     }
                     botsAttention={team.attention}
+                    goalsAttention={goalsAttention}
                   />
                   <DashboardThemeProvider
                     themeKey={workspaceSelected?.themeKey}
@@ -3394,6 +3401,11 @@ const DashboardStageInner = ({
                         }}
                         onOpenSettings={(section) => openAppSettings(section)}
                         onChangeDashboard={changeFromDiagram}
+                      />
+                    ) : stageMode === "goals" ? (
+                      <GoalsView
+                        key={workspaceSelected.id}
+                        workspace={workspaceSelected}
                       />
                     ) : (
                       <>

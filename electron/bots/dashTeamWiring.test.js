@@ -119,7 +119,11 @@ describe("botController — role tools (CRE-011, slice 3a)", () => {
       ctrl,
       /const roleTools = roleToolsFor\(bot\.role\)\.filter\([\s\S]*?const tools = \[\.\.\.roleTools, \.\.\.memory\];/,
     );
-    assert.match(ctrl, /RESULTS_SERVER,\s*ROLE_SERVER,\s*\]/);
+    // (The goals ledger's server follows it — goals-ledger PRD.)
+    assert.match(
+      ctrl,
+      /RESULTS_SERVER,\s*ROLE_SERVER,\s*(?:\/\/[^\n]*\n\s*)?(?:GOALS_SERVER,\s*)?\]/,
+    );
   });
 
   it("role tool calls re-check that the caller is on the team", () => {
@@ -158,7 +162,8 @@ describe("botController — role tools (CRE-011, slice 3a)", () => {
     // _run hands it on (it was dropped, so the memory tools never came)…
     assert.match(
       ctrl,
-      /\.\.\.\(opts\.planId \? \{ planId: String\(opts\.planId\) \} : \{\}\),\s*emit:/,
+      // (then the run's goal holder — goals-ledger PRD)
+      /\.\.\.\(opts\.planId \? \{ planId: String\(opts\.planId\) \} : \{\}\),\s*(?:goal,\s*)?emit:/,
     );
     // …the tool list adds the memory tools for it, and memory calls use it.
     assert.match(

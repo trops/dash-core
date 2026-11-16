@@ -17,6 +17,7 @@ import {
 } from "@trops/dash-react";
 import { AppContext } from "../../Context/App/AppContext";
 import { useProfiles } from "../../hooks/useProfiles";
+import { useGoals } from "../../hooks/useGoals";
 import { ComponentManager } from "../../ComponentManager";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useTeamBots } from "../Bots/useTeamBots";
@@ -537,6 +538,10 @@ export const DashboardsPage = ({
   const [panel, setPanel] = useState(null);
   const [dragOver, setDragOver] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // Its goals go with it (goals-ledger PRD): the confirmation says how many.
+  const { goals: deleteTargetGoals } = useGoals(
+    deleteTarget ? deleteTarget.id : null,
+  );
   const [deleteFolderTarget, setDeleteFolderTarget] = useState(null);
   const [removeTarget, setRemoveTarget] = useState(null);
   const profiles = useProfiles(appId);
@@ -977,7 +982,11 @@ export const DashboardsPage = ({
         title="Delete dashboard"
         message={`Delete "${deleteTarget?.name || "Untitled"}"${
           profiles.hasProfiles ? " from this computer and every profile" : ""
-        }? This can't be undone.`}
+        }? This can't be undone.${
+          deleteTargetGoals.length
+            ? ` Its ${deleteTargetGoals.length === 1 ? "goal" : `${deleteTargetGoals.length} goals`}, with their tasks, runs and proof, ${deleteTargetGoals.length === 1 ? "is" : "are"} deleted too.`
+            : ""
+        }`}
         confirmLabel="Delete"
         variant="danger"
         onConfirm={confirmDelete}

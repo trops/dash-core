@@ -480,6 +480,13 @@ class BotRunner {
           botId,
           // A Dash team run inside a Create plan: its memory (4e-1).
           ...(opts.planId ? { planId: opts.planId } : {}),
+          // The goal this run works on (goals ledger): the goal tools set
+          // it when the bot creates a goal or claims a task.
+          ...(opts.goal ? { goal: opts.goal } : {}),
+          ...(opts.conversationId
+            ? { conversationId: opts.conversationId }
+            : {}),
+          botName: bot.name || null,
         });
       };
 
@@ -814,6 +821,12 @@ class BotRunner {
     if (opts.via) runRecord.via = opts.via;
     // The lead-workspace conversation it came from (release 5).
     if (opts.conversationId) runRecord.conversationId = opts.conversationId;
+    // The goal and task it worked on (goals ledger), so the goal finds its
+    // runs and deleting it removes them.
+    if (opts.goal && opts.goal.goalId) {
+      runRecord.goalId = opts.goal.goalId;
+      if (opts.goal.taskId) runRecord.taskId = opts.goal.taskId;
+    }
     this._store.appendRun(botId, runRecord);
 
     // Feed usage to budgets (Slice 5). Optional hook; only when we captured

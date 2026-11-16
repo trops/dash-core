@@ -101,6 +101,16 @@ describe("askTeamBot", () => {
     assert.equal("conversationId" in plain.calls[0], false);
   });
 
+  it("the lead's goal goes on the bot's run (goals ledger); no goal, none", async () => {
+    const withGoal = setup({ goal: { goalId: "g_1", taskId: "t_9" } });
+    await askTeamBot(withGoal.args);
+    // Only the goal: the bot claims its own task.
+    assert.deepEqual(withGoal.calls[0].goal, { goalId: "g_1" });
+    const none = setup({ goal: { goalId: null, taskId: null } });
+    await askTeamBot(none.args);
+    assert.equal("goal" in none.calls[0], false);
+  });
+
   it("asked from Dash (no via, or Create) it runs", async () => {
     for (const leadVia of [null, "create"]) {
       const { args, calls } = setup({ leadVia });

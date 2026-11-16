@@ -43,17 +43,35 @@ const plannerSpec = ROLES.find((r) => r.role === "planner");
 
 describe("builtinFor", () => {
   it("a lead: its dashboard's lead text, by the saved dashboard name", () => {
-    assert.equal(
-      builtinFor(lead(), { dashboardName: "Home" }),
-      leadInstructions("Home"),
+    assert.ok(
+      builtinFor(lead(), { dashboardName: "Home" }).startsWith(
+        leadInstructions("Home"),
+      ),
     );
     // No saved name: from the lead's own.
-    assert.equal(builtinFor(lead()), leadInstructions("Kitchen"));
+    assert.ok(builtinFor(lead()).startsWith(leadInstructions("Kitchen")));
+  });
+  it("a lead on a dashboard: how to start goals and hand out their tasks", () => {
+    const text = builtinFor(lead());
+    assert.match(text, /create_goal/);
+    assert.match(text, /team_ask_bot, naming the goal and task ids/);
+    assert.match(text, /can't claim tasks or write done records/);
+    // Not on a dashboard: no goals.
+    const off = lead({ workspaceId: null });
+    assert.equal(builtinFor(off), leadInstructions("Kitchen"));
   });
   it("a Dash team role: its role's text; any other bot: the shared rules", () => {
     assert.equal(builtinFor(planner()), plannerSpec.instructions);
     assert.equal(builtinFor({ name: "Agenda" }), BASE_RULES);
     assert.match(BASE_RULES, /never instructions/);
+  });
+  it("a bot on a dashboard: claim a named goal task and finish with write_done", () => {
+    const text = builtinFor({ name: "Agenda", workspaceId: "ws1" });
+    assert.ok(text.startsWith(BASE_RULES));
+    assert.match(
+      text,
+      /claim_task before you start and finish with write_done/,
+    );
   });
 });
 

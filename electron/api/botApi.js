@@ -312,7 +312,12 @@ const botApi = {
   /** Save a conversation as it goes: { id?, prompt?, conversation? } → { id }. */
   saveCreateRecent: (entry) =>
     ipcRenderer.invoke(CREATE_RECENT_SAVE, { entry }),
-  removeCreateRecent: (id) => ipcRenderer.invoke(CREATE_RECENT_REMOVE, { id }),
+  /** Remove a conversation; `{ deleteGoals: true }` removes the goals it started too. */
+  removeCreateRecent: (id, opts = {}) =>
+    ipcRenderer.invoke(CREATE_RECENT_REMOVE, {
+      id,
+      deleteGoals: !!(opts && opts.deleteGoals),
+    }),
   removePlanBuild: (buildId) =>
     ipcRenderer.invoke(BOTS_REMOVE_PLAN_BUILD, { buildId }),
   /** Global bot settings: { autoLeads, dashTeam: { models } }. */

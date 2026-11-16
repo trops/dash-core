@@ -32,6 +32,8 @@ export const DashboardHeader = ({
   stageMode = "dashboard",
   onStageModeChange = null,
   botsAttention = 0,
+  // Goals waiting for the user (goals-ledger PRD), shown on "Goals".
+  goalsAttention = 0,
 }) => {
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const { currentTheme } = useContext(ThemeContext);
@@ -84,6 +86,22 @@ export const DashboardHeader = ({
                       </span>
                     ),
                   },
+                  {
+                    value: "goals",
+                    label: (
+                      <span className="inline-flex items-center gap-1.5">
+                        Goals
+                        {goalsAttention > 0 && (
+                          <span
+                            aria-label={`${goalsAttention} need you`}
+                            className="inline-flex items-center justify-center rounded-full bg-amber-500 text-gray-900 text-xs font-semibold px-1.5 h-5"
+                          >
+                            {goalsAttention}
+                          </span>
+                        )}
+                      </span>
+                    ),
+                  },
                 ]}
               />
             )}
@@ -93,7 +111,7 @@ export const DashboardHeader = ({
                 preview mode — wiring is a configuration concern, not a
                 viewer concern. The button only appears in edit mode
                 below. */}
-            {onPopout !== null && stageMode !== "bots" && (
+            {onPopout !== null && stageMode === "dashboard" && (
               <ButtonIcon
                 icon="arrow-up-right-from-square"
                 ariaLabel="Pop out"

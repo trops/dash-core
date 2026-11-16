@@ -29,6 +29,7 @@ const OUTSIDE_CALLERS = new Set(["mcp"]);
  * @param {string|null} [p.leadVia]  who started the lead's run
  * @param {string|null} [p.conversationId]  the lead conversation it came
  *   from (release 5: the bot's Activity opens it)
+ * @param {{ goalId: string }|null} [p.goal]  the goal the lead is working on
  * @param {() => boolean} p.takeHandoff  counts the hand-off; false = over the cap
  * @param {(opts) => Promise<object>} p.run  runs the member with run options
  * @param {(p: Promise) => void} [p.track]  told about the member's run
@@ -41,6 +42,7 @@ async function askTeamBot({
   request,
   leadVia = null,
   conversationId = null,
+  goal = null,
   takeHandoff,
   run,
   track = null,
@@ -70,6 +72,8 @@ async function askTeamBot({
       // the user.
       approvalPolicy: "ask",
       ...(conversationId ? { conversationId: String(conversationId) } : {}),
+      // The lead's goal (goals ledger): the bot's run is recorded under it.
+      ...(goal && goal.goalId ? { goal: { goalId: String(goal.goalId) } } : {}),
     }),
   );
   if (track) track(started);

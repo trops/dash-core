@@ -46,6 +46,32 @@ after(() => {
   for (const r of tmpRoots) fs.rmSync(r, { recursive: true, force: true });
 });
 
+describe("BotStore runs of a goal (goals ledger)", () => {
+  it("finds every bot's runs for a goal, and removes only those", () => {
+    const { store } = freshStore();
+    const a = store.create(validDef);
+    const b = store.create({ ...validDef, name: "Checker" });
+    store.appendRun(a.id, {
+      status: "completed",
+      startedAt: 1,
+      goalId: "goal_x",
+    });
+    store.appendRun(a.id, { status: "completed", startedAt: 2 });
+    store.appendRun(b.id, { status: "failed", startedAt: 3, goalId: "goal_x" });
+    const runs = store.runsForGoal("goal_x");
+    assert.deepEqual(
+      runs.map((r) => [r.botId, r.startedAt]),
+      [
+        [a.id, 1],
+        [b.id, 3],
+      ],
+    );
+    assert.equal(store.removeRunsForGoal("goal_x"), 2);
+    assert.equal(store.runsForGoal("goal_x").length, 0);
+    assert.equal(store.getRuns(a.id).length, 1);
+  });
+});
+
 describe("BotStore construction", () => {
   it("requires persistence and a bots root", () => {
     assert.throws(() => new BotStore({}), /persistence/);

@@ -32,6 +32,16 @@ const BASE_RULES = [
   "End with a short answer: what you found or did.",
 ].join("\n");
 
+// The dashboard's goals ledger (goals-ledger GOAL-002): the lead starts
+// goals and hands out their tasks; the team's bots claim and finish them.
+const LEAD_GOALS_RULE =
+  "When the user asks for work worth keeping track of — something with steps, or that they want to see in Goals — start a goal with create_goal, add a task per step with add_task, then ask the team's bots to do them with team_ask_bot, naming the goal and task ids in the request. Say in your answer that it's on the Goals tab. A quick question needs no goal. You can't claim tasks or write done records; the team's bots do.";
+const GOALS_RULE =
+  "When a request names a goal task, claim it with claim_task before you start and finish with write_done: passed or failed, a one-line summary, and evidence (what you made or checked).";
+
+const onDashboard = (bot) =>
+  !!bot && bot.workspaceId != null && bot.workspaceId !== "";
+
 /** The dashboard a lead works for: its saved name, else from the lead's. */
 function leadDashboardName(bot, dashboardName) {
   return (
@@ -49,13 +59,14 @@ function leadDashboardName(bot, dashboardName) {
  */
 function builtinFor(bot, { dashboardName = null } = {}) {
   if (isLead(bot)) {
-    return leadInstructions(leadDashboardName(bot, dashboardName));
+    const text = leadInstructions(leadDashboardName(bot, dashboardName));
+    return onDashboard(bot) ? `${text}\n\n${LEAD_GOALS_RULE}` : text;
   }
   if (isDashTeam(bot)) {
     const spec = roleSpec(bot.role);
     if (spec) return spec.instructions;
   }
-  return BASE_RULES;
+  return onDashboard(bot) ? `${BASE_RULES}\n${GOALS_RULE}` : BASE_RULES;
 }
 
 /** The line between the two layers: who wins on what. */

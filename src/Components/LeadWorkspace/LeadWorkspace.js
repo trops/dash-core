@@ -921,8 +921,8 @@ export const LeadWorkspace = ({
     isAsking(t.id) ||
     (open && t.id === selectedId && askBusy);
   // Delete from Recents, for good (conversation cleanup, frame 3.3); the
-  // open one closes first.
-  const deleteThreads = async (ids) => {
+  // open one closes first. `deleteGoals`: the goals they started go too.
+  const deleteThreads = async (ids, opts = {}) => {
     const b = botsApi();
     const failed = [];
     if (!b || !b.removeCreateRecent) {
@@ -933,7 +933,9 @@ export const LeadWorkspace = ({
     if (open && ids.includes(selectedId)) startNew();
     for (const id of ids) {
       try {
-        const res = await b.removeCreateRecent(id);
+        const res = await b.removeCreateRecent(id, {
+          deleteGoals: !!(opts && opts.deleteGoals),
+        });
         if (res && res.error) failed.push({ id, error: res.error });
       } catch (err) {
         failed.push({
