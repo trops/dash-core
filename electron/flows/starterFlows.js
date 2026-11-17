@@ -67,6 +67,28 @@ const TICKET_TO_PR = {
         name: "Builder",
         instructions:
           "Build what the ticket asks in the work folder you're given: make the change, add or update tests that prove each criterion (each must fail before the change and pass after), run the project's checks, commit on a new branch, push it and open a pull request. Never push to the main branch, force push or publish. Record the branch, the commit, the pull request number and link, and the checks' exit code.",
+        commands: {
+          // Only the git it needs: all of git can run anything (aliases,
+          // hooks, -c options).
+          allowed: [
+            "git status",
+            "git diff",
+            "git log",
+            "git add",
+            "git commit",
+            "git checkout -b",
+            "git switch -c",
+            "git push -u origin",
+            "git fetch",
+            "npm run ci",
+            "npm test",
+            "npm install",
+            "gh pr create",
+            "gh pr view",
+            "gh pr checks",
+          ],
+          blocked: [],
+        },
       },
       outputs: [
         field("branch", "text"),
@@ -107,6 +129,17 @@ const TICKET_TO_PR = {
         instructions:
           "Review the pull request against the goal's criteria. Read the diff and the checks; change nothing. Pass only when every criterion has proof (a test that covers it, a screenshot, a CI line). Otherwise fail with a fix list, one line per thing to fix.",
         readOnly: true,
+        commands: {
+          allowed: [
+            "git diff",
+            "git log",
+            "git show",
+            "gh pr view",
+            "gh pr diff",
+            "gh pr checks",
+          ],
+          blocked: ["git commit", "git push", "npm publish"],
+        },
       },
       outputs: [field("verdict", "text"), field("proof", "list")],
     },

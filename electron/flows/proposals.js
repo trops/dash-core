@@ -59,6 +59,18 @@ function cleanProposal(p) {
           : [],
         readOnly: s.bot.readOnly === true,
         acts: s.bot.acts === true,
+        ...(s.bot.commands && typeof s.bot.commands === "object"
+          ? {
+              commands: {
+                allowed: (s.bot.commands.allowed || [])
+                  .map(String)
+                  .slice(0, 50),
+                blocked: (s.bot.commands.blocked || [])
+                  .map(String)
+                  .slice(0, 50),
+              },
+            }
+          : {}),
       };
     }
     if (Array.isArray(s.outputs)) step.outputs = s.outputs;

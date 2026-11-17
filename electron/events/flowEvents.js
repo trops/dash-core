@@ -34,6 +34,7 @@ const FLOWS_FILE_COPY_IN = "flows-file-copy-in";
 const FLOWS_FILE_REMOVE = "flows-file-remove";
 const FLOWS_PICK_FOLDER = "flows-pick-folder";
 const FLOWS_PROPOSE = "flows-propose";
+const FLOWS_WRITE_SCRIPT = "flows-write-script";
 const FLOWS_PUBLISH_PREVIEW = "flows-publish-preview";
 const FLOWS_PUBLISH = "flows-publish";
 const FLOWS_INSTALL_PREVIEW = "flows-install-preview";
@@ -41,6 +42,8 @@ const FLOWS_INSTALL = "flows-install";
 const FLOWS_UPDATE_PREVIEW = "flows-update-preview";
 const FLOWS_UPDATE = "flows-update";
 const FLOWS_SKIP_VERSION = "flows-skip-version";
+const FLOWS_CHECK_UPDATE = "flows-check-update";
+const FLOWS_SEARCH = "flows-search";
 
 // Main → every window: { type, flowId, workspaceId? }
 const FLOWS_CHANGED = "flows:changed";
@@ -76,6 +79,7 @@ module.exports = {
   FLOWS_FILE_REMOVE,
   FLOWS_PICK_FOLDER,
   FLOWS_PROPOSE,
+  FLOWS_WRITE_SCRIPT,
   FLOWS_PUBLISH_PREVIEW,
   FLOWS_PUBLISH,
   FLOWS_INSTALL_PREVIEW,
@@ -83,5 +87,7 @@ module.exports = {
   FLOWS_UPDATE_PREVIEW,
   FLOWS_UPDATE,
   FLOWS_SKIP_VERSION,
+  FLOWS_CHECK_UPDATE,
+  FLOWS_SEARCH,
   FLOWS_CHANGED,
 };

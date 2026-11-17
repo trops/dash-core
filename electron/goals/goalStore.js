@@ -66,6 +66,7 @@ function flowSnapshot(flow) {
       version: flow.version || 1,
       package: flow.package || null,
       maxRounds: flow.maxRounds || 3,
+      taskLimits: flow.taskLimits || null,
       steps: flow.steps,
       edges: flow.edges || [],
     }),
@@ -425,12 +426,20 @@ function createGoalStore({
     return { goal: view(goal) };
   }
 
-  /** Change a held goal's criteria before it starts. */
+  /**
+   * Change a goal's criteria: before it starts, or while it's stopped and
+   * waiting for the user ("Change what done means", frame 4). Never while a
+   * step is working on it.
+   */
   function setCriteria(goalId, criteria) {
     const goal = goals.get(goalId);
     if (!goal) return { error: "No such goal." };
-    if (!goal.waiting && goal.flow) {
-      return { error: "What done means is locked once a goal starts." };
+    const stopped = tasksOf(goalId).some((t) => t.status === "needs-you");
+    if (!goal.waiting && goal.flow && !stopped) {
+      return {
+        error:
+          "What done means is locked while the goal runs. It can change once it stops and waits for you.",
+      };
     }
     goal.criteria = Array.isArray(criteria) ? criteria.slice(0, 20) : [];
     touch(goalId);

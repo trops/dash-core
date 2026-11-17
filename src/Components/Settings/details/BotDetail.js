@@ -295,6 +295,16 @@ export const BotDetail = ({
     from?.approvalPolicy || "ask",
   );
   const approvalHint = APPROVAL_HINTS[approvalPolicy] || null;
+  // Folders it works in, and its shell commands (flows PRD, phase 5).
+  const [projects, setProjects] = useState(
+    Array.isArray(from?.projects) ? from.projects : [],
+  );
+  const [allowedCommands, setAllowedCommands] = useState(
+    ((from?.commands && from.commands.allowed) || []).join("\n"),
+  );
+  const [blockedCommands, setBlockedCommands] = useState(
+    ((from?.commands && from.commands.blocked) || []).join("\n"),
+  );
   // Events that arrive while it's paused or over budget (US-011 AC8).
   const [whilePaused, setWhilePaused] = useState(
     from?.whilePaused === "drop" ? "drop" : "queue",
@@ -424,6 +434,9 @@ export const BotDetail = ({
     whilePaused,
     selectedServers,
     toolSelections,
+    projects,
+    allowedCommands,
+    blockedCommands,
     frequency,
     time,
     dayOfWeek,
@@ -772,6 +785,17 @@ export const BotDetail = ({
       approvalPolicy,
       workspaceId: team || null,
       mcpServers: selectedServers,
+      projects: projects.filter(Boolean),
+      commands: {
+        allowed: allowedCommands
+          .split(/\n/)
+          .map((c) => c.trim())
+          .filter(Boolean),
+        blocked: blockedCommands
+          .split(/\n/)
+          .map((c) => c.trim())
+          .filter(Boolean),
+      },
       // Only keep narrowing for providers the bot still uses.
       toolSelections: Object.fromEntries(
         Object.entries(toolSelections).filter(([server]) =>
@@ -1166,6 +1190,85 @@ export const BotDetail = ({
               />
               {approvalHint ? (
                 <span className="text-xs opacity-50">{approvalHint}</span>
+              ) : null}
+              {!isTeamRole ? (
+                <div
+                  className="flex flex-col gap-2"
+                  data-testid="bot-work-folders"
+                >
+                  <span className="text-sm font-medium">
+                    Folders it works in
+                  </span>
+                  <span className="text-xs opacity-50">
+                    In a flow, each task gets its own copy of the first folder
+                    (a git worktree on its own branch), never your checkout. A
+                    folder that isn't a git repo is worked in where it is.
+                  </span>
+                  {projects.map((f, i) => (
+                    <div key={f} className="flex flex-row items-center gap-2">
+                      <span className="text-sm font-mono flex-1 min-w-0 truncate">
+                        {f}
+                      </span>
+                      <Button3
+                        title="Remove"
+                        size="sm"
+                        onClick={() =>
+                          setProjects((list) => list.filter((_, n) => n !== i))
+                        }
+                      />
+                    </div>
+                  ))}
+                  <div>
+                    <Button3
+                      title="Choose a folder…"
+                      size="sm"
+                      onClick={async () => {
+                        const api = window.mainApi && window.mainApi.flows;
+                        const r = api
+                          ? await api.pickFolder({
+                              title: "A folder it works in",
+                            })
+                          : null;
+                        if (r && r.path) {
+                          setProjects((list) =>
+                            list.includes(r.path) ? list : [...list, r.path],
+                          );
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {!isTeamRole ? (
+                <div className="flex flex-col gap-2" data-testid="bot-commands">
+                  <span className="text-sm font-medium">Shell commands</span>
+                  <span className="text-xs opacity-50">
+                    One per line; a line covers the command and anything after
+                    it (git covers git status). Always blocked, whatever is
+                    listed: git push --force, git reset --hard, rm -rf, pushing
+                    to the main branch, and publishing a package.
+                  </span>
+                  <div className="flex flex-row flex-wrap gap-3">
+                    <div className="flex-1 min-w-48">
+                      <TextArea
+                        label="Runs without asking"
+                        rows={3}
+                        value={allowedCommands}
+                        onChange={(v) => setAllowedCommands(v)}
+                        placeholder={"git\nnpm run ci"}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-48">
+                      <TextArea
+                        label="Never runs"
+                        rows={3}
+                        value={blockedCommands}
+                        onChange={(v) => setBlockedCommands(v)}
+                        placeholder="curl"
+                      />
+                    </div>
+                  </div>
+                </div>
               ) : null}
               {!isCreating && bot && bot.id ? (
                 <AlwaysAllowedList botId={bot.id} />

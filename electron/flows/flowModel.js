@@ -75,6 +75,21 @@ function cleanFields(list) {
   return out;
 }
 
+/**
+ * A task's limits across all its runs (phase 5; G10): minutes and steps.
+ * Rounds are the flow's maxRounds. Null when none are set.
+ */
+function cleanLimits(l) {
+  if (!l || typeof l !== "object") return null;
+  const minutes = Math.floor(Number(l.minutes));
+  const steps = Math.floor(Number(l.steps));
+  const out = {
+    ...(minutes > 0 ? { minutes: Math.min(minutes, 24 * 60) } : {}),
+    ...(steps > 0 ? { steps: Math.min(steps, 5000) } : {}),
+  };
+  return Object.keys(out).length ? out : null;
+}
+
 /** A check's settings, kept as given apart from its kind (checks/ reads them). */
 function cleanCheck(check) {
   if (!check || typeof check !== "object") return null;
@@ -147,6 +162,9 @@ function normalizeFlow(input = {}) {
     const kind = e.kind === "fail" ? "fail" : "next";
     const key = `${e.from}>${e.to}>${kind}`;
     if (seen.has(key)) continue;
+    // Work goes round only on a fail arrow (with a round limit): a "next"
+    // arrow back to where it came from is dropped.
+    if (kind === "next" && reaches(edges, e.to, e.from)) continue;
     seen.add(key);
     edges.push({ from: e.from, to: e.to, kind, label: str(e.label, 60) });
   }
@@ -162,7 +180,23 @@ function normalizeFlow(input = {}) {
     steps,
     edges,
     criteria: Array.isArray(input.criteria) ? input.criteria.slice(0, 20) : [],
+    taskLimits: cleanLimits(input.taskLimits),
   };
+}
+
+/** Can `from` reach `to` along the "next" edges so far? */
+function reaches(edges, from, to) {
+  const seen = new Set();
+  const stack = [from];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (cur === to) return true;
+    if (seen.has(cur)) continue;
+    seen.add(cur);
+    for (const e of edges)
+      if (e.kind === "next" && e.from === cur) stack.push(e.to);
+  }
+  return false;
 }
 
 /** Steps in chain order: from the source along the "next" edges. */

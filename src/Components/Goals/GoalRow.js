@@ -11,6 +11,7 @@ import {
   taskLabel,
   taskState,
 } from "./goalText";
+import { stepPills } from "../Flows/flowText";
 
 const PILL_MAX = 24;
 const clip = (s) =>
@@ -64,14 +65,24 @@ export const GoalRow = ({ goal, active = false, onClick, now }) => {
         </span>
         <span className="flex flex-row items-center gap-2 min-w-0">
           <span className="flex flex-row flex-wrap gap-1 flex-1 min-w-0">
-            {(goal.tasks || []).map((t) => (
-              <span key={t.id} title={`${t.title} · ${taskLabel(t.status)}`}>
-                <StatusBadge
-                  state={taskState(t.status)}
-                  label={clip(t.title)}
-                />
-              </span>
-            ))}
+            {goal.flow
+              ? // A goal in a flow: one pill per step (frame 3).
+                stepPills(goal).map((p) => (
+                  <span key={p.id} title={p.label}>
+                    <StatusBadge state={p.state} label={clip(p.label)} />
+                  </span>
+                ))
+              : (goal.tasks || []).map((t) => (
+                  <span
+                    key={t.id}
+                    title={`${t.title} · ${taskLabel(t.status)}`}
+                  >
+                    <StatusBadge
+                      state={taskState(t.status)}
+                      label={clip(t.title)}
+                    />
+                  </span>
+                ))}
           </span>
           {round ? (
             <span className={`text-xs flex-shrink-0 ${muted}`}>{round}</span>

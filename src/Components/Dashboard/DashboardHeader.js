@@ -34,6 +34,9 @@ export const DashboardHeader = ({
   botsAttention = 0,
   // Goals waiting for the user (goals-ledger PRD), shown on "Goals".
   goalsAttention = 0,
+  // The open stage's own button on the right (flows PRD): "Add a step" or
+  // "New flow" on Graph, "New goal" on Goals. { label, onClick } or null.
+  stageAction = null,
 }) => {
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const { currentTheme } = useContext(ThemeContext);
@@ -102,11 +105,19 @@ export const DashboardHeader = ({
                       </span>
                     ),
                   },
+                  { value: "graph", label: "Graph" },
                 ]}
               />
             )}
           </div>
           <div className="flex flex-row items-center gap-1">
+            {stageAction !== null && stageMode !== "dashboard" && (
+              <Button2
+                title={stageAction.label}
+                size="sm"
+                onClick={stageAction.onClick}
+              />
+            )}
             {/* Dashboard Config gear is intentionally NOT rendered in
                 preview mode — wiring is a configuration concern, not a
                 viewer concern. The button only appears in edit mode

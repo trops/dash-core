@@ -34,6 +34,9 @@ const flowsApi = {
   undo: (flowId) => call(E.FLOWS_UNDO, { flowId }),
   /** Ask the dashboard's lead to propose a flow from what it should do. */
   propose: (workspaceId, text) => call(E.FLOWS_PROPOSE, { workspaceId, text }),
+  /** A script check's function, written once by the dashboard's lead. */
+  writeScript: (workspaceId, opts) =>
+    call(E.FLOWS_WRITE_SCRIPT, { workspaceId, ...opts }),
   whatItGets: (flowId, stepId) =>
     call(E.FLOWS_WHAT_IT_GETS, { flowId, stepId }),
   /** Try a check on the last real record before saving it. */
@@ -71,6 +74,10 @@ const flowsApi = {
   update: (previewId, choices) => call(E.FLOWS_UPDATE, { previewId, choices }),
   skipVersion: (flowId, version) =>
     call(E.FLOWS_SKIP_VERSION, { flowId, version }),
+  /** Is a newer version of an installed flow out? */
+  checkUpdate: (flowId) => call(E.FLOWS_CHECK_UPDATE, { flowId }),
+  /** Flow packages on the registry, for "Install a flow". */
+  search: (query) => call(E.FLOWS_SEARCH, { query }),
 };
 
 module.exports = flowsApi;

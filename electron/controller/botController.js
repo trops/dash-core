@@ -3365,6 +3365,10 @@ const botController = {
       // here before, so the prompt's MEMORY_NOTE named tools it never had.
       ...(opts.planId ? { planId: String(opts.planId) } : {}),
       goal,
+      // A flow task's own copy of the bot's folder, and its step's limits
+      // (flows PRD, phase 5).
+      ...(opts.workingDir ? { workingDir: String(opts.workingDir) } : {}),
+      ...(opts.limits ? { limits: opts.limits } : {}),
       emit: (event) => {
         if (!alreadyRunning) this._events.onRunEvent(botId, event);
         this._broadcast(BOT_STREAM, { botId, event });

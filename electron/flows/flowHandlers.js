@@ -59,6 +59,8 @@ function flowHandlers({ dialog = null, getMainWindow = () => null } = {}) {
       }),
     [E.FLOWS_UNDO]: (m) => fc("undo")(m.flowId),
     [E.FLOWS_PROPOSE]: (m) => fc("propose")(m.workspaceId, m.text),
+    [E.FLOWS_WRITE_SCRIPT]: (m) =>
+      fc("writeScript")(m.workspaceId, { ask: m.ask, fields: m.fields || [] }),
     [E.FLOWS_WHAT_IT_GETS]: (m) => fc("whatItGets")(m.flowId, m.stepId),
     [E.FLOWS_TRIAL]: (m) => fc("trial")(m.flowId, m.stepId, m.check),
     [E.FLOWS_SUGGEST_FIELDS]: (m) => fc("suggestFields")(m.flowId, m.stepId),
@@ -93,6 +95,8 @@ function flowHandlers({ dialog = null, getMainWindow = () => null } = {}) {
     [E.FLOWS_UPDATE_PREVIEW]: (m) => fc("updatePreview")(m.flowId),
     [E.FLOWS_UPDATE]: (m) => fc("update")(m.previewId, m.choices || {}),
     [E.FLOWS_SKIP_VERSION]: (m) => fc("skipVersion")(m.flowId, m.version),
+    [E.FLOWS_CHECK_UPDATE]: (m) => fc("checkUpdate")(m.flowId),
+    [E.FLOWS_SEARCH]: (m) => fc("searchFlows")(m.query || ""),
   };
 }
 

@@ -35,7 +35,7 @@ function clip(json) {
 }
 
 /** What a bot is told when the flow hands it the work. */
-function stepPrompt({ goal, task, step, input, workFolder }) {
+function stepPrompt({ goal, task, step, input, workFolder, work = null }) {
   const flow = goal.flow;
   const lines = [
     `You're the "${step.name}" step of the "${flow.name}" flow on this dashboard.`,
@@ -80,6 +80,14 @@ function stepPrompt({ goal, task, step, input, workFolder }) {
     "What the steps before you made (as JSON):",
     clip(JSON.stringify({ input: input.input, from: input.from }, null, 1)),
   );
+  if (work && work.kind === "worktree") {
+    lines.push(
+      "",
+      `Work in ${work.dir}: your own copy of the project, on the branch ${work.branch}. Commit there and push that branch; never push to the main branch, force push, or publish.`,
+    );
+  } else if (work && work.kind === "folder") {
+    lines.push("", `Work in ${work.dir}.`);
+  }
   if (workFolder) {
     lines.push(
       "",
@@ -99,6 +107,8 @@ function stepPrompt({ goal, task, step, input, workFolder }) {
  *           runCheck: (check, input, ctx) => Promise<object>,
  *           filesOf?: (goalId) => string[],
  *           checkContext?: (goal, step) => object,
+ *           prepareWork?: (goal, task, step) => object|null,
+ *           taskUsage?: (goalId, taskId) => { minutes, steps },
  *           now?: () => number,
  *           onError?: (e) => void }} deps
  */
@@ -110,6 +120,8 @@ function createFlowRunner(deps) {
     runCheck,
     filesOf = () => [],
     checkContext = () => ({}),
+    prepareWork = () => null,
+    taskUsage = null,
     now = Date.now,
     onError = () => {},
   } = deps;
@@ -136,8 +148,55 @@ function createFlowRunner(deps) {
     });
   }
 
+  /** The task's limits (phase 5; G10): over one, it stops for the user. */
+  function overLimit(goal, task) {
+    const lim = goal.flow && goal.flow.taskLimits;
+    if (!lim || !taskUsage) return null;
+    // Counted from the last "one more round": the user gave it more.
+    const more = [...(task.history || [])]
+      .reverse()
+      .find((r) => r.by === "you" && r.status === "one-more-round");
+    let used;
+    try {
+      used = taskUsage(goal.id, task.id, more ? more.at : 0) || {};
+    } catch (_e) {
+      return null;
+    }
+    if (lim.minutes > 0 && (used.minutes || 0) >= lim.minutes) {
+      return `It has used its ${lim.minutes} minutes for this task.`;
+    }
+    if (lim.steps > 0 && (used.steps || 0) >= lim.steps) {
+      return `It has used its ${lim.steps} steps for this task.`;
+    }
+    return null;
+  }
+
   function startBot(goal, task, step) {
     const key = keyOf(task);
+    const over = overLimit(goal, task);
+    if (over) {
+      store.writeStepRecord(task.id, {
+        stepId: step.id,
+        status: "needs-you",
+        summary: over,
+      });
+      return;
+    }
+    // Its own copy of the bot's folder, when it has one (phase 5; G5).
+    let work = null;
+    try {
+      work = prepareWork(goal, task, step);
+    } catch (e) {
+      work = { error: (e && e.message) || String(e) };
+    }
+    if (work && work.error) {
+      store.writeStepRecord(task.id, {
+        stepId: step.id,
+        status: "needs-you",
+        summary: work.error,
+      });
+      return;
+    }
     const input = inputFor(goal, task, step.id);
     const paths = store.paths(goal.id);
     inFlight.add(key);
@@ -152,8 +211,10 @@ function createFlowRunner(deps) {
             step,
             input,
             workFolder: paths ? paths.work : null,
+            work,
           }),
           trigger: "flow",
+          ...(work && work.dir ? { workingDir: work.dir } : {}),
           via: `flow:${goal.flow.id || ""}`,
           goal: { goalId: goal.id, taskId: task.id },
           ...(step.limits ? { limits: step.limits } : {}),

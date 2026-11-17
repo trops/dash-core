@@ -50,7 +50,10 @@ function latestPassed(task, stepId) {
 /** The latest failed record on a task, if the work came back because of it. */
 function latestFix(task, flow) {
   const history = (task && task.history) || [];
-  const last = history[history.length - 1];
+  // Past the user's own moves (one more round): the failure before them.
+  let i = history.length - 1;
+  while (i >= 0 && history[i] && history[i].by === "you") i -= 1;
+  const last = history[i];
   if (!last || last.status !== "failed") return null;
   const step = stepById(flow, last.stepId);
   return {

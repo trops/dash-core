@@ -40,6 +40,7 @@ const {
   suggestFields,
   stepKey,
   latestPassed,
+  checkOutput,
 } = require("../checks/stepInput");
 const { runCheck } = require("../checks/checkRunner");
 const { RULE_TYPES } = require("../checks/kinds/rules");
@@ -52,6 +53,8 @@ const {
 } = require("../goals/criteria");
 const goalController = require("./goalController");
 const { FLOWS_CHANGED } = require("../events/flowEvents");
+const { prepareWorkFolder, pruneWorktrees } = require("../flows/workFolder");
+const { createFlowShare } = require("../flows/flowShare");
 
 const DIR = "flows";
 
@@ -71,6 +74,7 @@ const PROPOSAL_NOTE = [
 
 let store = null;
 let runner = null;
+let share = null;
 let getWindows = () => [];
 let offGoals = null;
 let tick = null;
@@ -89,6 +93,7 @@ let bots = {
   actsOutward: () => false,
   graphRows: () => [],
   proposeFlow: async () => ({ error: "Bots aren't ready yet" }),
+  writeScript: async () => ({ error: "Bots aren't ready yet" }),
 };
 
 function broadcast(payload) {
@@ -148,13 +153,46 @@ function filesOf(goalId) {
   return out;
 }
 
+/** Where a goal's own copy of its flow's files is. */
+function goalFlowFiles(goalId) {
+  const g = goals();
+  const p = g && g.paths(goalId);
+  return p ? path.join(p.dir, "flow-files") : null;
+}
+
+/** Copy a new flow goal's files (scripts/, checks/, data/) once. */
+function copyFlowFiles(goalId) {
+  try {
+    const g = goals();
+    const goal = g && g.getGoal(goalId);
+    const s = ensure();
+    if (!goal || !goal.flow || !goal.flow.id || !s) return;
+    const dest = goalFlowFiles(goalId);
+    if (!dest || fs.existsSync(dest)) return;
+    const src = s.folderOf(goal.flow.id);
+    fs.mkdirSync(dest, { recursive: true });
+    if (!src) return;
+    for (const folder of ["scripts", "checks", "data"]) {
+      const from = path.join(src, folder);
+      if (fs.existsSync(from))
+        fs.cpSync(from, path.join(dest, folder), { recursive: true });
+    }
+  } catch (_e) {
+    // Without a copy, checks read the flow's own files.
+  }
+}
+
 /** What a check needs to run for a goal: its folder, scripts and tools. */
 function checkContext(goal, _step) {
   const flowId = goal && goal.flow ? goal.flow.id : null;
   const s = ensure();
   const g = goals();
+  // The goal's own copy of the flow's files, when it has one.
+  const copy = goal && goal.id ? goalFlowFiles(goal.id) : null;
   const folder =
-    (s && flowId && s.folderOf(flowId)) || (g && g.paths(goal.id).work);
+    (copy && fs.existsSync(copy) ? copy : null) ||
+    (s && flowId && s.folderOf(flowId)) ||
+    (g && g.paths(goal.id).work);
   return {
     // Commands run in the flow's folder; the goal's files reach them
     // through the input, never through a path written into the command.
@@ -164,13 +202,23 @@ function checkContext(goal, _step) {
     callTool: (server, tool, args) =>
       bots.callTool(server, tool, args, goal ? goal.workspaceId : null),
     isReadOnly: (server, tool) => bots.isReadOnlyTool(server, tool),
-    readScript: (ref) => readScriptRef(flowId, ref),
+    readScript: (ref) => readScriptRef(flowId, ref, copy),
   };
 }
 
 /** A check's script: in the flow's folder ("checks/x.js") or on this computer. */
-function readScriptRef(flowId, ref) {
+function readScriptRef(flowId, ref, copy = null) {
   const r = String(ref || "");
+  if (
+    copy &&
+    /^(scripts|checks|data)\/[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/.test(r)
+  ) {
+    try {
+      return fs.readFileSync(path.join(copy, r), "utf8");
+    } catch (_e) {
+      // Not copied: the flow's own.
+    }
+  }
   if (r.startsWith("local:")) {
     try {
       return fs.readFileSync(r.slice(6), "utf8");
@@ -191,9 +239,44 @@ function startRunner() {
     runCheck: (check, input, ctx) => runCheck(check, input, ctx),
     filesOf,
     checkContext,
+    // A task's own copy of its bot's folder (phase 5).
+    prepareWork: (goal, _task, step) => {
+      const bot = step.botId ? bots.getBot(step.botId) : null;
+      const folder =
+        bot && Array.isArray(bot.projects) ? bot.projects[0] : null;
+      if (!folder) return null;
+      const p = goals().paths(goal.id);
+      return prepareWorkFolder({ folder, goalId: goal.id, workRoot: p.work });
+    },
+    // What a task has used across its runs: minutes and steps (phase 5).
+    taskUsage: (goalId, taskId, since = 0) => {
+      const g = goalController.get(goalId);
+      let minutes = 0;
+      let steps = 0;
+      for (const r of (g && g.runs) || []) {
+        if (r.taskId !== taskId || (r.startedAt || 0) < since) continue;
+        if (r.startedAt && r.endedAt)
+          minutes += (r.endedAt - r.startedAt) / 60000;
+        steps += r.steps || 0;
+      }
+      return { minutes, steps };
+    },
   });
   if (offGoals) offGoals();
-  offGoals = goalController.onChange(() => runner.schedule());
+  offGoals = goalController.onChange((change) => {
+    // A new goal in a flow keeps its own copy of the flow's files, so a
+    // script changed or a flow deleted later doesn't change it halfway.
+    if (change && change.type === "goal" && change.goalId)
+      copyFlowFiles(change.goalId);
+    // A deleted goal's work folder is gone: git forgets its worktree.
+    if (change && change.type === "deleted" && change.workspaceId != null) {
+      const folders = (bots.listBots(change.workspaceId) || []).flatMap((b) =>
+        Array.isArray(b.projects) ? b.projects : [],
+      );
+      if (folders.length) setImmediate(() => pruneWorktrees(folders));
+    }
+    runner.schedule();
+  });
   if (tick) clearInterval(tick);
   // Slow tick: a paused bot resumed, a busy bot freed up.
   tick = setInterval(() => runner.schedule(), 20 * 1000);
@@ -546,13 +629,15 @@ const flowController = {
           workspaceId: String(workspaceId),
           schedules: st.bot.schedules || [],
           approvalPolicy: "ask",
+          // Every AI step of a flow that works on files gets the folder: the
+          // Builder its own copy to change, the Reviewer the same copy to read.
           ...(folder &&
           proposal.needs &&
           proposal.needs.folder &&
-          !st.bot.readOnly &&
           st.kind === "bot"
             ? { projects: [String(folder)] }
             : {}),
+          ...(st.bot.commands ? { commands: st.bot.commands } : {}),
         });
         if (saved && saved.id) {
           made[st.key] = saved.id;
@@ -595,6 +680,30 @@ const flowController = {
    * it's shown as it would be made, and nothing is made until "Make this
    * flow".
    */
+  /**
+   * "Write it with AI" (frame 19): the dashboard's lead writes a script
+   * check's function once, from what it should check and the fields it
+   * gets. It comes back to read before it's saved; it runs without AI.
+   */
+  async writeScript(workspaceId, { ask = "", fields = [] } = {}) {
+    if (!String(ask || "").trim())
+      return { error: "Say what it should check." };
+    try {
+      const r = await bots.writeScript(workspaceId, ask, fields);
+      if (!r || r.error)
+        return { error: (r && r.error) || "No script came back." };
+      if (!/function\s+check\s*\(/.test(r.script || "")) {
+        return {
+          error:
+            "What came back isn't a check function. Try saying it another way.",
+        };
+      }
+      return { ok: true, script: r.script };
+    } catch (e) {
+      return { error: (e && e.message) || String(e) };
+    }
+  },
+
   async propose(workspaceId, text) {
     if (!String(text || "").trim())
       return { error: "Say what the flow should do." };
@@ -663,6 +772,7 @@ const flowController = {
     if (!flow) return { error: "No such flow." };
     const g = goals();
     const outputs = [];
+    let last = null;
     for (const goal of g
       ? g.listGoals({ workspaceId: flow.workspaceId })
       : []) {
@@ -671,13 +781,24 @@ const flowController = {
         for (const r of [...(t.history || [])].reverse()) {
           if (r.stepId === stepId && r.status === "passed" && r.output) {
             outputs.push(r.output);
+            if (!last || r.at > last.at) last = { output: r.output, at: r.at };
             break;
           }
         }
       }
       if (outputs.length >= 3) break;
     }
-    return ok({ fields: suggestFields(outputs), from: outputs.length });
+    // The last run's record against the step's fields ("Last run matches").
+    const step = stepById(flow, stepId);
+    const fit =
+      last && step && step.outputs && step.outputs.length
+        ? checkOutput(step.outputs, last.output)
+        : null;
+    return ok({
+      fields: suggestFields(outputs),
+      from: outputs.length,
+      last: last ? { ...last, fit } : null,
+    });
   },
 
   /** Which later steps read each of a step's fields. */
@@ -774,6 +895,100 @@ const flowController = {
     const proven = proveCriteria(criteria, goal.flow);
     const r = g.setCriteria(goalId, proven.criteria);
     return r.error ? r : ok({ goal: r.goal });
+  },
+
+  // ---- publish, install, update (phase 7) --------------------------------
+
+  /** The share steps, with the registry's real sign-in, publish, download. */
+  share() {
+    if (share) return share;
+    share = createFlowShare({
+      store: ensure(),
+      goals,
+      bots: {
+        listBots: (ws) => bots.listBots(ws),
+        getBot: (id) => bots.getBot(id),
+        saveBot: (def) => bots.saveBot(def),
+        deleteBot: (id) => bots.deleteBot(id),
+        resumeBot: (id) => bots.resumeBot(id),
+        providers: () => bots.providers(),
+      },
+      identity: () => require("./botPublish").registryIdentity(),
+      publishZip: (files, manifest) =>
+        require("./botPublish").zipAndPublish(files, manifest),
+      download: (ref, opts) =>
+        require("./botRegistryInstall").downloadBotPackage(ref, opts),
+      latest: async (ref) => {
+        const { resolveForInstall } = require("../registry/registryPackages");
+        const r = await resolveForInstall(ref, { version: null });
+        return r && r.pkg
+          ? { version: r.pkg.version }
+          : { error: (r && r.error) || "Not found" };
+      },
+    });
+    return share;
+  },
+
+  publishPreview(flowId) {
+    return flowController.share().publishPreview(flowId);
+  },
+  publish(flowId, opts = {}) {
+    return flowController.share().publish(flowId, opts);
+  },
+  installPreview(packageRef) {
+    return flowController.share().installPreview(packageRef);
+  },
+  install(previewId, choices = {}) {
+    return flowController.share().install(previewId, choices);
+  },
+  checkUpdate(flowId) {
+    return flowController.share().checkUpdate(flowId);
+  },
+  updatePreview(flowId) {
+    return flowController.share().updatePreview(flowId);
+  },
+  update(previewId, choices = {}) {
+    return flowController.share().update(previewId, choices);
+  },
+  skipVersion(flowId, version) {
+    return flowController.share().skipVersion(flowId, version);
+  },
+
+  /** Flow packages on the registry, for "Install a flow". */
+  async searchFlows(query = "") {
+    try {
+      const { fetchRegistryIndex } = require("./registryController");
+      const index = await fetchRegistryIndex(false);
+      const list = (index && (index.packages || index)) || [];
+      const q = String(query || "")
+        .trim()
+        .toLowerCase();
+      return {
+        ok: true,
+        packages: (Array.isArray(list) ? list : [])
+          .filter((p) => p && p.type === "flow")
+          .filter(
+            (p) =>
+              !q ||
+              [p.name, p.displayName, p.description, p.scope, p.author]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase()
+                .includes(q),
+          )
+          .slice(0, 50)
+          .map((p) => ({
+            ref: `${p.scope ? `@${p.scope}/` : ""}${p.name}`,
+            name: p.displayName || p.name,
+            version: p.latestVersion || p.version,
+            description: p.description || "",
+            author: p.author || p.scope || "",
+            steps: (p.flow && p.flow.steps) || [],
+          })),
+      };
+    } catch (e) {
+      return { error: (e && e.message) || String(e) };
+    }
   },
 
   // ---- the flow's files (phase 6) ----------------------------------------

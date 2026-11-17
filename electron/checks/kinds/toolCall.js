@@ -22,8 +22,10 @@ const OPS = [
 ];
 
 /** Tool names that read: what a check may call when a server says nothing. */
+// (Case matters: `getEvents` reads, `checkout_branch` doesn't. `query` and
+// `execute` can run anything, so they need the server's read-only hint.)
 const READ_NAME =
-  /^(get|list|search|read|fetch|find|query|view|describe|show|lookup|check|count|status)[_A-Z-]|^(get|list|search|read|fetch|find|query|view|describe|show|lookup)$/i;
+  /^(get|list|search|read|fetch|find|view|describe|show|lookup|count|status)([_-][a-z]|[A-Z])|^(get|list|search|read|fetch|find|view|describe|show|lookup)$/;
 
 /** The value an argument or rule compares with: written in, or from the input. */
 function resolveValue(spec, input) {

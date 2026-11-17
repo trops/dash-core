@@ -259,6 +259,88 @@ describe("UC6: the daily brief as a flow", () => {
   });
 });
 
+describe("phase 5: a task's own folder and its limits", () => {
+  it("the bot step runs in the task's own copy, and is told so", async () => {
+    const r2 = createFlowRunner({
+      store: goals,
+      runBot: async (botId, opts) => {
+        botRuns.push({ botId, opts });
+        return { status: "completed" };
+      },
+      runCheck: async () => ({ pass: true, reason: "ok" }),
+      prepareWork: (goal, task, step) =>
+        step.botId === "bot_writer"
+          ? { dir: "/tmp/copy/repo", kind: "worktree", branch: "dash/x" }
+          : null,
+    });
+    sourceStarts();
+    r2.pass();
+    await until(() => botRuns.length > 0, 20);
+    const run = botRuns[0];
+    assert.equal(run.opts.workingDir, "/tmp/copy/repo");
+    assert.match(
+      run.opts.prompt,
+      /Work in \/tmp\/copy\/repo: your own copy of the project, on the branch dash\/x/,
+    );
+    r2.stop();
+  });
+
+  it("over its minutes, the task stops for you instead of running again", async () => {
+    flows.update(flow.id, {
+      ...flows.get(flow.id),
+      taskLimits: { minutes: 30 },
+    });
+    const limited = flows.get(flow.id);
+    const goal = goals.createGoal({
+      workspaceId: "ws1",
+      title: "Long one",
+      flow: limited,
+    }).goal;
+    const r2 = createFlowRunner({
+      store: goals,
+      runBot: async (botId, opts) => {
+        botRuns.push({ botId, opts });
+        return { status: "completed" };
+      },
+      runCheck: async () => ({ pass: true, reason: "ok" }),
+      taskUsage: () => ({ minutes: 31, steps: 10 }),
+    });
+    r2.pass();
+    await until(
+      () => goals.getGoal(goal.id).tasks[0].status === "needs-you",
+      20,
+    );
+    const t = goals.getGoal(goal.id).tasks[0];
+    assert.equal(t.status, "needs-you");
+    assert.match(t.history.at(-1).summary, /used its 30 minutes/);
+    assert.equal(botRuns.length, 0);
+    r2.stop();
+  });
+
+  it("a folder it can't use stops the task for you, saying why", async () => {
+    const r2 = createFlowRunner({
+      store: goals,
+      runBot: async (botId, opts) => {
+        botRuns.push({ botId, opts });
+        return { status: "completed" };
+      },
+      runCheck: async () => ({ pass: true, reason: "ok" }),
+      prepareWork: () => ({ error: "The folder it works in isn't there: /x" }),
+    });
+    const goal = sourceStarts();
+    r2.pass();
+    await until(
+      () => goals.getGoal(goal.id).tasks[0].status === "needs-you",
+      20,
+    );
+    assert.match(
+      goals.getGoal(goal.id).tasks[0].history.at(-1).summary,
+      /isn't there/,
+    );
+    r2.stop();
+  });
+});
+
 describe("two flows on one dashboard", () => {
   it("run their goals side by side", async () => {
     const other = flows.create({

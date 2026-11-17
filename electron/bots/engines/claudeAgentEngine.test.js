@@ -383,6 +383,59 @@ describe("claudeAgentEngine", () => {
     assert.equal(created.length, 0);
   });
 
+  it("always-blocked shell commands are refused at once, even under allow (flows phase 5)", async () => {
+    const created = [];
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(
+      claudeAgentEngine.run(
+        ctx({
+          approvalPolicy: "allow",
+          createApproval: (req) => {
+            created.push(req);
+            return { promise: Promise.resolve({ allow: true }) };
+          },
+        }),
+      ),
+    );
+    const can = captured.options.canUseTool;
+    const r = await can("Bash", { command: "git push --force origin feat/x" });
+    assert.equal(r.behavior, "deny");
+    assert.match(r.message, /git push --force is always blocked/);
+    assert.equal(created.length, 0);
+    // Anything else under "allow" still runs.
+    assert.equal((await can("Bash", { command: "ls" })).behavior, "allow");
+  });
+
+  it("the bot's own lists: allowed runs without asking, blocked never runs, the rest asks", async () => {
+    const created = [];
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(
+      claudeAgentEngine.run(
+        ctx({
+          approvalPolicy: "ask",
+          commands: { allowed: ["git", "npm run ci"], blocked: ["curl"] },
+          createApproval: (req) => {
+            created.push(req);
+            return { promise: Promise.resolve({ allow: false, reason: "no" }) };
+          },
+        }),
+      ),
+    );
+    const can = captured.options.canUseTool;
+    assert.equal(
+      (await can("Bash", { command: "git status && npm run ci" })).behavior,
+      "allow",
+    );
+    assert.equal(created.length, 0);
+    const blocked = await can("Bash", { command: "curl https://x.example" });
+    assert.equal(blocked.behavior, "deny");
+    assert.match(blocked.message, /curl/);
+    assert.equal(created.length, 0);
+    const asked = await can("Bash", { command: "make build" });
+    assert.equal(asked.behavior, "deny");
+    assert.equal(created.length, 1);
+  });
+
   it("passes the bot's API key per run — never via process-global env", async () => {
     const before = process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;

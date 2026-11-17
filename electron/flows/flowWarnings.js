@@ -53,6 +53,16 @@ function flowWarnings(flow, deps = {}) {
       });
     }
 
+    if (step.kind === "check" && step.check && step.check.missing) {
+      out.push({
+        id: `missing-file:${step.id}`,
+        stepId: step.id,
+        title: `${step.name}'s script isn't here`,
+        body: `It ran ${step.check.missing}, a file that was only on the publisher's computer. Choose a script for it, or remove the step.`,
+        fix: { type: "open-step", label: "Choose a script", stepId: step.id },
+      });
+    }
+
     if (step.kind === "check" && (!step.check || !step.check.kind)) {
       out.push({
         id: `no-check:${step.id}`,

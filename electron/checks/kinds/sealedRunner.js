@@ -84,6 +84,19 @@ for (const g of [
     // Not there in this Node.
   }
 }
+// process.getBuiltinModule (Node ≥ 22.3) loads a module without _load.
+const realGetBuiltin = process.getBuiltinModule;
+if (typeof realGetBuiltin === "function") {
+  try {
+    process.getBuiltinModule = function sealedGetBuiltin(name) {
+      const n = strip(name);
+      if (BLOCKED_MODULES.has(n)) throw new Error(NO_NET);
+      return realGetBuiltin.call(process, name);
+    };
+  } catch (_e) {
+    // Read-only in this Node.
+  }
+}
 for (const k of ["binding", "_linkedBinding", "dlopen"]) {
   try {
     process[k] = () => {
