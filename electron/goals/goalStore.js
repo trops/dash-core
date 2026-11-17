@@ -16,6 +16,12 @@
  *
  * A goal's runs aren't kept here: run records carry its goalId (BotRunner),
  * so the goal finds them by id and deleting it removes them too.
+ *
+ * A goal that follows a flow (flows PRD) keeps its own copy of the flow as
+ * it was when the goal started, so a flow changed or updated later never
+ * changes the rules halfway. Its one task travels the flow's steps
+ * (flowMoves.js); each done record names its step and carries the step's
+ * output, checked against the fields the step must fill.
  */
 "use strict";
 
@@ -29,6 +35,43 @@ const {
   afterUser,
   goalStatus,
 } = require("./taskStatus");
+const { stepById } = require("../flows/flowModel");
+const { startOf, afterStep, afterUserInFlow } = require("../flows/flowMoves");
+const { checkOutput, outputProblem } = require("../checks/stepInput");
+
+const MAX_OUTPUT_JSON = 64 * 1024;
+
+/** A step's output as kept on its record: plain JSON, size-capped. */
+function cleanOutput(output) {
+  if (output === undefined) return undefined;
+  try {
+    const json = JSON.stringify(output);
+    if (json === undefined) return undefined;
+    if (json.length > MAX_OUTPUT_JSON) {
+      return { error: "This output was too big to keep (64 KB at most)." };
+    }
+    return JSON.parse(json);
+  } catch (_e) {
+    return undefined;
+  }
+}
+
+/** The copy of a flow a goal keeps: what it needs to run, nothing else. */
+function flowSnapshot(flow) {
+  if (!flow || !Array.isArray(flow.steps)) return null;
+  return JSON.parse(
+    JSON.stringify({
+      id: flow.id || null,
+      name: flow.name || "",
+      version: flow.version || 1,
+      package: flow.package || null,
+      maxRounds: flow.maxRounds || 3,
+      taskLimits: flow.taskLimits || null,
+      steps: flow.steps,
+      edges: flow.edges || [],
+    }),
+  );
+}
 
 const GOAL_ID = /^goal_[a-z0-9]{6,40}$/;
 const TASK_ID = /^task_[a-z0-9]{6,40}$/;
@@ -275,6 +318,12 @@ function createGoalStore({
     if (input.workspaceId == null || input.workspaceId === "") {
       return { error: "A goal belongs to a dashboard." };
     }
+    const flow = flowSnapshot(input.flow);
+    let start = null;
+    if (flow) {
+      start = startOf(flow);
+      if (start.error) return { error: start.error };
+    }
     const at = now();
     const goal = {
       id: newId("goal"),
@@ -294,11 +343,107 @@ function createGoalStore({
       createdAt: at,
       updatedAt: at,
     };
+    if (flow) {
+      goal.flowId = flow.id;
+      goal.flow = flow;
+    }
+    if (Array.isArray(input.criteria) && input.criteria.length) {
+      goal.criteria = input.criteria.slice(0, 20);
+    }
+    // A goal held before it starts (a criterion with no way to be proven
+    // yet, phase 6): its work waits until the user starts it.
+    if (input.waiting) goal.waiting = true;
     saveGoal(goal);
     fs.mkdirSync(path.join(goalDir(goal.id), "evidence"), { recursive: true });
     fs.mkdirSync(path.join(goalDir(goal.id), "work"), { recursive: true });
     goals.set(goal.id, goal);
+    if (flow) {
+      // The goal's work: one task that travels the flow's steps. What the
+      // source step read (a ticket, today's events) is its first record.
+      const source = (flow.steps || []).find((s) => s.kind === "source");
+      const history = [];
+      if (source && input.sourceOutput !== undefined) {
+        history.push({
+          botId: (input.createdBy && input.createdBy.botId) || null,
+          botName: (input.createdBy && input.createdBy.botName) || null,
+          status: "passed",
+          from: "new",
+          to: start.status,
+          round: 1,
+          stepId: source.id,
+          summary: text(input.sourceSummary) || "Started the goal",
+          evidence: [],
+          output: cleanOutput(input.sourceOutput),
+          said: "bot",
+          at,
+        });
+      }
+      const task = {
+        id: newId("task"),
+        goalId: goal.id,
+        title,
+        body: goal.body,
+        status: start.status,
+        stepId: start.stepId,
+        round: 1,
+        maxRounds: clampRounds(flow.maxRounds),
+        holder: null,
+        history,
+        createdAt: at,
+        updatedAt: at,
+      };
+      saveTask(task);
+      tasks.set(task.id, task);
+    }
     changed({ type: "goal", goalId: goal.id, workspaceId: goal.workspaceId });
+    return { goal: view(goal) };
+  }
+
+  /** A goal already started from this source (a ticket already in a flow). */
+  function findBySource({ workspaceId, flowId, ref }) {
+    const r = text(ref, 400);
+    if (!r) return null;
+    const goal = [...goals.values()].find(
+      (g) =>
+        sameWs(g.workspaceId, workspaceId) &&
+        (flowId ? g.flowId === flowId : true) &&
+        g.source &&
+        g.source.ref === r,
+    );
+    return goal ? view(goal) : null;
+  }
+
+  /** Start a goal that was held (phase 6): its work can be picked up now. */
+  function startGoal(goalId, patch = {}) {
+    const goal = goals.get(goalId);
+    if (!goal) return { error: "No such goal." };
+    if (goal.closed) return { error: "This goal is closed." };
+    if (Array.isArray(patch.criteria))
+      goal.criteria = patch.criteria.slice(0, 20);
+    goal.waiting = false;
+    touch(goalId);
+    changed({ type: "goal", goalId, workspaceId: goal.workspaceId });
+    return { goal: view(goal) };
+  }
+
+  /**
+   * Change a goal's criteria: before it starts, or while it's stopped and
+   * waiting for the user ("Change what done means", frame 4). Never while a
+   * step is working on it.
+   */
+  function setCriteria(goalId, criteria) {
+    const goal = goals.get(goalId);
+    if (!goal) return { error: "No such goal." };
+    const stopped = tasksOf(goalId).some((t) => t.status === "needs-you");
+    if (!goal.waiting && goal.flow && !stopped) {
+      return {
+        error:
+          "What done means is locked while the goal runs. It can change once it stops and waits for you.",
+      };
+    }
+    goal.criteria = Array.isArray(criteria) ? criteria.slice(0, 20) : [];
+    touch(goalId);
+    changed({ type: "goal", goalId, workspaceId: goal.workspaceId });
     return { goal: view(goal) };
   }
 
@@ -306,6 +451,11 @@ function createGoalStore({
     const goal = goals.get(goalId);
     if (!goal) return { error: "No such goal." };
     if (goal.closed) return { error: "This goal is closed." };
+    if (goal.flow) {
+      return {
+        error: `This goal follows the "${goal.flow.name}" flow: its work goes through the flow's steps, so it takes no other tasks.`,
+      };
+    }
     const title = text(input.title, MAX_TITLE);
     if (!title) return { error: "A task needs a title." };
     const at = now();
@@ -350,6 +500,27 @@ function createGoalStore({
     if (task.holder && task.holder.botId !== who.botId) {
       return { error: "Another bot is working on this task." };
     }
+    if (goal.flow) {
+      // In a flow, only the bot at the task's step works on it.
+      if (goal.waiting) {
+        return {
+          error: "This goal hasn't started yet: it waits for the user.",
+        };
+      }
+      const step = stepById(goal.flow, task.stepId);
+      if (!step || step.kind !== "bot" || !CLAIMABLE.includes(task.status)) {
+        return {
+          error: step
+            ? `This task is at "${step.name}", which isn't a bot's step right now.`
+            : "This task isn't at a step of its flow.",
+        };
+      }
+      if (step.botId && step.botId !== who.botId) {
+        return {
+          error: `This task is at "${step.name}": another bot works on it there.`,
+        };
+      }
+    }
     if (!task.holder && !CLAIMABLE.includes(task.status)) {
       return {
         error: `A task that is '${task.status}' can't be picked up.`,
@@ -387,7 +558,27 @@ function createGoalStore({
     if (!task.holder || task.holder.botId !== done.botId) {
       return { error: "Claim the task before writing its done record." };
     }
-    const next = afterDone(task, done.status);
+    const output = cleanOutput(done.output);
+    let next;
+    let step = null;
+    if (goal.flow) {
+      step = stepById(goal.flow, task.stepId);
+      // A passed record must fill the fields the step declares (phase 3):
+      // refused here, so the bot can fix it in the same run.
+      if (
+        done.status === "passed" &&
+        step &&
+        step.outputs &&
+        step.outputs.length
+      ) {
+        const fit = checkOutput(step.outputs, output);
+        if (!fit.ok)
+          return { error: outputProblem(step.name, fit), mismatch: fit };
+      }
+      next = afterStep(goal.flow, task, done.status);
+    } else {
+      next = afterDone(task, done.status);
+    }
     if (next.error) return { error: next.error };
     const record = {
       botId: done.botId || null,
@@ -398,19 +589,76 @@ function createGoalStore({
       round: task.round || 1,
       summary: text(done.summary),
       evidence: cleanEvidence(done.evidence),
-      // Said by the bot: nothing has re-checked it yet (checks come later).
+      ...(step ? { stepId: step.id } : {}),
+      ...(output !== undefined ? { output } : {}),
+      // Said by the bot: a check after it re-verifies the work.
       said: "bot",
       ...(next.stopped ? { stopped: true } : {}),
       at: now(),
     };
+    applyMove(task, next, record);
+    return { task, record };
+  }
+
+  /** Put a record on a task and move it where its outcome takes it. */
+  function applyMove(task, next, record) {
     task.history = [...(task.history || []), record].slice(-MAX_HISTORY);
     task.status = next.status;
+    if (next.stepId !== undefined) task.stepId = next.stepId;
     if (next.round) task.round = next.round;
+    if (next.maxRounds) task.maxRounds = next.maxRounds;
+    if (next.retryStepId !== undefined) task.retryStepId = next.retryStepId;
     task.holder = null;
     task.updatedAt = record.at;
     saveTask(task);
     touch(task.goalId);
-    changed({ type: "task", goalId: task.goalId, taskId });
+    changed({ type: "task", goalId: task.goalId, taskId: task.id });
+  }
+
+  /**
+   * Dash's own record for a step it ran (a check), or one it closed for a
+   * bot that ended its run without a record: said by Dash, not a bot.
+   * @param {{ stepId: string, status: "passed"|"failed"|"needs-you",
+   *           summary?: string, details?: any, output?: any,
+   *           evidence?: Array, kind?: string, ms?: number }} done
+   */
+  function writeStepRecord(taskId, done = {}) {
+    const task = tasks.get(taskId);
+    const goal = task && goals.get(task.goalId);
+    if (!task || !goal || !goal.flow)
+      return { error: "No such task in a flow." };
+    if (goal.closed || FINISHED.includes(task.status)) {
+      return { error: "This task is finished." };
+    }
+    if (done.stepId && done.stepId !== task.stepId) {
+      return { error: "The task has moved on from that step." };
+    }
+    const step = stepById(goal.flow, task.stepId);
+    const next = afterStep(goal.flow, task, done.status);
+    if (next.error) return { error: next.error };
+    const output = cleanOutput(done.output);
+    const record = {
+      botId: null,
+      botName: null,
+      by: "dash",
+      status: done.status,
+      from: task.status,
+      to: next.status,
+      round: task.round || 1,
+      stepId: step ? step.id : null,
+      summary: text(done.summary),
+      evidence: cleanEvidence(done.evidence),
+      ...(done.details !== undefined
+        ? { details: cleanOutput(done.details) }
+        : {}),
+      ...(output !== undefined ? { output } : {}),
+      ...(done.kind ? { kind: text(done.kind, 20) } : {}),
+      ...(typeof done.ms === "number" ? { ms: done.ms } : {}),
+      said: "dash",
+      ...(next.stopped ? { stopped: true } : {}),
+      at: now(),
+    };
+    applyMove(task, next, record);
     return { task, record };
   }
 
@@ -440,7 +688,9 @@ function createGoalStore({
     if (!task || !goal) return { error: "No such task." };
     // Nothing picks up a closed goal's tasks, so none can be restarted.
     if (goal.closed) return { error: "This goal is closed." };
-    const next = afterUser(task, action);
+    const next = goal.flow
+      ? afterUserInFlow(goal.flow, task, action)
+      : afterUser(task, action);
     if (next.error) return { error: next.error };
     const record = {
       botId: null,
@@ -449,19 +699,12 @@ function createGoalStore({
       from: task.status,
       to: next.status,
       round: task.round || 1,
+      ...(goal.flow ? { stepId: task.stepId } : {}),
       summary: "",
       evidence: [],
       at: now(),
     };
-    task.history = [...(task.history || []), record].slice(-MAX_HISTORY);
-    task.status = next.status;
-    if (next.round) task.round = next.round;
-    if (next.maxRounds) task.maxRounds = next.maxRounds;
-    task.holder = null;
-    task.updatedAt = record.at;
-    saveTask(task);
-    touch(task.goalId);
-    changed({ type: "task", goalId: task.goalId, taskId });
+    applyMove(task, next, record);
     return { task };
   }
 
@@ -535,9 +778,13 @@ function createGoalStore({
     goalsForConversation,
     paths,
     createGoal,
+    findBySource,
+    startGoal,
+    setCriteria,
     addTask,
     claimTask,
     writeDone,
+    writeStepRecord,
     release,
     userAction,
     closeGoal,

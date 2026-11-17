@@ -1,0 +1,168 @@
+/**
+ * commandRules.js
+ *
+ * Which shell commands may run (flows PRD, phases 2 and 5; G6). Some are
+ * always blocked — for a command check and for any bot — whatever a list
+ * allows: force pushes, a hard reset, removing folders recursively, pushing
+ * straight to the main branch, and publishing a package. A bot can also
+ * have its own allowed list; then nothing else runs without asking.
+ *
+ * Commands are split into parts (&&, ||, ;, |) and each part into words, so
+ * flags can't hide (`rm -Rf`, `git -C . push -fu`, `npm --registry x
+ * publish`). Anything the split can't see into — a background `&`, a new
+ * line, `$(…)`, backticks, redirection, git's own config options — is
+ * never allowed without asking.
+ *
+ * Pure: no Electron, no I/O.
+ */
+"use strict";
+
+/** Words of one command part, quotes kept together. */
+function words(part) {
+  const out = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let m;
+  while ((m = re.exec(part))) out.push(m[1] ?? m[2] ?? m[3]);
+  return out;
+}
+
+/** The parts of a chained command. */
+function partsOf(command) {
+  return String(command || "")
+    .split(/\s*(?:&&|\|\||;|\|)\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+// git's own options that come before its subcommand, and take a value.
+const GIT_VALUE_OPTS = new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--exec-path",
+  "--config-env",
+]);
+
+/** The git subcommand and its arguments, past git's own options. */
+function gitCommand(w) {
+  let i = 1;
+  const globals = [];
+  while (i < w.length && w[i].startsWith("-")) {
+    globals.push(w[i]);
+    if (GIT_VALUE_OPTS.has(w[i]) && !w[i].includes("=")) {
+      globals.push(w[i + 1]);
+      i += 2;
+    } else {
+      i += 1;
+    }
+  }
+  return { sub: w[i] || "", args: w.slice(i + 1), globals };
+}
+
+const shortFlags = (args) =>
+  args
+    .filter((a) => /^-[A-Za-z]+$/.test(a))
+    .flatMap((a) => a.slice(1).split(""));
+const MAIN = /^(refs\/heads\/)?(main|master)$/i;
+
+function partBlocked(part) {
+  const w = words(part);
+  const bin = (w[0] || "").replace(/^.*[\\/]/, "").toLowerCase();
+  if (bin === "git") {
+    const { sub, args } = gitCommand(w);
+    if (sub === "push") {
+      const flags = shortFlags(args);
+      if (
+        flags.includes("f") ||
+        args.some((a) => /^--force(-with-lease|-if-includes)?(=|$)/.test(a))
+      ) {
+        return { id: "force-push", label: "git push --force" };
+      }
+      const refs = args.filter((a) => !a.startsWith("-"));
+      // The remote, then refspecs: "+x" forces; a destination of main pushes to it.
+      for (const ref of refs.slice(1)) {
+        if (ref.startsWith("+"))
+          return { id: "force-push", label: "git push --force" };
+        const dest = ref.includes(":") ? ref.split(":").pop() : ref;
+        if (MAIN.test(dest))
+          return { id: "push-main", label: "pushing to the main branch" };
+      }
+    }
+    if (sub === "reset" && args.includes("--hard")) {
+      return { id: "reset-hard", label: "git reset --hard" };
+    }
+  }
+  if (bin === "rm") {
+    const flags = shortFlags(w.slice(1)).map((f) => f.toLowerCase());
+    const recursive = flags.includes("r") || w.includes("--recursive");
+    const force = flags.includes("f") || w.includes("--force");
+    if (recursive && force) return { id: "rm-rf", label: "rm -rf" };
+  }
+  if (["npm", "yarn", "pnpm"].includes(bin) && w.slice(1).includes("publish")) {
+    return { id: "publish", label: "publishing a package" };
+  }
+  return null;
+}
+
+/** The always-blocked rule a command breaks, or null. */
+function blockedBy(command) {
+  for (const part of partsOf(command)) {
+    const b = partBlocked(part);
+    if (b) return b;
+  }
+  return null;
+}
+
+// What the split can't see into: never allowed without asking.
+const OPAQUE = /(^|[^&])&([^&]|$)|\n|\$\(|`|[<>]|\$\{/;
+
+/**
+ * A command against a bot's own lists: blocked (always, or the bot's own
+ * blocked list), allowed (every part on its allowed list), or ask.
+ * @param {string} command
+ * @param {{ allowed?: string[], blocked?: string[] }} lists  prefixes
+ * @returns {{ decision: "blocked"|"allowed"|"ask", reason?: string }}
+ */
+function commandDecision(command, lists = {}) {
+  const c = String(command || "").trim();
+  const always = blockedBy(c);
+  if (always) {
+    return { decision: "blocked", reason: `${always.label} is always blocked` };
+  }
+  const parts = partsOf(c);
+  const blocked = (lists.blocked || [])
+    .map((x) => String(x).trim())
+    .filter(Boolean);
+  for (const p of parts) {
+    const b = blocked.find((pre) => p === pre || p.startsWith(`${pre} `));
+    if (b) {
+      return {
+        decision: "blocked",
+        reason: `"${b}" is on this bot's blocked list`,
+      };
+    }
+  }
+  const allowed = (lists.allowed || [])
+    .map((x) => String(x).trim())
+    .filter(Boolean);
+  if (!allowed.length || !parts.length || OPAQUE.test(c))
+    return { decision: "ask" };
+  const all = parts.every((p) => {
+    const w = words(p);
+    // git's own config options can run anything: never on an allowed list.
+    if (
+      (w[0] || "") === "git" &&
+      gitCommand(w).globals.some((g) =>
+        /^(-c|--config-env|--exec-path)/.test(g),
+      )
+    ) {
+      return false;
+    }
+    return allowed.some((pre) => p === pre || p.startsWith(`${pre} `));
+  });
+  return all ? { decision: "allowed" } : { decision: "ask" };
+}
+
+module.exports = { blockedBy, commandDecision, partsOf };

@@ -35,6 +35,7 @@ const API_ERROR_STATUS = {
 const { createEventStream } = require("./eventStream");
 const { BOT_MCP_SERVER, buildBotMcpServer } = require("./agentToolBridge");
 const { imagePlaceholder } = require("../toolImages");
+const { commandDecision } = require("../../checks/commandRules");
 const {
   connectorForTool,
   connectorDisallowList,
@@ -221,6 +222,27 @@ function _makeCanUseTool(ctx) {
         behavior: "deny",
         message: `${toolName} isn't available to bots.`,
       };
+    }
+    // Shell commands (flows PRD, phase 5; G6): the always-blocked ones and
+    // the bot's own blocked list are refused at once — even under "allow" —
+    // so an unattended run gets an answer instead of waiting; its allowed
+    // list runs without asking; anything else asks as before.
+    if (
+      !bridged &&
+      toolName === "Bash" &&
+      input &&
+      typeof input.command === "string"
+    ) {
+      const d = commandDecision(input.command, ctx.commands || {});
+      if (d.decision === "blocked") {
+        return {
+          behavior: "deny",
+          message: `Not run: ${d.reason}. Do it another way, or stop and say what you need from the user.`,
+        };
+      }
+      if (d.decision === "allowed") {
+        return { behavior: "allow", updatedInput: input };
+      }
     }
     // Trusted bot → run tools without prompting.
     if (ctx.approvalPolicy === "allow") {

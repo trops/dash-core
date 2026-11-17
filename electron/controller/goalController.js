@@ -61,8 +61,24 @@ function gone(goalId) {
   }
 }
 
+// In-process listeners (the flow runner moves work on as the ledger changes).
+const listeners = new Set();
+
 function open(root) {
-  store = createGoalStore({ root, box, onChange: broadcast });
+  store = createGoalStore({
+    root,
+    box,
+    onChange: (change) => {
+      broadcast(change);
+      for (const fn of listeners) {
+        try {
+          fn(change);
+        } catch (_e) {
+          // A listener never breaks a write.
+        }
+      }
+    },
+  });
   return store;
 }
 
@@ -91,6 +107,13 @@ const goalController = {
   /** The store itself, for the bot goal tools. */
   store() {
     return ensure();
+  },
+
+  /** Hear every ledger change in the main process. Returns how to stop. */
+  onChange(fn) {
+    if (typeof fn !== "function") return () => {};
+    listeners.add(fn);
+    return () => listeners.delete(fn);
   },
 
   /**

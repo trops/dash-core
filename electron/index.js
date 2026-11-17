@@ -33,6 +33,8 @@ const profileAutoSave = require("./profile/profileAutoSave");
 const notificationController = require("./controller/notificationController");
 const issueController = require("./controller/issueController");
 const goalController = require("./controller/goalController");
+const flowController = require("./controller/flowController");
+const { flowHandlers } = require("./flows/flowHandlers");
 const schedulerController = require("./controller/schedulerController");
 const themeRegistryController = require("./controller/themeRegistryController");
 const themeFromUrlController = require("./controller/themeFromUrlController");
@@ -81,6 +83,7 @@ const profileApi = require("./api/profileApi");
 const notificationApi = require("./api/notificationApi");
 const issuesApi = require("./api/issuesApi");
 const goalsApi = require("./api/goalsApi");
+const flowsApi = require("./api/flowsApi");
 const schedulerApi = require("./api/schedulerApi");
 const themeFromUrlApi = require("./api/themeFromUrlApi");
 const webSocketApi = require("./api/webSocketApi");
@@ -156,6 +159,8 @@ module.exports = {
   notificationController,
   issueController,
   goalController,
+  flowController,
+  flowHandlers,
   schedulerController,
   themeRegistryController,
   themeFromUrlController,
@@ -196,6 +201,7 @@ module.exports = {
   notificationApi,
   issuesApi,
   goalsApi,
+  flowsApi,
   schedulerApi,
   themeFromUrlApi,
   webSocketApi,

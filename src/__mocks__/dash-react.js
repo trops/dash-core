@@ -1276,7 +1276,115 @@ function Paragraph2({ text, children }) {
   return React.createElement("p", null, text, children);
 }
 
+// dash-react ≥1.0.91 FlowGraph: each step a button (when onSelect), each
+// "next" arrow a + (when onAdd), arrow labels as text.
+const FLOW_KIND_LABEL = {
+  source: "Source",
+  bot: "AI",
+  check: "Code check",
+  you: "You",
+  widget: "Widget",
+};
+function FlowGraph({
+  steps = [],
+  edges = [],
+  selectedId,
+  onSelect,
+  onAdd,
+  ariaLabel,
+}) {
+  const byId = Object.fromEntries(steps.map((s) => [s.id, s]));
+  return React.createElement(
+    "div",
+    { "data-testid": "flow-graph", role: "group", "aria-label": ariaLabel },
+    steps.map((s) =>
+      React.createElement(
+        onSelect ? "button" : "div",
+        {
+          key: s.id,
+          type: onSelect ? "button" : undefined,
+          "data-testid": `flow-step-${s.id}`,
+          "aria-pressed": onSelect ? selectedId === s.id : undefined,
+          "aria-label": `${FLOW_KIND_LABEL[s.kind] || "Step"}: ${s.name}`,
+          onClick: onSelect ? () => onSelect(s.id) : undefined,
+        },
+        `${FLOW_KIND_LABEL[s.kind] || "Step"} ${s.name}`,
+        s.note ? ` · ${s.note}` : "",
+        s.badge ? ` [${s.badge.label}]` : "",
+        s.below ? ` (${s.below.text})` : "",
+      ),
+    ),
+    edges.map((e) =>
+      React.createElement(
+        "span",
+        { key: `l-${e.from}-${e.to}-${e.kind}` },
+        e.label || "",
+      ),
+    ),
+    onAdd
+      ? edges
+          .filter((e) => e.kind === "next")
+          .map((e) =>
+            React.createElement(
+              "button",
+              {
+                key: `a-${e.from}-${e.to}`,
+                type: "button",
+                "aria-label": `Add a step between ${byId[e.from] ? byId[e.from].name : "this step"} and ${byId[e.to] ? byId[e.to].name : "the next"}`,
+                onClick: () => onAdd({ from: e.from, to: e.to }),
+              },
+              "+",
+            ),
+          )
+      : null,
+  );
+}
+function FlowGraphLegend() {
+  return React.createElement("span", null, "AI Code check You");
+}
+function FlowKindChip({ kind = "bot", label }) {
+  return React.createElement(
+    "span",
+    null,
+    label || FLOW_KIND_LABEL[kind] || "Step",
+  );
+}
+function flowLayout(steps = []) {
+  const pos = {};
+  steps.forEach((s, i) => {
+    pos[s.id] = { x: 24 + i * 204, y: 36, row: 0, col: i };
+  });
+  return {
+    pos,
+    width: 24 + steps.length * 204,
+    height: 200,
+    rows: [steps.map((s) => s.id)],
+  };
+}
+function DiffView({ before = "", after = "", title }) {
+  return React.createElement(
+    "div",
+    { "data-testid": "diff-view" },
+    title || "",
+    React.createElement("pre", null, `- ${before}\n+ ${after}`),
+  );
+}
+function CodeEditorInline({ code, setCode }) {
+  return React.createElement("textarea", {
+    "aria-label": "Code",
+    value: code,
+    onChange: (e) => setCode(e.target.value),
+  });
+}
+
 module.exports = {
+  FlowGraph,
+  FlowGraphLegend,
+  FlowKindChip,
+  FLOW_KIND_LABEL,
+  flowLayout,
+  DiffView,
+  CodeEditorInline,
   Alert,
   Panel,
   Paragraph: Paragraph2,

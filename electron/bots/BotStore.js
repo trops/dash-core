@@ -320,6 +320,8 @@ class BotStore {
           startedAt: r.startedAt || null,
           endedAt: r.endedAt || null,
           model: r.model || null,
+          // Steps it took, for a task's limits (flows PRD, phase 5).
+          steps: Array.isArray(r.toolCalls) ? r.toolCalls.length : 0,
         });
       }
     }

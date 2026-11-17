@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   EmptyState,
   FontAwesomeIcon,
@@ -9,6 +9,8 @@ import { useGoal, useGoals } from "../../hooks/useGoals";
 import { GoalRow } from "./GoalRow";
 import { GoalDetail } from "./GoalDetail";
 import { goalBucket, goalCounts } from "./goalText";
+import { NewGoalModal } from "./NewGoalModal";
+import { useFlows } from "../../hooks/useFlows";
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -22,13 +24,34 @@ const FILTERS = [
  * everything its bots are working on, one row per goal. Selecting a goal
  * opens it beside the list.
  */
-export const GoalsView = ({ workspace, now }) => {
+export const GoalsView = ({ workspace, now, command = null }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const workspaceId = workspace ? workspace.id : null;
   const { goals, loading } = useGoals(workspaceId);
   const [filter, setFilter] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
   const { goal: opened } = useGoal(selectedId);
+  // New goal (frame 29), from the header's button: in one of its flows.
+  const { flows } = useFlows(workspaceId);
+  const [newGoal, setNewGoal] = useState(false);
+  // Only a press made while this tab is open counts, not the last one.
+  const seenSeq = useRef(command ? command.seq : 0);
+  useEffect(() => {
+    if (!command || command.seq <= seenSeq.current) return;
+    seenSeq.current = command.seq;
+    if (command.type === "new-goal") setNewGoal(true);
+  }, [command]);
+  const newGoalModal = newGoal ? (
+    <NewGoalModal
+      workspace={workspace}
+      flows={flows}
+      onClose={() => setNewGoal(false)}
+      onStarted={(g) => {
+        setNewGoal(false);
+        if (g) setSelectedId(g.id);
+      }}
+    />
+  ) : null;
 
   const counts = goalCounts(goals);
   const shown =
@@ -47,6 +70,7 @@ export const GoalsView = ({ workspace, now }) => {
           title="No goals yet"
           description="When a bot on this dashboard starts a goal — from a ticket, a note, or something you asked — it shows here with its tasks, who's working on what, and the proof each step left."
         />
+        {newGoalModal}
       </div>
     );
   }
@@ -110,6 +134,7 @@ export const GoalsView = ({ workspace, now }) => {
           </div>
         ) : null}
       </div>
+      {newGoalModal}
     </div>
   );
 };

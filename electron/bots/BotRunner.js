@@ -531,7 +531,13 @@ class BotRunner {
         session,
         // Run limits (Settings › AI, or the bot's own): steps and, on an API
         // key, cost. The time limit is kept below.
-        maxTurns: profile.maxTurns != null ? profile.maxTurns : bot.maxTurns,
+        // A flow step's own limit wins (flows PRD, phase 5).
+        maxTurns:
+          opts.limits && opts.limits.steps > 0
+            ? opts.limits.steps
+            : profile.maxTurns != null
+              ? profile.maxTurns
+              : bot.maxTurns,
         maxCostUsd: profile.maxCostUsd || null,
         // What the run has cost so far, for engines that check the cost
         // limit themselves (tool-loop).
@@ -551,8 +557,11 @@ class BotRunner {
         executeTool,
         workspaceId: bot.workspaceId,
         // For engines with their own agent loop + native tools (claude-agent):
-        // a sandbox dir, the approval policy, and a direct approval channel.
-        workingDir: profile.workingDir,
+        // a sandbox dir — or a flow task's own copy of the bot's folder —
+        // the approval policy, and a direct approval channel.
+        workingDir: opts.workingDir || profile.workingDir,
+        // Shell commands it may run without asking, and never (phase 5).
+        commands: bot.commands || null,
         approvalPolicy,
         createApproval,
       };
@@ -569,9 +578,13 @@ class BotRunner {
       else if (profile.builtinTools) ctx.builtinTools = profile.builtinTools;
 
       // The time limit: stop the run (and any retry) when it's up.
-      if (profile.maxMinutes > 0) {
-        timeLimitMinutes = profile.maxMinutes;
-        timeLeftMs = profile.maxMinutes * 60 * 1000;
+      const runMinutes =
+        opts.limits && opts.limits.minutes > 0
+          ? opts.limits.minutes
+          : profile.maxMinutes;
+      if (runMinutes > 0) {
+        timeLimitMinutes = runMinutes;
+        timeLeftMs = runMinutes * 60 * 1000;
         startTimeLimit();
       }
 

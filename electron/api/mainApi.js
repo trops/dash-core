@@ -37,6 +37,7 @@ const sessionApi = require("./sessionApi");
 const notificationApi = require("./notificationApi");
 const issuesApi = require("./issuesApi");
 const goalsApi = require("./goalsApi");
+const flowsApi = require("./flowsApi");
 const schedulerApi = require("./schedulerApi");
 const themeFromUrlApi = require("./themeFromUrlApi");
 const webSocketApi = require("./webSocketApi");
@@ -149,6 +150,7 @@ function createMainApi(extensions = {}) {
     notifications: notificationApi,
     issues: issuesApi,
     goals: goalsApi,
+    flows: flowsApi,
     scheduler: schedulerApi,
     themeFromUrl: themeFromUrlApi,
     webSocket: webSocketApi,
