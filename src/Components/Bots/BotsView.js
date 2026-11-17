@@ -36,7 +36,15 @@ import {
   removeTrigger,
   updateTrigger,
 } from "./teamDiagram";
-import { diagramWidgets, unwireChange, wireChange } from "./widgetDiagram";
+import {
+  diagramWidgets,
+  unwireChange,
+  widgetEdges,
+  wireChange,
+} from "./widgetDiagram";
+import { BotChecksModal } from "./BotChecksModal";
+import { waitingJobs } from "./checksView";
+import { useGoals } from "../../hooks/useGoals";
 import { applyWiringChanges } from "../../utils/listenerResolution";
 import { applyBulkUserPrefs } from "../../utils/applyBulkUserPrefs";
 import { findWidgetTarget } from "../LeadWorkspace/useWidgetTarget";
@@ -570,6 +578,71 @@ export const BotsView = ({
 
   const status = selected && team ? team.statusOf(selected.id) : "Idle";
 
+  // A bot's own checks (bot-checks CHK-002): the window from its checks
+  // card, and its jobs waiting for you on that card.
+  const { goals } = useGoals(workspace ? workspace.id : null);
+  const [checksFor, setChecksFor] = useState(null);
+  const checksBot = checksFor ? findBot(checksFor) : null;
+  const saveChecks = async ({ checks, adds = [], removes = [] }) => {
+    const bots = api();
+    const bot = checksBot;
+    if (!bots || !bot) throw new Error("bot not found");
+    // Where its work goes: the same saves as the diagram's lines. The
+    // dashboard's widgets change first, in one save (it can refuse while
+    // the dashboard is being edited — then nothing has changed yet).
+    const unwires = [];
+    const prefs = [];
+    for (const t of [...removes, ...adds]) {
+      if (t.type !== "widget") continue;
+      const adding = adds.includes(t);
+      if (adding || (t.edge && t.edge.kind === "results")) {
+        prefs.push({
+          widgetId: t.widget.itemId,
+          key: "botId",
+          value: adding ? bot.id : "",
+        });
+      } else if (t.edge && t.edge.raw) {
+        unwires.push(unwireChange(t.widget, t.edge));
+      }
+    }
+    try {
+      if (unwires.length || prefs.length) {
+        await changeDashboard(
+          (ws) =>
+            applyBulkUserPrefs(
+              unwires.length
+                ? applyWiringChanges(ws, { removes: unwires })
+                : ws,
+              prefs,
+            ),
+          "listener",
+        );
+      }
+      for (const t of removes) {
+        if (t.type === "bot") {
+          await removeTriggerFrom({ targetId: t.id, eventType: t.eventType });
+        }
+      }
+      for (const t of adds) {
+        if (t.type === "bot") {
+          await saveTrigger({
+            mode: "add",
+            sourceId: bot.id,
+            targetId: t.id,
+            oldEventType: null,
+            event: "completed",
+            label: "Completed",
+            note: "",
+          });
+        }
+      }
+      await bots.save({ id: bot.id, checks });
+    } finally {
+      afterChange();
+    }
+    setChecksFor(null);
+  };
+
   // Place a bot widget on this dashboard (TEAM-012) and say how it went.
   const showOnDashboard = async (kind, bot = null) => {
     const bots = api();
@@ -890,6 +963,8 @@ export const BotsView = ({
           onAskWidget={askAboutWidget}
           onRemoveWidgetLine={removeWidgetLine}
           findWidgetTarget={targetFor}
+          waitingFor={(id) => waitingJobs(goals, id)}
+          onOpenChecks={(id) => setChecksFor(id)}
         />
       </div>
       <div className={`px-4 py-3 border-t ${hairline}`}>{teamActions}</div>
@@ -950,6 +1025,7 @@ export const BotsView = ({
             status={status}
             onOpen={(t) => openBot(selected.id, t)}
             onRunNow={runNow}
+            onOpenChecks={() => setChecksFor(selected.id)}
           />
         </aside>
       ) : (
@@ -1136,6 +1212,17 @@ export const BotsView = ({
         onConfirm={deleteBot}
         onCancel={() => setConfirmDelete(false)}
       />
+      {checksBot ? (
+        <BotChecksModal
+          key={checksBot.id}
+          bot={checksBot}
+          members={members}
+          widgets={widgets}
+          wEdges={widgetEdges(widgets, members)}
+          onSave={saveChecks}
+          onClose={() => setChecksFor(null)}
+        />
+      ) : null}
       <TeamBudgetDialog
         open={teamBudgetOpen}
         workspace={workspace}

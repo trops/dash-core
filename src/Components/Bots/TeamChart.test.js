@@ -267,3 +267,103 @@ describe("TeamChart — widgets (polish 2026-11)", () => {
     expect(screen.getAllByTestId("diagram-widget-edge")).toHaveLength(2);
   });
 });
+
+describe("TeamChart — a bot's checks (bot-checks CHK-002)", () => {
+  const checks = {
+    steps: [
+      {
+        id: "step_c1",
+        kind: "check",
+        name: "No bananas",
+        check: { kind: "rules", rules: [] },
+      },
+      { id: "step_c2", kind: "you", name: "You approve" },
+    ],
+  };
+  const checkedPlanner = { ...planner, checks };
+  const draw = (props = {}) => {
+    const onOpenChecks = jest.fn();
+    render(
+      <TeamChart
+        lead={lead}
+        members={[checkedPlanner, reader, checker]}
+        statusOf={() => "Idle"}
+        approvalsFor={() => []}
+        onSelect={jest.fn()}
+        onOpen={jest.fn()}
+        canWire
+        onOpenChecks={onOpenChecks}
+        waitingFor={(id) => (id === "planner" ? 1 : 0)}
+        width={1400}
+        {...props}
+      />,
+    );
+    return { onOpenChecks };
+  };
+  const box = (id) => screen.getByTestId(id).style;
+
+  it("lists a bot's checks right after it, with jobs waiting for you", () => {
+    const { onOpenChecks } = draw();
+    const card = screen.getByTestId("checks-card-planner");
+    expect(card).toHaveTextContent("Checks · 2");
+    expect(card).toHaveTextContent("No bananas");
+    expect(card).toHaveTextContent("You approve");
+    expect(card).toHaveTextContent("1 waiting");
+    // Right of the bot, level with it.
+    const bot = box("diagram-card-planner");
+    expect(parseFloat(box("checks-card-planner").left)).toBeGreaterThan(
+      parseFloat(bot.left) + parseFloat(bot.width),
+    );
+    expect(box("checks-card-planner").top).toBe(bot.top);
+    fireEvent.click(card);
+    expect(onOpenChecks).toHaveBeenCalledWith("planner");
+  });
+
+  it("a bot with none offers + Add checks", () => {
+    const { onOpenChecks } = draw();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add checks — Record Reader" }),
+    );
+    expect(onOpenChecks).toHaveBeenCalledWith("reader");
+  });
+
+  it("while Settings is open: checks still show, + Add checks doesn't", () => {
+    draw({ canWire: false });
+    expect(screen.getByTestId("checks-card-planner")).toBeInTheDocument();
+    expect(screen.queryByTestId("checks-card-reader")).toBeNull();
+  });
+
+  it("a line to the next bot leaves from the checks, not the bot", () => {
+    draw();
+    const chk = box("checks-card-planner");
+    const right = parseFloat(chk.left) + parseFloat(chk.width);
+    const toReader = screen
+      .getAllByTestId("diagram-edge")
+      .find((l) => l.getAttribute("data-kind") === "completed");
+    const [, x1] = toReader.getAttribute("d").match(/^M([\d.]+),/);
+    expect(parseFloat(x1)).toBeCloseTo(right, 0);
+  });
+
+  it("a bot on the next row: down from the checks, along the gap, into its top", () => {
+    draw({ width: 600 });
+    const chk = box("checks-card-planner");
+    const reader = box("diagram-card-reader");
+    const toReader = screen
+      .getAllByTestId("diagram-edge")
+      .find((l) => l.getAttribute("data-kind") === "completed");
+    const m = toReader
+      .getAttribute("d")
+      .match(/^M([\d.]+),([\d.]+) V([\d.]+) H([\d.]+) V([\d.]+)$/);
+    expect(m).not.toBeNull();
+    const [, sx, sy, gapY, tx, ty] = m.map(Number);
+    expect(sx).toBeCloseTo(parseFloat(chk.left) + parseFloat(chk.width) / 2, 0);
+    expect(sy).toBe(parseFloat(chk.top) + 80);
+    expect(gapY).toBeGreaterThan(sy);
+    expect(gapY).toBeLessThan(parseFloat(reader.top));
+    expect(tx).toBeCloseTo(
+      parseFloat(reader.left) + parseFloat(reader.width) / 2,
+      0,
+    );
+    expect(ty).toBe(parseFloat(reader.top));
+  });
+});

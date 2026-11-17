@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ButtonIcon } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotAvatar } from "./BotAvatar";
+import { ChecksCard } from "./ChecksCard";
 import { STATUS_DOT, triggerSummary } from "./teamUtils";
 import {
   PILL_H,
@@ -21,6 +22,14 @@ const CARD_H = 80;
 // Room between bots side by side for a line and its label.
 const BOT_GAP = 80;
 const BOT_MIN_W = 184;
+const BOT_MAX_W = 240;
+// Each bot's checks card sits right after it (bot-checks CHK-002): a slot
+// is the bot, a short arrow, and its checks. A bot with none gets a narrower
+// "+ Add checks" card in the same place.
+const CHK_W = 150;
+const CHK_GAP = 28;
+const ADD_W = 120;
+const ADD_H = 36;
 const POP_W = 320;
 // Widget cards (TD-009): in a column right of the team when it's this wide.
 const W_CARD_H = 64;
@@ -68,6 +77,12 @@ function useWidth(ref, fixed) {
  * change or remove it (`onRemoveWidgetLine`). Lines only go from a bot to a
  * widget.
  *
+ * Checks (bot-checks CHK-002): each bot's own checks are a list card right
+ * after it, and its lines leave from there — its work goes on only once it
+ * passes them. A click opens the checks window (`onOpenChecks`); a bot with
+ * none gets "+ Add checks" while it can be changed. `waitingFor(id)`: its
+ * jobs waiting for you.
+ *
  * Card positions come from the measured width (inline styles — the prebuilt
  * CSS has no arbitrary sizes); colours from theme tokens and colour classes.
  * (Named TeamChart: teamDiagram.js holds the pure helpers, and macOS file
@@ -92,6 +107,8 @@ export const TeamChart = ({
   onAskWidget = null,
   onRemoveWidgetLine = null,
   findWidgetTarget = null,
+  waitingFor = () => 0,
+  onOpenChecks = null,
   width: fixedWidth = 0,
 }) => {
   const { muted, strong, hairline, selectedBg, selectedBorder, fieldBg } =
@@ -118,22 +135,48 @@ export const TeamChart = ({
   const widgetLabel = (e) =>
     e.kind === "results" ? "shows answers" : eventText(e.event);
   const allWEdges = hasWidgets ? widgetEdges(widgets, members) : [];
+  const checkCount = (b) => ((b && b.checks && b.checks.steps) || []).length;
+  // A bot shows a checks card when it has checks, or "+ Add checks" when
+  // they can be changed.
+  const hasChecksCard = (b) => checkCount(b) > 0 || !!(canWire && onOpenChecks);
 
   /** Cards, bot lines and widget lines for one row height. */
+  // Room for checks only when some bot shows a card.
+  const room = members.some(hasChecksCard) ? CHK_GAP + CHK_W : 0;
   const build = (rowH) => {
     const layout = diagramLayout({
       width: teamWidth,
       count: members.length,
       cardH: CARD_H,
       gap: BOT_GAP,
-      minW: BOT_MIN_W,
+      minW: BOT_MIN_W + room,
+      maxW: BOT_MAX_W + room,
       ...(rowH ? { rowH } : {}),
     });
+    // A member's slot: the bot (botW) then its checks card at chkX. `w`
+    // ends at its checks card when it has one, so lines across to the next
+    // bot leave from there; `outX` is where its lines leave from below.
+    const slotW = layout.cardW;
+    const botW = slotW - room;
     const pos = {};
     members.forEach((b, i) => {
-      pos[b.id] = { ...layout.cards[i], w: layout.cardW };
+      const c = layout.cards[i];
+      const chkX = c.x + botW + CHK_GAP;
+      const card = hasChecksCard(b);
+      pos[b.id] = {
+        ...c,
+        w: !card ? botW : checkCount(b) ? slotW : botW + CHK_GAP + ADD_W,
+        botW,
+        slotW,
+        chkX,
+        outX: card
+          ? chkX + (checkCount(b) ? CHK_W : ADD_W) / 2
+          : c.x + botW / 2,
+      };
     });
     if (lead) pos[lead.id] = { ...layout.lead };
+    const botMid = (p) => p.x + (p.botW || p.w) / 2;
+    const outMid = (p) => (p.outX != null ? p.outX : p.x + p.w / 2);
     // Lines between the same two bots: how many, and which this one is.
     const pairTotal = {};
     for (const e of edges) {
@@ -146,17 +189,36 @@ export const TeamChart = ({
       const nth = (pairCount[pair] = (pairCount[pair] || 0) + 1) - 1;
       const a = pos[e.from];
       const b = pos[e.to];
-      // Neighbours in a row: straight across the gap between them.
-      const across = neighbourLine(a, b, {
-        cardH: CARD_H,
-        slot: nth,
-        slots: pairTotal[pair],
-        text: labelText(e),
-      });
+      // Neighbours in a row, left to right: straight across the gap from
+      // the first one's checks to the next bot. (Right to left would leave
+      // from the bot, not its checks: those dip below instead.)
+      const across =
+        a && b && a.col < b.col
+          ? neighbourLine(a, b, {
+              cardH: CARD_H,
+              slot: nth,
+              slots: pairTotal[pair],
+              text: labelText(e),
+            })
+          : null;
       if (across) return { ...e, ...across };
-      const sx = a.x + a.w / 2;
+      // A bot on the next row: down from the checks into the gap between
+      // the rows, along, and into the top of the bot — clear of both rows.
+      if (a && b && a.botW && b.row === a.row + 1) {
+        const sx = outMid(a);
+        const tx = botMid(b);
+        const y = b.y - 18 - nth * 8;
+        return {
+          ...e,
+          d: `M${sx},${a.y + CARD_H} V${y} H${tx} V${b.y}`,
+          head: arrowHead(tx, b.y, "down"),
+          mx: (sx + tx) / 2,
+          my: y,
+        };
+      }
+      const sx = outMid(a);
       const sy = a.y + CARD_H;
-      const tx = b.x + b.w / 2;
+      const tx = botMid(b);
       const ty = b.y + CARD_H;
       const dip = 60 + Math.abs(tx - sx) * 0.12 + nth * 26;
       return {
@@ -180,10 +242,9 @@ export const TeamChart = ({
           width: Math.max(width || 0, layout.width),
           side,
           team: {
-            cards: members.map((b, i) => ({
+            cards: members.map((b) => ({
               id: b.id,
-              ...layout.cards[i],
-              w: layout.cardW,
+              ...pos[b.id],
             })),
             cols: layout.cols,
             cardH: CARD_H,
@@ -226,16 +287,27 @@ export const TeamChart = ({
   if (lead && firstRow.length) {
     const lx = layout.lead.x + layout.lead.w / 2;
     teamLines.push(`M${lx},${layout.lead.y + CARD_H} V${layout.busY}`);
-    const xs = firstRow.map((b) => pos[b.id].x + layout.cardW / 2);
+    const mid = (b) => pos[b.id].x + pos[b.id].botW / 2;
+    const xs = firstRow.map(mid);
     teamLines.push(
       `M${Math.min(...xs, lx)},${layout.busY} H${Math.max(...xs, lx)}`,
     );
     for (const b of firstRow) {
-      teamLines.push(
-        `M${pos[b.id].x + layout.cardW / 2},${layout.busY} V${pos[b.id].y}`,
-      );
+      teamLines.push(`M${mid(b)},${layout.busY} V${pos[b.id].y}`);
     }
   }
+  // Each bot's work goes into its checks: a short arrow between them.
+  const checkArrows = members
+    .filter((b) => checkCount(b) > 0 && pos[b.id])
+    .map((b) => {
+      const p = pos[b.id];
+      const y = p.y + CARD_H / 2;
+      return {
+        key: b.id,
+        d: `M${p.x + p.botW},${y} L${p.chkX},${y}`,
+        head: arrowHead(p.chkX, y, "right", 5),
+      };
+    });
 
   // ── Widgets (TD-009) ────────────────────────────────────────────────
   const fullW = Math.max(width || 0, layout.width);
@@ -433,7 +505,7 @@ export const TeamChart = ({
         style={{
           left: p.x,
           top: p.y,
-          width: p.w,
+          width: p.botW || p.w,
           height: CARD_H,
           opacity: dropping && !droppable ? 0.45 : 1,
         }}
@@ -504,7 +576,7 @@ export const TeamChart = ({
             title="Drag to another bot to add a trigger"
             className={`absolute h-4 w-4 rounded-full border-2 border-indigo-400 ${fieldBg}`}
             style={{
-              left: p.w / 2 - 8,
+              left: (p.botW || p.w) / 2 - 8,
               top: CARD_H - 8,
               touchAction: "none",
               cursor: "crosshair",
@@ -515,7 +587,7 @@ export const TeamChart = ({
               setPop(null);
               setWpop(null);
               const pt = pointIn(e) || {
-                x: p.x + p.w / 2,
+                x: p.x + (p.botW || p.w) / 2,
                 y: p.y + CARD_H,
               };
               setDrag({ from: bot.id, ...pt });
@@ -529,7 +601,7 @@ export const TeamChart = ({
   const ghost = (() => {
     if (!drag || !pos[drag.from]) return null;
     const a = pos[drag.from];
-    const sx = a.x + a.w / 2;
+    const sx = a.x + (a.botW || a.w) / 2;
     const sy = a.y + CARD_H;
     const tx = drag.x == null ? sx : drag.x;
     const ty = drag.y == null ? sy : drag.y;
@@ -649,6 +721,12 @@ export const TeamChart = ({
             fillOpacity={wFocus(e) ? 1 : 0.3}
           />
         ))}
+        {checkArrows.map((a) => (
+          <g key={`chk-${a.key}`} className={muted}>
+            <path d={a.d} stroke="currentColor" strokeWidth="1.5" fill="none" />
+            <path d={a.head} fill="currentColor" />
+          </g>
+        ))}
         {ghost ? (
           <path
             d={ghost}
@@ -719,6 +797,30 @@ export const TeamChart = ({
       {widgets.map(widgetCard)}
       {lead ? card(lead) : null}
       {members.map(card)}
+      {members.map((b) => {
+        const p = pos[b.id];
+        if (!p || !hasChecksCard(b)) return null;
+        const has = checkCount(b) > 0;
+        return (
+          <ChecksCard
+            key={`checks-${b.id}`}
+            bot={b}
+            waiting={waitingFor(b.id)}
+            canEdit={!!(canWire && onOpenChecks)}
+            onOpen={(id) => onOpenChecks && onOpenChecks(id)}
+            style={
+              has
+                ? { left: p.chkX, top: p.y, width: CHK_W, height: CARD_H }
+                : {
+                    left: p.chkX,
+                    top: p.y + (CARD_H - ADD_H) / 2,
+                    width: ADD_W,
+                    height: ADD_H,
+                  }
+            }
+          />
+        );
+      })}
       {!members.length ? (
         <div
           className={`absolute text-sm text-center ${muted}`}
