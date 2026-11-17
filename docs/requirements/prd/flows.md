@@ -1,7 +1,7 @@
 # PRD: Flows — Checks, Step Outputs, the Graph, Real Work, Criteria, Sharing
 
-**Status:** In Progress
-**Last Updated:** 2026-11-16
+**Status:** In Progress — being replaced by [bot-checks.md](./bot-checks.md): checks move onto the bots themselves
+**Last Updated:** 2026-11-17
 **Owner:** John Giatropoulos
 **Tickets:** DASH-3 (phase 2), DASH-4 (3), DASH-5 (4), DASH-6 (5), DASH-7 (6), DASH-8 (7) — epic DASH-1, "Loops and graphs: bots that finish work without you"
 **Location:** dash-core (engine, checks, IPC, Graph tab, Goals updates), dash-react (FlowGraph, DiffView), dash-registry (flow package type), dash-electron (IPC registration)
@@ -75,3 +75,4 @@ Phase 1 gave the ledger, but every step was still an AI's word: nothing re-check
 | Date | Change |
 |---|---|
 | 2026-11-16 | Created for DASH-3..DASH-8 (phases 2–7). |
+| 2026-11-17 | Flows as a separate track are being replaced by checks on each bot (bot-checks.md, DASH-9); the runner, checks and ledger here carry on underneath. |

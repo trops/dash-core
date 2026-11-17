@@ -23,6 +23,7 @@
 
 const { stepById } = require("./flowModel");
 const { buildInput, stepKey } = require("../checks/stepInput");
+const { isChecksFlow, retryPrompt, WORK_STEP } = require("../bots/botChecks");
 
 const MAX_INPUT_JSON = 20 * 1024;
 const NO_RECORD_TRIES = 2;
@@ -189,10 +190,11 @@ function createFlowRunner(deps) {
       });
       return;
     }
-    // Its own copy of the bot's folder, when it has one (phase 5; G5).
+    // Its own copy of the bot's folder, when it has one (phase 5; G5). A
+    // bot answering again for its checks works where it always does.
     let work = null;
     try {
-      work = prepareWork(goal, task, step);
+      work = isChecksFlow(goal.flow) ? null : prepareWork(goal, task, step);
     } catch (e) {
       work = { error: (e && e.message) || String(e) };
     }
@@ -206,20 +208,25 @@ function createFlowRunner(deps) {
     }
     const input = inputFor(goal, task, step.id);
     const paths = store.paths(goal.id);
+    // A bot's own work coming back from its checks (bot-checks PRD): it
+    // answers again, and Dash records the answer for it.
+    const again = isChecksFlow(goal.flow) && step.id === WORK_STEP;
     inFlight.add(key);
     waiting.delete(task.id);
     let p;
     try {
       p = Promise.resolve(
         runBot(step.botId, {
-          prompt: stepPrompt({
-            goal,
-            task,
-            step,
-            input,
-            workFolder: paths ? paths.work : null,
-            work,
-          }),
+          prompt: again
+            ? retryPrompt({ goal, task, input })
+            : stepPrompt({
+                goal,
+                task,
+                step,
+                input,
+                workFolder: paths ? paths.work : null,
+                work,
+              }),
           trigger: "flow",
           ...(work && work.dir ? { workingDir: work.dir } : {}),
           via: `flow:${goal.flow.id || ""}`,

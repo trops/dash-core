@@ -85,7 +85,7 @@ describe("botController", () => {
     assert.match(bots, /flowController\.forgetWorkspace\(workspaceId\);/);
     assert.match(
       bots,
-      /cause\.goal = goal;\s*if \(!alreadyRunning\) this\._events\.startRun\(botId, cause\);/,
+      /cause\.goal = goal;[\s\S]{0,200}?if \(!alreadyRunning\) \{\s*this\._events\.startRun\(botId, cause, \{/,
     );
     assert.match(bots, /planId: String\(opts\.planId\) \} : \{\}\),\s*goal,/);
   });

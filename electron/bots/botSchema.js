@@ -12,6 +12,8 @@
  */
 "use strict";
 
+const { checksError } = require("./botChecks");
+
 const SCHEMA_VERSION = 1;
 
 // "ask": ask before tools that aren't read-only; "ask-every": ask before
@@ -78,6 +80,8 @@ function withDefaults(def = {}) {
     subscriptions: [],
     publishes: [],
     projects: [],
+    // Its own checks (bot-checks PRD): null → its work goes straight on.
+    checks: null,
     whilePaused: "queue",
     workspaceId: null,
     session: null,
@@ -180,6 +184,9 @@ function validateBotDefinition(def) {
     const err = publishesError(def.publishes);
     if (err) errors.push(err);
   }
+  // Its own checks (bot-checks PRD): { steps, onFail, maxTries, handsOn }.
+  const checksErr = checksError(def.checks, def.id || null);
+  if (checksErr) errors.push(checksErr);
   return { valid: errors.length === 0, errors };
 }
 

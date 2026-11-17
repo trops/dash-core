@@ -189,7 +189,15 @@ function checkContext(goal, _step) {
   const g = goals();
   // The goal's own copy of the flow's files, when it has one.
   const copy = goal && goal.id ? goalFlowFiles(goal.id) : null;
+  // A bot's own checks (bot-checks PRD) run in its folder, where its work is.
+  let own = null;
+  if (goal && goal.flow && goal.flow.kind === "bot-checks") {
+    const bot = bots.getBot ? bots.getBot(goal.flow.botId) : null;
+    const first = bot && Array.isArray(bot.projects) ? bot.projects[0] : null;
+    if (first && fs.existsSync(first)) own = first;
+  }
   const folder =
+    own ||
     (copy && fs.existsSync(copy) ? copy : null) ||
     (s && flowId && s.folderOf(flowId)) ||
     (g && g.paths(goal.id).work);

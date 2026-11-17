@@ -69,6 +69,16 @@ function flowSnapshot(flow) {
       taskLimits: flow.taskLimits || null,
       steps: flow.steps,
       edges: flow.edges || [],
+      // A job made from a bot's own checks (bot-checks PRD): whose work,
+      // and what happens on a fail and once it passes.
+      ...(flow.kind
+        ? {
+            kind: flow.kind,
+            botId: flow.botId || null,
+            onFail: flow.onFail || null,
+            handsOn: flow.handsOn || null,
+          }
+        : {}),
     }),
   );
 }
@@ -362,7 +372,33 @@ function createGoalStore({
       // source step read (a ticket, today's events) is its first record.
       const source = (flow.steps || []).find((s) => s.kind === "source");
       const history = [];
-      if (source && input.sourceOutput !== undefined) {
+      // Work already done (a bot's run, held for its checks): its record
+      // comes first, and the task starts at the step after it.
+      const doneStep =
+        input.startAfter && stepById(flow, input.startAfter.stepId);
+      if (doneStep) {
+        const next = afterStep(
+          flow,
+          { stepId: doneStep.id, round: 1, maxRounds: flow.maxRounds },
+          "passed",
+        );
+        start = { stepId: next.stepId, status: next.status };
+        history.push({
+          botId: input.startAfter.botId || null,
+          botName: text(input.startAfter.botName, 120) || null,
+          status: "passed",
+          from: "new",
+          to: start.status,
+          round: 1,
+          stepId: doneStep.id,
+          summary: text(input.startAfter.summary) || "Did the work",
+          evidence: [],
+          output: cleanOutput(input.startAfter.output),
+          said: "bot",
+          at,
+        });
+      }
+      if (!doneStep && source && input.sourceOutput !== undefined) {
         history.push({
           botId: (input.createdBy && input.createdBy.botId) || null,
           botName: (input.createdBy && input.createdBy.botName) || null,
@@ -620,7 +656,8 @@ function createGoalStore({
    * bot that ended its run without a record: said by Dash, not a bot.
    * @param {{ stepId: string, status: "passed"|"failed"|"needs-you",
    *           summary?: string, details?: any, output?: any,
-   *           evidence?: Array, kind?: string, ms?: number }} done
+   *           evidence?: Array, kind?: string, ms?: number,
+   *           bot?: { botId: string, botName?: string } }} done
    */
   function writeStepRecord(taskId, done = {}) {
     const task = tasks.get(taskId);
@@ -637,10 +674,13 @@ function createGoalStore({
     const next = afterStep(goal.flow, task, done.status);
     if (next.error) return { error: next.error };
     const output = cleanOutput(done.output);
+    // A bot's answer Dash records for it (a job's work, bot-checks PRD):
+    // still said by the bot, so its checks re-verify it.
+    const bot = done.bot && done.bot.botId ? done.bot : null;
     const record = {
-      botId: null,
-      botName: null,
-      by: "dash",
+      botId: bot ? String(bot.botId) : null,
+      botName: bot ? text(bot.botName, 120) || null : null,
+      ...(bot ? {} : { by: "dash" }),
       status: done.status,
       from: task.status,
       to: next.status,
@@ -654,7 +694,7 @@ function createGoalStore({
       ...(output !== undefined ? { output } : {}),
       ...(done.kind ? { kind: text(done.kind, 20) } : {}),
       ...(typeof done.ms === "number" ? { ms: done.ms } : {}),
-      said: "dash",
+      said: bot ? "bot" : "dash",
       ...(next.stopped ? { stopped: true } : {}),
       at: now(),
     };
@@ -764,6 +804,10 @@ function createGoalStore({
       type: "deleted",
       goalId,
       workspaceId: goal ? goal.workspaceId : null,
+      // A bot's job (bot-checks PRD): whose runs it held.
+      ...(goal && goal.flow && goal.flow.botId
+        ? { botId: goal.flow.botId }
+        : {}),
     });
     return { ok: true, goalId };
   }

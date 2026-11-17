@@ -33,6 +33,7 @@ const { matchSubscribedBots } = require("../bots/eventMatcher");
 const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const BotEventPublisher = require("../bots/BotEventPublisher");
+const { createCheckJobs } = require("../bots/checkJobs");
 const { PausedQueue, drainBot } = require("../bots/pausedQueue");
 const {
   stopBotRun,
@@ -157,6 +158,7 @@ const {
   askTeamBot,
   leadRunInfo,
   withPlanDashboard,
+  LEAD_ASK_WAIT_MS,
 } = require("../bots/leadAsk");
 const isBuildBusy = (state) =>
   !state || state.status === "running" || state.status === "waiting";
@@ -559,6 +561,26 @@ const botController = {
     this._events = new BotEventPublisher({
       publish: (msg) => this._publishBotEvent(msg),
       providerType: (name) => this._providerType(name),
+      // A result held for the bot's checks is saved as its latest when it
+      // goes out (bot-checks PRD).
+      saveResult: (bot, payload) =>
+        this._store.setResult(bot.id, payload.name, payload),
+    });
+
+    // A bot's work held for its checks (bot-checks PRD): a job on the
+    // ledger until it passes, then it goes on.
+    this._checkJobs = createCheckJobs({
+      goals: () => goalController.store(),
+      getBot: (id) => this._store.get(id),
+      publisher: this._events,
+      patchRun: (id, startedAt, patch) =>
+        this._store.patchRun(id, startedAt, patch),
+      getRuns: (id) => this._store.getRuns(id),
+      notify: (botId, info) =>
+        this._broadcast(BOT_STREAM, {
+          botId,
+          event: { type: "checked", ...info },
+        }),
     });
 
     this._runner = new BotRunner({
@@ -672,6 +694,10 @@ const botController = {
         }
       },
     });
+    if (this._offCheckJobs) this._offCheckJobs();
+    this._offCheckJobs = goalController.onChange((change) =>
+      this._checkJobs.onChange(change),
+    );
 
     this._scheduler = new BotScheduler({
       Cron,
@@ -3325,7 +3351,13 @@ const botController = {
         : rootCause());
     const goal = cause.goal || { goalId: null, taskId: null };
     cause.goal = goal;
-    if (!alreadyRunning) this._events.startRun(botId, cause);
+    // A bot with checks holds the results it sends until they pass
+    // (bot-checks PRD).
+    if (!alreadyRunning) {
+      this._events.startRun(botId, cause, {
+        hold: this._checkJobs.holdsRun(this._store.get(botId), opts),
+      });
+    }
     // Who started the bot's current run — a lead asked from outside Dash
     // can't run its bots (leadAsk.js). Only a run that will start counts.
     let viaEntry = null;
@@ -3380,8 +3412,18 @@ const botController = {
     this._broadcastRunActive();
     Promise.resolve(p)
       .then((record) => {
-        // completed / failed → the bus (skipped runs publish nothing).
+        // A bot with checks: its work is held as a job until they pass
+        // (bot-checks PRD). Otherwise completed / failed → the bus
+        // (skipped runs publish nothing).
+        let held = false;
         if (!alreadyRunning) {
+          try {
+            held = this._checkJobs.afterRun({ botId, opts, record });
+          } catch (_e) {
+            held = false;
+          }
+        }
+        if (!alreadyRunning && !held) {
           this._events.endRun(this._store.get(botId), record);
         }
         // A failed run notifies (US-018 AC5).
@@ -5858,6 +5900,19 @@ const botController = {
    * it finishes on its own and shows in the bot's activity.
    */
   async _leadAskBot(lead, member, request) {
+    const asked = Date.now();
+    const result = await this._leadAskBotRun(lead, member, request);
+    // A bot with checks (bot-checks PRD): its answer reaches the lead only
+    // once it passes. Within the ask's wait, the lead gets the checked
+    // answer; otherwise where it is (being checked, waiting for the user).
+    const job = result && result.checks && result.checks.goalId;
+    if (!job) return result;
+    const left = Math.max(0, LEAD_ASK_WAIT_MS - (Date.now() - asked));
+    const outcome = await this._checkJobs.waitFor(job, left);
+    return { ...result, checks: { ...result.checks, ...outcome } };
+  },
+
+  async _leadAskBotRun(lead, member, request) {
     const runKey = this._runner.startedAt(lead.id) || "idle";
     if (!this._leadAsked) this._leadAsked = new Map();
     const info = leadRunInfo(this._runVia ? this._runVia.get(lead.id) : null);

@@ -21,6 +21,29 @@ function api() {
     : null;
 }
 
+// Runs read back to find the last work that passed its checks.
+const RUNS_BACK = 10;
+
+/**
+ * A bot's last run as the views show it. A bot with checks (bot-checks
+ * PRD): work still being checked, or that didn't pass, isn't shown — its
+ * last passed work is, with `checking` set while newer work is checked.
+ */
+export function lastShownRun(runs) {
+  const list = Array.isArray(runs) ? runs : [];
+  const last = list.length ? list[list.length - 1] : null;
+  if (!last || !last.checks || last.checks.state === "passed") return last;
+  const shown = [...list]
+    .reverse()
+    .find((r) => r && (!r.checks || r.checks.state === "passed"));
+  return {
+    ...last,
+    output: shown ? shown.output : null,
+    shownAt: shown ? shown.endedAt || shown.startedAt || null : null,
+    checking: last.checks.state === "checking",
+  };
+}
+
 export function useTeamBots(workspaceId) {
   const [bots, setBots] = useState(EMPTY);
   const [running, setRunning] = useState(EMPTY);
@@ -34,9 +57,8 @@ export function useTeamBots(workspaceId) {
     const bots_ = api();
     if (!bots_ || !bots_.getRuns) return;
     try {
-      const runs = await bots_.getRuns(botId, 1);
-      const last =
-        Array.isArray(runs) && runs.length ? runs[runs.length - 1] : null;
+      const runs = await bots_.getRuns(botId, RUNS_BACK);
+      const last = lastShownRun(runs);
       setLastRunByBot((prev) => ({ ...prev, [botId]: last }));
     } catch (_e) {
       // keep the previous value
@@ -109,7 +131,13 @@ export function useTeamBots(workspaceId) {
       ids.push(
         bots_.onStream(({ botId, event }) => {
           const t = event && event.type;
-          if (t === "done" || t === "error" || t === "skipped") {
+          // "checked": its work moved in its checks (bot-checks PRD).
+          if (
+            t === "done" ||
+            t === "error" ||
+            t === "skipped" ||
+            t === "checked"
+          ) {
             loadLastRun(botId);
           }
         }),
