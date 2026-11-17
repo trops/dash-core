@@ -51,9 +51,25 @@ function latestPassed(task, stepId) {
 function latestFix(task, flow) {
   const history = (task && task.history) || [];
   // Past the user's own moves (one more round): the failure before them.
+  // Sent back by the user: their reason is the fix list.
   let i = history.length - 1;
-  while (i >= 0 && history[i] && history[i].by === "you") i -= 1;
+  while (
+    i >= 0 &&
+    history[i] &&
+    history[i].by === "you" &&
+    history[i].status !== "send-back"
+  )
+    i -= 1;
   const last = history[i];
+  if (last && last.by === "you") {
+    const at = stepById(flow, last.stepId);
+    return {
+      step: at ? at.name : "You",
+      reason: last.summary || "",
+      details: null,
+      byYou: true,
+    };
+  }
   if (!last || last.status !== "failed") return null;
   const step = stepById(flow, last.stepId);
   return {

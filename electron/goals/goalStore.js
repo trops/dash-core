@@ -438,7 +438,7 @@ function createGoalStore({
     if (!goal.waiting && goal.flow && !stopped) {
       return {
         error:
-          "What done means is locked while the goal runs. It can change once it stops and waits for you.",
+          "What done means is locked while the job runs. It can change once it stops and waits for you.",
       };
     }
     goal.criteria = Array.isArray(criteria) ? criteria.slice(0, 20) : [];
@@ -681,13 +681,26 @@ function createGoalStore({
     return freed;
   }
 
-  /** The user's own moves: done, one more round, close. */
-  function userAction(taskId, action) {
+  /**
+   * The user's own moves: done, one more round, close — or
+   * { type: "send-back", reason } at a you step (the reason is required).
+   */
+  function userAction(taskId, move) {
+    const action = move && typeof move === "object" ? move.type : move;
+    const reason =
+      move && typeof move === "object"
+        ? String(move.reason || "")
+            .trim()
+            .slice(0, 2000)
+        : "";
+    if (action === "send-back" && !reason) {
+      return { error: "Say why you're sending it back." };
+    }
     const task = tasks.get(taskId);
     const goal = task && goals.get(task.goalId);
     if (!task || !goal) return { error: "No such task." };
     // Nothing picks up a closed goal's tasks, so none can be restarted.
-    if (goal.closed) return { error: "This goal is closed." };
+    if (goal.closed) return { error: "This job is closed." };
     const next = goal.flow
       ? afterUserInFlow(goal.flow, task, action)
       : afterUser(task, action);
@@ -700,7 +713,7 @@ function createGoalStore({
       to: next.status,
       round: task.round || 1,
       ...(goal.flow ? { stepId: task.stepId } : {}),
-      summary: "",
+      summary: action === "send-back" ? reason : "",
       evidence: [],
       at: now(),
     };

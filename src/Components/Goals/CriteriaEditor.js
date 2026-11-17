@@ -57,7 +57,9 @@ export const CriteriaEditor = ({ criteria, onChange, locked = false }) => {
     <div className="flex flex-col gap-2" data-testid="criteria-editor">
       {criteria.map((c, i) => {
         const h = help[c.id];
-        const vague = h && h.vague && c.proof !== "you" && !c.leftOut;
+        // An empty row is left out when it starts: nothing to warn about.
+        const blank = !String(c.text || "").trim();
+        const vague = !blank && h && h.vague && c.proof !== "you" && !c.leftOut;
         const none = c.proof === "none" && !c.leftOut;
         const warn = vague || none;
         return (
@@ -164,7 +166,7 @@ export const CriteriaEditor = ({ criteria, onChange, locked = false }) => {
       {criteria.length === 0 ? (
         <span className={`text-sm ${strong}`}>
           Nothing yet. Add what done means: each one gets a way to be proven
-          before the goal starts.
+          before the job starts.
         </span>
       ) : null}
     </div>

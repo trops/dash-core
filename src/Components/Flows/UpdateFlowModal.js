@@ -204,7 +204,7 @@ export const UpdateFlowModal = ({ flow, onClose, onUpdated }) => {
                   className={`p-3 rounded-lg text-sm ${status.info.bg} ${status.info.text}`}
                   data-testid="update-running"
                 >
-                  {`${prev.running} goal${prev.running === 1 ? "" : "s"} already running finish${prev.running === 1 ? "es" : ""} on ${prev.from}, so their rules don't change halfway. New goals use ${prev.to}.`}
+                  {`${prev.running} job${prev.running === 1 ? "" : "s"} already running finish${prev.running === 1 ? "es" : ""} on ${prev.from}, so their rules don't change halfway. New jobs use ${prev.to}.`}
                 </div>
               ) : null}
             </>

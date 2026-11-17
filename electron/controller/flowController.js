@@ -408,7 +408,7 @@ function sampleInput(flow, stepId) {
   return {
     goal: {
       id: null,
-      title: "(the goal's title)",
+      title: "(the job's title)",
       body: "",
       criteria: [],
       round: 1,
@@ -563,7 +563,7 @@ const flowController = {
     const active = whereGoalsAre(cur);
     if (removeBots && active.total > 0) {
       return {
-        error: `${active.total} goal${active.total === 1 ? " still follows" : "s still follow"} this flow: finish or delete ${active.total === 1 ? "it" : "them"} before removing its bots.`,
+        error: `${active.total} job${active.total === 1 ? " still follows" : "s still follow"} this flow: finish or delete ${active.total === 1 ? "it" : "them"} before removing its bots.`,
       };
     }
     const r = s.remove(flowId);
@@ -752,7 +752,7 @@ const flowController = {
       return ok({
         tried: false,
         reason:
-          "No goal has reached this step yet, so there's nothing real to try it on.",
+          "No job has reached this step yet, so there's nothing real to try it on.",
       });
     }
     const ctx = checkContext({ ...real.goal, flow }, stepById(flow, stepId));
@@ -856,7 +856,7 @@ const flowController = {
   ) {
     const s = ensure();
     const flow = s && s.get(flowId);
-    if (!flow) return { error: "Choose the flow this goal follows." };
+    if (!flow) return { error: "Choose the flow this job follows." };
     const proven = proveCriteria(criteria, flow);
     const start = canStart(proven.criteria);
     if (!start.ok) return { error: start.reason, blocking: start.blocking };
@@ -878,7 +878,7 @@ const flowController = {
   startGoal(goalId, criteria) {
     const g = goals();
     const goal = g && g.getGoal(goalId);
-    if (!goal) return { error: "No such goal." };
+    if (!goal) return { error: "No such job." };
     const list = Array.isArray(criteria) ? criteria : goal.criteria || [];
     const proven = proveCriteria(list, goal.flow);
     const start = canStart(proven.criteria);
@@ -891,7 +891,7 @@ const flowController = {
   setCriteria(goalId, criteria) {
     const g = goals();
     const goal = g && g.getGoal(goalId);
-    if (!goal) return { error: "No such goal." };
+    if (!goal) return { error: "No such job." };
     const proven = proveCriteria(criteria, goal.flow);
     const r = g.setCriteria(goalId, proven.criteria);
     return r.error ? r : ok({ goal: r.goal });

@@ -195,7 +195,7 @@ function buildFlowPackage({
     },
   };
   notIncluded.unshift(
-    "Its goals, their runs and proof",
+    "Its jobs, their runs and proof",
     "What its bots learned (memory)",
     "Keys and passwords",
   );

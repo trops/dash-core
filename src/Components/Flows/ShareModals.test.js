@@ -123,7 +123,7 @@ describe("UpdateFlowModal (frame 35)", () => {
       "Yours: 45 min",
     );
     expect(screen.getByTestId("update-running")).toHaveTextContent(
-      "2 goals already running finish on 1.2.0",
+      "2 jobs already running finish on 1.2.0",
     );
     const update = screen.getByRole("button", { name: "Update" });
     expect(update).toBeDisabled();

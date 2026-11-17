@@ -11,7 +11,7 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { SidePanel, PanelSection } from "./SidePanel";
-import { chainOrder, failTargetOf, inputStepOf } from "./flowText";
+import { chainOrder, failTargetOf, inputStepOf, youModeOf } from "./flowText";
 
 const nextOf = (flow, id) => {
   const e = (flow.edges || []).find((x) => x.kind === "next" && x.from === id);
@@ -27,10 +27,10 @@ function startsWhen(flow, step) {
   if (step.kind === "source")
     return "On its own schedule, or when something comes in";
   const before = prevOf(flow, step.id);
-  if (!before) return "When a goal in this flow starts";
-  if (before.kind === "check") return `A goal passes "${before.name}"`;
+  if (!before) return "When a job in this flow starts";
+  if (before.kind === "check") return `A job passes "${before.name}"`;
   if (before.kind === "you") return `You approve at "${before.name}"`;
-  if (before.kind === "source") return "A goal starts";
+  if (before.kind === "source") return "A job starts";
   return `"${before.name}" finishes`;
 }
 
@@ -55,9 +55,43 @@ function cantArgueWith(flow, step) {
     }
   }
   if (flow.criteria && flow.criteria.length)
-    facts.push("the goal's criteria (locked)");
-  if (facts.length === 0) facts.push("the goal's criteria (locked)");
+    facts.push("the job's criteria (locked)");
+  if (facts.length === 0) facts.push("the job's criteria (locked)");
   return facts.join(" · ");
+}
+
+const YOU_MODES = [
+  { value: "approve", label: "Approve or send back" },
+  { value: "read", label: "Read it, then mark it done" },
+  { value: "custom", label: "Something else…" },
+];
+const YOU_MODE_HINT = {
+  approve:
+    "Two buttons: Approve, or Send back with a reason — the bot step runs again with it.",
+  read: "One button: mark it done once you've read it.",
+  custom: "One button, named what you do.",
+};
+
+/** The bot steps before a you step that Send back can rerun. */
+function sendBackOptions(flow, step) {
+  const before = [];
+  for (const s of chainOrder(flow)) {
+    if (step && s.id === step.id) break;
+    if (s.kind === "bot") before.push(s);
+  }
+  const nearest = before[before.length - 1];
+  return [
+    {
+      value: "",
+      label: nearest
+        ? `${nearest.name} (the bot step before)`
+        : "The bot step before",
+    },
+    ...before
+      .filter((s) => s !== nearest)
+      .reverse()
+      .map((s) => ({ value: s.id, label: s.name })),
+  ];
 }
 
 /**
@@ -86,8 +120,15 @@ export const StepPanel = ({
   const [name, setName] = useState(step ? step.name : "New step");
   const [botId, setBotId] = useState(step ? step.botId || "" : "");
   const [judgment, setJudgment] = useState(!!(step && step.judgment));
+  // A you step: what you do there (approve or send back, read it, or
+  // something you name), and where Send back reruns the work.
+  const savedMode = step && step.kind === "you" ? youModeOf(step) : "approve";
+  const [youMode, setYouMode] = useState(savedMode);
   const [action, setAction] = useState(
-    step ? step.action || "Approve" : "Approve",
+    savedMode === "custom" ? step.action || "" : "",
+  );
+  const [sendBackTo, setSendBackTo] = useState(
+    step && step.sendBackTo ? step.sendBackTo : "",
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -99,7 +140,10 @@ export const StepPanel = ({
         name !== step.name ||
         botId !== (step.botId || "") ||
         judgment !== !!step.judgment ||
-        (kind === "you" && action !== (step.action || "Approve"))));
+        (kind === "you" &&
+          (youMode !== savedMode ||
+            (youMode === "custom" && action !== (step.action || "")) ||
+            sendBackTo !== (step.sendBackTo || "")))));
 
   const save = async () => {
     setBusy(true);
@@ -109,7 +153,16 @@ export const StepPanel = ({
         name: name.trim() || (kind === "you" ? "You" : "Step"),
         note: note.trim(),
         ...(kind === "you"
-          ? { action: action.trim() || "Approve" }
+          ? {
+              mode: youMode,
+              action:
+                youMode === "custom"
+                  ? action.trim() || "Done"
+                  : youMode === "read"
+                    ? "Read it"
+                    : "Approve",
+              sendBackTo: youMode === "approve" ? sendBackTo || null : null,
+            }
           : { botId: botId || null }),
         ...(kind === "bot" ? { judgment } : {}),
       };
@@ -193,7 +246,7 @@ export const StepPanel = ({
         <SelectInput
           label={
             kind === "source"
-              ? "The bot that starts goals"
+              ? "The bot that starts jobs"
               : "The bot that does it"
           }
           value={botId}
@@ -202,11 +255,31 @@ export const StepPanel = ({
           onChange={(v) => setBotId(v)}
         />
       ) : (
-        <InputText
-          label="What you do here"
-          value={action}
-          onChange={(v) => setAction(v)}
-        />
+        <>
+          <SelectInput
+            label="What you do here"
+            value={youMode}
+            options={YOU_MODES}
+            onChange={(v) => setYouMode(v)}
+          />
+          <span className={`text-xs ${muted}`}>{YOU_MODE_HINT[youMode]}</span>
+          {youMode === "custom" ? (
+            <InputText
+              label="What it is"
+              value={action}
+              placeholder="e.g. Merge the PR"
+              onChange={(v) => setAction(v)}
+            />
+          ) : null}
+          {youMode === "approve" ? (
+            <SelectInput
+              label="If you send it back, it goes to"
+              value={sendBackTo}
+              options={sendBackOptions(flow, step)}
+              onChange={(v) => setSendBackTo(v)}
+            />
+          ) : null}
+        </>
       )}
 
       <TextArea
@@ -234,9 +307,9 @@ export const StepPanel = ({
             {startsWhen(flow, step)}
           </PanelSection>
           <PanelSection label="Reads → writes">
-            {`${reads ? `${reads.name}'s record` : "What started the goal"}${
+            {`${reads ? `${reads.name}'s record` : "What started the job"}${
               flow.criteria && flow.criteria.length
-                ? ", the goal's criteria"
+                ? ", the job's criteria"
                 : ""
             } → writes its record${
               fields.length ? `: ${fields.map((f) => f.name).join(", ")}` : ""
@@ -302,7 +375,7 @@ export const StepPanel = ({
       ) : null}
       {mode === "edit" && kind === "you" ? (
         <span className={`text-xs ${muted}`}>
-          Goals that reach this step wait in Needs you until you mark them done.
+          Jobs that reach this step wait in Needs you until you act on them.
         </span>
       ) : null}
     </SidePanel>

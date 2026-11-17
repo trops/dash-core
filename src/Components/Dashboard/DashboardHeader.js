@@ -32,10 +32,10 @@ export const DashboardHeader = ({
   stageMode = "dashboard",
   onStageModeChange = null,
   botsAttention = 0,
-  // Goals waiting for the user (goals-ledger PRD), shown on "Goals".
+  // Goals waiting for the user (goals-ledger PRD), shown on "Jobs".
   goalsAttention = 0,
   // The open stage's own button on the right (flows PRD): "Add a step" or
-  // "New flow" on Graph, "New goal" on Goals. { label, onClick } or null.
+  // "New flow" on Flows, "New job" on Jobs. { label, onClick } or null.
   stageAction = null,
 }) => {
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
@@ -89,11 +89,12 @@ export const DashboardHeader = ({
                       </span>
                     ),
                   },
+                  { value: "graph", label: "Flows" },
                   {
                     value: "goals",
                     label: (
                       <span className="inline-flex items-center gap-1.5">
-                        Goals
+                        Jobs
                         {goalsAttention > 0 && (
                           <span
                             aria-label={`${goalsAttention} need you`}
@@ -105,7 +106,6 @@ export const DashboardHeader = ({
                       </span>
                     ),
                   },
-                  { value: "graph", label: "Graph" },
                 ]}
               />
             )}

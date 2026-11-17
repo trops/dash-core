@@ -130,7 +130,7 @@ describe("FlowGoalDetail", () => {
     expect(onAction).toHaveBeenCalledWith("task_1", "close");
   });
 
-  it("ready at your step: Mark done", () => {
+  it("ready at your step that names what you do: one button", () => {
     const onAction = jest.fn();
     render(
       <FlowGoalDetail
@@ -139,10 +139,51 @@ describe("FlowGoalDetail", () => {
         onAction={onAction}
       />,
     );
+    const card = screen.getByTestId("you-waiting");
     expect(
-      screen.getByText(/Waiting for you: Merge the PR/),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
+      within(card).queryByRole("button", { name: "Send back…" }),
+    ).toBeNull();
+    fireEvent.click(within(card).getByRole("button", { name: "Merge the PR" }));
+    expect(onAction).toHaveBeenCalledWith("task_1", "done");
+  });
+
+  it("approve or send back: Send back needs a reason, then sends it", () => {
+    const onAction = jest.fn();
+    const approving = {
+      ...flow,
+      steps: flow.steps.map((s) =>
+        s.id === "you"
+          ? { ...s, name: "You approve", mode: "approve", action: "Approve" }
+          : s,
+      ),
+    };
+    render(
+      <FlowGoalDetail
+        goal={goalAt(
+          { stepId: "you", status: "ready", history: [] },
+          { flow: approving },
+        )}
+        act={act}
+        onAction={onAction}
+      />,
+    );
+    const card = screen.getByTestId("you-waiting");
+    expect(card).toHaveTextContent("Approve Builder's work");
+    fireEvent.click(within(card).getByRole("button", { name: "Send back…" }));
+    expect(card).toHaveTextContent("Send it back to Builder");
+    const send = within(card).getByRole("button", { name: "Send back" });
+    expect(send).toBeDisabled();
+    fireEvent.change(within(card).getByRole("textbox"), {
+      target: { value: "Add how to test it." },
+    });
+    expect(send).not.toBeDisabled();
+    fireEvent.click(send);
+    expect(onAction).toHaveBeenCalledWith("task_1", {
+      type: "send-back",
+      reason: "Add how to test it.",
+    });
+    fireEvent.click(within(card).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(card).getByRole("button", { name: "Approve" }));
     expect(onAction).toHaveBeenCalledWith("task_1", "done");
   });
 
@@ -162,7 +203,7 @@ describe("FlowGoalDetail", () => {
     expect(
       screen.getByText("Before it starts: 1 of 2 criteria can't be checked"),
     ).toBeInTheDocument();
-    const start = screen.getByRole("button", { name: "Start goal" });
+    const start = screen.getByRole("button", { name: "Start job" });
     expect(start).toBeDisabled();
     const second = screen.getAllByTestId("criterion")[1];
     fireEvent.click(
@@ -176,7 +217,7 @@ describe("FlowGoalDetail", () => {
 });
 
 describe("NewGoalModal (frame 29)", () => {
-  it("flags a vague criterion with a measurable rewrite, and starts the goal", async () => {
+  it("flags a vague criterion with a measurable rewrite, and starts the job", async () => {
     const { api } = installMockFlowsApi();
     const onStarted = jest.fn();
     render(
@@ -187,10 +228,15 @@ describe("NewGoalModal (frame 29)", () => {
         onStarted={onStarted}
       />,
     );
-    fireEvent.change(screen.getByLabelText("Goal"), {
+    fireEvent.change(screen.getByLabelText("What should be done"), {
       target: { value: "Count conversations per lead" },
     });
-    fireEvent.click(screen.getByText("+ Add a criterion"));
+    // Optional and folded away; opening it gives an empty row, which
+    // doesn't stop the job starting.
+    fireEvent.click(screen.getByText("+ Add what done means (optional)"));
+    expect(
+      screen.getByRole("button", { name: "Start job" }),
+    ).not.toBeDisabled();
     fireEvent.change(screen.getByLabelText("Criterion 1"), {
       target: { value: "It should feel fast" },
     });
@@ -206,7 +252,7 @@ describe("NewGoalModal (frame 29)", () => {
     expect(screen.getByLabelText("Criterion 1")).toHaveValue(
       "It opens in under 200 ms",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Start goal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start job" }));
     await waitFor(() => expect(api.newGoal).toHaveBeenCalled());
     expect(api.newGoal.mock.calls[0][1]).toMatchObject({
       flowId: "flow_t",

@@ -4,17 +4,23 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotAvatar } from "./BotAvatar";
 import { STATUS_DOT, triggerSummary } from "./teamUtils";
 import {
+  PILL_H,
+  arrowHead,
   diagramEdges,
   diagramLayout,
   eventText,
   loopEdges,
+  neighbourLine,
   parseBotEventType,
 } from "./teamDiagram";
 import { TriggerPopover } from "./TriggerPopover";
 import { WidgetWirePopover } from "./WidgetWirePopover";
-import { widgetEdges, widgetLayout, widgetSub } from "./widgetDiagram";
+import { LANE, routeWidgets, widgetEdges, widgetSub } from "./widgetDiagram";
 
 const CARD_H = 80;
+// Room between bots side by side for a line and its label.
+const BOT_GAP = 80;
+const BOT_MIN_W = 184;
 const POP_W = 320;
 // Widget cards (TD-009): in a column right of the team when it's this wide.
 const W_CARD_H = 64;
@@ -104,42 +110,107 @@ export const TeamChart = ({
 
   const hasWidgets = widgets.length > 0;
   const side = hasWidgets && width >= W_SIDE_MIN;
-  const layout = diagramLayout({
-    width: side ? width - W_COL - 40 : width,
-    count: members.length,
-    cardH: CARD_H,
-  });
-  const pos = {};
-  members.forEach((b, i) => {
-    pos[b.id] = { ...layout.cards[i], w: layout.cardW };
-  });
-  if (lead) pos[lead.id] = { ...layout.lead };
+  const teamWidth = side ? width - W_COL - 40 : width;
+  const edges = diagramEdges(members, lead);
+  const loops = loopEdges(edges);
+  const labelText = (e) =>
+    `${eventText(e.event)}${loops.has(e.key) ? " · loop" : ""}`;
+  const widgetLabel = (e) =>
+    e.kind === "results" ? "shows answers" : eventText(e.event);
+  const allWEdges = hasWidgets ? widgetEdges(widgets, members) : [];
+
+  /** Cards, bot lines and widget lines for one row height. */
+  const build = (rowH) => {
+    const layout = diagramLayout({
+      width: teamWidth,
+      count: members.length,
+      cardH: CARD_H,
+      gap: BOT_GAP,
+      minW: BOT_MIN_W,
+      ...(rowH ? { rowH } : {}),
+    });
+    const pos = {};
+    members.forEach((b, i) => {
+      pos[b.id] = { ...layout.cards[i], w: layout.cardW };
+    });
+    if (lead) pos[lead.id] = { ...layout.lead };
+    // Lines between the same two bots: how many, and which this one is.
+    const pairTotal = {};
+    for (const e of edges) {
+      const pair = [e.from, e.to].sort().join("|");
+      pairTotal[pair] = (pairTotal[pair] || 0) + 1;
+    }
+    const pairCount = {};
+    const drawn = edges.map((e) => {
+      const pair = [e.from, e.to].sort().join("|");
+      const nth = (pairCount[pair] = (pairCount[pair] || 0) + 1) - 1;
+      const a = pos[e.from];
+      const b = pos[e.to];
+      // Neighbours in a row: straight across the gap between them.
+      const across = neighbourLine(a, b, {
+        cardH: CARD_H,
+        slot: nth,
+        slots: pairTotal[pair],
+        text: labelText(e),
+      });
+      if (across) return { ...e, ...across };
+      const sx = a.x + a.w / 2;
+      const sy = a.y + CARD_H;
+      const tx = b.x + b.w / 2;
+      const ty = b.y + CARD_H;
+      const dip = 60 + Math.abs(tx - sx) * 0.12 + nth * 26;
+      return {
+        ...e,
+        d: `M${sx},${sy} C${sx},${sy + dip} ${tx},${ty + dip} ${tx},${ty}`,
+        head: arrowHead(tx, ty, "up"),
+        mx: (sx + tx) / 2,
+        my: Math.max(sy, ty) + dip * 0.75,
+        curve: true,
+      };
+    });
+    const lastBottom = members.length
+      ? layout.cards[members.length - 1].y + CARD_H
+      : layout.lead.y + CARD_H;
+    const below = Math.max(
+      lastBottom,
+      ...drawn.filter((e) => e.curve).map((e) => e.my + PILL_H / 2 + 4),
+    );
+    const routed = hasWidgets
+      ? routeWidgets({
+          width: Math.max(width || 0, layout.width),
+          side,
+          team: {
+            cards: members.map((b, i) => ({
+              id: b.id,
+              ...layout.cards[i],
+              w: layout.cardW,
+            })),
+            cols: layout.cols,
+            cardH: CARD_H,
+            gap: layout.gap,
+            lead: lead ? layout.lead : null,
+          },
+          widgets,
+          edges: allWEdges,
+          below,
+          colW: W_COL,
+          cardH: W_CARD_H,
+          labelOf: widgetLabel,
+        })
+      : null;
+    return { layout, pos, drawn, routed };
+  };
+  let built = build(0);
+  // More than 3 widget lines under a row: give that gap more height.
+  if (built.routed && built.routed.crowded > 3) {
+    built = build(CARD_H + LANE * (built.routed.crowded + 1) + 16);
+  }
+  const { layout, pos, drawn, routed } = built;
   const byId = new Map(
     [lead, ...members].filter(Boolean).map((b) => [b.id, b]),
   );
   const isMember = (id) => members.some((b) => b.id === id);
 
-  const edges = diagramEdges(members, lead);
-  const loops = loopEdges(edges);
-  // Lines between the same two bots get their own curve depth.
-  const pairCount = {};
-  const drawn = edges.map((e) => {
-    const pair = [e.from, e.to].sort().join("|");
-    const nth = (pairCount[pair] = (pairCount[pair] || 0) + 1) - 1;
-    const a = pos[e.from];
-    const b = pos[e.to];
-    const sx = a.x + a.w / 2;
-    const sy = a.y + CARD_H;
-    const tx = b.x + b.w / 2;
-    const ty = b.y + CARD_H;
-    const dip = 60 + Math.abs(tx - sx) * 0.12 + nth * 26;
-    return {
-      ...e,
-      d: `M${sx},${sy} C${sx},${sy + dip} ${tx},${ty + dip} ${tx},${ty}`,
-      mx: (sx + tx) / 2,
-      my: Math.max(sy, ty) + dip * 0.75,
-    };
-  });
   // Lines of the selected bot stand out and the rest fade — only when it
   // has lines (selecting the lead, or a bot with none, fades nothing).
   const focusId =
@@ -168,48 +239,9 @@ export const TeamChart = ({
 
   // ── Widgets (TD-009) ────────────────────────────────────────────────
   const fullW = Math.max(width || 0, layout.width);
-  const wl = widgetLayout({
-    width: fullW,
-    count: widgets.length,
-    top: layout.height - 60,
-    side,
-    colW: W_COL,
-    cardH: W_CARD_H,
-  });
-  const wpos = {};
-  widgets.forEach((w, i) => {
-    wpos[w.key] = wl.cards[i];
-  });
+  const wpos = routed ? routed.cards : {};
   const widgetByKey = new Map(widgets.map((w) => [w.key, w]));
-  // A curve from a bot's handle to a widget's near edge; its label sits
-  // half way along it.
-  const wDrawn = (hasWidgets ? widgetEdges(widgets, members) : [])
-    .filter((e) => pos[e.from] && wpos[e.widget])
-    .map((e) => {
-      const a = pos[e.from];
-      const b = wpos[e.widget];
-      const sx = a.x + a.w / 2;
-      const sy = a.y + CARD_H;
-      const [tx, ty, c1, c2] = side
-        ? [
-            b.x,
-            b.y + W_CARD_H / 2,
-            [sx, sy + 70],
-            [b.x - 90, b.y + W_CARD_H / 2],
-          ]
-        : [b.x + b.w / 2, b.y, [sx, sy + 70], [b.x + b.w / 2, b.y - 70]];
-      const mid = (i) =>
-        0.125 * [sx, sy][i] +
-        0.375 * c1[i] +
-        0.375 * c2[i] +
-        0.125 * [tx, ty][i];
-      return {
-        ...e,
-        d: `M${sx},${sy} C${c1[0]},${c1[1]} ${c2[0]},${c2[1]} ${tx},${ty}`,
-        mx: mid(0),
-        my: mid(1),
-      };
-    });
+  const wDrawn = routed ? routed.lines : [];
   const wFocus = (e) => !focusId || e.from === focusId;
 
   // ── Wiring ────────────────────────────────────────────────────────────
@@ -542,7 +574,7 @@ export const TeamChart = ({
 
   // An open popover makes room for itself below the cards (the view scrolls).
   const POP_ROOM = 480;
-  const contentH = Math.max(layout.height, hasWidgets ? wl.bottom + 24 : 0);
+  const contentH = Math.max(layout.height, routed ? routed.bottom + 24 : 0);
   const openTop = popStyle ? popStyle.top : wpopStyle ? wpopStyle.top : null;
   const height =
     openTop !== null ? Math.max(contentH, openTop + POP_ROOM) : contentH;
@@ -579,6 +611,15 @@ export const TeamChart = ({
             fill="none"
           />
         ))}
+        {drawn.map((e) => (
+          <path
+            key={`head-${e.key}`}
+            d={e.head}
+            className={lineClass(e.kind)}
+            fill="currentColor"
+            fillOpacity={touches(e) ? 1 : 0.3}
+          />
+        ))}
         {wDrawn.map((e) => (
           <path
             key={e.key}
@@ -597,6 +638,15 @@ export const TeamChart = ({
                   : undefined
             }
             fill="none"
+          />
+        ))}
+        {wDrawn.map((e) => (
+          <path
+            key={`head-${e.key}`}
+            d={e.head}
+            className={lineClass(e.kind)}
+            fill="currentColor"
+            fillOpacity={wFocus(e) ? 1 : 0.3}
           />
         ))}
         {ghost ? (
@@ -659,7 +709,7 @@ export const TeamChart = ({
       {hasWidgets ? (
         <div
           className={`absolute text-xs font-semibold ${muted}`}
-          style={{ left: wl.x, top: wl.labelY }}
+          style={{ left: routed.header.x, top: routed.header.y }}
         >
           {canWire
             ? "Widgets · drag a bot here to show what it sends"

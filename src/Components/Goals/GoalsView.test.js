@@ -121,7 +121,7 @@ afterEach(() => {
 const rows = () => screen.getAllByTestId("goal-row");
 const renderView = () => render(<GoalsView workspace={{ id: 7 }} />);
 
-test("lists this dashboard's goals with status, source, line and task pills", async () => {
+test("lists this dashboard's jobs with status, source, line and task pills", async () => {
   renderView();
   await waitFor(() => expect(rows()).toHaveLength(3));
   const first = rows()[0];
@@ -150,7 +150,7 @@ test("filters by Needs you", async () => {
   expect(screen.queryByTestId("goal-detail")).not.toBeInTheDocument();
 });
 
-test("a closed goal offers no moves on its tasks", async () => {
+test("a closed job offers no moves on its tasks", async () => {
   mock = mockGoalsApi([
     { ...stopped, id: "goal_closed", closed: true, status: "closed" },
   ]);
@@ -164,7 +164,7 @@ test("a closed goal offers no moves on its tasks", async () => {
   ).not.toBeInTheDocument();
 });
 
-test("a goal opens beside the list with its records, labelled as said by the bot", async () => {
+test("a job opens beside the list with its records, labelled as said by the bot", async () => {
   renderView();
   await waitFor(() => expect(rows()).toHaveLength(3));
   fireEvent.click(rows()[0]);
@@ -207,12 +207,12 @@ test("a ready task is marked done by you", async () => {
   );
 });
 
-test("Delete goal asks first, then removes it", async () => {
+test("Delete job asks first, then removes it", async () => {
   renderView();
   await waitFor(() => expect(rows()).toHaveLength(3));
   fireEvent.click(rows()[0]);
   const detail = await screen.findByTestId("goal-detail");
-  fireEvent.click(within(detail).getByRole("button", { name: "Delete goal" }));
+  fireEvent.click(within(detail).getByRole("button", { name: "Delete job" }));
   expect(screen.getByTestId("goal-delete-confirm")).toHaveTextContent(
     "Its 1 task, 0 runs, proof and work files are removed",
   );
@@ -223,7 +223,10 @@ test("Delete goal asks first, then removes it", async () => {
   await waitFor(() => expect(rows()).toHaveLength(2));
 });
 
-test("a dashboard with no goals says how they get here", async () => {
+test("a dashboard with no jobs says how they get here", async () => {
   render(<GoalsView workspace={{ id: 99 }} />);
-  expect(await screen.findByText("No goals yet")).toBeInTheDocument();
+  expect(await screen.findByText("No jobs right now")).toBeInTheDocument();
+  expect(
+    screen.getByText(/A job is one piece of work going through a flow/),
+  ).toBeInTheDocument();
 });

@@ -266,7 +266,7 @@ export const CheckPanel = ({
       setTrial({
         tried: false,
         reason:
-          "Add the check first; it's tried on the next goal that reaches it.",
+          "Add the check first; it's tried on the next job that reaches it.",
       });
       return;
     }

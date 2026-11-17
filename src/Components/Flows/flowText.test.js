@@ -6,6 +6,7 @@ import {
   flowCount,
   betweenText,
   inputStepOf,
+  youModeOf,
 } from "./flowText";
 
 const flow = {
@@ -68,11 +69,11 @@ describe("checkSummary", () => {
 });
 
 describe("graphSteps / graphEdges", () => {
-  it("shows where goals are now, and the stop note under you", () => {
+  it("shows where jobs are now, and the stop note under you", () => {
     const steps = graphSteps(flow);
     expect(steps.find((s) => s.id === "b").badge).toEqual({
       state: "info",
-      label: "1 goal · round 2",
+      label: "1 job · round 2",
     });
     expect(steps.find((s) => s.id === "you").badge).toEqual({
       state: "warning",
@@ -136,9 +137,21 @@ describe("stepPills", () => {
 
 describe("small helpers", () => {
   it("flowCount, betweenText, inputStepOf", () => {
-    expect(flowCount(flow)).toEqual({ state: "info", label: "4 goals" });
+    expect(flowCount(flow)).toEqual({ state: "info", label: "4 jobs" });
     expect(betweenText(flow, "b", "ci")).toBe("between Builder and GitHub CI");
     expect(betweenText(flow, "r", null)).toBe("after Reviewer");
     expect(inputStepOf(flow, "r").name).toBe("Builder");
   });
+});
+
+test("youModeOf reads steps saved before modes the way the flow model does", () => {
+  expect(youModeOf({ kind: "you", action: "Merge the PR" })).toBe("custom");
+  expect(youModeOf({ kind: "you", action: "Approve the send" })).toBe(
+    "approve",
+  );
+  expect(youModeOf({ kind: "you", action: "Read it" })).toBe("read");
+  expect(youModeOf({ kind: "you" })).toBe("approve");
+  expect(youModeOf({ kind: "you", mode: "read", action: "Approve" })).toBe(
+    "read",
+  );
 });

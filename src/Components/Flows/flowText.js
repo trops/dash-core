@@ -44,7 +44,21 @@ export function checkSummary(check) {
   return "";
 }
 
-const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/**
+ * A you step's mode, as the flow model reads it: steps saved before modes
+ * that say "Approve…" approve, "Read…" are read, anything else is custom.
+ */
+export function youModeOf(step) {
+  if (step && ["approve", "read", "custom"].includes(step.mode))
+    return step.mode;
+  const action = String((step && step.action) || "").trim();
+  if (!action || /^approve\b/i.test(action)) return "approve";
+  if (/^read\b/i.test(action)) return "read";
+  return "custom";
+}
+
+export const plural = (n, one, many = `${one}s`) =>
+  `${n} ${n === 1 ? one : many}`;
 
 /**
  * A flow's steps as FlowGraph draws them, with where its goals are now
@@ -64,13 +78,13 @@ export function graphSteps(flow, { warnSteps = [] } = {}) {
       } else if (c.stopped) {
         badge = {
           state: "warning",
-          label: `${plural(c.stopped, "goal")} stopped`,
+          label: `${plural(c.stopped, "job")} stopped`,
         };
       } else {
         const maxRound = Math.max(...(c.rounds || [1]));
         badge = {
           state: "info",
-          label: `${plural(c.goals, "goal")}${maxRound > 1 ? ` · round ${maxRound}` : ""}`,
+          label: `${plural(c.goals, "job")}${maxRound > 1 ? ` · round ${maxRound}` : ""}`,
         };
       }
     }
@@ -139,7 +153,7 @@ export function flowLine(flow) {
 export function flowCount(flow) {
   const w = (flow && flow.where) || {};
   if (w.running) return { state: "info", label: `${w.running} running` };
-  if (w.total) return { state: "info", label: plural(w.total, "goal") };
+  if (w.total) return { state: "info", label: plural(w.total, "job") };
   return null;
 }
 

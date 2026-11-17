@@ -24,6 +24,7 @@
 "use strict";
 
 const STEP_KINDS = ["source", "bot", "check", "you"];
+const YOU_MODES = ["approve", "read", "custom"];
 const CHECK_KINDS = ["rules", "command", "script", "tool"];
 const FIELD_KINDS = [
   "text",
@@ -104,6 +105,18 @@ function cleanCheck(check) {
   return copy;
 }
 
+/**
+ * A you step saved before modes: "Approve…" approves (or sends back),
+ * "Read…" is read and marked done, anything else it names is custom.
+ */
+function youModeOf(step) {
+  if (step && YOU_MODES.includes(step.mode)) return step.mode;
+  const action = String((step && step.action) || "").trim();
+  if (!action || /^approve\b/i.test(action)) return "approve";
+  if (/^read\b/i.test(action)) return "read";
+  return "custom";
+}
+
 function cleanStep(s, i) {
   if (!s || typeof s !== "object") return null;
   const kind = STEP_KINDS.includes(s.kind) ? s.kind : null;
@@ -131,7 +144,21 @@ function cleanStep(s, i) {
     }
   }
   if (kind === "check") step.check = cleanCheck(s.check);
-  if (kind === "you") step.action = str(s.action, 120) || "Approve";
+  if (kind === "you") {
+    // approve: Approve or Send back (with a reason); read: one button,
+    // marked done; custom: one button named by `action`.
+    // A step saved before modes: its own action named something else to do.
+    step.mode = YOU_MODES.includes(s.mode) ? s.mode : youModeOf(s);
+    step.action =
+      str(s.action, 120) ||
+      (step.mode === "read"
+        ? "Read it"
+        : step.mode === "custom"
+          ? "Done"
+          : "Approve");
+    if (s.sendBackTo && STEP_ID.test(String(s.sendBackTo)))
+      step.sendBackTo = String(s.sendBackTo);
+  }
   return step;
 }
 
@@ -244,6 +271,26 @@ function prevStep(flow, stepId) {
     (x) => x.kind === "next" && x.to === stepId,
   );
   return e ? stepById(flow, e.from) : null;
+}
+
+/**
+ * Where "Send back" at a you step reruns the work: the step it names, else
+ * the nearest bot step before it.
+ */
+function sendBackTarget(flow, stepId) {
+  const step = stepById(flow, stepId);
+  if (!step || step.kind !== "you") return null;
+  const named = step.sendBackTo ? stepById(flow, step.sendBackTo) : null;
+  // Only a bot step reruns work (the runner never picks up a source step).
+  if (named && named.kind === "bot") return named;
+  const seen = new Set();
+  let cur = prevStep(flow, stepId);
+  while (cur && !seen.has(cur.id)) {
+    if (cur.kind === "bot") return cur;
+    seen.add(cur.id);
+    cur = prevStep(flow, cur.id);
+  }
+  return null;
 }
 
 /** Where a failed step sends the work back to, or null (it comes to you). */
@@ -359,6 +406,9 @@ module.exports = {
   nextStep,
   prevStep,
   failTarget,
+  sendBackTarget,
+  YOU_MODES,
+  youModeOf,
   firstWorkStep,
   inputStep,
   botIdsOf,

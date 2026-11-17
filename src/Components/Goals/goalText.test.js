@@ -35,6 +35,9 @@ describe("goalText", () => {
     expect(recordText({ by: "you", status: "one-more-round" })).toBe(
       "You gave it one more round",
     );
+    expect(
+      recordText({ by: "you", status: "send-back", summary: "Add steps." }),
+    ).toBe("You sent it back: Add steps.");
   });
 
   test("the list line says what needs you first", () => {
@@ -54,7 +57,7 @@ describe("goalText", () => {
         status: "ready",
         tasks: [{ title: "Build", status: "ready", history: [] }],
       }),
-    ).toBe("Ready for you to mark done: Build");
+    ).toBe("Ready for you: Build");
     expect(
       goalLine({
         status: "working",
