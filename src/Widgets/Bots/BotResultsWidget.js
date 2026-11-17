@@ -366,9 +366,15 @@ export const BotResultsContent = ({ botId, dashboardId, widgetId, team }) => {
   const failed = !running && run && run.status === "failed";
   const full = run && run.output ? toPlainText(run.output) : "";
   const shape = answerShape(full);
-  const at = run ? dayTime(run.endedAt || run.startedAt) : null;
+  // A bot with checks shows its last work that passed (bot-checks PRD).
+  const at = run
+    ? dayTime(
+        run.shownAt !== undefined ? run.shownAt : run.endedAt || run.startedAt,
+      )
+    : null;
   const sub = [
     running ? "Running now" : at,
+    run && run.checking && !running ? "New work being checked" : null,
     trigger && trigger !== "Scheduled run" ? trigger : null,
     schedule,
   ]
@@ -559,7 +565,9 @@ export const BotResultsContent = ({ botId, dashboardId, widgetId, team }) => {
         {run && !running && !failed ? (
           shape.kind === "none" ? (
             <span className={`text-sm ${muted}`}>
-              The last run gave no answer.
+              {run.checking
+                ? "Its answer is being checked. It shows here once it passes."
+                : "The last run gave no answer."}
             </span>
           ) : (
             <>

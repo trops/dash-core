@@ -164,6 +164,34 @@ const clip = (s, n) => {
   return t.length > n ? t.slice(0, n) + "…" : t;
 };
 
+/**
+ * What the lead hears from a bot with checks (bot-checks PRD): the answer
+ * once it passed, or where its work is (`checks` from checkJobs.stateOf).
+ */
+function checkedAnswer(name, checks, output) {
+  const job = checks.title ? ` (the job "${checks.title}" in Jobs)` : "";
+  const why = checks.reason
+    ? ` Last check that failed: ${clip(checks.reason, 300)}`
+    : "";
+  if (checks.state === "passed") {
+    const tries = checks.round > 1 ? ` on try ${checks.round}` : "";
+    return `${name}'s answer (it passed its checks${tries}):\n${clip(
+      checks.output || output || "(no answer)",
+      RUN_ANSWER_LIMIT * 2,
+    )}`;
+  }
+  if (checks.state === "waiting") {
+    return `${name} finished, and its work is waiting for the user to approve it${job}. Tell the user; it goes on once they approve.`;
+  }
+  if (checks.state === "needs-you") {
+    return `${name}'s work didn't pass its checks, so it's waiting for the user${job}.${why} Tell the user.`;
+  }
+  if (checks.state === "stopped" || checks.state === "gone") {
+    return `${name}'s work didn't pass its checks, so nothing was handed on.${why}`;
+  }
+  return `${name} finished, and its work is still going through its checks${job}. Tell the user; it goes on once it passes.`;
+}
+
 function howItStarts(bot) {
   const scheduled = (bot.schedules || []).some((s) => s && s.cron);
   const events = (bot.subscriptions || []).length;
@@ -355,6 +383,9 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
                 `${b.name} failed: ${clip(res.error || "no details", 300)}`,
               );
             }
+            if (res.checks && res.checks.goalId) {
+              return ok(checkedAnswer(b.name, res.checks, res.output));
+            }
             return ok(
               `${b.name}'s answer:\n${clip(res.output || "(no answer)", RUN_ANSWER_LIMIT * 2)}`,
             );
@@ -414,4 +445,5 @@ module.exports = {
   TEAM_TOOLS,
   handleTeamTool,
   fenceTeamData,
+  checkedAnswer,
 };

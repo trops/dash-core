@@ -255,6 +255,25 @@ class BotStore {
     this._save(data);
   }
 
+  /**
+   * Mark a bot's run (found by when it started) with where its work stands
+   * in its checks (bot-checks PRD): `{ checks: { goalId, state } }`. Only
+   * plain fields are patched; the sealed answer and prompt are left alone.
+   * @returns {boolean} whether the run was found
+   */
+  patchRun(id, startedAt, patch = {}) {
+    const data = this._load();
+    const runs = data.runs[id] || [];
+    const run = runs.find((r) => r && r.startedAt === startedAt);
+    if (!run) return false;
+    for (const [key, value] of Object.entries(patch)) {
+      if (SEALED_RUN_FIELDS.includes(key)) continue;
+      run[key] = value;
+    }
+    this._save(data);
+    return true;
+  }
+
   /** Append a run record to a bot's activity log (capped, newest kept). */
   appendRun(id, run) {
     const data = this._load();

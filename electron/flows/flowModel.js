@@ -318,7 +318,11 @@ function inputStep(flow, stepId) {
   const seen = new Set();
   while (cur && !seen.has(cur.id)) {
     seen.add(cur.id);
-    if (cur.kind === "bot" || cur.kind === "source") return cur;
+    // In a bot's own checks (bot-checks PRD) a reviewer only judges: the
+    // work it judged passes through it. (A flow's reviewer stays an input.)
+    const passThrough = cur.judgment && flow && flow.kind === "bot-checks";
+    if ((cur.kind === "bot" && !passThrough) || cur.kind === "source")
+      return cur;
     cur = prevStep(flow, cur.id);
   }
   return null;

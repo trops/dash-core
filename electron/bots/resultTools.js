@@ -147,18 +147,25 @@ function sendResult({ store, publisher, now }, botId, args) {
     ...check.result,
     sentAt: now ? now() : new Date().toISOString(),
   });
-  try {
-    store.setResult(bot.id, payload.name, payload);
-  } catch (e) {
-    return {
-      text: `Couldn't save the result: ${(e && e.message) || e}`,
-      isError: true,
-    };
+  // A bot with checks (bot-checks PRD): the result waits with its answer,
+  // and is saved as the latest only once its checks pass.
+  const held = !!(publisher.holding && publisher.holding(bot.id));
+  if (!held) {
+    try {
+      store.setResult(bot.id, payload.name, payload);
+    } catch (e) {
+      return {
+        text: `Couldn't save the result: ${(e && e.message) || e}`,
+        isError: true,
+      };
+    }
   }
   publisher.sendResult(bot, payload);
   const n = payload.items.length;
   return {
-    text: `Sent "${payload.label}" (${n} item${n === 1 ? "" : "s"}).`,
+    text: held
+      ? `Kept "${payload.label}" (${n} item${n === 1 ? "" : "s"}): it goes out once your work passes your checks.`
+      : `Sent "${payload.label}" (${n} item${n === 1 ? "" : "s"}).`,
     isError: false,
   };
 }

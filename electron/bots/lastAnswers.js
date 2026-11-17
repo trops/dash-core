@@ -34,6 +34,8 @@ function runTime(run) {
 function finished(run) {
   if (!run || run.skipped) return false;
   if (["failed", "stopped", "interrupted"].includes(run.status)) return false;
+  // Held for the bot's checks (bot-checks PRD): only work that passed.
+  if (run.checks && run.checks.state !== "passed") return false;
   return typeof run.output === "string" && run.output.trim() !== "";
 }
 
