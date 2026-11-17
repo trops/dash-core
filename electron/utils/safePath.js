@@ -167,7 +167,85 @@ function safePath(requested, allowedRoots) {
   );
 }
 
+/**
+ * A path the way a server reads it, for comparing: forward slashes, no
+ * "./" or doubled slashes, no leading or trailing slash. Never resolved
+ * against this machine's disk.
+ */
+function serverPathOf(p) {
+  return path.posix
+    .normalize(String(p).replace(/\\/g, "/"))
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "")
+    .replace(/^\.$/, "");
+}
+
+/**
+ * Is `requested` inside one of `roots`, as paths on an MCP server (a notes
+ * vault, a remote drive) rather than files on this computer? Both sides are
+ * normalized the same way; anything that climbs out with ".." is refused.
+ * A root may be a folder or a single file.
+ */
+function withinServerRoots(requested, roots) {
+  if (typeof requested !== "string" || !requested) return false;
+  const req = serverPathOf(requested);
+  if (req === ".." || req.startsWith("../")) return false;
+  return (roots || []).some((root) => {
+    const r = serverPathOf(root);
+    return r === "" || req === r || req.startsWith(r + "/");
+  });
+}
+
+/** A root that names a real folder or file on this computer. */
+function isLocalRoot(root) {
+  if (typeof root !== "string" || !path.isAbsolute(root)) return false;
+  try {
+    return fs.existsSync(root);
+  } catch (_e) {
+    return false;
+  }
+}
+
+/**
+ * The check for a path argument to an MCP tool. Roots that are real
+ * places on this computer (a filesystem provider's folders) keep
+ * safePath's check, symlinks and all; every other root — relative, or a
+ * path that only means something on the server, like "Life/Modules" — is
+ * compared as a server path. The tool still gets the argument unchanged.
+ *
+ * @returns {{ ok: true } | { ok: false, reason: string }}
+ */
+function checkToolPath(requested, roots) {
+  const list = Array.isArray(roots) ? roots.filter(Boolean) : [];
+  const local = list.filter(isLocalRoot);
+  const server = list.filter((r) => !isLocalRoot(r));
+  if (local.length) {
+    try {
+      safePath(requested, local);
+      return { ok: true };
+    } catch (_e) {
+      // Not inside a local root: it may still be inside a server root.
+    }
+  }
+  if (server.length && withinServerRoots(requested, server)) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    reason:
+      "requested path is not within any allowed root. Requested: " +
+      requested +
+      " (as a server path: " +
+      (serverPathOf(requested) || "/") +
+      "). Allowed roots: " +
+      list.map((r) => `${r} (${serverPathOf(r) || "/"})`).join(", "),
+  };
+}
+
 module.exports = {
   safePath,
   getAllowedRoots,
+  serverPathOf,
+  withinServerRoots,
+  checkToolPath,
 };

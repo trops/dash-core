@@ -166,3 +166,71 @@ test("getAllowedRoots: data category returns Dashboard/data path", () => {
 test("getAllowedRoots: unknown category throws", () => {
   assert.throws(() => getAllowedRoots("nonsense"), /unknown.+category/i);
 });
+
+// ── Paths on an MCP server (a notes vault), not this computer ──────────
+const { withinServerRoots, checkToolPath } = require("./safePath");
+
+test("server roots: inside the folder passes, however it's written", () => {
+  const roots = ["Life/Modules/shopping"];
+  for (const p of [
+    "Life/Modules/shopping/state.md",
+    "/Life/Modules/shopping/state.md",
+    "./Life/Modules/shopping/state.md",
+    "Life\\Modules\\shopping\\state.md",
+  ]) {
+    assert.strictEqual(withinServerRoots(p, roots), true, p);
+    assert.strictEqual(checkToolPath(p, roots).ok, true, p);
+  }
+});
+
+test("server roots: outside, or climbing out with .., fails", () => {
+  const roots = ["Life/Modules/shopping"];
+  for (const p of [
+    "Life/Modules/home/state.md",
+    "Life/Modules/shopping/../home/state.md",
+    "../etc/passwd",
+    "/etc/passwd",
+    "Life/Modules/shoppingextra/x.md",
+  ]) {
+    assert.strictEqual(withinServerRoots(p, roots), false, p);
+    assert.strictEqual(checkToolPath(p, roots).ok, false, p);
+  }
+});
+
+test('server roots: "/Life/" is the same as "Life"', () => {
+  for (const root of ["/Life/", "Life"]) {
+    assert.strictEqual(checkToolPath("Life/Modules/x.md", [root]).ok, true);
+    assert.strictEqual(checkToolPath("/Life/Modules/x.md", [root]).ok, true);
+    assert.strictEqual(checkToolPath("Work/x.md", [root]).ok, false);
+  }
+});
+
+test("server roots: a single-file root allows that file only", () => {
+  const roots = ["Life/Modules/shopping/state.md"];
+  assert.strictEqual(
+    checkToolPath("Life/Modules/shopping/state.md", roots).ok,
+    true,
+  );
+  assert.strictEqual(
+    checkToolPath("Life/Modules/shopping/log.md", roots).ok,
+    false,
+  );
+});
+
+test("the reason shows both sides as server paths", () => {
+  const r = checkToolPath("/Life/Modules/home/x.md", ["Life/Modules/shopping"]);
+  assert.strictEqual(r.ok, false);
+  assert.match(r.reason, /as a server path: Life\/Modules\/home\/x\.md/);
+  assert.match(r.reason, /Life\/Modules\/shopping \(Life\/Modules\/shopping\)/);
+});
+
+test("local roots keep the on-disk check", () => {
+  const inside = path.join(dataRoot, "local.json");
+  fs.writeFileSync(inside, "{}");
+  assert.strictEqual(checkToolPath(inside, [dataRoot]).ok, true);
+  assert.strictEqual(checkToolPath("/etc/passwd", [dataRoot]).ok, false);
+  assert.strictEqual(
+    checkToolPath(path.join(dataRoot, "..", "escape.json"), [dataRoot]).ok,
+    false,
+  );
+});

@@ -1320,3 +1320,35 @@ test("JIT wildcard: no pattern offered when none is declared", async () => {
   );
   assert.strictEqual(offered, null);
 });
+
+test("bot allow: a notes server's own paths, against relative roots", () => {
+  clearGrantCache();
+  setGrant(BOT_ID, {
+    grantOrigin: "live",
+    servers: {
+      "Mac Mini Notes": {
+        tools: ["read_note", "create_note"],
+        readPaths: ["Life/Modules/shopping"],
+        writePaths: ["Life/Modules/shopping"],
+      },
+    },
+  });
+  const call = (toolName, p) =>
+    gateBotToolCall({
+      botId: BOT_ID,
+      serverName: "Mac Mini Notes",
+      toolName,
+      args: { path: p },
+    });
+  assert.strictEqual(
+    call("read_note", "Life/Modules/shopping/state.md").allow,
+    true,
+  );
+  assert.strictEqual(
+    call("create_note", "Life/Modules/shopping/log.md").allow,
+    true,
+  );
+  const out = call("read_note", "Life/Modules/shopping/../home/state.md");
+  assert.strictEqual(out.allow, false);
+  assert.match(out.reason, /path argument.*rejected/i);
+});
