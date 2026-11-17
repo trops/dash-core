@@ -21,7 +21,14 @@ import {
   isUserWidget,
   pickWidgetDisplayName,
 } from "../../utils/widgetIdentity";
-import { botRefOf, eventKind } from "./teamDiagram";
+import {
+  PILL_H,
+  arrowHead,
+  botRefOf,
+  eventKind,
+  pillWidth,
+  segmentsPath,
+} from "./teamDiagram";
 
 /** The built-in widget that shows one bot's answers and results. */
 export const BOT_RESULTS = "dash.bots.BotResults";
@@ -318,5 +325,271 @@ export function widgetLayout({
     })),
     labelY: top + 4,
     bottom: firstY + Math.ceil(n / cols) * (cardH + gap),
+  };
+}
+
+// Lanes: the horizontal runs in the gap under a row of bots, this far apart.
+export const LANE = 22;
+
+/**
+ * Where the widget cards go and how each bot → widget line runs, so that no
+ * line crosses a card and no label sits on one.
+ *
+ * Wide (`side`): a column right of the team, each widget level with the bot
+ * it shows where it can be (stacked below otherwise, in the bots' order).
+ * A line goes straight across when its widget is level with the last bot of
+ * a row; otherwise down from the bot's handle to a lane in the gap under
+ * its row, along to a gutter left of the column, and into the widget.
+ *
+ * Narrow: each widget below the team in its bot's column (stacked when a
+ * bot has several; widgets no bot feeds fill the shortest columns). A line
+ * goes straight down when nothing is in between; otherwise down to a lane,
+ * along to the gutter right of the widget's column, down, and into it.
+ *
+ * Labels sit on the straight part in a gap, or on the lane.
+ *
+ * @param {object} o
+ * @param {number} o.width     the chart's width
+ * @param {boolean} o.side     wide layout
+ * @param {object} o.team      { cards: [{ id, x, y, w, row, col }] (in the
+ *                             team's order), cols, cardH, gap, lead? {x,y,w} }
+ * @param {object[]} o.widgets diagram widgets ({ key })
+ * @param {object[]} o.edges   widgetEdges()
+ * @param {number} [o.below]   narrow: the lowest y the team's own lines use
+ * @param {(e) => string} [o.labelOf] a line's label text
+ * @returns {{ cards: object, lines: object[], bottom: number,
+ *             header: {x, y}, crowded: number }}
+ *   crowded: the most lanes used under a row that has another row below it
+ *   (more than 3 needs a taller row gap).
+ */
+export function routeWidgets({
+  width,
+  side = false,
+  team = {},
+  widgets = [],
+  edges = [],
+  below = 0,
+  colW = 260,
+  cardH = 64,
+  gap = 16,
+  labelOf = () => "",
+}) {
+  const cards = team.cards || [];
+  const tH = team.cardH || 80;
+  const cols = Math.max(1, team.cols || 1);
+  const tGap = team.gap || 20;
+  const idx = new Map(cards.map((c, i) => [c.id, i]));
+  const wOrder = new Map(widgets.map((w, i) => [w.key, i]));
+  const live = edges
+    .filter((e) => idx.has(e.from) && wOrder.has(e.widget))
+    .sort(
+      (p, q) =>
+        idx.get(p.from) - idx.get(q.from) ||
+        wOrder.get(p.widget) - wOrder.get(q.widget),
+    );
+  const firstBot = new Map();
+  const into = {};
+  for (const e of live) {
+    if (!firstBot.has(e.widget)) firstBot.set(e.widget, idx.get(e.from));
+    (into[e.widget] = into[e.widget] || []).push(e);
+  }
+  const ordered = widgets
+    .map((w, i) => ({
+      w,
+      i,
+      b: firstBot.has(w.key) ? firstBot.get(w.key) : Infinity,
+    }))
+    .sort((p, q) => p.b - q.b || p.i - q.i);
+
+  const lastRow = cards.length ? cards[cards.length - 1].row : -1;
+  const rowBottom = (r) => {
+    const c = cards.find((x) => x.row === r);
+    return c ? c.y + tH : 0;
+  };
+  const lanes = {};
+  const laneY = (r) => {
+    lanes[r] = (lanes[r] || 0) + 1;
+    return rowBottom(r) + LANE * lanes[r];
+  };
+  // Lines into one widget share its edge, spread out.
+  const entry = (e, b, along) => {
+    const list = into[e.widget];
+    const s = list.indexOf(e);
+    return b[along] + Math.round(((cardH * (s + 1)) / (list.length + 1)) | 0);
+  };
+  const crowdedOf = () =>
+    Math.max(
+      0,
+      ...Object.entries(lanes)
+        .filter(([r]) => Number(r) !== lastRow)
+        .map(([, n]) => n),
+    );
+  const pos = {};
+  const lines = [];
+  const push = (e, segments, head, label) => {
+    lines.push({
+      ...e,
+      segments,
+      d: segmentsPath(segments),
+      head,
+      label,
+      mx: label.x,
+      my: label.y,
+    });
+  };
+
+  if (!cards.length) {
+    // No bots: just the widgets, nothing to draw to.
+    const wl = widgetLayout({
+      width,
+      count: widgets.length,
+      top: below,
+      side,
+      colW,
+      cardH,
+      gap,
+    });
+    widgets.forEach((w, i) => {
+      pos[w.key] = wl.cards[i];
+    });
+    return {
+      cards: pos,
+      lines,
+      bottom: wl.bottom,
+      header: { x: wl.x, y: wl.labelY },
+      crowded: 0,
+    };
+  }
+
+  if (side) {
+    const x = width - colW - gap;
+    let y = 48;
+    for (const { w, b } of ordered) {
+      const want =
+        b === Infinity ? y : cards[b].y + Math.round((tH - cardH) / 2);
+      const top = Math.max(want, y);
+      pos[w.key] = { x, y: top, w: colW };
+      y = top + cardH + gap;
+    }
+    const teamRight = Math.max(
+      ...cards.map((c) => c.x + c.w),
+      team.lead ? team.lead.x + team.lead.w : 0,
+    );
+    let k = 0;
+    for (const e of live) {
+      const i = idx.get(e.from);
+      const a = cards[i];
+      const b = pos[e.widget];
+      const wy = entry(e, b, "y");
+      const pw = pillWidth(labelOf(e));
+      const rightmost = a.col === cols - 1 || i === cards.length - 1;
+      const level = wy >= a.y + 10 && wy <= a.y + tH - 10;
+      const head = arrowHead(b.x, wy, "right");
+      if (rightmost && level && b.x - (a.x + a.w) >= pw + 12) {
+        push(e, [[a.x + a.w, wy, b.x, wy]], head, {
+          x: (a.x + a.w + b.x) / 2,
+          y: wy,
+          w: pw,
+          h: PILL_H,
+        });
+        continue;
+      }
+      const sx = a.x + a.w / 2;
+      const sy = a.y + tH;
+      const ly = laneY(a.row);
+      const gx = Math.max(teamRight + 12, x - 18 - 10 * k++);
+      push(
+        e,
+        [
+          [sx, sy, sx, ly],
+          [sx, ly, gx, ly],
+          [gx, ly, gx, wy],
+          [gx, wy, b.x, wy],
+        ],
+        head,
+        { x: (sx + gx) / 2, y: ly, w: pw, h: PILL_H },
+      );
+    }
+    const lastLanes = rowBottom(lastRow) + LANE * ((lanes[lastRow] || 0) + 1);
+    return {
+      cards: pos,
+      lines,
+      bottom: Math.max(y, lastLanes),
+      header: { x, y: 20 },
+      crowded: crowdedOf(),
+    };
+  }
+
+  // Narrow: below the team, each in its bot's column.
+  const cardW = cards[0].w;
+  const colX = (c) => (cards.find((x) => x.col === c) || cards[0]).x;
+  const stacks = Array.from({ length: cols }, () => 0);
+  const where = {};
+  for (const { w, b } of ordered) {
+    const c =
+      b === Infinity ? stacks.indexOf(Math.min(...stacks)) : cards[b].col;
+    where[w.key] = { col: c, n: stacks[c]++ };
+  }
+  const lowestInCol = (i) => i + cols >= cards.length;
+  const plan = live.map((e) => {
+    const i = idx.get(e.from);
+    const a = cards[i];
+    const wc = where[e.widget];
+    const straight =
+      a.col === wc.col &&
+      wc.n === 0 &&
+      lowestInCol(i) &&
+      into[e.widget][0] === e;
+    return { e, a, wc, straight, ly: straight ? null : laneY(a.row) };
+  });
+  const lastBottom = rowBottom(lastRow);
+  const zoneTop = Math.max(
+    lastBottom + LANE * (lanes[lastRow] || 0) + 10 + 6 + PILL_H + 10,
+    lastBottom + 56,
+    below + 34,
+  );
+  let bottom = zoneTop;
+  for (const { w } of ordered) {
+    const wc = where[w.key];
+    const top = zoneTop + wc.n * (cardH + gap);
+    pos[w.key] = { x: colX(wc.col), y: top, w: cardW };
+    bottom = Math.max(bottom, top + cardH + gap);
+  }
+  const gutters = {};
+  for (const { e, a, wc, straight, ly } of plan) {
+    const b = pos[e.widget];
+    const pw = pillWidth(labelOf(e));
+    const sx = a.x + a.w / 2;
+    const sy = a.y + tH;
+    if (straight) {
+      push(e, [[sx, sy, sx, b.y]], arrowHead(sx, b.y, "down"), {
+        x: sx,
+        y: b.y - 16,
+        w: pw,
+        h: PILL_H,
+      });
+      continue;
+    }
+    const g = (gutters[wc.col] = (gutters[wc.col] || 0) + 1) - 1;
+    const gx = colX(wc.col) + cardW + tGap / 2 + [0, -8, 8][g % 3];
+    const wy = entry(e, b, "y");
+    push(
+      e,
+      [
+        [sx, sy, sx, ly],
+        [sx, ly, gx, ly],
+        [gx, ly, gx, wy],
+        [gx, wy, b.x + b.w, wy],
+      ],
+      arrowHead(b.x + b.w, wy, "left"),
+      { x: (sx + gx) / 2, y: ly, w: pw, h: PILL_H },
+    );
+  }
+  return {
+    cards: pos,
+    lines,
+    bottom: bottom + 24,
+    header: { x: colX(0), y: bottom },
+    crowded: crowdedOf(),
   };
 }

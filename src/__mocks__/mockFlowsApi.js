@@ -100,6 +100,13 @@ export function installMockFlowsApi({ flows = null } = {}) {
   const api = {
     list: jest.fn(async () => state.flows.map((f) => ({ ...f }))),
     get: jest.fn(async (id) => state.flows.find((f) => f.id === id) || null),
+    save: jest.fn(async (flowId, next) => {
+      const f = state.flows.find((x) => x.id === flowId);
+      if (!f) return { error: "No such flow." };
+      Object.assign(f, next);
+      changed({ flowId });
+      return { ok: true, flow: { ...f } };
+    }),
     addStep: jest.fn(async (flowId, at) => {
       state.calls.push(["addStep", flowId, at]);
       const f = state.flows.find((x) => x.id === flowId);

@@ -102,13 +102,17 @@ const USER_ACTION = {
   done: "marked it done",
   "one-more-round": "gave it one more round",
   close: "closed it",
+  "send-back": "sent it back",
 };
 
 /** One line for a done record: "Builder: passed — Opened the PR". */
 export function recordText(record) {
   if (!record) return "";
   if (record.by === "you") {
-    return `You ${USER_ACTION[record.status] || record.status}`;
+    const did = USER_ACTION[record.status] || record.status;
+    return record.status === "send-back" && record.summary
+      ? `You ${did}: ${record.summary}`
+      : `You ${did}`;
   }
   const what =
     record.status === "passed"
@@ -135,8 +139,8 @@ export function goalLine(goal) {
   const ready = tasks.filter((t) => t.status === "ready");
   if (ready.length && goal.status === "ready") {
     return ready.length === 1
-      ? `Ready for you to mark done: ${ready[0].title}`
-      : `${ready.length} tasks ready for you to mark done`;
+      ? `Ready for you: ${ready[0].title}`
+      : `${ready.length} tasks ready for you`;
   }
   const latest = latestRecord(goal);
   return latest ? recordText(latest.record) : "Not started yet";

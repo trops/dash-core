@@ -249,8 +249,8 @@ export function RecentsList({
           title={
             g
               ? n === 1
-                ? `Delete this conversation and its ${g === 1 ? "goal" : "goals"}?`
-                : `Delete ${plural(n, "conversation", "conversations")} and their goals?`
+                ? `Delete this conversation and its ${g === 1 ? "job" : "jobs"}?`
+                : `Delete ${plural(n, "conversation", "conversations")} and their jobs?`
               : n === 1
                 ? "Delete this conversation?"
                 : `Delete ${plural(n, "conversation", "conversations")}?`
@@ -278,7 +278,7 @@ export function RecentsList({
               data-testid="recents-delete-goals"
             >
               <span className={muted}>
-                {`${n === 1 ? "It" : "They"} started ${plural(g, "goal", "goals")}. Deleting removes it all from this computer, and it can't be brought back.${
+                {`${n === 1 ? "It" : "They"} started ${plural(g, "job", "jobs")}. Deleting removes it all from this computer, and it can't be brought back.${
                   closesOpen
                     ? " The open one closes and you start a new conversation."
                     : ""
@@ -295,9 +295,9 @@ export function RecentsList({
               {goals.map((x) => (
                 <span
                   key={x.id}
-                >{`Goal “${x.title}”: ${plural((x.tasks || []).length, "task", "tasks")} and their records`}</span>
+                >{`Job “${x.title}”: ${plural((x.tasks || []).length, "task", "tasks")} and their records`}</span>
               ))}
-              <span>{`The runs, proof and work files of ${g === 1 ? "that goal" : `those ${g} goals`}`}</span>
+              <span>{`The runs, proof and work files of ${g === 1 ? "that job" : `those ${g} jobs`}`}</span>
               <span className={`text-xs font-semibold uppercase pt-1 ${muted}`}>
                 Stays
               </span>

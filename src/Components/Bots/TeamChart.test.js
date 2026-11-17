@@ -205,3 +205,65 @@ describe("TeamChart — drag to wire (TEAM-014 slice 2)", () => {
     ).toHaveTextContent("loop");
   });
 });
+
+describe("TeamChart — widgets (polish 2026-11)", () => {
+  const widgets = [
+    {
+      key: "w1",
+      itemId: "1",
+      label: "Bot results",
+      page: "",
+      handlers: [],
+      listens: [],
+      resultsBotId: "checker",
+    },
+    {
+      key: "w2",
+      itemId: "2",
+      label: "Planner board",
+      page: "",
+      handlers: ["showPlan"],
+      listens: [
+        {
+          handlerName: "showPlan",
+          botId: "planner",
+          event: "completed",
+          raw: "x",
+        },
+      ],
+      resultsBotId: null,
+    },
+  ];
+  const draw = (width) =>
+    render(
+      <TeamChart
+        lead={lead}
+        members={[planner, reader, checker]}
+        statusOf={() => "Idle"}
+        approvalsFor={() => []}
+        onSelect={jest.fn()}
+        onOpen={jest.fn()}
+        width={width}
+        widgets={widgets}
+      />,
+    );
+  const box = (id) => screen.getByTestId(id).style;
+
+  it("wide: widgets in a column on the right, each line labelled", () => {
+    draw(1400);
+    expect(box("diagram-widget-1").left).toBe(box("diagram-widget-2").left);
+    expect(screen.getAllByTestId("diagram-widget-edge")).toHaveLength(2);
+    expect(screen.getByTestId("widget-edge-label-r|w1")).toHaveTextContent(
+      "shows answers",
+    );
+  });
+
+  it("narrow: each widget below its bot, in its column", () => {
+    draw(700);
+    expect(box("diagram-widget-2").left).toBe(box("diagram-card-planner").left);
+    expect(parseFloat(box("diagram-widget-1").top)).toBeGreaterThan(
+      parseFloat(box("diagram-card-checker").top),
+    );
+    expect(screen.getAllByTestId("diagram-widget-edge")).toHaveLength(2);
+  });
+});

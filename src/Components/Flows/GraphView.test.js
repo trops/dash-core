@@ -36,11 +36,11 @@ beforeEach(() => {
 });
 
 describe("GraphView", () => {
-  it("shows the flow, where its goals are, and its problems (frames 5 and 7)", async () => {
+  it("shows the flow, where its jobs are, and its problems (frames 5 and 7)", async () => {
     installMockFlowsApi();
     render(<GraphView workspace={workspace} />);
     expect(await screen.findByText(/AI Writer/)).toBeInTheDocument();
-    expect(screen.getByText(/\[1 goal · round 2\]/)).toBeInTheDocument();
+    expect(screen.getByText(/\[1 job · round 2\]/)).toBeInTheDocument();
     const panel = await screen.findByTestId("warnings-panel");
     expect(
       within(panel).getByText("This setup can fool itself"),

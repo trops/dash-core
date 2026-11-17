@@ -3316,7 +3316,7 @@ const DashboardStageInner = ({
                             }
                         : stageMode === "goals" && dashboardFlows.length
                           ? {
-                              label: "New goal",
+                              label: "New job",
                               onClick: () => sendStageCommand("new-goal"),
                             }
                           : null

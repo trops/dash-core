@@ -23,6 +23,8 @@ const {
   nextStep,
   prevStep,
   failTarget,
+  sendBackTarget,
+  youModeOf,
   firstWorkStep,
   inputStep,
 } = require("./flowModel");
@@ -86,11 +88,33 @@ function afterStep(flow, task, outcome) {
 }
 
 /**
- * The user's own moves on a flow task: done (at a you step), one more
- * round, close.
+ * The user's own moves on a flow task: done (at a you step), send back
+ * (at a you step, with a reason: the step before runs again with it), one
+ * more round, close.
  */
 function afterUserInFlow(flow, task, action) {
   if (!task) return { error: "No such task." };
+  if (action === "send-back") {
+    const step = stepById(flow, task.stepId);
+    if (task.status !== "ready" || !step || step.kind !== "you") {
+      return { error: "Only work waiting for you can be sent back." };
+    }
+    if (youModeOf(step) !== "approve") {
+      return { error: "This step is marked done, not approved or sent back." };
+    }
+    const target = sendBackTarget(flow, step.id);
+    if (!target)
+      return {
+        error: "There's no bot step before this one to send it back to.",
+      };
+    const round = (task.round || 1) + 1;
+    return {
+      stepId: target.id,
+      status: statusEntering(flow, target),
+      round,
+      maxRounds: Math.max(task.maxRounds || 3, round),
+    };
+  }
   if (task.status === "done" || task.status === "closed") {
     return { error: "This task is finished." };
   }

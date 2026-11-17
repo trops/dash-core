@@ -50,7 +50,9 @@ function stepPrompt({ goal, task, step, input, workFolder, work = null }) {
   if (input.fix) {
     lines.push(
       "",
-      `It came back from "${input.fix.step}": ${input.fix.reason}`,
+      input.fix.byYou
+        ? `The user sent it back at "${input.fix.step}": ${input.fix.reason}`
+        : `It came back from "${input.fix.step}": ${input.fix.reason}`,
       ...(input.fix.details != null
         ? [`Details: ${clip(JSON.stringify(input.fix.details))}`]
         : []),
@@ -152,10 +154,15 @@ function createFlowRunner(deps) {
   function overLimit(goal, task) {
     const lim = goal.flow && goal.flow.taskLimits;
     if (!lim || !taskUsage) return null;
-    // Counted from the last "one more round": the user gave it more.
+    // Counted from the last "one more round" or "send back": the user
+    // gave it more.
     const more = [...(task.history || [])]
       .reverse()
-      .find((r) => r.by === "you" && r.status === "one-more-round");
+      .find(
+        (r) =>
+          r.by === "you" &&
+          (r.status === "one-more-round" || r.status === "send-back"),
+      );
     let used;
     try {
       used = taskUsage(goal.id, task.id, more ? more.at : 0) || {};

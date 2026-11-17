@@ -6,12 +6,13 @@ import {
   FlowKindChip,
   FontAwesomeIcon,
   StatusBadge,
+  TextArea,
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { whenText } from "../Issues/issueText";
 import { flowsApi } from "../../hooks/useFlows";
-import { chainOrder } from "../Flows/flowText";
+import { chainOrder, youModeOf } from "../Flows/flowText";
 import { CriteriaEditor, PROOF_OPTIONS } from "./CriteriaEditor";
 import { roundLines } from "./goalText";
 
@@ -25,6 +26,128 @@ const proofState = (p) =>
       : p === "you"
         ? "neutral"
         : "info";
+
+/** The bot step Send back reruns: the one the step names, else the nearest. */
+function sendBackName(flow, step) {
+  const order = chainOrder(flow);
+  const named = step.sendBackTo
+    ? order.find((s) => s.id === step.sendBackTo && s.kind === "bot")
+    : null;
+  if (named) return named.name;
+  const before = order
+    .slice(0, order.indexOf(step))
+    .filter((s) => s.kind === "bot");
+  return before.length ? before[before.length - 1].name : null;
+}
+
+/**
+ * Work waiting at a you step: Approve or Send back (with a reason), or one
+ * button. Both states are the same card at the same height; a long note
+ * scrolls inside it, so the buttons stay put.
+ */
+const YouWaiting = ({ flow, task, step, busy, onAction }) => {
+  const { muted, strong, hairline, fieldBg } = useConfigTokens();
+  const status = useStatusTokens();
+  const [sending, setSending] = useState(false);
+  const [reason, setReason] = useState("");
+  // A job started before modes keeps its own copy of the flow.
+  const mode = youModeOf(step);
+  const back = mode === "approve" ? sendBackName(flow, step) : null;
+  const before = back || "the step before";
+  const round = task.round || 1;
+  return (
+    <div
+      data-testid="you-waiting"
+      className={`flex flex-col flex-shrink-0 gap-3 p-4 h-80 rounded-lg border ${hairline} ${fieldBg}`}
+    >
+      <div className="flex flex-row items-center gap-2">
+        <FlowKindChip kind="you" />
+        <span className={`text-sm font-semibold ${strong}`}>
+          {sending
+            ? `Send it back to ${before}`
+            : mode === "approve"
+              ? back
+                ? `Approve ${back}'s work`
+                : "Approve it"
+              : step.action || step.name}
+        </span>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+        {sending ? (
+          <>
+            <TextArea
+              label={`Why? ${before} gets this with its next round.`}
+              rows={2}
+              value={reason}
+              onChange={(v) => setReason(v)}
+            />
+            <span className={`text-xs ${muted}`}>
+              {`Starts round ${round + 1}.`}
+            </span>
+          </>
+        ) : (
+          <>
+            {step.note ? (
+              <span className={`text-sm ${strong}`}>{step.note}</span>
+            ) : null}
+            <span className={`text-xs ${muted}`}>
+              {`Round ${round} of ${task.maxRounds || 3}`}
+            </span>
+          </>
+        )}
+      </div>
+      <div
+        className={`flex flex-row items-center justify-end gap-2 pt-3 border-t ${hairline}`}
+      >
+        {sending ? (
+          <>
+            <Button3
+              title="Cancel"
+              size="sm"
+              onClick={() => {
+                setSending(false);
+                setReason("");
+              }}
+            />
+            <Button2
+              title="Send back"
+              size="sm"
+              danger
+              disabled={busy || !reason.trim()}
+              onClick={() =>
+                onAction(task.id, { type: "send-back", reason: reason.trim() })
+              }
+            />
+          </>
+        ) : mode === "approve" ? (
+          <>
+            {back ? (
+              <Button3
+                title="Send back…"
+                size="sm"
+                disabled={busy}
+                onClick={() => setSending(true)}
+              />
+            ) : null}
+            <Button
+              title="Approve"
+              size="sm"
+              disabled={busy}
+              onClick={() => onAction(task.id, "done")}
+            />
+          </>
+        ) : (
+          <Button
+            title={mode === "read" ? "Mark done" : step.action || "Done"}
+            size="sm"
+            disabled={busy}
+            onClick={() => onAction(task.id, "done")}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
 
 const SectionLabel = ({ children }) => {
   const { muted } = useConfigTokens();
@@ -289,7 +412,7 @@ export const FlowGoalDetail = ({
           className={`flex flex-row items-center gap-3 pt-3 border-t ${hairline}`}
         >
           <Button
-            title="Start goal"
+            title="Start job"
             size="sm"
             disabled={busy || blocking.length > 0}
             onClick={() => act(() => flowsApi().startGoal(goal.id, criteria))}
@@ -390,19 +513,13 @@ export const FlowGoalDetail = ({
           </div>
         </div>
       ) : task && task.status === "ready" && at ? (
-        <div
-          className={`flex flex-row items-center gap-3 p-4 rounded-lg border ${status.warning.accentBorder} ${status.warning.bg}`}
-        >
-          <span className={`text-sm flex-1 ${status.warning.strongText}`}>
-            {`Waiting for you: ${at.action || at.name}${at.note ? ` — ${at.note}` : ""}`}
-          </span>
-          <Button
-            title="Mark done"
-            size="sm"
-            disabled={busy}
-            onClick={() => onAction(task.id, "done")}
-          />
-        </div>
+        <YouWaiting
+          flow={flow}
+          task={task}
+          step={at}
+          busy={busy}
+          onAction={onAction}
+        />
       ) : null}
 
       {showGate ? (

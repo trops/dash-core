@@ -36,6 +36,8 @@ export const NewFlowModal = ({ workspace, onClose, onMade }) => {
   const [said, setSaid] = useState("");
   const [fromLead, setFromLead] = useState(false);
   const [folder, setFolder] = useState(null);
+  // Named before it's made: the starter's or the lead's name, to change.
+  const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   // "Or install one": flows on the registry (frame 34).
@@ -72,6 +74,7 @@ export const NewFlowModal = ({ workspace, onClose, onMade }) => {
         return;
       }
       setPreview(r);
+      setName((r.proposal && r.proposal.name) || "");
       setSaid(r.said || "");
       setFromLead(true);
     });
@@ -84,13 +87,17 @@ export const NewFlowModal = ({ workspace, onClose, onMade }) => {
         return;
       }
       setPreview(r);
+      setName((r.proposal && r.proposal.name) || "");
       setSaid("");
       setFromLead(false);
     });
 
   const make = () =>
     run(async () => {
-      const r = await api.make(workspace.id, preview.proposal, { folder });
+      const r = await api.make(workspace.id, preview.proposal, {
+        folder,
+        name: name.trim() || null,
+      });
       if (!r || r.error) {
         setError((r && r.error) || "It couldn't be made.");
         return;
@@ -136,6 +143,11 @@ export const NewFlowModal = ({ workspace, onClose, onMade }) => {
               {said ? (
                 <span className={`text-sm ${strong}`}>{said}</span>
               ) : null}
+              <InputText
+                label="Name"
+                value={name}
+                onChange={(v) => setName(v)}
+              />
               <ProposalCard
                 preview={preview}
                 dashboardName={workspace.name || ""}

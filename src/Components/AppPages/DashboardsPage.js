@@ -984,7 +984,7 @@ export const DashboardsPage = ({
           profiles.hasProfiles ? " from this computer and every profile" : ""
         }? This can't be undone.${
           deleteTargetGoals.length
-            ? ` Its ${deleteTargetGoals.length === 1 ? "goal" : `${deleteTargetGoals.length} goals`}, with their tasks, runs and proof, ${deleteTargetGoals.length === 1 ? "is" : "are"} deleted too.`
+            ? ` Its ${deleteTargetGoals.length === 1 ? "job" : `${deleteTargetGoals.length} jobs`}, with their tasks, runs and proof, ${deleteTargetGoals.length === 1 ? "is" : "are"} deleted too.`
             : ""
         }`}
         confirmLabel="Delete"

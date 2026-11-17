@@ -16,7 +16,8 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { flowsApi, useFlows } from "../../hooks/useFlows";
-import { FlowSwitcher } from "./FlowSwitcher";
+import { FlowList } from "./FlowList";
+import { RenameFlowModal } from "./RenameFlowModal";
 import { AddStepMenu } from "./AddStepMenu";
 import { CheckPanel } from "./CheckPanel";
 import { StepPanel } from "./StepPanel";
@@ -34,8 +35,26 @@ import {
   warnedSteps,
 } from "./flowText";
 
-const NODE_W = 140;
-const NODE_H = 124;
+// The card size FlowGraph draws (dash-react), for placing the + menu.
+const NODE_W = 208;
+const NODE_H = 128;
+
+/** The width a box has, kept up to date. */
+function useBoxWidth() {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const measure = () => setWidth(el.clientWidth || 0);
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+  return [ref, width];
+}
 
 const remembered = (wsId) => {
   try {
@@ -87,6 +106,11 @@ export const GraphView = ({
   const [publishing, setPublishing] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [update, setUpdate] = useState(null);
+  const [renaming, setRenaming] = useState(false);
+  const [graphBox, graphWidth] = useBoxWidth();
+  // The graph's own width (its box less the padding): for drawing it, and
+  // for placing the + menu from the same layout.
+  const drawWidth = graphWidth ? Math.max(0, graphWidth - 32) : undefined;
 
   const flow = flows.find((f) => f.id === flowId) || flows[0] || null;
 
@@ -135,10 +159,24 @@ export const GraphView = ({
     [flow],
   );
   const edges = useMemo(() => (flow ? graphEdges(flow) : []), [flow]);
-  const layout = useMemo(() => flowLayout(steps, edges), [steps, edges]);
+  const layout = useMemo(
+    () => flowLayout(steps, edges, null, { width: drawWidth }),
+    [steps, edges, drawWidth],
+  );
 
-  // The + menu, under the arrow it adds on (or after the last step).
-  const openMenu = (from, to) => {
+  // The + menu, under the arrow it adds on (or after the last step): at the
+  // + itself when the graph says where it is.
+  const openMenu = (from, to, at = null) => {
+    if (at && typeof at.x === "number" && typeof at.y === "number") {
+      setMenu({
+        from,
+        to,
+        x: at.x,
+        y: at.y + 22,
+        title: `Add ${betweenText(flow, from, to)}`.trim(),
+      });
+      return;
+    }
     const a = from ? layout.pos[from] : null;
     const b = to ? layout.pos[to] : null;
     const x =
@@ -203,7 +241,12 @@ export const GraphView = ({
         api.addStep(flow.id, {
           from: at.from,
           to: at.to,
-          step: { kind: "you", name: "You approve", action: "Approve" },
+          step: {
+            kind: "you",
+            name: "You approve",
+            mode: "approve",
+            action: "Approve",
+          },
         }),
       );
       if (r && r.ok) setPanel({ type: "warnings", justAdded: "Your approval" });
@@ -232,6 +275,7 @@ export const GraphView = ({
           step: {
             kind: "you",
             name: "You approve",
+            mode: "approve",
             action: "Approve before it acts",
           },
         }),
@@ -307,270 +351,306 @@ export const GraphView = ({
       data-testid="graph-view"
       className={`flex-1 min-h-0 flex flex-col ${strong}`}
     >
-      <div
-        className={`flex-shrink-0 flex flex-row flex-wrap items-center gap-3 px-4 py-2.5 border-b ${hairline}`}
-      >
-        <FlowSwitcher
+      <div className="flex-1 min-h-0 flex flex-row">
+        <FlowList
           flows={flows}
           value={flow ? flow.id : null}
-          onChange={(id) => {
+          onPick={(id) => {
             setFlowId(id);
             remember(workspaceId, id);
             setPanel(null);
+            setMenu(null);
             setWarningsClosed(false);
           }}
           onNew={() => setNewFlow(true)}
         />
-        <span className={`text-sm flex-1 min-w-0 ${muted}`}>
-          Who hands work to whom. Counts show where goals are now.
-        </span>
-        {warnings.length ? (
-          <button
-            type="button"
-            data-testid="flow-problems"
-            onClick={() => {
-              setWarningsClosed(false);
-              setPanel({ type: "warnings", justAdded: null });
-            }}
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+          <div
+            className={`flex-shrink-0 flex flex-row flex-wrap items-center gap-3 px-4 py-2.5 border-b ${hairline}`}
           >
-            <StatusBadge
-              state="warning"
-              label={`${warnings.length} problem${warnings.length === 1 ? "" : "s"}`}
-            />
-          </button>
-        ) : null}
-        <FlowGraphLegend />
-        {update ? (
-          <button
-            type="button"
-            data-testid="flow-update"
-            onClick={() => setUpdating(true)}
-          >
-            <StatusBadge state="info" label={`Update to ${update.version}`} />
-          </button>
-        ) : null}
-        {flow ? (
-          <Button3
-            title="Publish…"
-            size="sm"
-            onClick={() => setPublishing(true)}
-          />
-        ) : null}
-        {flow ? (
-          <Button3
-            title="Delete flow"
-            size="sm"
-            onClick={() => setConfirmDelete(true)}
-          />
-        ) : null}
-      </div>
-
-      {banner && flow && banner.flowId === flow.id ? (
-        <div
-          data-testid="flow-made-banner"
-          className={`mx-4 mt-3 flex flex-row items-center gap-3 px-4 py-2.5 rounded-lg border ${status.success.border} ${status.success.bg}`}
-        >
-          <span className={`text-sm flex-1 ${status.success.text}`}>
-            <span className="font-semibold">{`${banner.name} is set up. `}</span>
-            {`${banner.brief ? `It runs ${banner.brief}. ` : ""}${
-              banner.bots
-                ? `${banner.bots} new bot${banner.bots === 1 ? "" : "s"} ask before they change anything. `
-                : ""
-            }Nothing is in it yet.`}
-          </span>
-          {onOpenGoals ? (
-            <button
-              type="button"
-              className={`text-sm font-semibold ${status.success.strongText}`}
-              onClick={onOpenGoals}
-            >
-              Open Goals
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={`text-sm font-semibold ${status.success.strongText}`}
-            onClick={async () => {
-              const r = await act(() => api.undo(banner.flowId));
-              if (r && r.ok) {
-                setBanner(null);
-                setFlowId(null);
-              }
-            }}
-          >
-            Undo
-          </button>
-        </div>
-      ) : null}
-
-      {error ? (
-        <span className={`mx-4 mt-2 text-sm ${status.error.text}`} role="alert">
-          {error}
-        </span>
-      ) : null}
-
-      <div className="flex-1 min-h-0 flex flex-row">
-        <div className="flex-1 min-w-0 min-h-0 overflow-auto p-4 flex flex-col gap-6">
-          {flow ? (
-            <div className="relative self-start">
-              <FlowGraph
-                steps={steps}
-                edges={edges}
-                selectedId={
-                  selectedStep
-                    ? selectedStep.id
-                    : panel && panel.type === "new"
-                      ? null
-                      : null
-                }
-                onSelect={(id) => {
-                  setMenu(null);
-                  setPanel({ type: "step", stepId: id });
+            <div className="flex-1 min-w-48 flex flex-col">
+              <span
+                className={`text-lg font-semibold ${strong}`}
+                data-testid="flow-name"
+              >
+                {flow ? flow.name : ""}
+              </span>
+              <span className={`text-xs ${muted}`}>
+                Who hands work to whom. Counts show where jobs are now.
+              </span>
+            </div>
+            {warnings.length ? (
+              <button
+                type="button"
+                data-testid="flow-problems"
+                onClick={() => {
+                  setWarningsClosed(false);
+                  setPanel({ type: "warnings", justAdded: null });
                 }}
-                onAdd={({ from, to }) => openMenu(from, to)}
-                ariaLabel={`${flow.name}: who hands work to whom`}
-              />
-              {menu ? (
-                <AddStepMenu
-                  title={menu.title}
-                  x={menu.x}
-                  y={menu.y}
-                  onPick={pickStepKind}
-                  onClose={() => setMenu(null)}
+              >
+                <StatusBadge
+                  state="warning"
+                  label={`${warnings.length} problem${warnings.length === 1 ? "" : "s"}`}
                 />
+              </button>
+            ) : null}
+            <FlowGraphLegend />
+            {update ? (
+              <button
+                type="button"
+                data-testid="flow-update"
+                onClick={() => setUpdating(true)}
+              >
+                <StatusBadge
+                  state="info"
+                  label={`Update to ${update.version}`}
+                />
+              </button>
+            ) : null}
+            {flow ? (
+              <Button3
+                title="Rename…"
+                size="sm"
+                onClick={() => setRenaming(true)}
+              />
+            ) : null}
+            {flow ? (
+              <Button3
+                title="Publish…"
+                size="sm"
+                onClick={() => setPublishing(true)}
+              />
+            ) : null}
+            {flow ? (
+              <Button3
+                title="Delete flow"
+                size="sm"
+                onClick={() => setConfirmDelete(true)}
+              />
+            ) : null}
+          </div>
+
+          {banner && flow && banner.flowId === flow.id ? (
+            <div
+              data-testid="flow-made-banner"
+              className={`mx-4 mt-3 flex flex-row items-center gap-3 px-4 py-2.5 rounded-lg border ${status.success.border} ${status.success.bg}`}
+            >
+              <span className={`text-sm flex-1 ${status.success.text}`}>
+                <span className="font-semibold">{`${banner.name} is set up. `}</span>
+                {`${banner.brief ? `It runs ${banner.brief}. ` : ""}${
+                  banner.bots
+                    ? `${banner.bots} new bot${banner.bots === 1 ? "" : "s"} ask before they change anything. `
+                    : ""
+                }Nothing is in it yet.`}
+              </span>
+              {onOpenGoals ? (
+                <button
+                  type="button"
+                  className={`text-sm font-semibold ${status.success.strongText}`}
+                  onClick={onOpenGoals}
+                >
+                  Open Jobs
+                </button>
               ) : null}
+              <button
+                type="button"
+                className={`text-sm font-semibold ${status.success.strongText}`}
+                onClick={async () => {
+                  const r = await act(() => api.undo(banner.flowId));
+                  if (r && r.ok) {
+                    setBanner(null);
+                    setFlowId(null);
+                  }
+                }}
+              >
+                Undo
+              </button>
             </div>
           ) : null}
-          <div
-            className={`flex flex-col gap-1 p-3 rounded-lg border border-dashed max-w-3xl ${hairline}`}
-          >
-            <span className={`text-sm font-semibold ${strong}`}>
-              Each goal's record
+
+          {error ? (
+            <span
+              className={`mx-4 mt-2 text-sm ${status.error.text}`}
+              role="alert"
+            >
+              {error}
             </span>
-            <span className={`text-sm ${muted}`}>
-              Every step reads and writes it: the status, the round, and each
-              step's record with its proof. Steps never talk to each other
-              directly.
-            </span>
+          ) : null}
+
+          <div className="flex-1 min-h-0 flex flex-row">
+            <div
+              ref={graphBox}
+              className="flex-1 min-w-0 min-h-0 overflow-auto p-4 flex flex-col gap-6"
+            >
+              {flow ? (
+                <div className="relative w-full">
+                  <FlowGraph
+                    steps={steps}
+                    edges={edges}
+                    selectedId={
+                      selectedStep
+                        ? selectedStep.id
+                        : panel && panel.type === "new"
+                          ? null
+                          : null
+                    }
+                    onSelect={(id) => {
+                      setMenu(null);
+                      setPanel({ type: "step", stepId: id });
+                    }}
+                    onAdd={({ from, to, x, y }) => openMenu(from, to, { x, y })}
+                    width={drawWidth}
+                    ariaLabel={`${flow.name}: who hands work to whom`}
+                  />
+                  {menu ? (
+                    <AddStepMenu
+                      title={menu.title}
+                      x={menu.x}
+                      y={menu.y}
+                      onPick={pickStepKind}
+                      onClose={() => setMenu(null)}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+              <div
+                className={`flex flex-col gap-1 p-3 rounded-lg border border-dashed max-w-3xl ${hairline}`}
+              >
+                <span className={`text-sm font-semibold ${strong}`}>
+                  Each job's record
+                </span>
+                <span className={`text-sm ${muted}`}>
+                  Every step reads and writes it: the status, the round, and
+                  each step's record with its proof. Steps never talk to each
+                  other directly.
+                </span>
+              </div>
+            </div>
+
+            {flow && shown ? (
+              shown.type === "warnings" ? (
+                <WarningsPanel
+                  flow={flow}
+                  justAdded={shown.justAdded}
+                  onFix={onFix}
+                  onClose={() => {
+                    setPanel(null);
+                    setWarningsClosed(true);
+                  }}
+                />
+              ) : shown.type === "fields" && selectedStep ? (
+                <FieldsPanel
+                  key={`fields-${selectedStep.id}`}
+                  flow={flow}
+                  step={selectedStep}
+                  onClose={() =>
+                    setPanel({ type: "step", stepId: selectedStep.id })
+                  }
+                  onOpenStep={(id) => setPanel({ type: "step", stepId: id })}
+                  onSave={async (p) => {
+                    const r = await act(() =>
+                      api.updateStep(flow.id, selectedStep.id, p),
+                    );
+                    if (r && r.ok)
+                      setPanel({ type: "step", stepId: selectedStep.id });
+                    return r;
+                  }}
+                />
+              ) : shown.type === "new" && shown.kind === "check" ? (
+                <CheckPanel
+                  key={`new-check-${shown.between.from}-${shown.between.to}`}
+                  flow={flow}
+                  mode="new"
+                  between={shown.between}
+                  onClose={() => setPanel(null)}
+                  onAdd={async ({ name, check, failTo }) => {
+                    const r = await act(() =>
+                      api.addStep(flow.id, {
+                        from: shown.between.from,
+                        to: shown.between.to,
+                        step: {
+                          kind: "check",
+                          name,
+                          check,
+                          failTo: failTo || null,
+                        },
+                      }),
+                    );
+                    if (r && r.ok)
+                      setPanel({ type: "warnings", justAdded: name });
+                    return r;
+                  }}
+                />
+              ) : shown.type === "new" ? (
+                <StepPanel
+                  key={`new-bot-${shown.between.from}-${shown.between.to}`}
+                  flow={flow}
+                  step={null}
+                  mode="new"
+                  between={shown.between}
+                  bots={bots}
+                  onClose={() => setPanel(null)}
+                  onAdd={async (patch) => {
+                    const r = await act(() =>
+                      api.addStep(flow.id, {
+                        from: shown.between.from,
+                        to: shown.between.to,
+                        step: { kind: "bot", ...patch },
+                      }),
+                    );
+                    if (r && r.ok) setPanel({ type: "step", stepId: r.stepId });
+                    return r;
+                  }}
+                />
+              ) : selectedStep && selectedStep.kind === "check" ? (
+                <CheckPanel
+                  key={`check-${selectedStep.id}-${flow.version}`}
+                  flow={flow}
+                  step={selectedStep}
+                  mode="edit"
+                  between={{
+                    text: betweenText(
+                      flow,
+                      ...neighbours(flow, selectedStep.id),
+                    ),
+                  }}
+                  onClose={() => setPanel(null)}
+                  onRemove={() =>
+                    act(() => api.removeStep(flow.id, selectedStep.id)).then(
+                      () => setPanel(null),
+                    )
+                  }
+                  onSave={async (p) =>
+                    act(() => api.updateStep(flow.id, selectedStep.id, p))
+                  }
+                />
+              ) : selectedStep ? (
+                <StepPanel
+                  key={`step-${selectedStep.id}-${flow.version}`}
+                  flow={flow}
+                  step={selectedStep}
+                  bot={botOf(selectedStep.botId)}
+                  bots={bots}
+                  onClose={() => setPanel(null)}
+                  onOpenFields={(id) =>
+                    setPanel({ type: "fields", stepId: id })
+                  }
+                  onOpenBot={
+                    onOpenBot ? (botId, tab) => onOpenBot(botId, tab) : null
+                  }
+                  onRemove={() =>
+                    act(() => api.removeStep(flow.id, selectedStep.id)).then(
+                      () => setPanel(null),
+                    )
+                  }
+                  onSave={async (p) =>
+                    act(() => api.updateStep(flow.id, selectedStep.id, p))
+                  }
+                />
+              ) : null
+            ) : null}
           </div>
         </div>
-
-        {flow && shown ? (
-          shown.type === "warnings" ? (
-            <WarningsPanel
-              flow={flow}
-              justAdded={shown.justAdded}
-              onFix={onFix}
-              onClose={() => {
-                setPanel(null);
-                setWarningsClosed(true);
-              }}
-            />
-          ) : shown.type === "fields" && selectedStep ? (
-            <FieldsPanel
-              key={`fields-${selectedStep.id}`}
-              flow={flow}
-              step={selectedStep}
-              onClose={() =>
-                setPanel({ type: "step", stepId: selectedStep.id })
-              }
-              onOpenStep={(id) => setPanel({ type: "step", stepId: id })}
-              onSave={async (p) => {
-                const r = await act(() =>
-                  api.updateStep(flow.id, selectedStep.id, p),
-                );
-                if (r && r.ok)
-                  setPanel({ type: "step", stepId: selectedStep.id });
-                return r;
-              }}
-            />
-          ) : shown.type === "new" && shown.kind === "check" ? (
-            <CheckPanel
-              key={`new-check-${shown.between.from}-${shown.between.to}`}
-              flow={flow}
-              mode="new"
-              between={shown.between}
-              onClose={() => setPanel(null)}
-              onAdd={async ({ name, check, failTo }) => {
-                const r = await act(() =>
-                  api.addStep(flow.id, {
-                    from: shown.between.from,
-                    to: shown.between.to,
-                    step: {
-                      kind: "check",
-                      name,
-                      check,
-                      failTo: failTo || null,
-                    },
-                  }),
-                );
-                if (r && r.ok) setPanel({ type: "warnings", justAdded: name });
-                return r;
-              }}
-            />
-          ) : shown.type === "new" ? (
-            <StepPanel
-              key={`new-bot-${shown.between.from}-${shown.between.to}`}
-              flow={flow}
-              step={null}
-              mode="new"
-              between={shown.between}
-              bots={bots}
-              onClose={() => setPanel(null)}
-              onAdd={async (patch) => {
-                const r = await act(() =>
-                  api.addStep(flow.id, {
-                    from: shown.between.from,
-                    to: shown.between.to,
-                    step: { kind: "bot", ...patch },
-                  }),
-                );
-                if (r && r.ok) setPanel({ type: "step", stepId: r.stepId });
-                return r;
-              }}
-            />
-          ) : selectedStep && selectedStep.kind === "check" ? (
-            <CheckPanel
-              key={`check-${selectedStep.id}-${flow.version}`}
-              flow={flow}
-              step={selectedStep}
-              mode="edit"
-              between={{
-                text: betweenText(flow, ...neighbours(flow, selectedStep.id)),
-              }}
-              onClose={() => setPanel(null)}
-              onRemove={() =>
-                act(() => api.removeStep(flow.id, selectedStep.id)).then(() =>
-                  setPanel(null),
-                )
-              }
-              onSave={async (p) =>
-                act(() => api.updateStep(flow.id, selectedStep.id, p))
-              }
-            />
-          ) : selectedStep ? (
-            <StepPanel
-              key={`step-${selectedStep.id}-${flow.version}`}
-              flow={flow}
-              step={selectedStep}
-              bot={botOf(selectedStep.botId)}
-              bots={bots}
-              onClose={() => setPanel(null)}
-              onOpenFields={(id) => setPanel({ type: "fields", stepId: id })}
-              onOpenBot={
-                onOpenBot ? (botId, tab) => onOpenBot(botId, tab) : null
-              }
-              onRemove={() =>
-                act(() => api.removeStep(flow.id, selectedStep.id)).then(() =>
-                  setPanel(null),
-                )
-              }
-              onSave={async (p) =>
-                act(() => api.updateStep(flow.id, selectedStep.id, p))
-              }
-            />
-          ) : null
-        ) : null}
       </div>
 
       {newFlow ? (
@@ -578,6 +658,16 @@ export const GraphView = ({
           workspace={workspace}
           onClose={() => setNewFlow(false)}
           onMade={onMade}
+        />
+      ) : null}
+      {renaming && flow ? (
+        <RenameFlowModal
+          flow={flow}
+          onClose={() => setRenaming(false)}
+          onRenamed={() => {
+            setRenaming(false);
+            refresh();
+          }}
         />
       ) : null}
       {publishing && flow ? (
@@ -619,7 +709,7 @@ export const GraphView = ({
             className={`text-sm ${muted}`}
             data-testid="flow-delete-confirm"
           >
-            {`Its steps and its files (scripts, checks, data) are removed. Its bots stay on this dashboard, and goals already in it keep the copy of the flow they started with.`}
+            {`Its steps and its files (scripts, checks, data) are removed. Its bots stay on this dashboard, and jobs already in it keep the copy of the flow they started with.`}
           </span>
         </ConfirmationModal>
       ) : null}

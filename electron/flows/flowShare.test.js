@@ -161,7 +161,7 @@ function aliceFlow(alice) {
   alice.store.writeFile(flow.id, "scripts/check-pr.js", CHECK_SCRIPT_V1);
   alice.store.writeFile(flow.id, "data/protected-paths.txt", "src/core\n");
   // A goal of Alice's: never published.
-  alice.goals.createGoal({ workspaceId: "ws_a", title: "Private goal", flow });
+  alice.goals.createGoal({ workspaceId: "ws_a", title: "Private job", flow });
   return { flow, builder };
 }
 
@@ -192,7 +192,7 @@ describe("publish", () => {
     assert.deepEqual(prev.needs.providers, ["github"]);
     assert.equal(prev.needs.folder, true);
     const left = prev.leftOut.join(" | ");
-    assert.match(left, /1 goals, their runs and proof/);
+    assert.match(left, /1 jobs, their runs and proof/);
     assert.match(left, /What its bots learned/);
     assert.match(left, /Keys and passwords/);
     assert.match(left, /\/Users\/alice\/code\/app/);
@@ -255,7 +255,7 @@ describe("publish", () => {
     assert.equal(registry.size, 0);
   });
 
-  it("the zip never carries the folder path, the local file, goals or bot ids", async () => {
+  it("the zip never carries the folder path, the local file, jobs or bot ids", async () => {
     const alice = profile("alice", {
       providers: [{ name: "My GitHub", type: "github" }],
     });
@@ -379,7 +379,7 @@ describe("update (frames 35–36)", () => {
     return { alice, a, bob, bobFlow: r.flow };
   }
 
-  it("a changed script asks again; your own change is keep yours or take theirs; running goals keep their version", async () => {
+  it("a changed script asks again; your own change is keep yours or take theirs; running jobs keep their version", async () => {
     const { alice, a, bob, bobFlow } = await installed();
     // Bob starts a goal on 1.0.0, and changes the Builder's time limit.
     const running = bob.goals.createGoal({

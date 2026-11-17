@@ -126,7 +126,7 @@ function createFlowShare(deps) {
           .slice(0, 1)
           .map(
             () =>
-              `${runningGoals(flow) + doneGoals(flow)} goals, their runs and proof`,
+              `${runningGoals(flow) + doneGoals(flow)} jobs, their runs and proof`,
           ),
         ...built.notIncluded.slice(1),
       ],

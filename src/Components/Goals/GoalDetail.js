@@ -343,7 +343,7 @@ export const GoalDetail = ({ goal, now, onDeleted = null }) => {
               ))
             ) : (
               <span className={`text-sm ${muted}`}>
-                No tasks yet. The bot that started this goal adds them.
+                No tasks yet. The bot that started this job adds them.
               </span>
             )}
           </div>
@@ -355,21 +355,21 @@ export const GoalDetail = ({ goal, now, onDeleted = null }) => {
       >
         {!finished ? (
           <Button3
-            title="Close the goal"
+            title="Close the job"
             size="sm"
             disabled={busy}
             onClick={() => act(() => goalsApi().close(goal.id))}
           />
         ) : null}
         <Button3
-          title="Delete goal"
+          title="Delete job"
           size="sm"
           disabled={busy || busyBot}
           onClick={() => setConfirmDelete(true)}
         />
         <span className="flex-1" />
         <span className={`text-xs ${muted}`}>
-          {`Kept for this goal: ${tasks.length} ${tasks.length === 1 ? "task" : "tasks"} · ${runs.length} ${runs.length === 1 ? "run" : "runs"}`}
+          {`Kept for this job: ${tasks.length} ${tasks.length === 1 ? "task" : "tasks"} · ${runs.length} ${runs.length === 1 ? "run" : "runs"}`}
         </span>
       </div>
       {busyBot ? (
@@ -382,7 +382,7 @@ export const GoalDetail = ({ goal, now, onDeleted = null }) => {
         <ConfirmationModal
           isOpen
           setIsOpen={() => setConfirmDelete(false)}
-          title="Delete this goal?"
+          title="Delete this job?"
           confirmLabel="Delete"
           variant="danger"
           onCancel={() => setConfirmDelete(false)}

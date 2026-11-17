@@ -278,7 +278,7 @@ export const InstallFlowModal = ({
           <span className={`text-xs flex-1 ${muted}`}>
             {prev && prev.scripts.length && !read
               ? "Install is ready once you've read the script."
-              : "Nothing runs until its first goal starts."}
+              : "Nothing runs until its first job starts."}
           </span>
           <Button3 title="Cancel" size="sm" onClick={onClose} />
           <Button

@@ -353,7 +353,7 @@ describe("deleting conversations from Recents (conversation cleanup, frames 3.1â
     expect(screen.getByTestId("workspace-start")).toBeInTheDocument();
   });
 
-  test("a conversation that started a goal: the goal is listed and deleted with it (goals ledger, frame 8)", async () => {
+  test("a conversation that started a job: the job is listed and deleted with it (jobs ledger, frame 8)", async () => {
     window.mainApi.bots.removeCreateRecent = jest
       .fn()
       .mockResolvedValue({ ok: true });
@@ -382,11 +382,11 @@ describe("deleting conversations from Recents (conversation cleanup, frames 3.1â
       screen.getByRole("menuitem", { name: /Delete conversation/ }),
     );
     expect(
-      await screen.findByText("Delete this conversation and its goal?"),
+      await screen.findByText("Delete this conversation and its job?"),
     ).toBeInTheDocument();
     const list = screen.getByTestId("recents-delete-goals");
     expect(list).toHaveTextContent(
-      "Goal â€œFix the Recents menuâ€: 2 tasks and their records",
+      "Job â€œFix the Recents menuâ€: 2 tasks and their records",
     );
     expect(list).toHaveTextContent("What the bots learned");
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
@@ -401,7 +401,7 @@ describe("deleting conversations from Recents (conversation cleanup, frames 3.1â
     delete window.mainApi.goals;
   });
 
-  test("Delete clicked before the goal lookup answers still deletes the goals", async () => {
+  test("Delete clicked before the job lookup answers still deletes the jobs", async () => {
     window.mainApi.bots.removeCreateRecent = jest
       .fn()
       .mockResolvedValue({ ok: true });

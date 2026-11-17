@@ -42,7 +42,7 @@ const TICKET_TO_PR = {
       key: "reader",
       kind: "source",
       name: "Ticket reader",
-      note: "Every 15 minutes, finds tickets labelled auto and starts a goal with each ticket's criteria, locked.",
+      note: "Every 15 minutes, finds tickets labelled auto and starts a job with each ticket's criteria, locked.",
       bot: {
         name: "Ticket reader",
         instructions:
@@ -182,7 +182,7 @@ const DRAFT_CHECK_SEND = {
       key: "reader",
       kind: "source",
       name: "Notes reader",
-      note: "Every Friday, collects the notes tagged for the newsletter and starts a goal.",
+      note: "Every Friday, collects the notes tagged for the newsletter and starts a job.",
       bot: {
         name: "Notes reader",
         instructions:
@@ -235,6 +235,7 @@ const DRAFT_CHECK_SEND = {
       kind: "you",
       name: "You approve",
       note: "Read the draft and approve the send.",
+      mode: "approve",
       action: "Approve the send",
     },
     {
@@ -323,6 +324,7 @@ const DAILY_BRIEF = {
       kind: "you",
       name: "You",
       note: "Read it on the dashboard.",
+      mode: "read",
       action: "Read it",
     },
   ],

@@ -142,6 +142,8 @@ export function diagramLayout({
     cards.push({
       x: start + (i % cols) * (cardW + gap),
       y: rowTop + Math.floor(i / cols) * rowH,
+      row: Math.floor(i / cols),
+      col: i % cols,
     });
   }
   const leadW = Math.min(320, cardW + 80);
@@ -150,11 +152,64 @@ export function diagramLayout({
     cols,
     cardW,
     cardH,
+    gap,
     lead: { x: (avail - leadW) / 2, y: leadTop, w: leadW },
     busY: Math.round((leadTop + cardH + rowTop) / 2),
     cards,
     width: avail,
     height: (n ? rowTop + (rows - 1) * rowH + cardH : leadTop + cardH) + 110,
+  };
+}
+
+// ── Line geometry ──────────────────────────────────────────────────────
+
+/** About how wide a line's label pill is (text-xs, px-2, a border). */
+export const pillWidth = (text) =>
+  Math.round(String(text || "").length * 6.2 + 18);
+export const PILL_H = 20;
+
+/** A small filled arrowhead whose tip is at (x, y), pointing `dir`. */
+export function arrowHead(x, y, dir, size = 7) {
+  const s = size;
+  const h = Math.round(s * 0.6);
+  if (dir === "left")
+    return `M${x},${y} L${x + s},${y - h} L${x + s},${y + h} Z`;
+  if (dir === "down")
+    return `M${x},${y} L${x - h},${y - s} L${x + h},${y - s} Z`;
+  if (dir === "up") return `M${x},${y} L${x - h},${y + s} L${x + h},${y + s} Z`;
+  return `M${x},${y} L${x - s},${y - h} L${x - s},${y + h} Z`;
+}
+
+/** An SVG path through a chain of axis-aligned segments [x1, y1, x2, y2]. */
+export const segmentsPath = (segments) =>
+  segments
+    .map(([x1, y1, x2, y2], i) =>
+      i === 0 ? `M${x1},${y1} L${x2},${y2}` : `L${x2},${y2}`,
+    )
+    .join(" ");
+
+/**
+ * A line between two bots side by side in one row: straight across the gap
+ * between their facing edges, at `slot` of `slots` down the card (two lines
+ * between the same pair sit at a third and two thirds), its label in the
+ * gap. Null when they aren't neighbours or the label doesn't fit the gap.
+ * `a` and `b`: { x, y, w, row, col }.
+ */
+export function neighbourLine(a, b, { cardH, slot = 0, slots = 1, text = "" }) {
+  if (!a || !b || a.row !== b.row || Math.abs(a.col - b.col) !== 1) {
+    return null;
+  }
+  const right = a.col < b.col;
+  const x1 = right ? a.x + a.w : a.x;
+  const x2 = right ? b.x : b.x + b.w;
+  if (pillWidth(text) > Math.abs(x2 - x1) - 4) return null;
+  const y = a.y + Math.round((cardH * (slot + 1)) / (slots + 1));
+  return {
+    segments: [[x1, y, x2, y]],
+    d: `M${x1},${y} L${x2},${y}`,
+    head: arrowHead(x2, y, right ? "right" : "left"),
+    mx: (x1 + x2) / 2,
+    my: y,
   };
 }
 
