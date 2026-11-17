@@ -113,6 +113,8 @@ function afterUser(task, action) {
 /** A goal's status, from its tasks. */
 function goalStatus(goal, tasks = []) {
   if (goal && goal.closed) return "closed";
+  // Held before it starts (a criterion can't be proven yet): the user's move.
+  if (goal && goal.waiting) return "needs-you";
   if (!tasks.length) return "open";
   if (tasks.some((t) => t.status === "needs-you")) return "needs-you";
   if (tasks.every((t) => FINISHED.includes(t.status))) {

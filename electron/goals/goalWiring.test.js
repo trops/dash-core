@@ -77,8 +77,12 @@ describe("botController", () => {
     // A bot asked by its lead starts on its own copy of the lead's goal.
     assert.match(
       bots,
-      /const cause =\s*opts\.cause \|\|\s*\(opts\.goal && opts\.goal\.goalId\s*\? \{ \.\.\.rootCause\(\), goal: \{ goalId: opts\.goal\.goalId, taskId: null \} \}\s*: rootCause\(\)\);/,
+      /const cause =\s*opts\.cause \|\|\s*\(opts\.goal && opts\.goal\.goalId\s*\? \{\s*\.\.\.rootCause\(\),\s*goal: \{\s*goalId: opts\.goal\.goalId,\s*taskId: opts\.goal\.taskId \|\| null,\s*\},\s*\}\s*: rootCause\(\)\);/,
     );
+    // Flows: the runner hands its bots work, and create_goal finds the flow.
+    assert.match(bots, /flowController\.useBots\(flowBotHooks\(this\)\);/);
+    assert.match(bots, /flows: flowController\.toolContext\(\),/);
+    assert.match(bots, /flowController\.forgetWorkspace\(workspaceId\);/);
     assert.match(
       bots,
       /cause\.goal = goal;\s*if \(!alreadyRunning\) this\._events\.startRun\(botId, cause\);/,

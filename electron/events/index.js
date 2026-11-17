@@ -24,6 +24,7 @@ const sessionEvents = require("./sessionEvents");
 const notificationEvents = require("./notificationEvents");
 const issueEvents = require("./issueEvents");
 const goalEvents = require("./goalEvents");
+const flowEvents = require("./flowEvents");
 const schedulerEvents = require("./schedulerEvents");
 const themeFromUrlEvents = require("./themeFromUrlEvents");
 const webSocketEvents = require("./webSocketEvents");
@@ -57,6 +58,7 @@ const API_GROUPS = {
   notifications: Object.values(notificationEvents),
   issues: Object.values(issueEvents),
   goals: Object.values(goalEvents),
+  flows: Object.values(flowEvents),
   openai: Object.values(openaiEvents),
   providers: Object.values(providerEvents),
   "publisher-key": Object.values(publisherKeyEvents),
@@ -99,6 +101,7 @@ module.exports = {
   ...notificationEvents,
   ...issueEvents,
   ...goalEvents,
+  ...flowEvents,
   ...schedulerEvents,
   ...themeFromUrlEvents,
   ...webSocketEvents,

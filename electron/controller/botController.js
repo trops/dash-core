@@ -245,6 +245,8 @@ const {
 const { cleanWire, withWireProblems } = require("../bots/widgetWire");
 const issueController = require("./issueController");
 const goalController = require("./goalController");
+const flowController = require("./flowController");
+const { flowBotHooks } = require("../flows/flowBotHooks");
 const {
   GOALS_SERVER,
   GOAL_TOOLS,
@@ -676,6 +678,9 @@ const botController = {
       runBot: (botId, opts) => this._run(botId, opts),
     });
 
+    // Flows move goals on by running their bots and checks (flows PRD).
+    flowController.useBots(flowBotHooks(this));
+
     // Register schedules for existing bots and run any that were missed while
     // Dash was closed.
     const bots = this._activeBots();
@@ -690,6 +695,8 @@ const botController = {
     this._offWorkspaceDeleted = onWorkspaceDeleted((workspaceId) => {
       // Its goals go with it: tasks, evidence, work files and their runs.
       goalController.forgetWorkspace(workspaceId);
+      // And its flows (the bots they made are unassigned like the rest).
+      flowController.forgetWorkspace(workspaceId);
       unassignTeam(
         {
           store: this._store,
@@ -3303,11 +3310,18 @@ const botController = {
     // The goal this run works on (goals ledger): carried from the event
     // that started it, or set by the goal tools when the bot claims a task.
     // The same object rides on the cause, so the run's events carry it.
-    // A bot asked by its lead starts on the lead's goal (its own copy).
+    // A bot asked by its lead starts on the lead's goal (its own copy); a
+    // flow step, on its goal's task.
     const cause =
       opts.cause ||
       (opts.goal && opts.goal.goalId
-        ? { ...rootCause(), goal: { goalId: opts.goal.goalId, taskId: null } }
+        ? {
+            ...rootCause(),
+            goal: {
+              goalId: opts.goal.goalId,
+              taskId: opts.goal.taskId || null,
+            },
+          }
         : rootCause());
     const goal = cause.goal || { goalId: null, taskId: null };
     cause.goal = goal;
@@ -6239,6 +6253,8 @@ const botController = {
           botName: opts.botName || null,
           conversationId: opts.conversationId || null,
           goal: opts.goal || null,
+          // Which flow a create_goal means, and its criteria's proof.
+          flows: flowController.toolContext(),
         },
         toolName,
         args,
