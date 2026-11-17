@@ -837,6 +837,33 @@ describe("claudeAgentEngine — Settings › AI (style, limits, cache)", () => {
     assert.match(errs[0].message, /^Stopped after 1 step — its step limit\./);
   });
 
+  it("a stopped run doesn't leave interrupt()'s rejection unhandled", async () => {
+    const ac = new AbortController();
+    const unhandled = [];
+    const onUnhandled = (e) => unhandled.push(e);
+    process.on("unhandledRejection", onUnhandled);
+    claudeAgentEngine.__setQueryForTest(() => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: "assistant", message: { content: [] } };
+        ac.abort();
+        yield { type: "assistant", message: { content: [] } };
+      },
+      interrupt() {
+        return Promise.reject(
+          new Error("Query closed before response received"),
+        );
+      },
+      close() {},
+    }));
+    try {
+      await collect(claudeAgentEngine.run(ctx({ signal: ac.signal })));
+      await new Promise((r) => setImmediate(r));
+      assert.deepEqual(unhandled, []);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("tells a limit by the thrown text when no result came", async () => {
     claudeAgentEngine.__setQueryForTest(() => ({
       async *[Symbol.asyncIterator]() {

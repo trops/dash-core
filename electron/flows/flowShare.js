@@ -100,6 +100,9 @@ function createFlowShare(deps) {
             ? `@${id.username}/${toPackageName(flow.name)}`
             : toPackageName(flow.name),
       current,
+      // Like profiles: a first publish is private; later ones keep its
+      // visibility until you change it.
+      visibility: visibilityOf(flow),
       versions: {
         patch: current ? bumpVersion(current, "patch") : "1.0.0",
         minor: current ? bumpVersion(current, "minor") : "1.0.0",
@@ -130,6 +133,14 @@ function createFlowShare(deps) {
       checks: publishChecks(built.pkg, built.secrets),
       secrets: built.secrets,
     };
+  }
+
+  function visibilityOf(flow) {
+    return flow.package &&
+      flow.package.own &&
+      flow.package.visibility === "public"
+      ? "public"
+      : "private";
   }
 
   function doneGoals(flow) {
@@ -172,6 +183,10 @@ function createFlowShare(deps) {
         error: `Not published: ${built.secrets.map((s) => `${s.what} in ${s.where}`).join("; ")}. Take it out and try again.`,
       };
     }
+    const visibility =
+      opts.visibility === "public" || opts.visibility === "private"
+        ? opts.visibility
+        : visibilityOf(flow);
     const manifest = registryManifestForFlow(built.pkg, {
       scope,
       name,
@@ -180,7 +195,7 @@ function createFlowShare(deps) {
       description: String(opts.whatsNew || flow.brief || "").slice(0, 500),
       author: id.displayName || id.username,
       appOrigin: deps.appOrigin || "@trops/dash-electron",
-      visibility: opts.visibility,
+      visibility,
     });
     const r = await deps.publishZip(
       publishFlowFiles(built.pkg, built.files, manifest),
@@ -197,6 +212,7 @@ function createFlowShare(deps) {
         scope,
         name,
         version: opts.version,
+        visibility,
         publishedAt: now(),
         own: true,
         base: built.pkg,
@@ -207,7 +223,12 @@ function createFlowShare(deps) {
       },
       edited: false,
     });
-    return { ok: true, package: `@${scope}/${name}`, version: opts.version };
+    return {
+      ok: true,
+      package: `@${scope}/${name}`,
+      version: opts.version,
+      visibility,
+    };
   }
 
   // ---- install (frame 34) -------------------------------------------------

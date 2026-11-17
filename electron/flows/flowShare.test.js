@@ -203,6 +203,40 @@ describe("publish", () => {
     );
   });
 
+  it("publishes private first; later versions keep the visibility until changed", async () => {
+    const alice = profile("alice");
+    const { flow } = aliceFlow(alice);
+    const vis = () => {
+      const versions = registry.get("alice/ticket-to-pr");
+      return versions[versions.length - 1].manifest.visibility;
+    };
+    assert.equal(
+      (await alice.share.publishPreview(flow.id)).visibility,
+      "private",
+    );
+    await alice.share.publish(flow.id, {
+      name: "@alice/ticket-to-pr",
+      version: "1.0.0",
+    });
+    assert.equal(vis(), "private");
+    const r = await alice.share.publish(flow.id, {
+      name: "@alice/ticket-to-pr",
+      version: "1.0.1",
+      visibility: "public",
+    });
+    assert.equal(r.visibility, "public");
+    assert.equal(vis(), "public");
+    assert.equal(
+      (await alice.share.publishPreview(flow.id)).visibility,
+      "public",
+    );
+    await alice.share.publish(flow.id, {
+      name: "@alice/ticket-to-pr",
+      version: "1.0.2",
+    });
+    assert.equal(vis(), "public");
+  });
+
   it("a key in a file stops the publish, naming where", async () => {
     const alice = profile("alice");
     const { flow } = aliceFlow(alice);
