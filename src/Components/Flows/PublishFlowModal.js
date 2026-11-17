@@ -7,6 +7,7 @@ import {
   InputText,
   Modal,
   SegmentedControl,
+  Switch,
   ThemeContext,
   getStylesForItem,
   themeObjects,
@@ -33,6 +34,8 @@ export const PublishFlowModal = ({ flow, onClose, onPublished }) => {
   const [name, setName] = useState("");
   const [bump, setBump] = useState("minor");
   const [whatsNew, setWhatsNew] = useState("");
+  // Like profiles: private first, then what it was last published as.
+  const [visibility, setVisibility] = useState("private");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -44,6 +47,7 @@ export const PublishFlowModal = ({ flow, onClose, onPublished }) => {
       }
       setPrev(r);
       setName(r.name);
+      setVisibility(r.visibility === "public" ? "public" : "private");
       if (!r.current) setBump("patch");
     });
   }, [api, flow.id]);
@@ -56,7 +60,12 @@ export const PublishFlowModal = ({ flow, onClose, onPublished }) => {
     setBusy(true);
     setError("");
     try {
-      const r = await api.publish(flow.id, { name, version, whatsNew });
+      const r = await api.publish(flow.id, {
+        name,
+        version,
+        whatsNew,
+        visibility,
+      });
       if (!r || r.error) setError((r && r.error) || "It wasn't published.");
       else onPublished(r);
     } finally {
@@ -146,6 +155,35 @@ export const PublishFlowModal = ({ flow, onClose, onPublished }) => {
                   )}
                 </div>
               </div>
+              <div
+                className="flex flex-row items-center gap-3"
+                data-testid="publish-visibility"
+              >
+                <div className="flex flex-col flex-1 min-w-0">
+                  <span
+                    className={`text-xs font-semibold uppercase tracking-wide ${muted}`}
+                  >
+                    Who can install it
+                  </span>
+                  <span className={`text-sm ${muted}`}>
+                    {visibility === "public"
+                      ? "Anyone can find and install it."
+                      : "Only you can install it."}
+                  </span>
+                </div>
+                <span
+                  className={`text-sm ${visibility === "public" ? strong : muted}`}
+                >
+                  {visibility === "public" ? "Public" : "Private"}
+                </span>
+                <Switch
+                  ariaLabel="Public"
+                  checked={visibility === "public"}
+                  onChange={(on) => {
+                    if (!busy) setVisibility(on ? "public" : "private");
+                  }}
+                />
+              </div>
               <InputText
                 label="What's new"
                 value={whatsNew}
@@ -225,7 +263,7 @@ export const PublishFlowModal = ({ flow, onClose, onPublished }) => {
               </div>
               <div
                 data-testid="publish-checks"
-                className={`flex flex-row flex-wrap gap-x-5 gap-y-1 p-3 rounded-lg border ${
+                className={`flex flex-row flex-wrap gap-x-4 gap-y-1 p-3 rounded-lg border ${
                   prev.checks.every((c) => c.ok)
                     ? `${status.success.border} ${status.success.bg}`
                     : `${status.warning.border} ${status.warning.bg}`

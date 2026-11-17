@@ -44,6 +44,26 @@ describe("PublishFlowModal (frame 33)", () => {
     });
     expect(onPublished).toHaveBeenCalled();
   });
+
+  it("publishes private unless switched to public", async () => {
+    const { api } = installMockFlowsApi();
+    render(
+      <PublishFlowModal
+        flow={flow}
+        onClose={jest.fn()}
+        onPublished={jest.fn()}
+      />,
+    );
+    const row = await screen.findByTestId("publish-visibility");
+    expect(row).toHaveTextContent("Only you can install it.");
+    fireEvent.click(within(row).getByRole("switch", { name: "Public" }));
+    expect(row).toHaveTextContent("Anyone can find and install it.");
+    fireEvent.click(screen.getByRole("button", { name: /^Publish / }));
+    await waitFor(() => expect(api.publish).toHaveBeenCalled());
+    expect(api.publish.mock.calls[0][1]).toMatchObject({
+      visibility: "public",
+    });
+  });
 });
 
 describe("InstallFlowModal (frame 34)", () => {

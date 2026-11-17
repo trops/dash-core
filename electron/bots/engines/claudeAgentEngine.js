@@ -414,7 +414,11 @@ async function _runAgent(ctx, stream) {
   if (ctx.signal) {
     ctx.signal.addEventListener("abort", () => {
       try {
-        if (typeof q.interrupt === "function") q.interrupt();
+        // interrupt() is async: it rejects ("Query closed before response
+        // received") when the loop below stops first and the query closes.
+        if (typeof q.interrupt === "function") {
+          Promise.resolve(q.interrupt()).catch(() => {});
+        }
       } catch (_e) {
         /* best effort */
       }
