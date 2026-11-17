@@ -24,7 +24,7 @@
  *
  *   2. **Path-argument containment** — for tools whose arguments
  *      include a path-shaped key (`path`, `uri`, `filepath`, `file`,
- *      `directory`), the supplied path is validated with safePath()
+ *      `directory`), the supplied path is validated with checkToolPath()
  *      against the widget's granted `readPaths` or `writePaths` for
  *      the target server. The read/write distinction is heuristic
  *      based on the tool name (e.g. `write_file` is treated as a
@@ -39,7 +39,7 @@
 "use strict";
 
 const { getGrant, setGrant } = require("./grantedPermissions");
-const { safePath } = require("../utils/safePath");
+const { checkToolPath } = require("../utils/safePath");
 const { requestApproval } = require("./jitConsent");
 const { approvalErrorReason } = require("./approvalErrorReason");
 const { lookup: lookupMountToken } = require("../security/mountTokenRegistry");
@@ -190,16 +190,14 @@ function _evaluateGrant({
             "'",
         };
       }
-      try {
-        safePath(v, allowedPaths);
-      } catch (e) {
+      // Local folders get the on-disk check; a server's own paths
+      // (a notes vault) are compared as server paths. The argument itself
+      // goes to the tool unchanged.
+      const checked = checkToolPath(v, allowedPaths);
+      if (!checked.ok) {
         return {
           allow: false,
-          reason:
-            "path argument '" +
-            key +
-            "' rejected: " +
-            (e && e.message ? e.message : String(e)),
+          reason: "path argument '" + key + "' rejected: " + checked.reason,
         };
       }
     }
