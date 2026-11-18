@@ -329,7 +329,9 @@ class BotStore {
     const out = [];
     for (const botId of Object.keys(runs || {})) {
       for (const r of runs[botId] || []) {
-        if (!r || r.goalId !== goalId) continue;
+        // A bot's job (bot-checks PRD): its first run is the job's too.
+        const job = r && r.checks && r.checks.goalId === goalId;
+        if (!r || (r.goalId !== goalId && !job)) continue;
         out.push({
           botId,
           goalId,
@@ -341,10 +343,13 @@ class BotStore {
           model: r.model || null,
           // Steps it took, for a task's limits (flows PRD, phase 5).
           steps: Array.isArray(r.toolCalls) ? r.toolCalls.length : 0,
+          ...(r.checks ? { checks: { state: r.checks.state || null } } : {}),
         });
       }
     }
-    return out.sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+    // Run times are ISO strings (numbers in older records).
+    const t = (v) => (typeof v === "number" ? v : Date.parse(v) || 0);
+    return out.sort((a, b) => t(a.startedAt) - t(b.startedAt));
   }
 
   /** Remove the runs that worked on a deleted goal. @returns {number} */

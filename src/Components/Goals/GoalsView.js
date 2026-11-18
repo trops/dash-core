@@ -21,12 +21,29 @@ const FILTERS = [
  * everything its bots are working on, one row per goal. Selecting a goal
  * opens it beside the list.
  */
-export const GoalsView = ({ workspace, now, command = null }) => {
+export const GoalsView = ({
+  workspace,
+  now,
+  command = null,
+  openGoal = null,
+  onOpenedGoal = null,
+}) => {
   const { muted, strong, hairline } = useConfigTokens();
   const workspaceId = workspace ? workspace.id : null;
   const { goals, loading } = useGoals(workspaceId);
   const [filter, setFilter] = useState("all");
-  const [selectedId, setSelectedId] = useState(null);
+  // A job opened from elsewhere ({ goalId, seq }: a lead's check card).
+  const [selectedId, setSelectedId] = useState(
+    openGoal ? openGoal.goalId : null,
+  );
+  useEffect(() => {
+    if (!openGoal || !openGoal.goalId) return;
+    setFilter("all");
+    setSelectedId(openGoal.goalId);
+    // Opened once: coming back to Jobs later doesn't open it again.
+    if (onOpenedGoal) onOpenedGoal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openGoal && openGoal.seq, openGoal && openGoal.goalId]);
   const { goal: opened } = useGoal(selectedId);
   // New goal (frame 29), from the header's button: in one of its flows.
   const { flows } = useFlows(workspaceId);
@@ -69,9 +86,9 @@ export const GoalsView = ({ workspace, now, command = null }) => {
         >
           <span className="text-sm font-semibold">No jobs right now</span>
           <span className={`text-sm ${muted}`}>
-            A job is one piece of work going through a flow, from its first step
-            to its last. Most start by themselves from a flow's first step;
-            start one by hand with New job.
+            A job is one run of a bot that has checks, followed until its work
+            passes them and is handed on. Bots without checks don't make jobs. A
+            flow's work is a job too.
           </span>
         </div>
         {flows.length ? (
@@ -171,6 +188,7 @@ export const GoalsView = ({ workspace, now, command = null }) => {
               <GoalDetail
                 goal={opened}
                 now={now}
+                workspace={workspace}
                 onDeleted={() => setSelectedId(null)}
               />
             ) : null}

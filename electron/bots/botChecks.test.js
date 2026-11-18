@@ -21,7 +21,7 @@ const {
   WORK_STEP,
 } = require("./botChecks");
 const { validateBotDefinition, withDefaults } = require("./botSchema");
-const { checkedAnswer } = require("./teamTools");
+const { checkedAnswer, jobMarker } = require("./teamTools");
 const { inputStep } = require("../flows/flowModel");
 
 const RULES = {
@@ -258,6 +258,11 @@ describe("a job", () => {
 });
 
 describe("what the lead hears", () => {
+  it("ends with which job it was (the conversation shows its checks)", () => {
+    assert.equal(jobMarker("goal_x1"), '\n<job id="goal_x1"/>');
+    assert.equal(jobMarker('g"><x'), '\n<job id="gx"/>');
+    assert.equal(jobMarker(null), "");
+  });
   const job = { goalId: "goal_x", title: "Writer: the brief" };
   it("gets the answer once it passed", () => {
     const t = checkedAnswer("Writer", {

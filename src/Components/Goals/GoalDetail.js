@@ -10,6 +10,8 @@ import {
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { whenLongText, whenText } from "../Issues/issueText";
 import { FlowGoalDetail } from "./FlowGoalDetail";
+import { BotJobDetail } from "./BotJobDetail";
+import { isBotJob } from "./jobTimeline";
 import {
   goalLabel,
   goalState,
@@ -205,7 +207,12 @@ const TaskCard = ({ task, onAction, busy, canAct = true, now }) => {
  * and 4): where it came from, anything waiting for you, each task with its
  * done records, and Close / Delete with what's kept for it.
  */
-export const GoalDetail = ({ goal, now, onDeleted = null }) => {
+export const GoalDetail = ({
+  goal,
+  now,
+  onDeleted = null,
+  workspace = null,
+}) => {
   const { muted, strong, hairline, accent } = useConfigTokens();
   const status = useStatusTokens();
   const [busy, setBusy] = useState(false);
@@ -291,7 +298,7 @@ export const GoalDetail = ({ goal, now, onDeleted = null }) => {
           )}
           {` · started ${whenLongText(goal.createdAt, now)} · ${runs.length} ${runs.length === 1 ? "run" : "runs"}`}
         </span>
-        {goal.body ? (
+        {goal.body && !isBotJob(goal) ? (
           <span className={`text-sm pt-1 ${strong}`}>{goal.body}</span>
         ) : null}
       </div>
@@ -302,7 +309,18 @@ export const GoalDetail = ({ goal, now, onDeleted = null }) => {
         </span>
       ) : null}
 
-      {goal.flow ? (
+      {isBotJob(goal) ? (
+        // A bot's job (bot-checks CHK-003): read top to bottom.
+        <BotJobDetail
+          goal={goal}
+          workspace={workspace}
+          now={now}
+          busy={busy}
+          onAction={(taskId, action) =>
+            finished ? null : onAction(taskId, action)
+          }
+        />
+      ) : goal.flow ? (
         // A goal in a flow: its steps, criteria and checks (flows PRD).
         <FlowGoalDetail
           goal={goal}

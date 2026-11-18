@@ -12,6 +12,7 @@ import {
   taskState,
 } from "./goalText";
 import { stepPills } from "../Flows/flowText";
+import { isBotJob, jobLine } from "./jobTimeline";
 
 const PILL_MAX = 24;
 const clip = (s) =>
@@ -26,7 +27,11 @@ export const GoalRow = ({ goal, active = false, onClick, now }) => {
   const { muted, strong, hairline, selectedBg, selectedBorder, fieldBg } =
     useConfigTokens();
   const attention = goal.status === "needs-you" || goal.status === "ready";
-  const round = roundText(goal);
+  const botJob = isBotJob(goal);
+  // A bot's job counts tries, not rounds (bot-checks CHK-003).
+  const round = botJob
+    ? roundText(goal).replace(/^Round/, "Try")
+    : roundText(goal);
   return (
     <div role="listitem">
       <button
@@ -60,7 +65,7 @@ export const GoalRow = ({ goal, active = false, onClick, now }) => {
             className={`text-xs truncate ${attention ? strong : muted}`}
             data-testid="goal-row-line"
           >
-            {goalLine(goal)}
+            {botJob ? jobLine(goal) : goalLine(goal)}
           </span>
         </span>
         <span className="flex flex-row items-center gap-2 min-w-0">
