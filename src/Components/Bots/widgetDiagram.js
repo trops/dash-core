@@ -328,6 +328,10 @@ export function widgetLayout({
   };
 }
 
+// Where a line leaves a bot from below: its checks card when it has one
+// (bot-checks CHK-002), otherwise the middle of the bot.
+const outX = (a) => (a.outX != null ? a.outX : a.x + a.w / 2);
+
 // Lanes: the horizontal runs in the gap under a row of bots, this far apart.
 export const LANE = 22;
 
@@ -351,8 +355,10 @@ export const LANE = 22;
  * @param {object} o
  * @param {number} o.width     the chart's width
  * @param {boolean} o.side     wide layout
- * @param {object} o.team      { cards: [{ id, x, y, w, row, col }] (in the
- *                             team's order), cols, cardH, gap, lead? {x,y,w} }
+ * @param {object} o.team      { cards: [{ id, x, y, w, row, col, outX?,
+ *                             slotW? }] (in the team's order), cols, cardH,
+ *                             gap, lead? {x,y,w} } — outX: where its lines
+ *                             leave from below; slotW: its column's width
  * @param {object[]} o.widgets diagram widgets ({ key })
  * @param {object[]} o.edges   widgetEdges()
  * @param {number} [o.below]   narrow: the lowest y the team's own lines use
@@ -494,7 +500,7 @@ export function routeWidgets({
         });
         continue;
       }
-      const sx = a.x + a.w / 2;
+      const sx = outX(a);
       const sy = a.y + tH;
       const ly = laneY(a.row);
       const gx = Math.max(teamRight + 12, x - 18 - 10 * k++);
@@ -521,7 +527,7 @@ export function routeWidgets({
   }
 
   // Narrow: below the team, each in its bot's column.
-  const cardW = cards[0].w;
+  const cardW = cards[0].slotW || cards[0].w;
   const colX = (c) => (cards.find((x) => x.col === c) || cards[0]).x;
   const stacks = Array.from({ length: cols }, () => 0);
   const where = {};
@@ -559,7 +565,7 @@ export function routeWidgets({
   for (const { e, a, wc, straight, ly } of plan) {
     const b = pos[e.widget];
     const pw = pillWidth(labelOf(e));
-    const sx = a.x + a.w / 2;
+    const sx = outX(a);
     const sy = a.y + tH;
     if (straight) {
       push(e, [[sx, sy, sx, b.y]], arrowHead(sx, b.y, "down"), {

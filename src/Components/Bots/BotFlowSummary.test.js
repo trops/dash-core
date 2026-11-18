@@ -84,3 +84,24 @@ test("the lead keeps Ask the lead (its conversation, release 6b)", () => {
   fireEvent.click(screen.getByRole("button", { name: "Ask the lead" }));
   expect(onOpen).toHaveBeenCalledWith("conversation");
 });
+
+test("a bot's checks, with Edit / Add checks (bot-checks CHK-002)", () => {
+  const onOpenChecks = jest.fn();
+  const checked = {
+    ...reader,
+    checks: { steps: [{ id: "step_c1", kind: "you", name: "You approve" }] },
+  };
+  const { rerender } = render(
+    <BotFlowSummary bot={checked} team={team} onOpenChecks={onOpenChecks} />,
+  );
+  expect(screen.getByTestId("checks")).toHaveTextContent("You approve");
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  expect(onOpenChecks).toHaveBeenCalled();
+  rerender(
+    <BotFlowSummary bot={reader} team={team} onOpenChecks={onOpenChecks} />,
+  );
+  expect(screen.getByTestId("checks")).toHaveTextContent("goes straight on");
+  expect(
+    screen.getByRole("button", { name: "Add checks" }),
+  ).toBeInTheDocument();
+});

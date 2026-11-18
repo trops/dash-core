@@ -7,8 +7,9 @@ import { eventText, runsAfter, thenTriggers } from "./teamDiagram";
 
 /**
  * BotFlowSummary — the side panel beside the team diagram (bot-teams PRD
- * TEAM-014 AC4): the selected bot, what it runs after and what it triggers,
- * and the way into its Conversation / Activity / Settings.
+ * TEAM-014 AC4): the selected bot, what it runs after, its own checks
+ * (bot-checks CHK-002), what it triggers, and the way into its
+ * Conversation / Activity / Settings.
  *
  * @param {object[]} team  the dashboard's bots, lead included
  */
@@ -19,6 +20,7 @@ export const BotFlowSummary = ({
   status = "Idle",
   onOpen,
   onRunNow,
+  onOpenChecks = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   if (!bot) return null;
@@ -26,6 +28,7 @@ export const BotFlowSummary = ({
   const after = isLead ? [] : runsAfter(bot, team, nameOf);
   const triggers = isLead ? [] : thenTriggers(bot.id, team);
   const providers = isLead ? [] : bot.mcpServers || [];
+  const checks = isLead ? [] : (bot.checks && bot.checks.steps) || [];
   const dot = STATUS_DOT[status] || STATUS_DOT.Idle;
 
   const item = (key, text) => (
@@ -79,6 +82,27 @@ export const BotFlowSummary = ({
             ) : (
               <span className={`text-sm ${muted}`}>
                 Nothing — runs manually or on its schedule.
+              </span>
+            )}
+          </div>
+          <div data-testid="checks" className="flex flex-col gap-2">
+            <div className="flex flex-row items-center gap-2">
+              <span className="flex-1">
+                <SectionLabel text="Checks" />
+              </span>
+              {onOpenChecks ? (
+                <Button3
+                  title={checks.length ? "Edit" : "Add checks"}
+                  size="sm"
+                  onClick={onOpenChecks}
+                />
+              ) : null}
+            </div>
+            {checks.length ? (
+              checks.map((s, i) => item(`c${i}`, s.name))
+            ) : (
+              <span className={`text-sm ${muted}`}>
+                None — its work goes straight on.
               </span>
             )}
           </div>
