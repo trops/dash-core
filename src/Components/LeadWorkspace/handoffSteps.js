@@ -63,15 +63,27 @@ export function stepFromCall(event) {
   };
 }
 
+/**
+ * The job a checked answer came from: a last line after the fenced team
+ * data (electron/bots/teamTools.js jobMarker). Inside the fence it's a
+ * bot's own words, so it doesn't count.
+ */
+export const JOB_MARKER =
+  /<\/(?:team_data|dash_data)>\s*\n<job id="([A-Za-z0-9_-]+)"\/>\s*$/;
+
 /** The bot's own words from a fenced hand-off result. */
 export function answerText(output) {
   let text = String(output == null ? "" : output);
   const fenced = /<(team_data|dash_data)>\n?([\s\S]*?)\n?<\/\1>/i.exec(text);
   if (fenced) text = fenced[2];
-  return text
-    .replace(/^[^\n]{1,80}'s answer:\n/, "")
-    .replace(/^(Planner|Scout|Builder|Checker): /, "")
-    .trim();
+  return (
+    text
+      .replace(/^[^\n]{1,80}'s answer:\n/, "")
+      // A bot with checks (bot-checks CHK-003): "X's answer (it passed…):"
+      .replace(/^[^\n]{1,80}'s answer \(it passed its checks[^)\n]*\):\n/, "")
+      .replace(/^(Planner|Scout|Builder|Checker): /, "")
+      .trim()
+  );
 }
 
 /**
@@ -88,6 +100,10 @@ export function withResult(messages, event) {
   const next = messages.map((m) => {
     if (!m || m.who !== "step" || m.id !== id) return m;
     hit = true;
+    // A checked answer ends with its job (bot-checks CHK-003).
+    const marked = event.isError
+      ? null
+      : JOB_MARKER.exec(String(event.output == null ? "" : event.output));
     const full = answerText(event.output);
     // The Planner's answer carries its plan (release 3a): kept on the step,
     // and its words shown without the JSON.
@@ -104,6 +120,7 @@ export function withResult(messages, event) {
       answer,
       result: firstLine(answer),
       ...(planned ? { plan } : {}),
+      ...(marked ? { jobId: marked[1] } : {}),
       ...(!planned && didNothing(answer) ? { nothing: true } : {}),
     };
   });

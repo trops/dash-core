@@ -227,6 +227,6 @@ test("a dashboard with no jobs says how they get here", async () => {
   render(<GoalsView workspace={{ id: 99 }} />);
   expect(await screen.findByText("No jobs right now")).toBeInTheDocument();
   expect(
-    screen.getByText(/A job is one piece of work going through a flow/),
+    screen.getByText(/A job is one run of a bot that has checks/),
   ).toBeInTheDocument();
 });

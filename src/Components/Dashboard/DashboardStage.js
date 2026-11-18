@@ -811,6 +811,69 @@ const DashboardStageInner = ({
     window.addEventListener("dash:open-workspace", onOpen);
     return () => window.removeEventListener("dash:open-workspace", onOpen);
   }, []);
+  // A job opened from a lead's check card (bot-checks CHK-003): its
+  // dashboard's Jobs tab, on that job. detail: { workspaceId, goalId }.
+  // Cleared once the Jobs tab has opened it, so it isn't opened again.
+  const [jobFocus, setJobFocus] = useState(null);
+  // Subscribed once; the latest handler runs (it reads current state).
+  const openJobRef = useRef(null);
+  openJobRef.current = async (d) => {
+    if (d.workspaceId === undefined || d.workspaceId === null || !d.goalId)
+      return;
+    setWorkspaceRequest(null);
+    const focus = () => {
+      setStageModeByWorkspace((prev) => ({
+        ...prev,
+        [d.workspaceId]: "goals",
+      }));
+      setJobFocus((prev) => ({
+        workspaceId: String(d.workspaceId),
+        goalId: String(d.goalId),
+        seq: ((prev && prev.seq) || 0) + 1,
+      }));
+    };
+    const same =
+      workspaceSelected &&
+      String(workspaceSelected.id) === String(d.workspaceId);
+    if (same && (previewMode || popout)) {
+      // Unsaved bot settings in the Bots view ask first.
+      leaveBotsGuarded(focus);
+      return;
+    }
+    if (same) {
+      // Being edited: Jobs shows outside edit mode, so it leaves the
+      // editor — asking first when there are unsaved edits.
+      focus();
+      if (isDirty) {
+        setPendingNavigation({
+          kind: "open-workspace",
+          workspace: workspaceSelected,
+        });
+      } else {
+        handleOpenTab(workspaceSelected);
+      }
+      return;
+    }
+    let ws = null;
+    try {
+      const res = await window.mainApi.workspace.listWorkspacesForApplication(
+        credentials?.appId,
+      );
+      const list = Array.isArray(res) ? res : (res && res.workspaces) || [];
+      ws = list.find((w) => String(w.id) === String(d.workspaceId)) || null;
+    } catch (_e) {
+      ws = null;
+    }
+    if (!ws) return;
+    focus();
+    // Another dashboard: its unsaved edits (or bot settings) ask first.
+    handleOpenTabGuarded(ws);
+  };
+  useEffect(() => {
+    const onOpenJob = (e) => openJobRef.current((e && e.detail) || {});
+    window.addEventListener("dash:open-job", onOpenJob);
+    return () => window.removeEventListener("dash:open-job", onOpenJob);
+  }, []);
   // An app page from outside the stage (the bot notifications panel,
   // release 4): { page: "providers", providerName? } | { page: "bots" }.
   // Subscribed once; the latest handler runs (it reads current state).
@@ -3436,6 +3499,13 @@ const DashboardStageInner = ({
                         key={workspaceSelected.id}
                         workspace={workspaceSelected}
                         command={stageCommand}
+                        openGoal={
+                          jobFocus &&
+                          jobFocus.workspaceId === String(workspaceSelected.id)
+                            ? jobFocus
+                            : null
+                        }
+                        onOpenedGoal={() => setJobFocus(null)}
                       />
                     ) : stageMode === "graph" ? (
                       <GraphView

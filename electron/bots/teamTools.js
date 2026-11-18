@@ -192,6 +192,20 @@ function checkedAnswer(name, checks, output) {
   return `${name} finished, and its work is still going through its checks${job}. Tell the user; it goes on once it passes.`;
 }
 
+/**
+ * Which job a checked answer came from, at the very end of the result,
+ * after the fenced team data (a bot's words can't close the fence, so can't
+ * fake it): the lead's conversation shows that job's checks with it
+ * (bot-checks CHK-003).
+ */
+function jobMarker(goalId) {
+  const id = String(goalId || "").replace(/[^A-Za-z0-9_-]/g, "");
+  return id
+    ? `
+<job id="${id}"/>`
+    : "";
+}
+
 function howItStarts(bot) {
   const scheduled = (bot.schedules || []).some((s) => s && s.cron);
   const events = (bot.subscriptions || []).length;
@@ -384,7 +398,13 @@ function handleTeamTool(deps, ctx, toolName, args = {}) {
               );
             }
             if (res.checks && res.checks.goalId) {
-              return ok(checkedAnswer(b.name, res.checks, res.output));
+              // Its job, so the conversation can show the checks (CHK-003):
+              // after the fence, where nothing a bot says can reach.
+              const said = ok(checkedAnswer(b.name, res.checks, res.output));
+              return {
+                ...said,
+                text: said.text + jobMarker(res.checks.goalId),
+              };
             }
             return ok(
               `${b.name}'s answer:\n${clip(res.output || "(no answer)", RUN_ANSWER_LIMIT * 2)}`,
@@ -446,4 +466,5 @@ module.exports = {
   handleTeamTool,
   fenceTeamData,
   checkedAnswer,
+  jobMarker,
 };

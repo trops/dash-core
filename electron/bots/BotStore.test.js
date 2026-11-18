@@ -72,6 +72,32 @@ describe("BotStore runs of a goal (goals ledger)", () => {
   });
 });
 
+describe("BotStore runs of a bot's job (bot-checks)", () => {
+  it("its first run, marked with the job, is one of the job's runs", () => {
+    const { store } = freshStore();
+    const a = store.create(validDef);
+    store.appendRun(a.id, {
+      status: "completed",
+      startedAt: "2026-11-18T10:00:05.000Z",
+      goalId: "goal_j",
+      trigger: "flow",
+    });
+    store.appendRun(a.id, {
+      status: "completed",
+      startedAt: "2026-11-18T10:00:00.000Z",
+      checks: { goalId: "goal_j", state: "replaced" },
+    });
+    const runs = store.runsForGoal("goal_j");
+    assert.deepEqual(
+      runs.map((r) => [r.startedAt, r.checks && r.checks.state]),
+      [
+        ["2026-11-18T10:00:00.000Z", "replaced"],
+        ["2026-11-18T10:00:05.000Z", undefined],
+      ],
+    );
+  });
+});
+
 describe("BotStore construction", () => {
   it("requires persistence and a bots root", () => {
     assert.throws(() => new BotStore({}), /persistence/);

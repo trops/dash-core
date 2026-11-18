@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState } from "react";
 import { FontAwesomeIcon } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { ModelTag, RanOn } from "./ModelInfo";
+import { JobCheckCard } from "./JobCheckCard";
 
 /**
  * What a step's line ends with, when the conversation knows better than
@@ -69,6 +70,8 @@ export const HandoffStep = ({ step }) => {
           className="h-2.5 w-2.5"
         />
       </button>
+      {/* A bot with checks: its job's checks, live (bot-checks CHK-003). */}
+      {step.jobId ? <JobCheckCard goalId={step.jobId} /> : null}
       {open ? (
         <div
           className={`ml-5 flex flex-col gap-2 border-l pl-3 text-sm ${hairline}`}

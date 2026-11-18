@@ -401,6 +401,18 @@ export const BotsView = ({
     }
     if (!all.some((b) => b.id === focus.botId)) return;
     appliedSeq.current = focus.seq;
+    // A job's "See its checks" (bot-checks CHK-003): the bot selected on
+    // the diagram, with its checks window open.
+    if (focus.tab === "checks") {
+      guarded(() => {
+        setDirty(false);
+        setSelectedId(focus.botId);
+        setMenuOpen(false);
+        setDetailOpen(false);
+        setChecksFor(focus.botId);
+      });
+      return;
+    }
     guarded(() => {
       setDirty(false);
       setSelectedId(focus.botId);
