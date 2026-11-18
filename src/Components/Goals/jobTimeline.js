@@ -142,10 +142,11 @@ export function jobTimeline(goal, { nameOf = () => null } = {}) {
     if (
       r.by === "you" &&
       r.status === "close" &&
-      flow.onFail === "stop" &&
-      prev &&
-      prev.status === "failed" &&
-      prev.to === "needs-you"
+      (r.dash ||
+        (flow.onFail === "stop" &&
+          prev &&
+          prev.status === "failed" &&
+          prev.to === "needs-you"))
     ) {
       return;
     }
@@ -186,13 +187,16 @@ export function jobTimeline(goal, { nameOf = () => null } = {}) {
     flush();
     if (r.status === "failed") {
       // Where the fail sent the work, from the record itself: back to the
-      // bot, or (onFail you / out of tries / stop) to you.
+      // bot, to you ("It comes to you"), or nowhere: out of tries, or "It
+      // fails" — the job failed (DASH-12).
+      // It failed when Dash closed it right after (or "It stops", before
+      // that was marked); otherwise it came to you.
+      const next = history[i + 1];
+      const failedHere =
+        !!(next && next.status === "close" && next.dash) ||
+        (flow.onFail === "stop" && !!next && next.status === "close");
       const then =
-        r.to === "needs-you"
-          ? flow.onFail === "stop"
-            ? "stop"
-            : "you"
-          : "back";
+        r.to === "needs-you" ? (failedHere ? "stop" : "you") : "back";
       rows.push({
         type: "failed",
         name,
@@ -231,11 +235,33 @@ export function jobTimeline(goal, { nameOf = () => null } = {}) {
     approved: history.some((r) => r.by === "you" && r.status === "done"),
     // It came to you because a check failed (not, say, a missing record).
     failed: !!(last && last.status === "failed"),
+    // Closed by Dash because it failed (out of tries, or "It fails"), not
+    // by you; either way its Failed event went out.
+    failedOut: state === "closed" && dashClosed(history),
+    // Its close sent its Failed event (any close since DASH-12).
+    failedSent: state === "closed" && closedFailed(history),
+    tries,
   });
   return rows;
 }
 
 /** "48s", "2m 5s", "1h 3m". */
+/** The job's close, newest. */
+const closeOf = (history) =>
+  [...history].reverse().find((r) => r && r.status === "close") || null;
+
+/** Dash closed the job because it failed (not your Close). */
+function dashClosed(history) {
+  const c = closeOf(history);
+  return !!(c && c.dash);
+}
+
+/** Its close sent its Failed event (marked since DASH-12). */
+function closedFailed(history) {
+  const c = closeOf(history);
+  return !!(c && c.failed);
+}
+
 export function durationText(ms) {
   if (ms == null || !isFinite(ms) || ms < 0) return "";
   const s = Math.round(ms / 1000);
@@ -272,6 +298,30 @@ export function nextText(goal, state, targets = [], nameOf = () => null) {
 }
 
 /**
+ * The event a finished job sent, and who listens for it (DASH-12): "Writer's
+ * Failed event went out → Fixer runs on it", or "… · nothing listens for it
+ * yet" — shown either way, so you know it's there.
+ */
+export function eventText(botName, event, targets = []) {
+  const label = event === "failed" ? "Failed" : "Completed";
+  const head = `${botName}'s ${label} event went out`;
+  const parts = [
+    ...targets
+      .filter((t) => t.type === "bot")
+      .map((t) => `${t.name} runs on it`),
+    ...targets
+      .filter((t) => t.type === "widget")
+      .map((t) => `${t.name} shows it`),
+  ];
+  if (!parts.length) return `${head} · nothing listens for it yet`;
+  const list =
+    parts.length === 1
+      ? parts[0]
+      : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return `${head} → ${list}`;
+}
+
+/**
  * The list's line for a bot's job: "Coordinator · the lead asked ·
  * waiting for you".
  */
@@ -286,7 +336,7 @@ export function jobLine(goal, nameOf = () => null) {
       ? `didn't pass on try ${Math.max(1, tries)}`
       : "came to you",
     done: tries > 1 ? `passed on try ${tries}` : "passed first try",
-    closed: "closed",
+    closed: now.failedOut ? `failed on try ${Math.max(1, tries)}` : "closed",
     working: `trying again (try ${tries + 1})`,
     checking: tries > 1 ? `checking try ${tries}` : "checking",
   }[now.state];
@@ -333,7 +383,9 @@ export function jobStateText(goal) {
       ? `It didn't pass on try ${Math.max(1, tries)}: it's waiting for you`
       : "It came to you",
     done: now.approved ? "Approved and handed on" : "Passed and handed on",
-    closed: "Closed: nothing was handed on",
+    closed: now.failedOut
+      ? `It failed on try ${Math.max(1, tries)}: nothing was handed on`
+      : "Closed: nothing was handed on",
     working: `${now.bot} is trying again (try ${tries + 1})`,
     checking: "Being checked…",
   }[now.state];

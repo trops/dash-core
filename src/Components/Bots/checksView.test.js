@@ -7,6 +7,7 @@ import {
   draftOf,
   handsOnChoices,
   handsOnTargets,
+  liveChecks,
   moveStep,
   newCheck,
   removeStep,
@@ -15,7 +16,6 @@ import {
   stepTone,
   targetChanges,
   updateStep,
-  waitingJobs,
 } from "./checksView";
 
 const rule = {
@@ -142,23 +142,108 @@ describe("checksView", () => {
     expect(stepSub(rule)).toBe("1 rule · no AI");
   });
 
-  test("jobs that wait for you, per bot", () => {
-    const g = (botId, status, extra = {}) => ({
-      flow: { kind: "bot-checks", botId },
-      tasks: [{ status }],
-      ...extra,
+  describe("what its checks are doing now", () => {
+    const work = (at) => ({ stepId: "step_work", status: "passed", at });
+    const failed = { stepId: "step_c1", status: "failed", to: "step_work" };
+    // A job of b1's: its task at `stepId` with `status`, after `history`.
+    const g = (id, { botId = "b1", status = "new", stepId, history, at }) => ({
+      id,
+      workspaceId: "ws1",
+      createdAt: at || "2026-11-18T10:00:00Z",
+      flow: { kind: "bot-checks", botId, maxRounds: 3, steps: [] },
+      tasks: [{ status, stepId, history: history || [work()], maxRounds: 3 }],
     });
-    const goals = [
-      g("b1", "ready"),
-      g("b1", "needs-you"),
-      g("b1", "new"),
-      g("b1", "ready", { closed: true }),
-      g("b2", "ready"),
-      { flow: { kind: "flow", botId: "b1" }, tasks: [{ status: "ready" }] },
-    ];
-    expect(waitingJobs(goals, "b1")).toBe(2);
-    expect(waitingJobs(goals, "b2")).toBe(1);
-    expect(waitingJobs(null, "b1")).toBe(0);
+    const nothing = {
+      needs: 0,
+      header: null,
+      waiting: false,
+      stepId: null,
+      goalId: null,
+      workspaceId: null,
+    };
+
+    test("nothing open: nothing to show or open", () => {
+      expect(liveChecks([], "b1")).toEqual(nothing);
+      expect(liveChecks(null, "b1")).toEqual(nothing);
+    });
+
+    test("one job at a check: which try and which check", () => {
+      const live = liveChecks([g("j1", { stepId: "step_c2" })], "b1");
+      expect(live.header).toBe("Checking · try 1 of 3");
+      expect(live.stepId).toBe("step_c2");
+      expect(live.goalId).toBe("j1");
+      expect(live.workspaceId).toBe("ws1");
+      expect(live.needs).toBe(0);
+    });
+
+    test("sent back to the bot: the try it's making", () => {
+      const live = liveChecks(
+        [g("j1", { stepId: "step_work", history: [work(), failed] })],
+        "b1",
+      );
+      expect(live.header).toBe("Sent back · try 2 of 3");
+      expect(live.stepId).toBe(null);
+    });
+
+    test("waiting for you: counted, and opened first", () => {
+      const live = liveChecks(
+        [
+          g("j1", { stepId: "step_c1", at: "2026-11-18T11:00:00Z" }),
+          g("j2", { status: "ready", stepId: "step_c4" }),
+          g("j3", { status: "needs-you", stepId: "step_c1" }),
+        ],
+        "b1",
+      );
+      expect(live.needs).toBe(2);
+      expect(live.header).toBe("Checking · try 1 of 3");
+      expect(live.goalId).toBe("j2");
+    });
+
+    test("two jobs being worked on: a count, no one check, the newest opens", () => {
+      const live = liveChecks(
+        [
+          g("old", { stepId: "step_c1", at: "2026-11-18T09:00:00Z" }),
+          g("new", { stepId: "step_c2", at: "2026-11-18T12:00:00Z" }),
+        ],
+        "b1",
+      );
+      expect(live.header).toBe("Checking 2 jobs");
+      expect(live.stepId).toBe(null);
+      expect(live.goalId).toBe("new");
+    });
+
+    test("sent back to a paused bot: it waits, nothing spins", () => {
+      const back = (id) =>
+        g(id, { stepId: "step_work", history: [work(), failed] });
+      const one = liveChecks([back("j1")], "b1", { paused: true });
+      expect(one.header).toBe("Paused · try 2 of 3 waits");
+      expect(one.waiting).toBe(true);
+      expect(one.goalId).toBe("j1");
+      const two = liveChecks([back("j1"), back("j2")], "b1", { paused: true });
+      expect(two.header).toBe("Paused · 2 jobs wait");
+      // Dash's own checks still run while the bot is paused.
+      const checking = liveChecks([g("j3", { stepId: "step_c1" })], "b1", {
+        paused: true,
+      });
+      expect(checking.header).toBe("Checking · try 1 of 3");
+      expect(checking.waiting).toBe(false);
+    });
+
+    test("finished, closed, other bots' and old flow jobs don't count", () => {
+      const live = liveChecks(
+        [
+          g("done", { status: "done", stepId: "step_c1" }),
+          { ...g("closed", { status: "ready" }), closed: true },
+          g("other", { botId: "b2", status: "ready" }),
+          {
+            ...g("flow", { status: "ready" }),
+            flow: { kind: "flow", botId: "b1" },
+          },
+        ],
+        "b1",
+      );
+      expect(live).toEqual(nothing);
+    });
   });
 
   describe("hands on", () => {
@@ -201,6 +286,17 @@ describe("checksView", () => {
       );
       expect(t.map((x) => x.key)).toEqual(["bot:b2", "widget:r|7"]);
       expect(t[0].eventType).toBe(ev("b1", "completed"));
+    });
+
+    test("who listens for its failures: bots and widgets on failed (DASH-12)", () => {
+      const t = handsOnTargets(
+        me,
+        [me, next, onFail],
+        [results, other],
+        wEdges,
+        "failed",
+      );
+      expect(t.map((x) => x.key)).toEqual(["bot:b3", "widget:w|8|b1|failed"]);
     });
 
     test("what can be added: other team bots and Bot results widgets", () => {

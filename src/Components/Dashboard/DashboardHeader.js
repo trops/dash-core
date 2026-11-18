@@ -32,8 +32,10 @@ export const DashboardHeader = ({
   stageMode = "dashboard",
   onStageModeChange = null,
   botsAttention = 0,
-  // Goals waiting for the user (goals-ledger PRD), shown on "Jobs".
+  // Goals waiting for the user (goals-ledger PRD), shown on "Jobs" in
+  // amber; otherwise the jobs being worked on, in grey (DASH-12).
   goalsAttention = 0,
+  goalsWorking = 0,
   // The open stage's own button on the right (flows PRD): "Add a step" or
   // "New flow" on Flows, "New job" on Jobs. { label, onClick } or null.
   stageAction = null,
@@ -101,6 +103,14 @@ export const DashboardHeader = ({
                             className="inline-flex items-center justify-center rounded-full bg-amber-500 text-gray-900 text-xs font-semibold px-1.5 h-5"
                           >
                             {goalsAttention}
+                          </span>
+                        )}
+                        {goalsAttention === 0 && goalsWorking > 0 && (
+                          <span
+                            aria-label={`${goalsWorking} being worked on`}
+                            className="inline-flex items-center justify-center rounded-full bg-gray-600 text-gray-100 text-xs font-semibold px-1.5 h-5"
+                          >
+                            {goalsWorking}
                           </span>
                         )}
                       </span>

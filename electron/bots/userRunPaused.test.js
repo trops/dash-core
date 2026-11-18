@@ -171,3 +171,37 @@ describe("a message the user sends goes through on a paused bot", () => {
     assert.equal(c._inUserRun("lead_1"), false);
   });
 });
+
+describe("a job run skips only its own bot's pause (DASH-12 review)", () => {
+  const fake = (paused, global = false) => ({
+    _pause: {
+      isPaused: (id) => paused.includes(id),
+      isGloballyPaused: () => global,
+    },
+    _testRuns: new Map(),
+    _userRuns: new Map(),
+  });
+
+  it("a paused bot's job run is a test run while it runs, not a user run", async () => {
+    const t = fake(["bot_w"]);
+    let during = null;
+    await botController._asJobRun.call(t, "bot_w", () => {
+      during = {
+        test: t._testRuns.has("bot_w"),
+        user: t._userRuns.has("bot_w"),
+      };
+      return Promise.resolve({ status: "completed" });
+    });
+    assert.deepEqual(during, { test: true, user: false });
+    assert.equal(t._testRuns.has("bot_w"), false);
+  });
+
+  it("not paused, or everything paused: nothing changes", async () => {
+    for (const t of [fake([]), fake(["bot_w"], true)]) {
+      await botController._asJobRun.call(t, "bot_w", () => {
+        assert.equal(t._testRuns.has("bot_w"), false);
+        return Promise.resolve({});
+      });
+    }
+  });
+});

@@ -354,7 +354,10 @@ const DashboardStageInner = ({
   teamRefreshRef.current = team.refresh;
   // Its goals ledger: how many wait for the user, on the Goals switch.
   const { goals: dashboardGoals } = useGoals(workspaceSelected?.id ?? null);
-  const goalsAttention = goalCounts(dashboardGoals)["needs-you"];
+  const goalCount = goalCounts(dashboardGoals);
+  const goalsAttention = goalCount["needs-you"];
+  // Jobs being worked on: a plain count on "Jobs" when none needs you.
+  const goalsWorking = goalCount.working;
   // Its flows (flows PRD): the Graph tab's button says "Add a step" when
   // there's one, "New flow" when there isn't.
   const { flows: dashboardFlows } = useFlows(workspaceSelected?.id ?? null);
@@ -3366,6 +3369,7 @@ const DashboardStageInner = ({
                     }
                     botsAttention={team.attention}
                     goalsAttention={goalsAttention}
+                    goalsWorking={goalsWorking}
                     stageAction={
                       stageMode === "graph"
                         ? dashboardFlows.length

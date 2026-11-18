@@ -315,9 +315,14 @@ export const BotChecksModal = ({
                     label: `${bot.name} tries again, told what failed`,
                   },
                   { value: "you", label: "It comes to you" },
-                  { value: "stop", label: "It stops" },
+                  { value: "stop", label: "It fails" },
                 ]}
               />
+              {draft.onFail !== "you" ? (
+                <span className={`text-xs ${muted}`}>
+                  {`When it fails, ${bot.name}'s Failed event goes out with the reason, so whatever listens for it runs.`}
+                </span>
+              ) : null}
               {draft.onFail === "retry" ? (
                 <div className="w-72 pt-2">
                   <SelectInput
@@ -327,7 +332,7 @@ export const BotChecksModal = ({
                       .sort((a, b) => a - b)
                       .map((n) => ({
                         value: String(n),
-                        label: `${n}, then it comes to you`,
+                        label: `${n}, then it fails`,
                       }))}
                     onChange={(v) =>
                       setDraft((d) => ({ ...d, maxTries: Number(v) || 3 }))

@@ -299,3 +299,45 @@ describe("what the lead hears", () => {
     );
   });
 });
+
+describe("a paused bot finishes a job already started (DASH-12)", () => {
+  const { flowBotHooks, finishesJob } = require("../flows/flowBotHooks");
+  const fakeCtl = () => {
+    const calls = [];
+    return {
+      calls,
+      _run: (botId, opts) => {
+        calls.push(["run", botId, opts.via]);
+        return Promise.resolve({ status: "completed" });
+      },
+      _asJobRun: (botId, start) => {
+        calls.push(["asJob", botId]);
+        return start();
+      },
+    };
+  };
+
+  it("knows a checks job's runs by their flow", () => {
+    assert.equal(finishesJob({ via: "flow:checks_bot_w" }), true);
+    assert.equal(finishesJob({ via: "flow:flow_123" }), false);
+    assert.equal(finishesJob({}), false);
+  });
+
+  it("runs a checks job's step as part of work already started", async () => {
+    const ctl = fakeCtl();
+    await flowBotHooks(ctl).runBot("bot_w", {
+      prompt: "Fix it",
+      via: "flow:checks_bot_w",
+    });
+    assert.deepEqual(ctl.calls, [
+      ["asJob", "bot_w"],
+      ["run", "bot_w", "flow:checks_bot_w"],
+    ]);
+  });
+
+  it("an old flow's step runs as it always did", async () => {
+    const ctl = fakeCtl();
+    await flowBotHooks(ctl).runBot("bot_w", { via: "flow:flow_123" });
+    assert.deepEqual(ctl.calls, [["run", "bot_w", "flow:flow_123"]]);
+  });
+});

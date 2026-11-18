@@ -188,3 +188,63 @@ test("a job opened from elsewhere is selected", async () => {
   );
   expect(await screen.findByTestId("job-timeline")).toBeInTheDocument();
 });
+
+describe("sent back to a paused bot (DASH-12)", () => {
+  // After the failed check: the work went back to the bot, try 2 not
+  // started.
+  const history = job.tasks[0].history.slice(0, 2);
+  const sentBack = {
+    ...job,
+    status: "working",
+    tasks: [{ ...job.tasks[0], status: "new", stepId: "step_work", history }],
+  };
+  const withBots = (pause) => {
+    mock = mockGoalsApi([sentBack]);
+    const bots = {
+      list: jest.fn(() => Promise.resolve([])),
+      getPauseState: jest.fn(() => Promise.resolve(pause)),
+      resumeBot: jest.fn(() => Promise.resolve({ success: true })),
+      resumeAll: jest.fn(() => Promise.resolve({ success: true })),
+    };
+    window.mainApi.bots = bots;
+    return bots;
+  };
+  const open = async () => {
+    render(<GoalsView workspace={{ id: 7 }} />);
+    fireEvent.click(await screen.findByTestId("goal-row"));
+    return screen.findByTestId("job-timeline");
+  };
+
+  test("the bot paused on its own: it still finishes, so it's trying again (try 2 of 3)", async () => {
+    withBots({ global: false, bots: ["coord"] });
+    const timeline = await open();
+    expect(timeline).toHaveTextContent("Coordinator's checks · try 2 of 3");
+    expect(
+      await screen.findByText("Coordinator is trying again (try 2)"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Waiting:/)).toBeNull();
+  });
+
+  test("all bots paused: it waits, and Resume all bots resumes them", async () => {
+    const bots = withBots({ global: true, bots: [] });
+    const seen = jest.fn();
+    window.addEventListener("dash:bots-pause-changed", seen);
+    await open();
+    await screen.findByText(
+      "Waiting: all bots are paused, so try 2 hasn't started",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Resume all bots" }));
+    await waitFor(() => expect(bots.resumeAll).toHaveBeenCalled());
+    await waitFor(() => expect(seen).toHaveBeenCalled());
+    window.removeEventListener("dash:bots-pause-changed", seen);
+  });
+
+  test("not paused: it's trying again", async () => {
+    withBots({ global: false, bots: [] });
+    await open();
+    expect(
+      await screen.findByText("Coordinator is trying again (try 2)"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Waiting:/)).toBeNull();
+  });
+});

@@ -85,6 +85,16 @@ class BotEventPublisher {
     );
   }
 
+  /**
+   * Work that didn't pass its checks (DASH-12): nothing it sent goes on,
+   * and its `failed` event goes out with why, under the cause of the run
+   * that started it — so whatever listens for its failures runs.
+   */
+  fail(bot, { cause = rootCause(), trigger = null, error = "" } = {}) {
+    if (!bot) return;
+    this._sendAs(bot, "failed", failedPayload(bot, { trigger, error }), cause);
+  }
+
   /** Whether the bot's running run holds what it sends. */
   holding(botId) {
     const run = this._runs.get(botId);

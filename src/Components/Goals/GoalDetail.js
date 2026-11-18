@@ -14,6 +14,7 @@ import { BotJobDetail } from "./BotJobDetail";
 import { isBotJob } from "./jobTimeline";
 import {
   goalLabel,
+  shownStatus,
   goalState,
   recordBy,
   roundLines,
@@ -276,8 +277,8 @@ export const GoalDetail = ({
       <div className="flex flex-col gap-1">
         <div className="flex flex-row items-center gap-2 min-w-0">
           <StatusBadge
-            state={goalState(goal.status)}
-            label={goalLabel(goal.status)}
+            state={goalState(shownStatus(goal))}
+            label={goalLabel(shownStatus(goal))}
           />
           <span className={`text-base font-semibold truncate ${strong}`}>
             {goal.title}

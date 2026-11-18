@@ -1,7 +1,7 @@
 /**
  * checksView.js — how a bot's own checks (bot-checks PRD CHK-002) show on
- * the Bots tab: the list card after each bot (version B) and the edits the
- * checks window makes before it saves `bot.checks`.
+ * the Bots tab: the list inside each bot's box, what they're doing now, and
+ * the edits the checks window makes before it saves `bot.checks`.
  *
  * A bot's checks: `{ steps, onFail, maxTries, handsOn }` or null
  * (electron/bots/botChecks.js). A step is a check Dash runs (`check`, with
@@ -11,6 +11,7 @@
  * Pure: no React, no IPC.
  */
 
+import { isBotJob, jobTimeline } from "../Goals/jobTimeline";
 import { parseBotEventType } from "./teamDiagram";
 import { BOT_RESULTS } from "./widgetDiagram";
 
@@ -242,21 +243,74 @@ export function savedChecks(draft) {
 }
 
 /**
- * How many of this bot's jobs wait for you (approve, or it came to you).
- * `goals`: the dashboard's goals (useGoals).
+ * What a bot's checks are doing now, from its open jobs (`goals`: the
+ * dashboard's goals, useGoals) — the checks part of its box on the diagram:
+ *
+ * - `needs`: how many wait for you (approve, or it came to you);
+ * - `header`: "Checking · try 1 of 3", "Sent back · try 2 of 3" or
+ *   "Checking 2 jobs" while some are being worked on, else null; when the
+ *   bot is paused (`paused`), work sent back to it waits: "Paused · try 2
+ *   of 3 waits" (`waiting: true`, nothing spins);
+ * - `stepId`: the check being run (one job being checked), else null;
+ * - `goalId`: the job a click opens — one that needs you first, else the
+ *   newest being worked on; null when nothing is happening.
+ *
+ * Nothing about jobs that finished: the box is the bot, not one run.
  */
-export function waitingJobs(goals, botId) {
-  return (goals || []).filter(
-    (g) =>
-      g &&
-      !g.closed &&
-      g.flow &&
-      g.flow.kind === "bot-checks" &&
-      String(g.flow.botId) === String(botId) &&
-      (g.tasks || []).some(
-        (t) => t && (t.status === "ready" || t.status === "needs-you"),
+export function liveChecks(goals, botId, { paused = false } = {}) {
+  const jobs = (goals || [])
+    .filter(
+      (g) => isBotJob(g) && !g.closed && String(g.flow.botId) === String(botId),
+    )
+    .map((g) => {
+      const rows = jobTimeline(g);
+      return {
+        goal: g,
+        now: rows[rows.length - 1] || {},
+        tries: rows.filter((r) => r.type === "try").length,
+      };
+    });
+  const needing = jobs.filter(
+    (j) => j.now.state === "waiting" || j.now.state === "needs-you",
+  );
+  const active = jobs
+    .filter((j) => j.now.state === "checking" || j.now.state === "working")
+    .sort((a, b) =>
+      String(b.goal.createdAt || "").localeCompare(
+        String(a.goal.createdAt || ""),
       ),
-  ).length;
+    );
+  let header = null;
+  let stepId = null;
+  // Sent back to a paused bot: those jobs wait for it.
+  const stuck = paused ? active.filter((j) => j.now.state === "working") : [];
+  const waiting = stuck.length > 0 && stuck.length === active.length;
+  if (waiting) {
+    header =
+      stuck.length > 1
+        ? `Paused · ${stuck.length} jobs wait`
+        : `Paused · try ${stuck[0].tries + 1} of ${stuck[0].now.maxRounds} waits`;
+  } else if (active.length > 1) {
+    header = `Checking ${active.length} jobs`;
+  } else if (active.length === 1) {
+    const { goal, now, tries } = active[0];
+    if (now.state === "working") {
+      header = `Sent back · try ${tries + 1} of ${now.maxRounds}`;
+    } else {
+      header = `Checking · try ${Math.max(1, tries)} of ${now.maxRounds}`;
+      const task = (goal.tasks || [])[0];
+      stepId = (task && task.stepId) || null;
+    }
+  }
+  const open = needing[0] || active[0] || null;
+  return {
+    needs: needing.length,
+    header,
+    waiting,
+    stepId,
+    goalId: open ? open.goal.id : null,
+    workspaceId: open ? open.goal.workspaceId : null,
+  };
 }
 
 // ── Hands on: where its checked work goes ─────────────────────────────
@@ -272,14 +326,26 @@ export function waitingJobs(goals, botId) {
  * @param {object[]} wEdges   widgetEdges()
  * @returns {{ type: "bot"|"widget", key, id, name, eventType?, widget?, edge? }[]}
  */
-export function handsOnTargets(bot, members = [], widgets = [], wEdges = []) {
+export function handsOnTargets(
+  bot,
+  members = [],
+  widgets = [],
+  wEdges = [],
+  event = "completed",
+) {
   if (!bot) return [];
+  // Its completed work: lines on completed, and Bot results widgets. Its
+  // failures (DASH-12): lines on failed.
+  const onEvent = (e) =>
+    event === "completed"
+      ? e.kind === "results" || e.event === "completed"
+      : e.event === event;
   const out = [];
   for (const m of members || []) {
     if (!m || m.id === bot.id) continue;
     for (const sub of m.subscriptions || []) {
       const p = parseBotEventType(sub && sub.eventType);
-      if (p && p.botId === bot.id && p.event === "completed") {
+      if (p && p.botId === bot.id && p.event === event) {
         out.push({
           type: "bot",
           key: `bot:${m.id}`,
@@ -293,7 +359,7 @@ export function handsOnTargets(bot, members = [], widgets = [], wEdges = []) {
   const byKey = new Map((widgets || []).map((w) => [w.key, w]));
   for (const e of wEdges || []) {
     if (e.from !== bot.id) continue;
-    if (e.kind !== "results" && e.event !== "completed") continue;
+    if (!onEvent(e)) continue;
     const w = byKey.get(e.widget);
     if (!w) continue;
     out.push({

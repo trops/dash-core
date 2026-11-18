@@ -23,6 +23,11 @@ const ACTS =
 const isWriteTool = (name) => ACTS.test(String(name || ""));
 const ACTING_TYPES = ["gmail", "slack"];
 
+// A run for a bot's checks job: its flow is `checks_<botId>`
+// (botChecks.checksFlow), named in the run's `via`.
+const finishesJob = (opts) =>
+  /^flow:checks_/.test(String((opts && opts.via) || ""));
+
 const DAYS = [
   "Sundays",
   "Mondays",
@@ -101,15 +106,24 @@ function flowBotHooks(ctl) {
   };
 
   return {
-    runBot: (botId, opts = {}) =>
-      ctl._run(botId, {
-        prompt: opts.prompt,
-        trigger: opts.trigger || "flow",
-        via: opts.via || null,
-        goal: opts.goal || null,
-        ...(opts.workingDir ? { workingDir: opts.workingDir } : {}),
-        ...(opts.limits ? { limits: opts.limits } : {}),
-      }),
+    runBot: (botId, opts = {}) => {
+      const run = () =>
+        ctl._run(botId, {
+          prompt: opts.prompt,
+          trigger: opts.trigger || "flow",
+          via: opts.via || null,
+          goal: opts.goal || null,
+          ...(opts.workingDir ? { workingDir: opts.workingDir } : {}),
+          ...(opts.limits ? { limits: opts.limits } : {}),
+        });
+      // A bot's checks job (its own retries, a reviewer's verdict) finishes
+      // work already started, so a paused bot still does it — like a run
+      // the user starts (only its own pause, not the bots it asks). Pause
+      // all still stops it (DASH-12).
+      return finishesJob(opts) && ctl._asJobRun
+        ? ctl._asJobRun(botId, run)
+        : run();
+    },
     isBusy: (botId) => ctl._runner.listActive().includes(botId),
     getBot: (botId) => ctl._store.get(botId) || null,
     listBots: (workspaceId) =>
@@ -336,4 +350,4 @@ function flowBotHooks(ctl) {
   };
 }
 
-module.exports = { flowBotHooks, cronText };
+module.exports = { flowBotHooks, cronText, finishesJob };

@@ -11,7 +11,9 @@
  *
  *   afterRun   a run ended: hold it as a new job, record an answer given
  *              again, or say it isn't held (it goes on as before)
- *   onChange   the ledger changed: release a passed job, mark a stopped one
+ *   onChange   the ledger changed: release a passed job; fail one that
+ *              ran out of tries (or "It fails"), or that you closed —
+ *              its `failed` event goes out with why (DASH-12)
  *   waitFor    how a job ends, or where it is after a wait (the lead's ask)
  *
  * Held work lives in memory: after a restart, a job that passes goes on
@@ -39,7 +41,8 @@ const NOT_DONE = ["failed", "stopped", "interrupted"];
 /**
  * @param {{ goals: () => object|null,
  *           getBot: (botId) => object|null,
- *           publisher: { holdRun: Function, release: Function },
+ *           publisher: { holdRun: Function, release: Function,
+ *                        fail: Function, holding: Function },
  *           patchRun: (botId, startedAt, patch) => void,
  *           getRuns: (botId) => object[],
  *           notify?: (botId, info) => void,
@@ -255,6 +258,33 @@ function createCheckJobs(deps) {
     );
   }
 
+  /**
+   * Why a job ended without passing, for its `failed` event: the check it
+   * didn't pass on its last try, why it couldn't go on, or that you closed
+   * it.
+   */
+  function failReason(goal, task) {
+    const history = (task && task.history) || [];
+    const tries = history.filter((r) => r && r.stepId === WORK_STEP).length;
+    const closedBy = history[history.length - 1];
+    const before = [...history]
+      .reverse()
+      .find((r) => r && !(r.by === "you" && r.status === "close"));
+    if (before && before.status === "failed") {
+      const step = (goal.flow.steps || []).find((s) => s.id === before.stepId);
+      const name = (step && step.name) || before.botName || "A check";
+      return `Didn't pass "${name}" on try ${Math.max(1, tries)}${
+        before.summary ? `: ${before.summary}` : ""
+      }`;
+    }
+    if (before && before.status === "needs-you" && before.summary) {
+      return `It couldn't finish: ${before.summary}`;
+    }
+    return closedBy && closedBy.by === "you"
+      ? "You closed it before it was handed on"
+      : "It was closed before it was handed on";
+  }
+
   function settle(goalId, info) {
     settled.add(goalId);
     held.delete(goalId);
@@ -286,10 +316,12 @@ function createCheckJobs(deps) {
     const info = stateOf(goal.id);
     const botId = goal.flow.botId;
     const bot = getBot(botId);
-    if (info.state === "needs-you" && goal.flow.onFail === "stop") {
-      // "It stops": closed, nothing handed on.
+    if (info.state === "needs-you" && goal.flow.onFail !== "you") {
+      // Out of tries, or "It fails": closed — it failed (below), nothing
+      // handed on. Only "It comes to you" waits for you.
       const s = store();
-      if (s && job.task) s.userAction(job.task.id, "close");
+      if (s && job.task)
+        s.userAction(job.task.id, { type: "close", dash: true });
       return; // The close comes back as its own change.
     }
     if (info.state === "passed") {
@@ -325,10 +357,35 @@ function createCheckJobs(deps) {
       return;
     }
     if (info.state === "stopped") {
-      for (const run of jobRuns(botId, goal.id)) {
+      const runs = jobRuns(botId, goal.id);
+      // Already failed (before a restart), or closed before failing sent
+      // anything (no mark on its close): never sent again.
+      const close = [...((job.task && job.task.history) || [])]
+        .reverse()
+        .find((r) => r && r.status === "close");
+      if (
+        runs.some((r) => r.checks.state === "stopped") ||
+        !(close && close.failed)
+      ) {
+        for (const run of runs) mark(botId, run, goal.id, "stopped");
+        settle(goal.id, info);
+        return;
+      }
+      for (const run of runs) {
         mark(botId, run, goal.id, "stopped");
       }
-      settle(goal.id, info);
+      // It failed: its `failed` event goes out with why, under the cause
+      // of the run that started it (whatever listens for failures runs).
+      const entry = held.get(goal.id) || { cause: rootCause(), trigger: null };
+      const reason = failReason(goal, job.task);
+      if (bot) {
+        publisher.fail(bot, {
+          cause: entry.cause,
+          trigger: entry.trigger,
+          error: reason,
+        });
+      }
+      settle(goal.id, { ...info, reason });
       notify(botId, { goalId: goal.id, state: "stopped" });
       return;
     }

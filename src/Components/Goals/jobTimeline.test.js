@@ -1,4 +1,5 @@
 import {
+  eventText,
   askedText,
   checkResults,
   jobStateText,
@@ -194,30 +195,6 @@ describe("jobTimeline", () => {
     ]);
   });
 
-  it("a check that failed with no tries left came to you", () => {
-    const failedLast = [
-      ...history.slice(0, 3),
-      rec("step_c1", "failed", 112, {
-        by: "dash",
-        summary: "Still missing",
-        to: "needs-you",
-      }),
-      rec("step_c1", "needs-you", 113, {
-        by: "dash",
-        summary: "It used its 3 tries.",
-      }),
-    ];
-    const rows = jobTimeline(
-      job({ history: failedLast, status: "needs-you", stepId: "step_c1" }),
-    );
-    const failed = rows.filter((r) => r.type === "failed");
-    expect(failed[1].then).toBe("you");
-    expect(rows.find((r) => r.type === "came").reason).toBe(
-      "It used its 3 tries.",
-    );
-    expect(rows.pop().state).toBe("needs-you");
-  });
-
   it("a fail goes where its record says, even after you gave it one more try", () => {
     const outOfTries = [
       ...history.slice(0, 1),
@@ -246,6 +223,63 @@ describe("jobTimeline", () => {
     expect(rows.find((r) => r.type === "failed").then).toBe("stop");
     expect(rows.some((r) => r.type === "you")).toBe(false);
     expect(rows.pop().state).toBe("closed");
+  });
+
+  it("out of tries: Dash fails it, and says so in the list and to the lead (DASH-12)", () => {
+    const failedOut = [
+      ...history.slice(0, 3),
+      rec("step_c1", "failed", 112, {
+        by: "dash",
+        summary: "Still missing",
+        to: "needs-you",
+      }),
+      {
+        by: "you",
+        status: "close",
+        to: "closed",
+        dash: true,
+        failed: true,
+        at: T + 113000,
+      },
+    ];
+    const g = job({ history: failedOut, status: "closed" }, { closed: true });
+    const rows = jobTimeline(g);
+    expect(rows.filter((r) => r.type === "failed")[1].then).toBe("stop");
+    expect(rows.some((r) => r.type === "you")).toBe(false);
+    const now = rows.pop();
+    expect(now.failedOut).toBe(true);
+    expect(jobLine(g)).toBe("Coordinator · the lead asked · failed on try 2");
+    expect(jobStateText(g)).toBe("It failed on try 2: nothing was handed on");
+  });
+
+  it("an old job that ran out of tries before DASH-12 still came to you", () => {
+    const old = [
+      ...history.slice(0, 3),
+      rec("step_c1", "failed", 112, {
+        by: "dash",
+        summary: "Still missing",
+        to: "needs-you",
+      }),
+    ];
+    const rows = jobTimeline(
+      job({ history: old, status: "needs-you", stepId: "step_c1" }),
+    );
+    expect(rows.filter((r) => r.type === "failed")[1].then).toBe("you");
+    expect(rows.pop().state).toBe("needs-you");
+  });
+
+  it("your own Close after it came to you shows as yours", () => {
+    const closed = [
+      ...history.slice(0, 1),
+      { ...history[1], to: "needs-you" },
+      { by: "you", status: "close", to: "closed", at: T + 63000 },
+    ];
+    const rows = jobTimeline(
+      job({ history: closed, status: "closed" }, { closed: true }),
+    );
+    expect(rows.find((r) => r.type === "failed").then).toBe("you");
+    expect(rows.find((r) => r.type === "you").action).toBe("close");
+    expect(rows.pop().failedOut).toBe(false);
   });
 
   it("came to you without a failed check says so", () => {
@@ -338,6 +372,25 @@ describe("jobTimeline", () => {
     ];
     expect(jobStateText(job({ status: "done", history: approved }))).toBe(
       "Approved and handed on",
+    );
+  });
+});
+
+describe("the event a finished job sent (DASH-12)", () => {
+  it("names who listens, or says nothing does yet", () => {
+    expect(
+      eventText("Writer", "failed", [{ type: "bot", name: "Fixer" }]),
+    ).toBe("Writer's Failed event went out → Fixer runs on it");
+    expect(eventText("Writer", "failed", [])).toBe(
+      "Writer's Failed event went out · nothing listens for it yet",
+    );
+    expect(
+      eventText("Writer", "completed", [
+        { type: "bot", name: "Sender" },
+        { type: "widget", name: "Bot results" },
+      ]),
+    ).toBe(
+      "Writer's Completed event went out → Sender runs on it and Bot results shows it",
     );
   });
 });

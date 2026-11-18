@@ -172,6 +172,7 @@ afterEach(() => {
 
 const completedEvents = () =>
   sent.filter((m) => /\.completed$/.test(m.eventType));
+const failedEvents = () => sent.filter((m) => /\.failed$/.test(m.eventType));
 const onlyJob = () => goals.listGoals({ workspaceId: "ws1" })[0] || null;
 
 describe("a bot with no checks", () => {
@@ -241,19 +242,44 @@ describe("a bot with checks", () => {
     );
   });
 
-  it("waits for you after its last try, with nothing handed on", async () => {
+  it("fails after its last try: nothing handed on, its failed event says why (DASH-12)", async () => {
     bot("bot_w", { checks: { steps: [NO_TODOS], maxTries: 2 } });
     answers.push("Still a TODO");
     userRun("bot_w", "A TODO here");
     assert.ok(
       await until(() => {
         const t = onlyJob() && onlyJob().tasks[0];
-        return t && t.status === "needs-you";
+        return t && t.status === "closed";
       }),
     );
     assert.equal(completedEvents().length, 0);
-    assert.equal(jobs.stateOf(onlyJob().id).state, "needs-you");
-    assert.match(jobs.stateOf(onlyJob().id).reason, /Banned words/);
+    assert.equal(failedEvents().length, 1);
+    assert.match(
+      failedEvents()[0].content.error,
+      /Didn't pass "No TODOs" on try 2: .*Banned words: todo/,
+    );
+    // Dash closed it, and marked its close as a fail.
+    const close = onlyJob().tasks[0].history.find((r) => r.status === "close");
+    assert.equal(close.dash, true);
+    assert.equal(close.failed, true);
+    // After a restart, another change to it doesn't send failed again.
+    const again = createCheckJobs({
+      goals: () => goals,
+      getBot: (id) => bots[id] || null,
+      publisher,
+      patchRun: () => {},
+      getRuns: (id) => runs[id] || [],
+    });
+    again.onChange({ goalId: onlyJob().id, type: "updated" });
+    assert.equal(failedEvents().length, 1);
+    assert.equal(jobs.stateOf(onlyJob().id).state, "stopped");
+    // Both tries ran, and you weren't asked.
+    const history = onlyJob().tasks[0].history;
+    assert.equal(history.filter((r) => r.stepId === WORK_STEP).length, 2);
+    assert.equal(
+      history.some((r) => r.by === "you" && r.status !== "close"),
+      false,
+    );
   });
 
   it('on "you", a fail comes straight to you', async () => {
@@ -261,6 +287,15 @@ describe("a bot with checks", () => {
     userRun("bot_w", "TODO");
     assert.ok(await until(() => onlyJob().tasks[0].status === "needs-you"));
     assert.equal(started.length, 0);
+    // Not failed yet: it waits for you.
+    assert.equal(failedEvents().length, 0);
+    // Your Close fails it, and says so.
+    goals.userAction(onlyJob().tasks[0].id, "close");
+    assert.ok(await until(() => failedEvents().length === 1));
+    assert.match(
+      failedEvents()[0].content.error,
+      /Didn't pass "No TODOs" on try 1/,
+    );
   });
 
   it('on "stop", a fail closes the job and nothing goes on', async () => {
@@ -268,6 +303,12 @@ describe("a bot with checks", () => {
     userRun("bot_w", "TODO");
     assert.ok(await until(() => onlyJob().tasks[0].status === "closed"));
     assert.equal(completedEvents().length, 0);
+    // It failed: its failed event goes out with the check and why.
+    assert.equal(failedEvents().length, 1);
+    assert.match(
+      failedEvents()[0].content.error,
+      /Didn't pass "No TODOs" on try 1/,
+    );
     assert.equal(runs.bot_w[0].checks.state, "stopped");
     assert.equal(notices[notices.length - 1].state, "stopped");
   });

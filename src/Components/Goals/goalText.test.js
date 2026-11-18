@@ -1,5 +1,8 @@
 import {
   goalBucket,
+  goalLabel,
+  goalState,
+  shownStatus,
   goalCounts,
   goalLine,
   roundLines,
@@ -116,5 +119,34 @@ describe("goalText", () => {
       working: 1,
       done: 2,
     });
+  });
+});
+
+describe("the status a goal shows (DASH-12)", () => {
+  test("a bot's job that ended without passing reads Failed", () => {
+    const failedClose = { by: "you", status: "close", failed: true };
+    const botJob = {
+      status: "closed",
+      flow: { kind: "bot-checks" },
+      tasks: [{ history: [failedClose] }],
+    };
+    expect(shownStatus(botJob)).toBe("failed");
+    // Closed before its close sent Failed (an old job): Closed.
+    expect(
+      shownStatus({
+        status: "closed",
+        flow: { kind: "bot-checks" },
+        tasks: [{ history: [{ by: "you", status: "close" }] }],
+      }),
+    ).toBe("closed");
+    expect(goalLabel(shownStatus(botJob))).toBe("Failed");
+    expect(goalState(shownStatus(botJob))).toBe("error");
+    // Other goals, and bot jobs still going, show their own status.
+    expect(shownStatus({ status: "closed", flow: { kind: "flow" } })).toBe(
+      "closed",
+    );
+    expect(
+      shownStatus({ status: "working", flow: { kind: "bot-checks" } }),
+    ).toBe("working");
   });
 });

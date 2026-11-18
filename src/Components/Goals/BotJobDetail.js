@@ -11,7 +11,13 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { whenText } from "../Issues/issueText";
 import { diagramWidgets, widgetEdges } from "../Bots/widgetDiagram";
 import { handsOnTargets } from "../Bots/checksView";
-import { durationText, jobBot, jobTimeline, nextText } from "./jobTimeline";
+import {
+  durationText,
+  eventText,
+  jobBot,
+  jobTimeline,
+  nextText,
+} from "./jobTimeline";
 
 /** The dashboard's bots (for who's next and the lead's name). */
 function useDashboardBots(workspaceId) {
@@ -37,6 +43,38 @@ function useDashboardBots(workspaceId) {
     };
   }, [workspaceId]);
   return bots;
+}
+
+/**
+ * Whether all bots are paused, read again whenever the job changes — then
+ * a started job's next try waits until they're resumed (DASH-12; a bot
+ * paused on its own still finishes it). `resume()` resumes them all.
+ */
+function useBotPaused(botId, job) {
+  const [pause, setPause] = useState(null);
+  const api = typeof window !== "undefined" && window.mainApi;
+  const bots = api && api.bots;
+  const load = () => {
+    if (!bots || typeof bots.getPauseState !== "function") return;
+    Promise.resolve(bots.getPauseState())
+      .then((p) => setPause(p || null))
+      .catch(() => {});
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(load, [botId, job]);
+  // Only Pause all holds a started job: a bot paused on its own still
+  // finishes it (DASH-12).
+  const all = !!(pause && pause.global);
+  const paused = all;
+  const resume = async () => {
+    if (!bots) return;
+    if (all && bots.resumeAll) await bots.resumeAll();
+    else if (bots.resumeBot) await bots.resumeBot(botId);
+    load();
+    // The Bots tab reads pause state again (useTeamBots).
+    window.dispatchEvent(new CustomEvent("dash:bots-pause-changed"));
+  };
+  return { paused, all, resume };
 }
 
 const YOU_TEXT = {
@@ -152,6 +190,7 @@ export const BotJobDetail = ({
   const status = useStatusTokens();
   const [openTry, setOpenTry] = useState(null);
   const bots = useDashboardBots(goal && goal.workspaceId);
+  const pause = useBotPaused(jobBot(goal).id, goal);
   if (!goal) return null;
   const nameOf = (id) => (bots.find((b) => b.id === id) || {}).name || null;
   const rows = jobTimeline(goal, { nameOf });
@@ -161,12 +200,10 @@ export const BotJobDetail = ({
   const tries = rows.filter((r) => r.type === "try").length;
   const self = bots.find((b) => b.id === bot.id) || { id: bot.id };
   const widgets = workspace ? diagramWidgets(workspace) : [];
-  const targets = handsOnTargets(
-    self,
-    bots,
-    widgets,
-    widgetEdges(widgets, bots),
-  );
+  const wEdges = widgetEdges(widgets, bots);
+  const targets = handsOnTargets(self, bots, widgets, wEdges);
+  // Who listens for its failures (DASH-12).
+  const onFailed = handsOnTargets(self, bots, widgets, wEdges, "failed");
 
   const seeChecks = () =>
     window.dispatchEvent(
@@ -243,7 +280,7 @@ export const BotJobDetail = ({
               {r.then === "back"
                 ? `Sent back to ${bot.name} with that.`
                 : r.then === "stop"
-                  ? "It stopped: nothing was handed on."
+                  ? "It failed: nothing was handed on."
                   : "It came to you."}
             </span>
           </Row>
@@ -340,16 +377,42 @@ export const BotJobDetail = ({
             </span>
             <div className="flex flex-row flex-wrap gap-2">
               <Button2
-                title="One more try"
+                title={`Send it back to ${bot.name}`}
                 size="sm"
                 disabled={busy}
                 onClick={() => onAction(task.id, "one-more-round")}
               />
               <Button3
-                title="Close it"
+                title="Close it (it fails)"
                 size="sm"
                 disabled={busy}
                 onClick={() => onAction(task.id, "close")}
+              />
+            </div>
+          </div>
+        </Row>
+      );
+    }
+    // Sent back to a paused bot: its next try waits for it to be resumed.
+    if (r.state === "working" && pause.paused) {
+      return (
+        <Row
+          icon="pause"
+          iconClass={status.warning.icon}
+          testId="job-now"
+          last={false}
+        >
+          <div className="flex flex-col gap-2">
+            <span className={`text-sm font-semibold ${strong}`}>
+              {`Waiting: ${
+                pause.all ? "all bots are" : `${bot.name} is`
+              } paused, so try ${tries + 1} hasn't started`}
+            </span>
+            <div>
+              <Button2
+                title={pause.all ? "Resume all bots" : `Resume ${bot.name}`}
+                size="sm"
+                onClick={() => pause.resume()}
               />
             </div>
           </div>
@@ -360,7 +423,9 @@ export const BotJobDetail = ({
       working: `${bot.name} is trying again (try ${tries + 1})`,
       checking: `Checking try ${Math.max(1, tries)}…`,
       done: r.approved ? "Approved and handed on" : "Passed and handed on",
-      closed: "Closed: nothing was handed on",
+      closed: r.failedOut
+        ? `Failed after try ${Math.max(1, r.tries)}: nothing was handed on`
+        : "Closed: nothing was handed on",
     }[r.state];
     return (
       <Row
@@ -379,7 +444,7 @@ export const BotJobDetail = ({
               : status.info.icon
         }
         testId="job-now"
-        last={r.state === "closed"}
+        last={false}
       >
         <span className={`text-sm font-semibold ${strong}`}>{text}</span>
       </Row>
@@ -390,7 +455,9 @@ export const BotJobDetail = ({
     <div className="flex flex-col gap-4" data-testid="job-timeline">
       <div className="flex flex-row flex-wrap items-center gap-2">
         <span className={`text-xs ${muted}`}>
-          {`${bot.name}'s checks · try ${Math.max(1, tries)} of ${nowRow.maxRounds}`}
+          {`${bot.name}'s checks · try ${
+            nowRow.state === "working" ? tries + 1 : Math.max(1, tries)
+          } of ${nowRow.maxRounds}`}
         </span>
         <Button3
           title={`See ${bot.name}'s checks`}
@@ -401,7 +468,18 @@ export const BotJobDetail = ({
       <div className="flex flex-col">
         {rows.slice(0, -1).map(body)}
         {current}
-        {nowRow.state === "closed" ? null : (
+        {(nowRow.state === "closed" && nowRow.failedSent) ||
+        nowRow.state === "done" ? (
+          // The event it sent, and who listens for it — shown even when
+          // nothing does, so you know it's there (DASH-12).
+          <Row icon="bolt" testId="job-event" last>
+            <span className={`text-sm ${muted}`}>
+              {nowRow.state === "done"
+                ? eventText(bot.name, "completed", targets)
+                : eventText(bot.name, "failed", onFailed)}
+            </span>
+          </Row>
+        ) : nowRow.state === "closed" ? null : (
           <Row icon="arrow-right" testId="job-next" last>
             <span className={`text-sm ${muted}`}>
               {nextText(goal, nowRow.state, targets, nameOf)}
