@@ -1,16 +1,16 @@
 /**
- * flowRunner.test.js — UC6, the daily brief, end to end through the real
- * ledger, goal tools and checks, with stand-in bots:
+ * flowRunner.test.js — the runner moving a bot's checks job on, through the
+ * real ledger, goal tools and checks, with stand-in bots:
  *
- *   Calendar + email (source) → Brief writer → "All events in it" (rules
- *   check, no AI) → You
+ *   Brief writer (its work) → "All events in it" (rules check, no AI)
+ *     → Reviewer → You
  *
- * The source starts a goal with today's events; the runner hands the work
- * to the writer; the check compares event ids with the calendar; the goal
- * shows passed with proof, or goes back to the writer with the fix list,
- * or — at the round limit — waits for you. Also: a record missing a
- * required field is refused, a paused bot is waited for, and a bot that
- * ends without a record is started once more, then left for you.
+ * The job starts with the writer's answer as its first record; the check
+ * reads it; a fail sends the work back to the writer with what failed, or —
+ * at its last try — waits for you; the reviewer is told what to judge. Also:
+ * a paused bot is waited for, a reviewer that ends without a record is
+ * started once more, then left for you, and a goal that isn't a bot's
+ * checks job is left alone.
  */
 "use strict";
 
@@ -21,12 +21,9 @@ const os = require("os");
 const path = require("path");
 const { createGoalStore } = require("../goals/goalStore");
 const { handleGoalTool } = require("../goals/goalTools");
-const { createFlowStore } = require("./flowStore");
 const { createFlowRunner } = require("./flowRunner");
-const { starterProposal } = require("./starterFlows");
-const { proposalToFlow } = require("./proposals");
 const { runCheck } = require("../checks/checkRunner");
-const { proveCriteria } = require("../goals/criteria");
+const { checksFlow, workOutput, WORK_STEP } = require("../bots/botChecks");
 
 const settle = () => new Promise((r) => setImmediate(r));
 async function until(fn, tries = 200) {
@@ -39,59 +36,85 @@ async function until(fn, tries = 200) {
 
 let dir;
 let goals;
-let flows;
-let flow;
 let runner;
 let botRuns;
 let writerBehaviour;
+let reviewerBehaviour;
 
-const EVENTS = [
-  { id: "e1", title: "Standup" },
-  { id: "e2", title: "Dentist" },
-];
+const GOOD = "Standup at 9 (e1), dentist at 4 (e2).";
+const MISSES = "Standup at 9 (e1).";
+
+const WRITER = {
+  id: "bot_writer",
+  name: "Brief writer",
+  workspaceId: "ws1",
+  checks: {
+    steps: [
+      {
+        id: "step_events",
+        kind: "check",
+        name: "All events in it",
+        check: {
+          kind: "rules",
+          rules: [{ type: "words", field: "input.answer", min: 6 }],
+        },
+      },
+      {
+        id: "step_review",
+        kind: "reviewer",
+        name: "Reviewer",
+        botId: "bot_rev",
+      },
+      { id: "step_you", kind: "you", name: "You approve" },
+    ],
+    onFail: "retry",
+    maxTries: 3,
+  },
+};
+
+const flow = checksFlow(WRITER);
+const stepName = (stepId) => flow.steps.find((s) => s.id === stepId).name;
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "dash-flow-run-"));
   goals = createGoalStore({ root: path.join(dir, "goals") });
-  flows = createFlowStore({ root: path.join(dir, "flows") });
-  const made = { source: "bot_src", writer: "bot_writer" };
-  flow = flows.create({
-    ...proposalToFlow(starterProposal("daily-brief"), made, "ws1"),
-  }).flow;
   botRuns = [];
   writerBehaviour = "good";
+  reviewerBehaviour = "passes";
   const ctx = (botId, botName, goal) => ({
     workspaceId: "ws1",
     botId,
     botName,
     goal,
-    flows: {
-      resolve: (q) => flows.resolve(q),
-      proveCriteria: (list, f) => proveCriteria(list, f),
-    },
   });
-  // The stand-in writer: claims, then writes its record the way it's told.
+  // Stand-in bots. The writer answers again (Dash records its answer, as
+  // checkJobs does); the reviewer claims and writes its verdict.
   const runBot = async (botId, opts) => {
     botRuns.push({ botId, opts });
-    if (botId !== "bot_writer") return { status: "completed" };
-    if (writerBehaviour === "paused")
-      return { skipped: true, reason: "paused" };
     const { taskId } = opts.goal;
-    const c = ctx("bot_writer", "Brief writer", { ...opts.goal });
-    handleGoalTool(goals, c, "claim_task", { taskId });
-    if (writerBehaviour === "silent") return { status: "completed" };
-    const ids = writerBehaviour === "misses" ? ["e1"] : ["e1", "e2"];
-    const output =
-      writerBehaviour === "noText"
-        ? { eventIds: ids }
-        : { text: "Standup at 9, dentist at 4.", eventIds: ids };
-    const r = handleGoalTool(goals, c, "write_done", {
-      taskId,
-      status: "passed",
-      summary: "Wrote the brief",
-      output,
-    });
-    botRuns[botRuns.length - 1].result = r;
+    if (botId === "bot_writer") {
+      if (writerBehaviour === "paused")
+        return { skipped: true, reason: "paused" };
+      goals.writeStepRecord(taskId, {
+        stepId: WORK_STEP,
+        status: "passed",
+        summary: "Answered again",
+        output: workOutput(writerBehaviour === "misses" ? MISSES : GOOD),
+        bot: { botId, botName: "Brief writer" },
+      });
+      return { status: "completed" };
+    }
+    if (botId === "bot_rev") {
+      const c = ctx("bot_rev", "Reviewer", { ...opts.goal });
+      handleGoalTool(goals, c, "claim_task", { taskId });
+      if (reviewerBehaviour === "silent") return { status: "completed" };
+      handleGoalTool(goals, c, "write_done", {
+        taskId,
+        status: "passed",
+        summary: "Every event is in it",
+        evidence: [{ label: "ids", value: "e1, e2" }],
+      });
+    }
     return { status: "completed" };
   };
   runner = createFlowRunner({
@@ -100,8 +123,6 @@ beforeEach(() => {
     runCheck: (check, input, c) => runCheck(check, input, c),
     checkContext: () => ({ fetchStatus: async () => 200 }),
   });
-  // What the app wires: every ledger change runs a pass.
-  runner.ctx = ctx;
 });
 
 afterEach(() => {
@@ -109,23 +130,27 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-/** The source bot starts today's goal, as its scheduled run would. */
-function sourceStarts() {
-  const c = runner.ctx("bot_src", "Calendar + email", {
-    goalId: null,
-    taskId: null,
+/** The writer's run ended: its answer is held as a job (checkJobs). */
+function jobStarts(answer = GOOD) {
+  const r = goals.createGoal({
+    workspaceId: "ws1",
+    title: "Brief writer: today's brief",
+    body: "Write today's brief.",
+    createdBy: { botId: WRITER.id, botName: WRITER.name },
+    flow,
+    startAfter: {
+      stepId: WORK_STEP,
+      botId: WRITER.id,
+      botName: WRITER.name,
+      summary: "Did the work",
+      output: workOutput(answer),
+    },
   });
-  const r = handleGoalTool(goals, c, "create_goal", {
-    title: "Brief for today",
-    output: { events: EVENTS, emails: [] },
-  });
-  assert.equal(r.isError, false, r.text);
-  assert.match(r.text, /follows the "Daily brief" flow/);
-  return goals.listGoals({ workspaceId: "ws1" })[0];
+  assert.ok(r.goal, r.error);
+  return r.goal;
 }
 
 const taskOf = (goal) => goals.getGoal(goal.id).tasks[0];
-const stepName = (stepId) => flow.steps.find((s) => s.id === stepId).name;
 
 async function drive(goal, until_) {
   for (let i = 0; i < 20; i++) {
@@ -136,80 +161,61 @@ async function drive(goal, until_) {
   return taskOf(goal);
 }
 
-describe("UC6: the daily brief as a flow", () => {
-  it("the source's goal follows its flow, with what it read as the first record", () => {
-    const goal = sourceStarts();
-    assert.equal(goal.flowId, flow.id);
+describe("a bot's checks job", () => {
+  it("starts past the work, at the first check", () => {
+    const goal = jobStarts();
     const task = goal.tasks[0];
-    assert.equal(stepName(task.stepId), "Brief writer");
-    assert.equal(task.history[0].output.events.length, 2);
+    assert.equal(stepName(task.stepId), "All events in it");
+    assert.equal(task.history[0].output.answer, GOOD);
   });
 
-  it("writer → check passes with proof → waits for you → you mark it done", async () => {
-    const goal = sourceStarts();
+  it("check passes with proof → reviewer → waits for you → you mark it done", async () => {
+    const goal = jobStarts();
     const task = await drive(goal, (t) => t.status === "ready");
     assert.equal(task.status, "ready");
-    assert.equal(stepName(task.stepId), "You");
+    assert.equal(stepName(task.stepId), "You approve");
     const check = task.history.find((r) => r.said === "dash");
     assert.equal(check.status, "passed");
     assert.equal(check.kind, "rules");
-    assert.match(check.summary, /All 2 passed/);
-    // The writer's own record stays "said by the bot".
-    assert.equal(
-      task.history.find((r) => r.botId === "bot_writer").said,
-      "bot",
-    );
-    // The writer was told what it gets and what to fill.
-    const prompt = botRuns.find((r) => r.botId === "bot_writer").opts.prompt;
-    assert.match(prompt, /claim_task task_/);
-    assert.match(prompt, /must fill: text \(text\), eventIds \(list\)/);
-    assert.match(prompt, /"e2"/);
+    // The reviewer was told what it judges, and to claim the task.
+    const run = botRuns.find((r) => r.botId === "bot_rev");
+    assert.match(run.opts.prompt, /claim_task task_/);
+    assert.match(run.opts.prompt, /You judge the work/);
+    assert.equal(run.opts.trigger, "flow");
+    assert.equal(run.opts.via, `flow:${flow.id}`);
     const done = goals.userAction(task.id, "done");
     assert.equal(done.task.status, "done");
     assert.equal(goals.getGoal(goal.id).status, "done");
   });
 
-  it("a missed event sends it back with the fix list, then stops at the round limit", async () => {
+  it("a failed check sends the work back with what failed, then stops at its last try", async () => {
     writerBehaviour = "misses";
-    const goal = sourceStarts();
+    const goal = jobStarts(MISSES);
     const task = await drive(goal, (t) => t.status === "needs-you");
     assert.equal(task.status, "needs-you");
     assert.equal(task.round, 3);
     const checks = task.history.filter((r) => r.said === "dash");
     assert.equal(checks.length, 3);
     assert.ok(checks.every((c) => c.status === "failed"));
-    assert.deepEqual(checks[0].details[0].details, ["e2"]);
     assert.equal(checks[2].stopped, true);
-    // Round 2's writer was told why it came back.
-    const second = botRuns.filter((r) => r.botId === "bot_writer")[1].opts
-      .prompt;
-    assert.match(second, /It came back from "All events in it": 1 of 2 passed/);
+    // The writer answered again, told what failed (retryPrompt).
+    const again = botRuns.filter((r) => r.botId === "bot_writer")[0].opts;
+    assert.match(again.prompt, /It came back: try 2 of 3/);
+    assert.match(again.prompt, /"All events in it" failed/);
     // One more round goes back to the writer.
     writerBehaviour = "good";
     const more = goals.userAction(task.id, "one-more-round");
-    assert.equal(stepName(more.task.stepId), "Brief writer");
+    assert.equal(more.task.stepId, WORK_STEP);
     const after = await drive(goal, (t) => t.status === "ready");
     assert.equal(after.status, "ready");
   });
 
-  it("a record missing a required field is refused, and the task doesn't move", async () => {
-    writerBehaviour = "noText";
-    const goal = sourceStarts();
-    runner.pass();
-    await until(() => botRuns.some((r) => r.result), 50);
-    const run = botRuns.find((r) => r.result);
-    assert.equal(run.result.isError, true);
-    assert.match(run.result.text, /missing text/);
-    assert.equal(stepName(taskOf(goal).stepId), "Brief writer");
-  });
-
   it("a paused bot is waited for, not failed", async () => {
     writerBehaviour = "paused";
-    const goal = sourceStarts();
-    runner.pass();
-    await until(() => runner.waitingFor(taskOf(goal).id), 50);
+    const goal = jobStarts(MISSES);
+    await drive(goal, () => runner.waitingFor(taskOf(goal).id));
     const t = taskOf(goal);
-    assert.equal(t.status, "new");
+    assert.equal(t.stepId, WORK_STEP);
     assert.deepEqual(runner.waitingFor(t.id).why, "paused");
     // Not retried at once.
     const runs = botRuns.length;
@@ -218,155 +224,42 @@ describe("UC6: the daily brief as a flow", () => {
     assert.equal(botRuns.length, runs);
   });
 
-  it("a bot that ends twice without a record leaves it for you", async () => {
-    writerBehaviour = "silent";
-    const goal = sourceStarts();
+  it("a reviewer that ends twice without a record leaves it for you", async () => {
+    reviewerBehaviour = "silent";
+    const goal = jobStarts();
     const task = await drive(goal, (t) => t.status === "needs-you");
     assert.equal(task.status, "needs-you");
     assert.match(task.history.at(-1).summary, /without a done record/);
-    assert.equal(botRuns.filter((r) => r.botId === "bot_writer").length, 2);
+    assert.equal(botRuns.filter((r) => r.botId === "bot_rev").length, 2);
   });
 
-  it("a goal keeps the flow it started with when the flow changes", async () => {
-    const goal = sourceStarts();
-    flows.update(flow.id, { ...flow, maxRounds: 5, name: "Morning brief v2" });
-    assert.equal(goals.getGoal(goal.id).flow.name, "Daily brief");
-    assert.equal(goals.getGoal(goal.id).flow.version, 1);
-  });
-
-  it("only the bot at the task's step may claim it", () => {
-    const goal = sourceStarts();
+  it("only the bot at the task's step may claim it", async () => {
+    const goal = jobStarts();
+    await drive(goal, (t) => t.stepId === "step_review");
     const r = handleGoalTool(
       goals,
-      runner.ctx("bot_other", "Other", { goalId: null, taskId: null }),
+      { workspaceId: "ws1", botId: "bot_other", botName: "Other" },
       "claim_task",
       { taskId: goal.tasks[0].id },
     );
     assert.equal(r.isError, true);
-    assert.match(r.text, /another bot works on it there/);
-  });
-
-  it("a ticket already in the flow isn't started twice", () => {
-    const c = runner.ctx("bot_src", "Calendar + email", {
-      goalId: null,
-      taskId: null,
-    });
-    const args = { title: "T", source: { kind: "ticket", ref: "DASH-1" } };
-    handleGoalTool(goals, c, "create_goal", args);
-    const again = handleGoalTool(goals, c, "create_goal", args);
-    assert.match(again.text, /Already in "Daily brief"/);
-    assert.equal(goals.listGoals({ workspaceId: "ws1" }).length, 1);
   });
 });
 
-describe("phase 5: a task's own folder and its limits", () => {
-  it("the bot step runs in the task's own copy, and is told so", async () => {
-    const r2 = createFlowRunner({
-      store: goals,
-      runBot: async (botId, opts) => {
-        botRuns.push({ botId, opts });
-        return { status: "completed" };
-      },
-      runCheck: async () => ({ pass: true, reason: "ok" }),
-      prepareWork: (goal, task, step) =>
-        step.botId === "bot_writer"
-          ? { dir: "/tmp/copy/repo", kind: "worktree", branch: "dash/x" }
-          : null,
-    });
-    sourceStarts();
-    r2.pass();
-    await until(() => botRuns.length > 0, 20);
-    const run = botRuns[0];
-    assert.equal(run.opts.workingDir, "/tmp/copy/repo");
-    assert.match(
-      run.opts.prompt,
-      /Work in \/tmp\/copy\/repo: your own copy of the project, on the branch dash\/x/,
-    );
-    r2.stop();
-  });
-
-  it("over its minutes, the task stops for you instead of running again", async () => {
-    flows.update(flow.id, {
-      ...flows.get(flow.id),
-      taskLimits: { minutes: 30 },
-    });
-    const limited = flows.get(flow.id);
-    const goal = goals.createGoal({
+describe("goals that aren't a bot's checks job", () => {
+  it("are left alone, even with a flow of their own", async () => {
+    const other = { ...flow, id: "flow_abcdef", kind: undefined };
+    const r = goals.createGoal({
       workspaceId: "ws1",
-      title: "Long one",
-      flow: limited,
-    }).goal;
-    const r2 = createFlowRunner({
-      store: goals,
-      runBot: async (botId, opts) => {
-        botRuns.push({ botId, opts });
-        return { status: "completed" };
-      },
-      runCheck: async () => ({ pass: true, reason: "ok" }),
-      taskUsage: () => ({ minutes: 31, steps: 10 }),
+      title: "Old flow work",
+      flow: other,
     });
-    r2.pass();
-    await until(
-      () => goals.getGoal(goal.id).tasks[0].status === "needs-you",
-      20,
-    );
-    const t = goals.getGoal(goal.id).tasks[0];
-    assert.equal(t.status, "needs-you");
-    assert.match(t.history.at(-1).summary, /used its 30 minutes/);
-    assert.equal(botRuns.length, 0);
-    r2.stop();
-  });
-
-  it("a folder it can't use stops the task for you, saying why", async () => {
-    const r2 = createFlowRunner({
-      store: goals,
-      runBot: async (botId, opts) => {
-        botRuns.push({ botId, opts });
-        return { status: "completed" };
-      },
-      runCheck: async () => ({ pass: true, reason: "ok" }),
-      prepareWork: () => ({ error: "The folder it works in isn't there: /x" }),
-    });
-    const goal = sourceStarts();
-    r2.pass();
-    await until(
-      () => goals.getGoal(goal.id).tasks[0].status === "needs-you",
-      20,
-    );
-    assert.match(
-      goals.getGoal(goal.id).tasks[0].history.at(-1).summary,
-      /isn't there/,
-    );
-    r2.stop();
-  });
-});
-
-describe("two flows on one dashboard", () => {
-  it("run their goals side by side", async () => {
-    const other = flows.create({
-      ...proposalToFlow(starterProposal("blank"), {}, "ws1"),
-      name: "Second",
-    }).flow;
-    flows.update(other.id, {
-      ...other,
-      steps: other.steps.map((s) =>
-        s.kind === "bot" ? { ...s, botId: "bot_writer2" } : s,
-      ),
-    });
-    const second = goals.createGoal({
-      workspaceId: "ws1",
-      title: "Other work",
-      flow: flows.get(other.id),
-    });
-    const brief = sourceStarts();
+    assert.ok(r.goal, r.error);
+    const plain = goals.createGoal({ workspaceId: "ws1", title: "Plain" });
+    assert.ok(plain.goal, plain.error);
     runner.pass();
     await until(() => false, 10);
-    assert.equal(
-      taskOf(brief).status !== "new" ||
-        botRuns.some((r) => r.botId === "bot_writer"),
-      true,
-    );
-    assert.ok(botRuns.some((r) => r.botId === "bot_writer2"));
-    assert.equal(goals.getGoal(second.goal.id).flowId, other.id);
+    assert.equal(botRuns.length, 0);
+    assert.equal(goals.getGoal(r.goal.id).tasks[0].history.length, 0);
   });
 });

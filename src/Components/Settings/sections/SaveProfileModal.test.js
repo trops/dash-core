@@ -466,7 +466,10 @@ describe("SaveProfileModal (v3)", () => {
     mount({ previewSave });
     await screen.findByTestId("save-all-listed");
     fireEvent.click(screen.getByLabelText("Bots"));
-    expect(await screen.findByLabelText(PIPE)).toBeChecked();
+    // The new plan loads after the switch: wait for it, not just the box.
+    await waitFor(() => expect(screen.getByLabelText(PIPE)).toBeChecked(), {
+      timeout: 5000,
+    });
     expect(screen.getByLabelText(TICKER)).toBeChecked();
   });
 
@@ -540,11 +543,13 @@ describe("SaveProfileModal (v3)", () => {
 
   test("replacing the account's newer copy: the button says so", async () => {
     mount({}, { to: "account", replaceRevision: 7 });
-    await screen.findByLabelText(PIPE);
+    // The button's words follow the publish choices, which load after it.
     expect(
-      screen.getByRole("button", {
-        name: "Publish 2 widgets and replace the account's copy",
-      }),
+      await screen.findByRole(
+        "button",
+        { name: "Publish 2 widgets and replace the account's copy" },
+        { timeout: 5000 },
+      ),
     ).toBeInTheDocument();
   });
 

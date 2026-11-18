@@ -335,7 +335,7 @@ describe("a paused bot finishes a job already started (DASH-12)", () => {
     ]);
   });
 
-  it("an old flow's step runs as it always did", async () => {
+  it("any other run starts as it always did", async () => {
     const ctl = fakeCtl();
     await flowBotHooks(ctl).runBot("bot_w", { via: "flow:flow_123" });
     assert.deepEqual(ctl.calls, [["run", "bot_w", "flow:flow_123"]]);

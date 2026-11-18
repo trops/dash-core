@@ -69,6 +69,16 @@ export function shownStatus(goal) {
   return close && close.failed ? "failed" : s;
 }
 
+/**
+ * The goals Jobs lists: a bot's checks jobs and plain goals — not jobs
+ * that followed a flow (flows are gone, DASH-13).
+ */
+export function shownGoals(goals = []) {
+  return (goals || []).filter(
+    (g) => g && (!g.flow || g.flow.kind === "bot-checks"),
+  );
+}
+
 /** Which filter a goal falls under: needs-you, working or done. */
 export function goalBucket(goal) {
   const s = goal && goal.status;

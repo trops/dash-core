@@ -1200,9 +1200,8 @@ export const BotDetail = ({
                     Folders it works in
                   </span>
                   <span className="text-xs opacity-50">
-                    In a flow, each task gets its own copy of the first folder
-                    (a git worktree on its own branch), never your checkout. A
-                    folder that isn't a git repo is worked in where it is.
+                    It works in these folders where they are. Its checks'
+                    commands run in the first one.
                   </span>
                   {projects.map((f, i) => (
                     <div key={f} className="flex flex-row items-center gap-2">

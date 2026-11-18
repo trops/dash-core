@@ -39,14 +39,8 @@ async function downloadBotPackage(packageRef, opts = {}) {
   });
   if (resolved.error) return { error: resolved.error };
   const pkg = resolved.pkg;
-  // Bots and teams by default; a flow package asks for "flow" (flows PRD).
-  const types = Array.isArray(opts.types) ? opts.types : ["bot", "bot-team"];
-  if (!types.includes(pkg.type)) {
-    return {
-      error: types.includes("flow")
-        ? `"${packageRef}" isn't a flow.`
-        : `"${packageRef}" isn't a bot or a team.`,
-    };
+  if (!["bot", "bot-team"].includes(pkg.type)) {
+    return { error: `"${packageRef}" isn't a bot or a team.` };
   }
   const version = pkg.version;
   const scopePath = pkg.scope ? `${encodeURIComponent(pkg.scope)}/` : "";
@@ -122,10 +116,8 @@ async function downloadBotPackage(packageRef, opts = {}) {
   try {
     for (const entry of new AdmZip(zipBuffer).getEntries()) {
       if (entry.isDirectory) continue;
-      // A flow carries its scripts and data too (files/…); bots and teams
-      // are JSON only.
-      const flowFile = opts.withFiles && /^files\//.test(entry.entryName);
-      if (!flowFile && !/\.json$/i.test(entry.entryName)) continue;
+      // Bots and teams are JSON only.
+      if (!/\.json$/i.test(entry.entryName)) continue;
       files[entry.entryName] = entry.getData().toString("utf8");
     }
   } catch (_e) {

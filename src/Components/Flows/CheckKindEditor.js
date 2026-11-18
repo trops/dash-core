@@ -8,11 +8,14 @@ import {
   RadioGroup,
   SelectInput,
   TextArea,
-  useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { flowsApi } from "../../hooks/useFlows";
 import { PanelSection } from "./SidePanel";
+
+// The main process's side of a check: read-only tools, Write it with AI.
+const flowsApi = () =>
+  (typeof window !== "undefined" && window.mainApi && window.mainApi.flows) ||
+  null;
 
 export const KINDS = [
   { value: "rules", label: "Rules" },
@@ -147,8 +150,7 @@ export function checkOfKind(kind, rows) {
 
 /**
  * CheckKindEditor — a check's settings for its kind (rules, a command, a
- * script or a tool call). Shared by a flow's check panel and a bot's checks
- * window.
+ * script or a tool call), in a bot's checks window.
  *
  * @param {object} check         the check ({ kind, … })
  * @param {(patch) => void} onPatch
@@ -156,8 +158,6 @@ export function checkOfKind(kind, rows) {
  * @param {object[]} [fieldRows] What it gets (rows with `path`)
  * @param {string} [name]        the check's name (Write it with AI starts from it)
  * @param {{current}} [lastFieldRef] the field last focused ({ i, key } / { arg })
- * @param {object|null} [scripts] a flow's files: { files, onCopyIn, onPickLocal };
- *                               null leaves out "Where the script lives"
  * @param {string} [runsIn]      where a command runs
  * @param {(msg) => void} [onError]
  * @param {string} [uniqueKey]
@@ -169,13 +169,11 @@ export const CheckKindEditor = ({
   fieldRows = [],
   name = "",
   lastFieldRef = null,
-  scripts = null,
-  runsIn = "This flow's folder",
+  runsIn = "The bot's folder",
   onError = () => {},
   uniqueKey = "new",
 }) => {
   const { muted, strong, hairline, fieldBg, accent } = useConfigTokens();
-  const status = useStatusTokens();
   const api = flowsApi();
   const [tools, setTools] = useState(null);
   const [openRule, setOpenRule] = useState(null);
@@ -204,7 +202,6 @@ export const CheckKindEditor = ({
   const toolDef = toolServer
     ? toolServer.tools.find((t) => t.name === check.tool)
     : null;
-  const files = (scripts && scripts.files) || [];
 
   return (
     <>
@@ -325,55 +322,6 @@ export const CheckKindEditor = ({
 
       {check.kind === "command" ? (
         <>
-          {scripts ? (
-            <PanelSection label="Where the script lives">
-              <span className={`text-xs ${muted}`}>
-                {files.filter((f) => f.ref.startsWith("scripts/")).length
-                  ? "This flow's files (kept with the flow and published with it):"
-                  : "Put a script in this flow's files to keep it with the flow, or run one only on this computer."}
-              </span>
-              <div className="flex flex-col gap-1 pt-1">
-                {files
-                  .filter((f) => f.ref.startsWith("scripts/"))
-                  .map((f) => (
-                    <button
-                      key={f.ref}
-                      type="button"
-                      className={`text-left font-mono text-xs ${String(check.command || "").includes(f.ref) ? accent : muted}`}
-                      onClick={() =>
-                        patch({
-                          command: `${/\.py$/.test(f.ref) ? "python3" : "node"} ${f.ref}`,
-                        })
-                      }
-                    >
-                      {f.ref}
-                    </button>
-                  ))}
-                <span className="flex flex-row gap-3 pt-1">
-                  <button
-                    type="button"
-                    className={`text-xs font-semibold ${accent}`}
-                    onClick={scripts.onCopyIn}
-                  >
-                    Copy in from this computer…
-                  </button>
-                  <button
-                    type="button"
-                    className={`text-xs font-semibold ${accent}`}
-                    onClick={scripts.onPickLocal}
-                  >
-                    A file only on this computer…
-                  </button>
-                </span>
-                {check.localFile ? (
-                  <span className={`text-xs ${status.warning.text}`}>
-                    Runs where it is. Left out when you publish, and shown as
-                    missing anywhere else.
-                  </span>
-                ) : null}
-              </div>
-            </PanelSection>
-          ) : null}
           <InputText
             label="Command"
             value={check.command || ""}

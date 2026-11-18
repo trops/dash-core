@@ -36,9 +36,6 @@ export const DashboardHeader = ({
   // amber; otherwise the jobs being worked on, in grey (DASH-12).
   goalsAttention = 0,
   goalsWorking = 0,
-  // The open stage's own button on the right (flows PRD): "Add a step" or
-  // "New flow" on Flows, "New job" on Jobs. { label, onClick } or null.
-  stageAction = null,
 }) => {
   const [workspaceSelected, setWorkspaceSelected] = useState(workspace);
   const { currentTheme } = useContext(ThemeContext);
@@ -91,7 +88,6 @@ export const DashboardHeader = ({
                       </span>
                     ),
                   },
-                  { value: "graph", label: "Flows" },
                   {
                     value: "goals",
                     label: (
@@ -121,13 +117,6 @@ export const DashboardHeader = ({
             )}
           </div>
           <div className="flex flex-row items-center gap-1">
-            {stageAction !== null && stageMode !== "dashboard" && (
-              <Button2
-                title={stageAction.label}
-                size="sm"
-                onClick={stageAction.onClick}
-              />
-            )}
             {/* Dashboard Config gear is intentionally NOT rendered in
                 preview mode — wiring is a configuration concern, not a
                 viewer concern. The button only appears in edit mode

@@ -1,5 +1,6 @@
 import {
   eventText,
+  runChecksLine,
   askedText,
   checkResults,
   jobStateText,
@@ -392,5 +393,114 @@ describe("the event a finished job sent (DASH-12)", () => {
     ).toBe(
       "Writer's Completed event went out → Sender runs on it and Bot results shows it",
     );
+  });
+});
+
+describe("a run's checks, for its Activity (DASH-13)", () => {
+  const botJob = (task, extra = {}) => ({
+    id: "g1",
+    flow: {
+      kind: "bot-checks",
+      botId: "b1",
+      steps: [
+        { id: "step_work", kind: "bot", name: "Writer", botId: "b1" },
+        { id: "step_c1", kind: "check", name: "Has a title" },
+      ],
+    },
+    tasks: [{ maxRounds: 3, ...task }],
+    ...extra,
+  });
+  const work = { stepId: "step_work", status: "passed" };
+  const fail = { stepId: "step_c1", status: "failed", summary: "No title" };
+
+  it("says nothing for a run that wasn't held", () => {
+    expect(runChecksLine({ status: "completed" })).toBe(null);
+  });
+
+  it("being checked, sent back, passed, replaced", () => {
+    expect(
+      runChecksLine(
+        { checks: { state: "checking" } },
+        botJob({ status: "new", stepId: "step_c1", history: [work] }),
+      ),
+    ).toEqual({ state: "info", text: "Held for its checks · being checked" });
+    expect(
+      runChecksLine(
+        { checks: { state: "checking" } },
+        botJob({
+          status: "new",
+          stepId: "step_work",
+          history: [work, { ...fail, to: "step_work" }],
+        }),
+      ).text,
+    ).toBe("Held for its checks · sent back: trying again");
+    expect(runChecksLine({ checks: { state: "passed" } }).text).toBe(
+      "Held for its checks · passed: handed on",
+    );
+    expect(runChecksLine({ checks: { state: "replaced" } }).state).toBe(
+      "neutral",
+    );
+  });
+
+  it("failed: the check and the try, in red", () => {
+    const g = botJob(
+      {
+        status: "closed",
+        stepId: "step_c1",
+        history: [
+          work,
+          { ...fail, to: "step_work" },
+          work,
+          { ...fail, to: "needs-you" },
+          { by: "you", status: "close", dash: true, failed: true },
+        ],
+      },
+      { closed: true },
+    );
+    expect(runChecksLine({ checks: { state: "stopped" } }, g)).toEqual({
+      state: "error",
+      text: 'Held for its checks · didn\'t pass "Has a title" on try 2: it failed, nothing was handed on',
+    });
+    // Its job gone: still says it was closed.
+    expect(runChecksLine({ checks: { state: "stopped" } }).text).toBe(
+      "Held for its checks · closed: nothing was handed on",
+    );
+  });
+});
+
+describe("an earlier try, in Activity (DASH-13)", () => {
+  it("says what failed on it", () => {
+    const goal = {
+      id: "g1",
+      closed: true,
+      flow: {
+        kind: "bot-checks",
+        botId: "b1",
+        steps: [
+          { id: "step_work", kind: "bot", name: "Writer", botId: "b1" },
+          { id: "step_c1", kind: "check", name: "Has a title" },
+        ],
+      },
+      tasks: [
+        {
+          status: "closed",
+          stepId: "step_c1",
+          maxRounds: 3,
+          history: [
+            { stepId: "step_work", status: "passed" },
+            { stepId: "step_c1", status: "failed", to: "step_work" },
+            { stepId: "step_work", status: "passed" },
+            { stepId: "step_c1", status: "failed", to: "needs-you" },
+            { by: "you", status: "close", dash: true, failed: true },
+          ],
+        },
+      ],
+    };
+    const run = { checks: { state: "stopped" } };
+    expect(runChecksLine(run, goal, 1)).toEqual({
+      state: "neutral",
+      text: 'Try 1 · didn\'t pass "Has a title": sent back',
+    });
+    expect(runChecksLine(run, goal, 2).state).toBe("error");
   });
 });

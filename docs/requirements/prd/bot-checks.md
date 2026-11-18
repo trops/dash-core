@@ -5,7 +5,7 @@
 **Owner:** John Giatropoulos
 **Tickets:** DASH-9 (PR 1: the gate), DASH-10 (PR 2: the Bots tab), DASH-11 (PR 3: Jobs and the lead conversation), DASH-12 (PR 4a: checks inside the bot box), DASH-13 (PR 4b: flows retired) — epic DASH-1, "Loops and graphs: bots that finish work without you"
 **Location:** dash-core (engine, ledger, Bots tab, Jobs), dash-electron (dependency bump)
-**Related PRDs:** [flows.md](./flows.md) (the checks, rounds and ledger this reuses), [goals-ledger.md](./goals-ledger.md), [bot-teams.md](./bot-teams.md)
+**Related PRDs:** [flows.md](./flows.md) (removed in PR 4b; the runner, rounds and ledger it built now run a bot's checks), [goals-ledger.md](./goals-ledger.md), [bot-teams.md](./bot-teams.md)
 
 Mockups: "Checks on the lines" (claude.ai artifact 5QuvX7byv8JTfE9s4H6QRN) — frame 1B (the Bots tab: a list of checks after each bot), frame 2 (a bot's checks as a timeline), frame 3 (the lead conversation), frame 4 (a job as a pull-request-style timeline), frame 5 (what stays the same). "Bot box with checks" (claude.ai artifact GK36mz8V7mpmaQxfCVRuY3) — frame 1 (the diagram), 2 (every state of a box), 2b (while it works), 3 (flows retired).
 
@@ -60,9 +60,16 @@ In use, the separate checks card read as another bot in the chain, lines left fr
 - [x] AC10: a job that runs out of tries fails — no "One more try": Dash closes it, nothing is handed on, and the bot's **`failed` event goes out** with why (`Didn't pass "<check>" on try 3: <reason>`), under the cause of the run that started it, so whatever listens for its failures runs (`BotEventPublisher.fail`, `checkJobs.failReason`). "It fails" (was "It stops") does the same at once; "It comes to you" waits, and your Close fails it too. The tries setting reads "3, then it fails"; the window says the Failed event goes out. A job that came to you offers "Send it back to <bot>" and "Close it (it fails)".
 - [x] AC11: a finished job ends with the event it sent and who listens: "<bot>'s Failed event went out → Fixer runs on it", or "· nothing listens for it yet" (Completed likewise) — shown even with no listener, so you know it's there. Its badge reads **Failed** (red), and the list line "failed on try 3".
 
-### CHK-004 (PR 4b, DASH-13): Flows retired (P1)
+### CHK-004 (PR 4b, DASH-13): Flows removed (P1)
 
-- [ ] AC1: The Flows tab goes; a saved flow with checks or approval steps is offered once as "Move onto my bots"; others are retired; jobs already in an old flow finish the old way.
+Scope changed 2026-11-18: the app has no users yet, so Flows go outright — no "Move onto my bots", no migration, no registry flow packages.
+
+- [x] AC1: No Flows tab, and no New flow / Add a step / New job in the header. The flow editor, starters, proposals, flow publish and install, and their IPC are gone (`flowsApi` keeps only `writeScript`, `readOnlyTools` and `pickFolder`, which the checks window uses). Saved flows and old flow jobs no longer show or run: the runner runs only a bot's checks jobs.
+- [x] AC2: `create_goal` has no `flow` argument; the lead can't propose or start flows. Plain goals (tasks the lead adds) stay.
+- [x] AC3: The Jobs empty state says what a job is, with **Add checks to a bot** (opens the Bots tab).
+- [x] AC4: A bot's Activity shows, under a run held for its checks, what they did — being checked, waiting for you, sent back, passed (and approved), a later try replaced it, failed (the check and the try), closed — with **Open the job** (`jobTimeline.runChecksLine`, from the run's `checks` mark and its job).
+- [x] AC6: Old jobs that followed a flow are deleted once when the job runner starts (`flowController.dropOldFlowJobs`), and Jobs and its counts never list them (`goalText.shownGoals`). In Activity, a retry says Retry and a reviewer's run Review (they said Flow), and each held run says what happened to its own try ("Try 1 · didn't pass …: sent back").
+- [x] AC5: In a failed job, the job card's pill for the check it failed on is red, and a job that was only closed shows grey — never the blue "running" (`flowText.stepPills` reads the step's own record, not the close after it).
 
 ## Out of Scope
 
@@ -87,9 +94,10 @@ In use, the separate checks card read as another bot in the chain, lines left fr
 
 ## Revision History
 
-| Date       | Change                                                                                                    |
-| ---------- | --------------------------------------------------------------------------------------------------------- |
-| 2026-11-17 | Created for DASH-9 (PR 1, the gate).                                                                      |
-| 2026-11-18 | CHK-005 done (DASH-12, PR 4a): a bot's checks inside its box, with what they're doing now.                |
-| 2026-11-18 | CHK-003 done (DASH-11, PR 3): a bot's job as a timeline in Jobs, and its checks in the lead conversation. |
-| 2026-11-17 | CHK-002 done (DASH-10, PR 2): checks card on the Bots diagram and the checks window.                      |
+| Date       | Change                                                                                                                |
+| ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-17 | Created for DASH-9 (PR 1, the gate).                                                                                  |
+| 2026-11-18 | CHK-004 done (DASH-13, PR 4b): Flows removed; Activity shows what a bot's checks did; the failed check's pill is red. |
+| 2026-11-18 | CHK-005 done (DASH-12, PR 4a): a bot's checks inside its box, with what they're doing now.                            |
+| 2026-11-18 | CHK-003 done (DASH-11, PR 3): a bot's job as a timeline in Jobs, and its checks in the lead conversation.             |
+| 2026-11-17 | CHK-002 done (DASH-10, PR 2): checks card on the Bots diagram and the checks window.                                  |
