@@ -18,6 +18,8 @@ import { runCostLabel, runCostShort } from "../../utils/runCostLabel";
 import { openRunConversation, runConversation } from "./runConversation";
 import { openProvider } from "../Issues/issueActions";
 import { quotedError } from "../Issues/issueText";
+import { useGoals } from "../../hooks/useGoals";
+import { runChecksLine } from "../Goals/jobTimeline";
 
 /**
  * BotRunHistory — a bot's runs, newest first (Bots view › Activity,
@@ -185,6 +187,11 @@ export function runStatusLabel(run) {
 // What started it: a task via MCP (TEAM-016) says so, not just "Asked".
 function startedBy(run) {
   if (mcpViaLabel(run.via)) return "via MCP";
+  // A bot's checks run it again (its retry) or ask it to review another
+  // bot's work — flows are gone (DASH-13).
+  if (run.trigger === "flow") {
+    return run.checks && run.checks.state === "review" ? "Review" : "Retry";
+  }
   return TRIGGER_LABELS[run.trigger] || statusLabel(run.trigger);
 }
 
@@ -453,6 +460,10 @@ export const BotRunHistory = ({
   const strong = `${currentTheme["text-neutral-light"] || "text-gray-200"} dr-role-text`;
   const hairline = `${currentTheme["border-neutral-dark"] || "border-gray-700"} dr-role-hairline`;
   const [runs, setRuns] = useState(null);
+  // Its dashboard's jobs: what its checks did with each held run.
+  const { goals } = useGoals(
+    bot && bot.workspaceId != null ? bot.workspaceId : null,
+  );
   const [open, setOpen] = useState(null);
 
   const loadRuns = useCallback(async () => {
@@ -501,6 +512,50 @@ export const BotRunHistory = ({
       </div>
     );
   }
+
+  // A run held for its checks: what they did with it, and its job
+  // (bot-checks PRD, DASH-13).
+  const checksLine = (r) => {
+    const goalId = r && r.checks && r.checks.goalId;
+    const goal = goalId ? goals.find((g) => g.id === goalId) : null;
+    // Which of its job's tries this run was (oldest first).
+    const tries = goalId
+      ? (runs || [])
+          .filter(
+            (x) =>
+              x.checks &&
+              x.checks.goalId === goalId &&
+              x.checks.state !== "review",
+          )
+          .sort((a, b) =>
+            String(a.startedAt || "").localeCompare(String(b.startedAt || "")),
+          )
+      : [];
+    const tryN = tries.indexOf(r) + 1 || null;
+    const line = runChecksLine(r, goal, tryN);
+    if (!line) return null;
+    return (
+      <div
+        className="flex flex-row flex-wrap items-center gap-2 pb-2 text-xs"
+        data-testid="run-checks-line"
+      >
+        <StatusBadge state={line.state} compact label={line.text} />
+        {goal ? (
+          <Button3
+            title="Open the job"
+            size="xs"
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent("dash:open-job", {
+                  detail: { workspaceId: goal.workspaceId, goalId: goal.id },
+                }),
+              )
+            }
+          />
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <div className={`flex flex-col px-5 py-4 overflow-y-auto ${strong}`}>
@@ -586,6 +641,7 @@ export const BotRunHistory = ({
               ) : null}
             </div>
             <RunProblems run={r} bot={bot} onRunAgain={runAgain} />
+            {checksLine(r)}
             {open === i ? (
               <RunDetails
                 showProblems={false}

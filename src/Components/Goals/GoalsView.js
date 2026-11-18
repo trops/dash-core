@@ -1,13 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button3, SegmentedControl } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useGoal, useGoals } from "../../hooks/useGoals";
 import { GoalRow } from "./GoalRow";
 import { GoalDetail } from "./GoalDetail";
-import { goalBucket, goalCounts } from "./goalText";
-import { NewGoalModal } from "./NewGoalModal";
-import { useFlows } from "../../hooks/useFlows";
-import { jobsStart } from "../Flows/FlowList";
+import { goalBucket, goalCounts, shownGoals } from "./goalText";
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -24,13 +21,14 @@ const FILTERS = [
 export const GoalsView = ({
   workspace,
   now,
-  command = null,
   openGoal = null,
   onOpenedGoal = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const workspaceId = workspace ? workspace.id : null;
-  const { goals, loading } = useGoals(workspaceId);
+  // Not jobs that followed a flow (flows are gone, DASH-13).
+  const { goals: allGoals, loading } = useGoals(workspaceId);
+  const goals = shownGoals(allGoals);
   const [filter, setFilter] = useState("all");
   // A job opened from elsewhere ({ goalId, seq }: a lead's check card).
   const [selectedId, setSelectedId] = useState(
@@ -45,30 +43,6 @@ export const GoalsView = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openGoal && openGoal.seq, openGoal && openGoal.goalId]);
   const { goal: opened } = useGoal(selectedId);
-  // New goal (frame 29), from the header's button: in one of its flows.
-  const { flows } = useFlows(workspaceId);
-  // false, true (the first flow), or the id of the flow to start one in.
-  const [newGoal, setNewGoal] = useState(false);
-  // Only a press made while this tab is open counts, not the last one.
-  const seenSeq = useRef(command ? command.seq : 0);
-  useEffect(() => {
-    if (!command || command.seq <= seenSeq.current) return;
-    seenSeq.current = command.seq;
-    if (command.type === "new-goal") setNewGoal(true);
-  }, [command]);
-  const newGoalModal = newGoal ? (
-    <NewGoalModal
-      workspace={workspace}
-      flows={flows}
-      initialFlowId={typeof newGoal === "string" ? newGoal : null}
-      onClose={() => setNewGoal(false)}
-      onStarted={(g) => {
-        setNewGoal(false);
-        if (g) setSelectedId(g.id);
-      }}
-    />
-  ) : null;
-
   const counts = goalCounts(goals);
   const shown =
     filter === "all" ? goals : goals.filter((g) => goalBucket(g) === filter);
@@ -87,50 +61,24 @@ export const GoalsView = ({
           <span className="text-sm font-semibold">No jobs right now</span>
           <span className={`text-sm ${muted}`}>
             A job is one run of a bot that has checks, followed until its work
-            passes them and is handed on. Bots without checks don't make jobs. A
-            flow's work is a job too.
+            passes them and is handed on. Bots without checks don't make jobs.
           </span>
+          {workspace ? (
+            <div className="pt-1">
+              <Button3
+                title="Add checks to a bot"
+                size="sm"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("dash:open-bots-view", {
+                      detail: { workspaceId: workspace.id },
+                    }),
+                  )
+                }
+              />
+            </div>
+          ) : null}
         </div>
-        {flows.length ? (
-          <div className="flex flex-col gap-2" data-testid="jobs-come-from">
-            <span
-              className={`text-xs font-semibold uppercase tracking-wide ${muted}`}
-            >
-              Where jobs come from here
-            </span>
-            {flows.map((f) => {
-              const byHand = !(f.steps || []).some((x) => x.kind === "source");
-              const line = jobsStart(f);
-              return (
-                <div
-                  key={f.id}
-                  className={`flex flex-row items-center gap-3 px-3 py-2.5 rounded-lg border ${hairline}`}
-                >
-                  <span className="flex-1 min-w-0 flex flex-col">
-                    <span className="text-sm font-semibold">{f.name}</span>
-                    <span className={`text-xs ${muted}`}>
-                      {byHand
-                        ? "Nothing starts jobs here: you start them by hand"
-                        : line.charAt(0).toUpperCase() + line.slice(1)}
-                    </span>
-                  </span>
-                  {byHand ? (
-                    <Button3
-                      title="Start one"
-                      size="sm"
-                      onClick={() => setNewGoal(f.id)}
-                    />
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <span className={`text-sm ${muted}`}>
-            This dashboard has no flows yet. Make one on the Flows tab first.
-          </span>
-        )}
-        {newGoalModal}
       </div>
     );
   }
@@ -195,7 +143,6 @@ export const GoalsView = ({
           </div>
         ) : null}
       </div>
-      {newGoalModal}
     </div>
   );
 };

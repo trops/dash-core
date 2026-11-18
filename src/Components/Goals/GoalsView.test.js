@@ -229,4 +229,11 @@ test("a dashboard with no jobs says how they get here", async () => {
   expect(
     screen.getByText(/A job is one run of a bot that has checks/),
   ).toBeInTheDocument();
+  // No flows any more (DASH-13).
+  expect(screen.queryByText(/flow/i)).toBeNull();
+  const seen = jest.fn();
+  window.addEventListener("dash:open-bots-view", seen);
+  fireEvent.click(screen.getByRole("button", { name: "Add checks to a bot" }));
+  window.removeEventListener("dash:open-bots-view", seen);
+  expect(seen.mock.calls[0][0].detail).toEqual({ workspaceId: 99 });
 });

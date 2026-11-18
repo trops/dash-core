@@ -9,7 +9,6 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { whenLongText, whenText } from "../Issues/issueText";
-import { FlowGoalDetail } from "./FlowGoalDetail";
 import { BotJobDetail } from "./BotJobDetail";
 import { isBotJob } from "./jobTimeline";
 import {
@@ -245,33 +244,6 @@ export const GoalDetail = ({
   const onAction = (taskId, action) =>
     act(() => goalsApi().taskAction(taskId, action));
 
-  // "Take it over in a conversation" (frame 4): the dashboard lead's
-  // conversation, where the goal can be talked through and restarted.
-  const takeOver = async () => {
-    const m = window.mainApi;
-    let lead = null;
-    try {
-      const list = m && m.bots ? await m.bots.list() : [];
-      lead = (Array.isArray(list) ? list : []).find(
-        (b) =>
-          b &&
-          b.role === "lead" &&
-          String(b.workspaceId) === String(goal.workspaceId),
-      );
-    } catch (_e) {
-      lead = null;
-    }
-    window.dispatchEvent(
-      new CustomEvent("dash:open-bots-view", {
-        detail: {
-          workspaceId: goal.workspaceId,
-          botId: lead ? lead.id : null,
-          tab: "conversation",
-        },
-      }),
-    );
-  };
-
   return (
     <div className="flex flex-col gap-4" data-testid="goal-detail">
       <div className="flex flex-col gap-1">
@@ -320,18 +292,6 @@ export const GoalDetail = ({
           onAction={(taskId, action) =>
             finished ? null : onAction(taskId, action)
           }
-        />
-      ) : goal.flow ? (
-        // A goal in a flow: its steps, criteria and checks (flows PRD).
-        <FlowGoalDetail
-          goal={goal}
-          now={now}
-          busy={busy}
-          act={act}
-          onAction={(taskId, action) =>
-            finished ? null : onAction(taskId, action)
-          }
-          onTakeOver={finished ? null : takeOver}
         />
       ) : (
         <>

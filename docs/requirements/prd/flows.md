@@ -1,7 +1,7 @@
 # PRD: Flows — Checks, Step Outputs, the Graph, Real Work, Criteria, Sharing
 
-**Status:** In Progress — being replaced by [bot-checks.md](./bot-checks.md): checks move onto the bots themselves
-**Last Updated:** 2026-11-17
+**Status:** Removed (2026-11-18, DASH-13) — replaced by [bot-checks.md](./bot-checks.md): checks live on the bots themselves. The Flows tab, editor, starters, proposals and flow packages are gone; the job runner, rounds, ledger and check kinds described here now run a bot's checks.
+**Last Updated:** 2026-11-18
 **Owner:** John Giatropoulos
 **Tickets:** DASH-3 (phase 2), DASH-4 (3), DASH-5 (4), DASH-6 (5), DASH-7 (6), DASH-8 (7) — epic DASH-1, "Loops and graphs: bots that finish work without you"
 **Location:** dash-core (engine, checks, IPC, Graph tab, Goals updates), dash-react (FlowGraph, DiffView), dash-registry (flow package type), dash-electron (IPC registration)

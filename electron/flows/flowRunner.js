@@ -1,12 +1,13 @@
 /**
  * flowRunner.js
  *
- * Moves goals through their flows (flows PRD, phase 4; G9, G14). Nothing
- * has to be running for work to go on: on every ledger change, and on a
- * slow tick, the runner looks at each flow goal's task —
+ * Moves a bot's checks jobs on (bot-checks PRD): each job follows the small
+ * flow made from its bot's checks (botChecks.checksFlow). Nothing has to be
+ * running for work to go on: on every ledger change, and on a slow tick,
+ * the runner looks at each job's task —
  *
- *   at a bot step    it starts that bot with the step's input; the bot
- *                    claims the task and writes its done record
+ *   at a bot step    the bot answers again (its work came back), or a
+ *                    reviewer judges it and writes its done record
  *   at a check step  Dash runs the check itself and writes the record
  *                    ("said by Dash"), passed or failed with its proof
  *   at a you step    nothing: it waits in Needs you
@@ -35,8 +36,8 @@ function clip(json) {
     : json;
 }
 
-/** What a bot is told when the flow hands it the work. */
-function stepPrompt({ goal, task, step, input, workFolder, work = null }) {
+/** What a reviewer is told when the job hands it the work. */
+function stepPrompt({ goal, task, step, input, workFolder }) {
   const flow = goal.flow;
   const lines = [
     `You're the "${step.name}" step of the "${flow.name}" flow on this dashboard.`,
@@ -83,14 +84,6 @@ function stepPrompt({ goal, task, step, input, workFolder, work = null }) {
     "What the steps before you made (as JSON):",
     clip(JSON.stringify({ input: input.input, from: input.from }, null, 1)),
   );
-  if (work && work.kind === "worktree") {
-    lines.push(
-      "",
-      `Work in ${work.dir}: your own copy of the project, on the branch ${work.branch}. Commit there and push that branch; never push to the main branch, force push, or publish.`,
-    );
-  } else if (work && work.kind === "folder") {
-    lines.push("", `Work in ${work.dir}.`);
-  }
   if (workFolder) {
     lines.push(
       "",
@@ -110,8 +103,6 @@ function stepPrompt({ goal, task, step, input, workFolder, work = null }) {
  *           runCheck: (check, input, ctx) => Promise<object>,
  *           filesOf?: (goalId) => string[],
  *           checkContext?: (goal, step) => object,
- *           prepareWork?: (goal, task, step) => object|null,
- *           taskUsage?: (goalId, taskId) => { minutes, steps },
  *           now?: () => number,
  *           onError?: (e) => void }} deps
  */
@@ -123,8 +114,6 @@ function createFlowRunner(deps) {
     runCheck,
     filesOf = () => [],
     checkContext = () => ({}),
-    prepareWork = () => null,
-    taskUsage = null,
     now = Date.now,
     onError = () => {},
   } = deps;
@@ -134,7 +123,7 @@ function createFlowRunner(deps) {
   const noRecord = new Map();
   // botId → when a run was skipped (paused, over budget): wait a while.
   const skipped = new Map();
-  // What each step is waiting on, for the Graph tab.
+  // What each task is waiting on (a paused or busy bot).
   const waiting = new Map();
   let scheduled = false;
   let stopped = false;
@@ -151,66 +140,13 @@ function createFlowRunner(deps) {
     });
   }
 
-  /** The task's limits (phase 5; G10): over one, it stops for the user. */
-  function overLimit(goal, task) {
-    const lim = goal.flow && goal.flow.taskLimits;
-    if (!lim || !taskUsage) return null;
-    // Counted from the last "one more round" or "send back": the user
-    // gave it more.
-    const more = [...(task.history || [])]
-      .reverse()
-      .find(
-        (r) =>
-          r.by === "you" &&
-          (r.status === "one-more-round" || r.status === "send-back"),
-      );
-    let used;
-    try {
-      used = taskUsage(goal.id, task.id, more ? more.at : 0) || {};
-    } catch (_e) {
-      return null;
-    }
-    if (lim.minutes > 0 && (used.minutes || 0) >= lim.minutes) {
-      return `It has used its ${lim.minutes} minutes for this task.`;
-    }
-    if (lim.steps > 0 && (used.steps || 0) >= lim.steps) {
-      return `It has used its ${lim.steps} steps for this task.`;
-    }
-    return null;
-  }
-
   function startBot(goal, task, step) {
     const key = keyOf(task);
-    const over = overLimit(goal, task);
-    if (over) {
-      store.writeStepRecord(task.id, {
-        stepId: step.id,
-        status: "needs-you",
-        summary: over,
-      });
-      return;
-    }
-    // Its own copy of the bot's folder, when it has one (phase 5; G5). A
-    // bot answering again for its checks works where it always does.
-    let work = null;
-    try {
-      work = isChecksFlow(goal.flow) ? null : prepareWork(goal, task, step);
-    } catch (e) {
-      work = { error: (e && e.message) || String(e) };
-    }
-    if (work && work.error) {
-      store.writeStepRecord(task.id, {
-        stepId: step.id,
-        status: "needs-you",
-        summary: work.error,
-      });
-      return;
-    }
     const input = inputFor(goal, task, step.id);
     const paths = store.paths(goal.id);
-    // A bot's own work coming back from its checks (bot-checks PRD): it
-    // answers again, and Dash records the answer for it.
-    const again = isChecksFlow(goal.flow) && step.id === WORK_STEP;
+    // The bot's own work coming back from its checks: it answers again,
+    // and Dash records the answer for it.
+    const again = step.id === WORK_STEP;
     inFlight.add(key);
     waiting.delete(task.id);
     let p;
@@ -225,10 +161,8 @@ function createFlowRunner(deps) {
                 step,
                 input,
                 workFolder: paths ? paths.work : null,
-                work,
               }),
           trigger: "flow",
-          ...(work && work.dir ? { workingDir: work.dir } : {}),
           via: `flow:${goal.flow.id || ""}`,
           goal: { goalId: goal.id, taskId: task.id },
           ...(step.limits ? { limits: step.limits } : {}),
@@ -318,7 +252,7 @@ function createFlowRunner(deps) {
     }
   }
 
-  /** One pass over every flow goal. */
+  /** One pass over every bot checks job. */
   function pass() {
     scheduled = false;
     if (stopped) return;
@@ -330,7 +264,9 @@ function createFlowRunner(deps) {
       return;
     }
     for (const goal of goals) {
-      if (!goal.flow || goal.closed || goal.waiting) continue;
+      // Only a bot's checks jobs move here: any other goal is worked through
+      // by its bots with their tasks.
+      if (!isChecksFlow(goal.flow) || goal.closed || goal.waiting) continue;
       for (const task of goal.tasks || []) {
         if (!task.stepId || task.holder) continue;
         if (["done", "closed", "needs-you", "ready"].includes(task.status))

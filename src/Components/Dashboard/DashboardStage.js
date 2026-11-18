@@ -86,10 +86,8 @@ import { DashboardConfigModal } from "./DashboardConfigModal";
 import { useTeamBots } from "../Bots/useTeamBots";
 import { BotsView } from "../Bots/BotsView";
 import { GoalsView } from "../Goals/GoalsView";
-import { GraphView } from "../Flows/GraphView";
-import { useFlows } from "../../hooks/useFlows";
 import { useGoals } from "../../hooks/useGoals";
-import { goalCounts } from "../Goals/goalText";
+import { goalCounts, shownGoals } from "../Goals/goalText";
 import { BotPageModal } from "../Bots/BotPageModal";
 import { NewBotModal } from "../Bots/NewBotModal";
 import { dashboardCopy } from "../../utils/dashboardCopy";
@@ -354,19 +352,10 @@ const DashboardStageInner = ({
   teamRefreshRef.current = team.refresh;
   // Its goals ledger: how many wait for the user, on the Goals switch.
   const { goals: dashboardGoals } = useGoals(workspaceSelected?.id ?? null);
-  const goalCount = goalCounts(dashboardGoals);
+  const goalCount = goalCounts(shownGoals(dashboardGoals));
   const goalsAttention = goalCount["needs-you"];
   // Jobs being worked on: a plain count on "Jobs" when none needs you.
   const goalsWorking = goalCount.working;
-  // Its flows (flows PRD): the Graph tab's button says "Add a step" when
-  // there's one, "New flow" when there isn't.
-  const { flows: dashboardFlows } = useFlows(workspaceSelected?.id ?? null);
-  // The header button's command for the Graph and Goals tabs.
-  const [stageCommand, setStageCommand] = useState(null);
-  const sendStageCommand = useCallback(
-    (type) => setStageCommand((c) => ({ type, seq: ((c && c.seq) || 0) + 1 })),
-    [],
-  );
 
   // Dashboard | Bots, per dashboard. The Bots view is a viewing mode: it
   // shows in preview and in popouts, never in edit mode. A popout opened from
@@ -3370,24 +3359,6 @@ const DashboardStageInner = ({
                     botsAttention={team.attention}
                     goalsAttention={goalsAttention}
                     goalsWorking={goalsWorking}
-                    stageAction={
-                      stageMode === "graph"
-                        ? dashboardFlows.length
-                          ? {
-                              label: "Add a step",
-                              onClick: () => sendStageCommand("add-step"),
-                            }
-                          : {
-                              label: "New flow",
-                              onClick: () => sendStageCommand("new-flow"),
-                            }
-                        : stageMode === "goals" && dashboardFlows.length
-                          ? {
-                              label: "New job",
-                              onClick: () => sendStageCommand("new-goal"),
-                            }
-                          : null
-                    }
                   />
                   <DashboardThemeProvider
                     themeKey={workspaceSelected?.themeKey}
@@ -3502,7 +3473,6 @@ const DashboardStageInner = ({
                       <GoalsView
                         key={workspaceSelected.id}
                         workspace={workspaceSelected}
-                        command={stageCommand}
                         openGoal={
                           jobFocus &&
                           jobFocus.workspaceId === String(workspaceSelected.id)
@@ -3510,16 +3480,6 @@ const DashboardStageInner = ({
                             : null
                         }
                         onOpenedGoal={() => setJobFocus(null)}
-                      />
-                    ) : stageMode === "graph" ? (
-                      <GraphView
-                        key={workspaceSelected.id}
-                        workspace={workspaceSelected}
-                        command={stageCommand}
-                        onOpenGoals={() => setStageMode("goals")}
-                        onOpenBot={(botId, tab) =>
-                          openBotsView(workspaceSelected.id, botId, tab)
-                        }
                       />
                     ) : (
                       <>

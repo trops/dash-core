@@ -1,5 +1,6 @@
 import {
   goalBucket,
+  shownGoals,
   goalLabel,
   goalState,
   shownStatus,
@@ -148,5 +149,17 @@ describe("the status a goal shows (DASH-12)", () => {
     expect(
       shownStatus({ status: "working", flow: { kind: "bot-checks" } }),
     ).toBe("working");
+  });
+});
+
+describe("what Jobs lists (DASH-13)", () => {
+  test("a bot's checks jobs and plain goals, not old flow jobs", () => {
+    const list = [
+      { id: "plain" },
+      { id: "checks", flow: { kind: "bot-checks" } },
+      { id: "old", flow: { id: "flow_1", steps: [] } },
+    ];
+    expect(shownGoals(list).map((g) => g.id)).toEqual(["plain", "checks"]);
+    expect(shownGoals(null)).toEqual([]);
   });
 });

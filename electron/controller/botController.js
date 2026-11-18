@@ -704,7 +704,8 @@ const botController = {
       runBot: (botId, opts) => this._run(botId, opts),
     });
 
-    // Flows move goals on by running their bots and checks (flows PRD).
+    // A bot's checks jobs move on by running its bot, its checks and its
+    // reviewers (bot-checks PRD).
     flowController.useBots(flowBotHooks(this));
 
     // Register schedules for existing bots and run any that were missed while
@@ -721,8 +722,6 @@ const botController = {
     this._offWorkspaceDeleted = onWorkspaceDeleted((workspaceId) => {
       // Its goals go with it: tasks, evidence, work files and their runs.
       goalController.forgetWorkspace(workspaceId);
-      // And its flows (the bots they made are unassigned like the rest).
-      flowController.forgetWorkspace(workspaceId);
       unassignTeam(
         {
           store: this._store,
@@ -6348,8 +6347,6 @@ const botController = {
           botName: opts.botName || null,
           conversationId: opts.conversationId || null,
           goal: opts.goal || null,
-          // Which flow a create_goal means, and its criteria's proof.
-          flows: flowController.toolContext(),
         },
         toolName,
         args,

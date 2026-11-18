@@ -390,3 +390,81 @@ export function jobStateText(goal) {
     checking: "Being checked…",
   }[now.state];
 }
+
+/**
+ * What a bot's checks did with one of its runs, for its Activity (DASH-13):
+ * { state (a StatusBadge state), text } from the run's `checks` mark and
+ * its job (when it's still there), or null for a run that wasn't held.
+ * `tryN`: which of the job's tries this run was — an earlier try says what
+ * failed on it ("Try 1 · didn't pass …: sent back").
+ */
+export function runChecksLine(run, goal = null, tryN = null) {
+  const c = run && run.checks;
+  if (!c || !c.state) return null;
+  const held = "Held for its checks";
+  if (c.state === "review") {
+    return {
+      state: "neutral",
+      text: "Reviewed another bot's work, for its checks",
+    };
+  }
+  const rows = goal && isBotJob(goal) ? jobTimeline(goal) : [];
+  const now = rows[rows.length - 1] || {};
+  // An earlier try: the job went on without it.
+  if (tryN && now.tries && tryN < now.tries) {
+    let at = 0;
+    let failed = null;
+    for (const r of rows) {
+      if (r.type === "try") at = r.n;
+      else if (r.type === "failed" && at === tryN && !failed) failed = r;
+    }
+    return {
+      state: "neutral",
+      text: failed
+        ? `Try ${tryN} · didn't pass "${failed.name}": sent back`
+        : `Try ${tryN} · a later try replaced this answer`,
+    };
+  }
+  if (c.state === "checking") {
+    if (now.state === "waiting") {
+      return {
+        state: "warning",
+        text: `${held} · waiting for you to approve it`,
+      };
+    }
+    if (now.state === "needs-you") {
+      return { state: "warning", text: `${held} · it came to you` };
+    }
+    if (now.state === "working") {
+      return { state: "info", text: `${held} · sent back: trying again` };
+    }
+    return { state: "info", text: `${held} · being checked` };
+  }
+  if (c.state === "replaced") {
+    return {
+      state: "neutral",
+      text: `${held} · a later try replaced this answer`,
+    };
+  }
+  if (c.state === "passed") {
+    return {
+      state: "success",
+      text: now.approved
+        ? `${held} · passed, then you approved it: handed on`
+        : `${held} · passed: handed on`,
+    };
+  }
+  // Stopped: it failed (its Failed event went out), or it was closed.
+  if (now.failedOut || now.failedSent) {
+    const fails = rows.filter((r) => r.type === "failed");
+    const last = fails[fails.length - 1];
+    const why = last
+      ? `didn't pass "${last.name}" on try ${Math.max(1, now.tries)}: `
+      : "";
+    return {
+      state: "error",
+      text: `${held} · ${why}it failed, nothing was handed on`,
+    };
+  }
+  return { state: "neutral", text: `${held} · closed: nothing was handed on` };
+}

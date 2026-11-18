@@ -74,3 +74,49 @@ describe("goalController", () => {
     assert.equal(goalController.close(goal.id).ok, true);
   });
 });
+
+describe("old flow jobs (DASH-13)", () => {
+  it("are deleted at startup; a bot's checks jobs and plain goals stay", () => {
+    const { store } = setup();
+    const { checksFlow } = require("../bots/botChecks");
+    const flowController = require("./flowController");
+    const old = store.createGoal({
+      workspaceId: "7",
+      title: "Old flow job",
+      flow: {
+        id: "flow_1",
+        name: "Old",
+        steps: [{ id: "step_a", kind: "bot", name: "A", botId: "b" }],
+        edges: [],
+      },
+    }).goal;
+    const checks = store.createGoal({
+      workspaceId: "7",
+      title: "Writer: its run",
+      flow: checksFlow({
+        id: "b",
+        name: "Writer",
+        workspaceId: "7",
+        checks: {
+          steps: [
+            {
+              id: "step_c1",
+              kind: "check",
+              name: "Has a title",
+              check: { kind: "rules", rules: [] },
+            },
+          ],
+        },
+      }),
+    }).goal;
+    const plain = store.createGoal({ workspaceId: "7", title: "Plain" }).goal;
+    assert.ok(old && checks && plain);
+    const dropped = flowController.dropOldFlowJobs();
+    assert.deepEqual(dropped, [old.id]);
+    const left = goalController
+      .list("7")
+      .map((g) => g.id)
+      .sort();
+    assert.deepEqual(left, [checks.id, plain.id].sort());
+  });
+});

@@ -22,7 +22,7 @@ const GOAL_TOOLS = [
   {
     name: "create_goal",
     description:
-      "Start a goal on your dashboard's ledger: the main thing being worked on (e.g. a ticket to ship, this week's newsletter). Add its pieces with add_task — or name a flow, and its work goes through that flow's steps by itself. If you start the work of a flow (you're its first step), your goals follow it without naming it. A ticket that already has a goal in the flow isn't started again. Returns the goal id and the folders for its work files and evidence.",
+      "Start a goal on your dashboard's ledger: the main thing being worked on (e.g. a ticket to ship, this week's newsletter). Add its pieces with add_task. Returns the goal id and the folders for its work files and evidence.",
     inputSchema: {
       type: "object",
       properties: {
@@ -31,21 +31,11 @@ const GOAL_TOOLS = [
           type: "string",
           description: "What it's about: the request, ticket text, notes.",
         },
-        flow: {
-          type: "string",
-          description:
-            "The flow this goal follows, by name (optional): see the dashboard's flows.",
-        },
         criteria: {
           type: "array",
           description:
             "What done means, when it came with the work (a ticket's acceptance criteria): each a line of text.",
           items: { type: "string" },
-        },
-        output: {
-          type: "object",
-          description:
-            "In a flow you start: what you read, as the fields the next steps use (e.g. {events: [{id, title}], emails: [...]}, or the ticket's {key, title, body, repo}).",
         },
         source: {
           type: "object",
@@ -133,7 +123,7 @@ const GOAL_TOOLS = [
   {
     name: "write_done",
     description:
-      "Finish your step on a task you claimed with a done record. 'passed' moves it to the next step; 'failed' sends it back for another round with your summary as the fix list (or to the user once its rounds are used up); 'needs-you' stops it for the user. Always include evidence: commands run and their exit codes, links, ids, file paths, totals. In a flow, put what your step made in `output` with every field your step must fill — a record missing one is refused, so fill it and call again.",
+      "Finish your step on a task you claimed with a done record. 'passed' moves it to the next step; 'failed' sends it back for another round with your summary as the fix list (or to the user once its rounds are used up); 'needs-you' stops it for the user. Always include evidence: commands run and their exit codes, links, ids, file paths, totals.",
     inputSchema: {
       type: "object",
       properties: {
@@ -260,31 +250,6 @@ function handleGoalTool(store, ctx = {}, toolName, args = {}) {
   try {
     switch (toolName) {
       case "create_goal": {
-        // Its flow: named, or the one this bot starts the work of.
-        let flow = null;
-        if (ctx.flows) {
-          const found = ctx.flows.resolve({
-            name: a.flow,
-            botId: ctx.botId,
-            workspaceId: ws,
-          });
-          if (found && found.error) return fail(found.error);
-          flow = found || null;
-        }
-        const ref =
-          a.source && typeof a.source.ref === "string" ? a.source.ref : "";
-        if (flow && ref) {
-          const already = store.findBySource({
-            workspaceId: ws,
-            flowId: flow.id,
-            ref,
-          });
-          if (already) {
-            return ok(
-              `Already in "${flow.name}": goal ${already.id} (${already.title}) came from ${ref}. Nothing new was started.`,
-            );
-          }
-        }
         const criteria = Array.isArray(a.criteria)
           ? a.criteria
               .filter((c) => typeof c === "string" && c.trim())
@@ -294,10 +259,6 @@ function handleGoalTool(store, ctx = {}, toolName, args = {}) {
                 text: c.trim().slice(0, 400),
               }))
           : [];
-        const proven =
-          ctx.flows && ctx.flows.proveCriteria
-            ? ctx.flows.proveCriteria(criteria, flow)
-            : { criteria, waiting: false };
         const r = store.createGoal({
           workspaceId: ws,
           title: a.title,
@@ -305,23 +266,11 @@ function handleGoalTool(store, ctx = {}, toolName, args = {}) {
           source: a.source,
           conversationId: ctx.conversationId || null,
           createdBy: { botId: ctx.botId || null, botName: ctx.botName || null },
-          flow,
-          criteria: proven.criteria,
-          waiting: proven.waiting,
-          ...(flow && a.output !== undefined ? { sourceOutput: a.output } : {}),
+          criteria,
         });
         if (r.error) return fail(r.error);
         follow(ctx, r.goal.id, null);
         const p = store.paths(r.goal.id);
-        if (flow) {
-          return ok(
-            `Started goal ${r.goal.id}: ${r.goal.title}\nIt follows the "${flow.name}" flow: its steps pick the work up from here.${
-              proven.waiting
-                ? "\nIt waits for the user before it starts: a criterion has no way to be proven yet."
-                : ""
-            }\nWork folder: ${p.work}\nEvidence folder: ${p.evidence}`,
-          );
-        }
         return ok(
           `Started goal ${r.goal.id}: ${r.goal.title}\nAdd its tasks with add_task.\nWork folder: ${p.work}\nEvidence folder: ${p.evidence}`,
         );

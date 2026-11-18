@@ -463,3 +463,60 @@ describe("BotRunHistory — problems on the run row (issues PRD)", () => {
     expect(screen.getAllByTestId("tool-call-error")).toHaveLength(1);
   });
 });
+
+test("a run held for its checks says what they did, and opens its job (DASH-13)", async () => {
+  const held = {
+    status: "completed",
+    trigger: "manual",
+    startedAt: "2026-11-18T10:00:00Z",
+    output: "A haiku",
+    checks: { goalId: "g1", state: "passed" },
+  };
+  window.mainApi = {
+    bots: { getRuns: jest.fn().mockResolvedValue([held]) },
+    goals: {
+      list: jest.fn().mockResolvedValue([
+        {
+          id: "g1",
+          workspaceId: 7,
+          flow: { kind: "bot-checks", steps: [] },
+          tasks: [],
+        },
+      ]),
+      onChange: jest.fn(),
+    },
+  };
+  render(<BotRunHistory bot={{ id: "b1", name: "Writer", workspaceId: 7 }} />);
+  const line = await screen.findByTestId("run-checks-line");
+  expect(line).toHaveTextContent("Held for its checks · passed: handed on");
+  const seen = jest.fn();
+  window.addEventListener("dash:open-job", seen);
+  fireEvent.click(await screen.findByRole("button", { name: "Open the job" }));
+  window.removeEventListener("dash:open-job", seen);
+  expect(seen.mock.calls[0][0].detail).toEqual({
+    workspaceId: 7,
+    goalId: "g1",
+  });
+  delete window.mainApi;
+});
+
+test("a retry from its checks says Retry, not Flow (DASH-13)", async () => {
+  window.mainApi = {
+    bots: {
+      getRuns: jest.fn().mockResolvedValue([
+        {
+          status: "completed",
+          trigger: "flow",
+          startedAt: "2026-11-18T10:01:00Z",
+          output: "Again",
+          checks: { goalId: "g1", state: "checking" },
+        },
+      ]),
+    },
+  };
+  render(<BotRunHistory bot={{ id: "b1", name: "Writer" }} />);
+  const row = await screen.findByTestId("run-row");
+  expect(row).toHaveTextContent("Retry");
+  expect(row).not.toHaveTextContent("Flow");
+  delete window.mainApi;
+});
