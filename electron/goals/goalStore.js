@@ -756,6 +756,12 @@ function createGoalStore({
       summary: action === "send-back" ? reason : "",
       evidence: [],
       at: now(),
+      // A bot's checks job that's closed failed: its Failed event goes out
+      // (DASH-12). `dash`: Dash closed it (out of tries, or "It fails").
+      ...(action === "close" && goal.flow && goal.flow.kind === "bot-checks"
+        ? { failed: true }
+        : {}),
+      ...(action === "close" && move && move.dash ? { dash: true } : {}),
     };
     applyMove(task, next, record);
     return { task };

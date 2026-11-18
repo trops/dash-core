@@ -12,6 +12,7 @@ const GOAL_LABEL = {
   ready: "Ready",
   done: "Done",
   closed: "Closed",
+  failed: "Failed",
 };
 
 // StatusBadge states: the colour reads the same in every theme.
@@ -22,6 +23,7 @@ const GOAL_STATE = {
   ready: "warning",
   done: "success",
   closed: "neutral",
+  failed: "error",
 };
 
 const TASK_LABEL = {
@@ -50,6 +52,22 @@ export const goalLabel = (status) => GOAL_LABEL[status] || "Working";
 export const goalState = (status) => GOAL_STATE[status] || "info";
 export const taskLabel = (status) => TASK_LABEL[status] || status || "";
 export const taskState = (status) => TASK_STATE[status] || "neutral";
+
+/**
+ * The status a goal shows: a bot's job that ended without passing
+ * "failed" (its Failed event went out, DASH-12), otherwise its own.
+ */
+export function shownStatus(goal) {
+  const s = goal && goal.status;
+  const botJob = !!(goal && goal.flow && goal.flow.kind === "bot-checks");
+  if (!botJob || !(s === "closed" || goal.closed)) return s;
+  // Its close sent its Failed event (marked since DASH-12).
+  const task = (goal.tasks || [])[0];
+  const close = [...((task && task.history) || [])]
+    .reverse()
+    .find((r) => r && r.status === "close");
+  return close && close.failed ? "failed" : s;
+}
 
 /** Which filter a goal falls under: needs-you, working or done. */
 export function goalBucket(goal) {

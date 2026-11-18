@@ -43,7 +43,7 @@ import {
   wireChange,
 } from "./widgetDiagram";
 import { BotChecksModal } from "./BotChecksModal";
-import { waitingJobs } from "./checksView";
+import { liveChecks } from "./checksView";
 import { useGoals } from "../../hooks/useGoals";
 import { applyWiringChanges } from "../../utils/listenerResolution";
 import { applyBulkUserPrefs } from "../../utils/applyBulkUserPrefs";
@@ -590,8 +590,8 @@ export const BotsView = ({
 
   const status = selected && team ? team.statusOf(selected.id) : "Idle";
 
-  // A bot's own checks (bot-checks CHK-002): the window from its checks
-  // card, and its jobs waiting for you on that card.
+  // A bot's own checks (bot-checks CHK-002): the window from its box, and
+  // what they're doing now (DASH-12) — a click on a job opens it in Jobs.
   const { goals } = useGoals(workspace ? workspace.id : null);
   const [checksFor, setChecksFor] = useState(null);
   const checksBot = checksFor ? findBot(checksFor) : null;
@@ -975,8 +975,25 @@ export const BotsView = ({
           onAskWidget={askAboutWidget}
           onRemoveWidgetLine={removeWidgetLine}
           findWidgetTarget={targetFor}
-          waitingFor={(id) => waitingJobs(goals, id)}
+          liveFor={(id) =>
+            liveChecks(goals, id, {
+              // Pause all holds a started job's next try (a bot paused on
+              // its own finishes it).
+              paused: !!(
+                team &&
+                team.allPaused &&
+                team.statusOf(id) !== "Running"
+              ),
+            })
+          }
           onOpenChecks={(id) => setChecksFor(id)}
+          onOpenJob={(goalId, workspaceId) =>
+            window.dispatchEvent(
+              new CustomEvent("dash:open-job", {
+                detail: { workspaceId, goalId },
+              }),
+            )
+          }
         />
       </div>
       <div className={`px-4 py-3 border-t ${hairline}`}>{teamActions}</div>

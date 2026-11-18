@@ -4,6 +4,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { whenText } from "../Issues/issueText";
 import {
   goalLabel,
+  shownStatus,
   goalLine,
   goalState,
   roundText,
@@ -45,8 +46,8 @@ export const GoalRow = ({ goal, active = false, onClick, now }) => {
       >
         <span className="flex flex-row items-center gap-2 min-w-0">
           <StatusBadge
-            state={goalState(goal.status)}
-            label={goalLabel(goal.status)}
+            state={goalState(shownStatus(goal))}
+            label={goalLabel(shownStatus(goal))}
           />
           <span className={`text-sm font-semibold truncate flex-1 ${strong}`}>
             {goal.title}

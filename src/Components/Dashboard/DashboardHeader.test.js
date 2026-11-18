@@ -51,6 +51,33 @@ describe("DashboardHeader — Dashboard | Bots switch (TEAM-011)", () => {
     expect(screen.getByLabelText("3 need attention")).toBeInTheDocument();
   });
 
+  it("Jobs: amber when one needs you, grey while jobs are worked on (DASH-12)", () => {
+    const { rerender } = renderHeader({
+      stageMode: "dashboard",
+      onStageModeChange: jest.fn(),
+      goalsAttention: 0,
+      goalsWorking: 2,
+    });
+    expect(screen.getByLabelText("2 being worked on")).toHaveClass(
+      "bg-gray-600",
+    );
+    expect(screen.queryByLabelText(/need you/)).toBeNull();
+    rerender(
+      <ThemeContext.Provider value={{ currentTheme: {}, themes: {} }}>
+        <DashboardHeader
+          workspace={workspace}
+          preview
+          stageMode="dashboard"
+          onStageModeChange={jest.fn()}
+          goalsAttention={1}
+          goalsWorking={2}
+        />
+      </ThemeContext.Provider>,
+    );
+    expect(screen.getByLabelText("1 need you")).toHaveClass("bg-amber-500");
+    expect(screen.queryByLabelText(/being worked on/)).toBeNull();
+  });
+
   it("no badge when nothing needs attention", () => {
     renderHeader({
       stageMode: "bots",

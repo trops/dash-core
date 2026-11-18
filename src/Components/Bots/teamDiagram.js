@@ -112,7 +112,7 @@ export function thenTriggers(botId, members = []) {
 /**
  * Card positions: the lead centred on top, the team's bots in rows below —
  * one row when it fits, otherwise wrapped so cards never get narrower than
- * `minW`.
+ * `minW`. `cardH`: the bots' boxes; `leadH`: the lead's (its own height).
  */
 export function diagramLayout({
   width,
@@ -121,6 +121,7 @@ export function diagramLayout({
   minW = 200,
   maxW = 240,
   cardH = 76,
+  leadH = cardH,
   leadTop = 24,
   rowTop = 190,
   rowH = 170,
@@ -154,10 +155,10 @@ export function diagramLayout({
     cardH,
     gap,
     lead: { x: (avail - leadW) / 2, y: leadTop, w: leadW },
-    busY: Math.round((leadTop + cardH + rowTop) / 2),
+    busY: Math.round((leadTop + leadH + rowTop) / 2),
     cards,
     width: avail,
-    height: (n ? rowTop + (rows - 1) * rowH + cardH : leadTop + cardH) + 110,
+    height: (n ? rowTop + (rows - 1) * rowH + cardH : leadTop + leadH) + 110,
   };
 }
 

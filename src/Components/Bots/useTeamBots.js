@@ -97,6 +97,15 @@ export function useTeamBots(workspaceId) {
     refresh();
   }, [refresh]);
 
+  // A bot paused or resumed elsewhere (a job's Resume): read it again.
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onChange = () => refresh();
+    window.addEventListener("dash:bots-pause-changed", onChange);
+    return () =>
+      window.removeEventListener("dash:bots-pause-changed", onChange);
+  }, [refresh]);
+
   // Live updates from the main process.
   useEffect(() => {
     const bots_ = api();
@@ -169,6 +178,9 @@ export function useTeamBots(workspaceId) {
         approvals,
         lastRun: lastRunByBot[botId] || null,
       });
+    // All bots paused: a started job's next try waits (a bot paused on
+    // its own still finishes jobs it started, DASH-12).
+    const allPaused = !!(paused && paused.global);
     const approvalsFor = (botId) =>
       approvals.filter((a) => a && a.request && a.request.botId === botId);
     return {
@@ -180,6 +192,7 @@ export function useTeamBots(workspaceId) {
       approvals,
       lastRunByBot,
       statusOf,
+      allPaused,
       approvalsFor,
       attention: attentionCount({
         botIds: bots.map((b) => b.id),

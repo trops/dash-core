@@ -1420,6 +1420,42 @@ const botController = {
     );
   },
 
+  /**
+   * A run that finishes a bot's checks job already started (its retry, a
+   * reviewer's verdict — DASH-12): a bot paused on its own still does it,
+   * as a test run does; Pause all still stops it. Unlike _asUserRun it
+   * isn't a run the user started, so the bots it asks stay paused.
+   */
+  _asJobRun(botId, start) {
+    if (!this._testRuns) this._testRuns = new Map();
+    const testRun =
+      this._pause.isPaused(botId) && !this._pause.isGloballyPaused();
+    if (!testRun) return start();
+    this._testRuns.set(botId, (this._testRuns.get(botId) || 0) + 1);
+    const done = () => {
+      const left = (this._testRuns.get(botId) || 1) - 1;
+      if (left > 0) this._testRuns.set(botId, left);
+      else this._testRuns.delete(botId);
+    };
+    let started;
+    try {
+      started = start();
+    } catch (err) {
+      done();
+      throw err;
+    }
+    return Promise.resolve(started).then(
+      (record) => {
+        done();
+        return record;
+      },
+      (err) => {
+        done();
+        throw err;
+      },
+    );
+  },
+
   /** A run the user started is going on this bot (see _asUserRun). */
   _inUserRun(botId) {
     return !!this._userRuns && this._userRuns.has(botId);

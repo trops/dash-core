@@ -25,7 +25,7 @@ const listens = (bot, w, event = "completed") => ({
   event,
 });
 
-function route({ width, side, members, widgets, edges, outX = {} }) {
+function route({ width, side, members, widgets, edges }) {
   const teamWidth = side ? width - W_COL - 40 : width;
   const layout = diagramLayout({
     width: teamWidth,
@@ -39,7 +39,6 @@ function route({ width, side, members, widgets, edges, outX = {} }) {
       id: b.id,
       ...layout.cards[i],
       w: layout.cardW,
-      ...(outX[b.id] != null ? { outX: outX[b.id] } : {}),
     })),
     cols: layout.cols,
     cardH: CARD_H,
@@ -156,16 +155,16 @@ describe("routeWidgets: wide (a column right of the team)", () => {
     expectClear(one);
   });
 
-  it("a bot with checks: its line leaves from below its checks card (CHK-002)", () => {
-    const { r } = route({
+  it("a line from below a bot leaves from the circle under its middle (DASH-12)", () => {
+    const { r, team } = route({
       width: 1240,
       side: true,
       members,
       widgets: [widget("w0")],
       edges: [results("b0", "w0")],
-      outX: { b0: 150 },
     });
-    expect(r.lines[0].segments[0][0]).toBe(150);
+    const b0 = team.cards[0];
+    expect(r.lines[0].segments[0][0]).toBe(b0.x + b0.w / 2);
   });
 
   it("lines into one widget come in at different heights", () => {
