@@ -731,7 +731,7 @@ const BuildChoices = ({ chat, state, build, actions }) => {
             )
           ) : null}
           <Button2
-            title="Leave it off"
+            title={chat.leave || "Leave it out"}
             onClick={() => actions.leaveOff(build.buildId, pieceKey(step))}
           />
         </div>
@@ -741,8 +741,9 @@ const BuildChoices = ({ chat, state, build, actions }) => {
           </span>
         ) : step.fixesUsedUp ? (
           <span className={`text-xs ${muted}`}>
-            The Builder tried everything it could — leave it off, or say what to
-            change.
+            {`The Builder tried everything it could — say what to change, or ${(
+              chat.leave || "Leave it out"
+            ).toLowerCase()}.`}
           </span>
         ) : null}
       </div>

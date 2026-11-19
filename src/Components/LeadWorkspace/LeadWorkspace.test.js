@@ -1873,7 +1873,7 @@ describe("release 3b: building in the conversation", () => {
         .find((r) => r.textContent.startsWith("Builder")),
     ).toHaveTextContent("Builder · failed");
     c = chat();
-    fireEvent.click(within(c).getByRole("button", { name: "Leave it off" }));
+    fireEvent.click(within(c).getByRole("button", { name: "Leave it out" }));
     c = chat();
     expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
       "Camera strip is left off.",

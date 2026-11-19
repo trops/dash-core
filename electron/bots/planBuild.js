@@ -1200,6 +1200,15 @@ function buildOutcome(record) {
     (built && String(built.package).toLowerCase()) ||
     builtPackage(record && record.output);
   if (pkg) return { package: pkg, draft: (built && built.draft) || null };
+  // Written, but it doesn't match what the user chose yet (held to their
+  // choices): say what, on one line — the chat shows the first line.
+  const lastOk = last((b) => b && b.ok);
+  const unmatched = lastOk && lastOk.said ? mismatchLine(lastOk.said) : "";
+  if (unmatched) {
+    return {
+      error: `the draft doesn't match what you chose: ${unmatched}`,
+    };
+  }
   const failed = last((b) => b && !b.ok);
   const said =
     failed && failed.error ? String(failed.error).split("\n")[0].trim() : "";
@@ -1210,6 +1219,24 @@ function buildOutcome(record) {
         ? "the Builder didn't build it"
         : "the Builder didn't build it — it never called build_widget",
   };
+}
+
+/**
+ * build_widget's "doesn't match what the user chose" list, on one line:
+ * "shows past events (you chose: today only); …" — or "" when it isn't one.
+ */
+function mismatchLine(said) {
+  const text = String(said || "");
+  if (!/doesn't match what the user chose/i.test(text)) return "";
+  const items = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("- "))
+    .map((l) => {
+      const m = l.slice(2).match(/^(.*?)\s+—\s+they chose:\s+(.*)$/);
+      return m ? `${m[1]} (you chose: ${m[2]})` : l.slice(2);
+    });
+  return items.length ? items.join("; ") : "it doesn't do what you chose yet";
 }
 
 /** "VERDICT: PASSED" / "FAILED" at the end of the Checker's answer. */
