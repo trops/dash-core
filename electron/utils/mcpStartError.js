@@ -17,8 +17,14 @@ const MAX_REASON = 300;
 // SDK messages that say nothing about the cause.
 const UNINFORMATIVE = /connection closed|-32000|process exited|terminated/i;
 // A line worth showing.
+// (A script it can't read — "python3: can't open file …: [Errno 1] Operation
+// not permitted" — says none of the usual words.)
 const ERRORISH =
-  /error|required|fatal|denied|not found|invalid|missing|unauthori[sz]ed|forbidden|failed/i;
+  /error|required|fatal|denied|not found|invalid|missing|unauthori[sz]ed|forbidden|failed|not permitted|permission denied|can['’]t open|cannot open|no such file|errno/i;
+// macOS keeps apps out of these folders until the user allows them.
+const PROTECTED_FOLDER = /\/Users\/[^/]+\/(Documents|Desktop|Downloads)\//;
+const FOLDER_BLOCKED =
+  "macOS is blocking Dash from that folder — allow it in System Settings › Privacy & Security › Files & Folders, or move the file out of Documents, Desktop or Downloads.";
 // Noise around a crash: stack frames, Node banners, the npx wrapper.
 const NOISE = [
   /^at\s/,
@@ -92,7 +98,12 @@ function describeStartFailure({ serverName, message, stderr }) {
   let reason = redact(raw).replace(/[.\s]+$/, "");
   if (reason.length > MAX_REASON)
     reason = reason.slice(0, MAX_REASON).trimEnd() + "…";
-  return `${name} couldn't start: ${reason}. ${NEXT_STEP}`;
+  // Kept out of a protected folder: the fix is in macOS, not the provider.
+  const next =
+    /not permitted/i.test(raw) && PROTECTED_FOLDER.test(raw)
+      ? FOLDER_BLOCKED
+      : NEXT_STEP;
+  return `${name} couldn't start: ${reason}. ${next}`;
 }
 
 /**

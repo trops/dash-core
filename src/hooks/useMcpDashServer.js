@@ -117,6 +117,7 @@ export function useMcpDashServer() {
     uptime: status.uptime,
     toolCount: status.toolCount,
     resourceCount: status.resourceCount,
+    certPath: status.certPath || null,
     token,
     loading,
     error,

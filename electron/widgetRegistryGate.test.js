@@ -290,6 +290,23 @@ describe("publish", () => {
     );
     assert.match(src, /\.\.\.\(warnings \? \{ warnings \} : \{\}\)/);
   });
+  it("a widget kept at a version the registry has is skipped before anything is checked or rewritten (DASH-22)", () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, "controller", "widgetRegistryController.js"),
+      "utf8",
+    );
+    const fn = src.indexOf("async function prepareWidgetForPublish(");
+    const skip = src.indexOf("skipped: true", fn);
+    for (const later of [
+      "applyScanToPackageJson(",
+      "scanForPersonalPaths(",
+      "checkPackage(",
+      "// 4. Compute + persist new version",
+    ]) {
+      const at = src.indexOf(later, fn);
+      assert.ok(skip > fn && skip < at, later);
+    }
+  });
   it("prepareWidgetForPublish checks before it bumps the version or zips", () => {
     const src = fs.readFileSync(
       path.join(__dirname, "controller", "widgetRegistryController.js"),

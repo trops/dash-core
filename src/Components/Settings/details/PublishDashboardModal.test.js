@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { PublishDashboardModal } from "./PublishDashboardModal";
+import { PublishDashboardModal, seedSelections } from "./PublishDashboardModal";
 
 // Mock IconPicker
 jest.mock("./IconPicker", () => ({
@@ -419,5 +419,35 @@ describe("PublishDashboardModal", () => {
       ).toBeInTheDocument();
       expect(screen.queryByText("Sign in to Registry")).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("which version a widget goes up as (DASH-22)", () => {
+  const plan = (packageVersion, latestVersion, localVersion = "0.9.0") => ({
+    callerScope: "trops",
+    widgets: [
+      {
+        scope: "ai-built",
+        packageName: "smarthomedevices",
+        publishScope: "trops",
+        requiresRepublish: true,
+        localVersion,
+        packageVersion,
+        registry: latestVersion
+          ? { exists: true, ownedByMe: true, latestVersion }
+          : null,
+      },
+    ],
+  });
+  const bump = (p) =>
+    seedSelections(p, "public")["ai-built/smarthomedevices"].bump;
+  test("the registry has its own version: a patch, whatever the dashboard recorded", () => {
+    expect(bump(plan("1.0.0", "1.0.0"))).toBe("patch");
+    expect(bump(plan("1.0.0", "1.0.3"))).toBe("patch");
+  });
+  test("newer than the registry, or not in it: as it is", () => {
+    expect(bump(plan("1.0.4", "1.0.3"))).toBe("none");
+    expect(bump(plan("1.0.0", null))).toBe("none");
+    expect(bump(plan("1.0.10", "1.0.9"))).toBe("none");
   });
 });

@@ -106,6 +106,24 @@ function nextFreeVersion(localVersion, info) {
 }
 
 /**
+ * The version a widget publish sends (DASH-22): the one it would send, or —
+ * when the registry already has that one — the next free one; or, kept on
+ * purpose (a dashboard's "Keep current version"), nothing: what's there is
+ * used.
+ *
+ * @param {string} version  the version it would send
+ * @param {object|null|"unreachable"} info  getPackageInfo's answer
+ * @param {boolean} keep
+ * @returns {{version: string, taken?: string, skip?: true}}
+ */
+function publishVersion(version, info, keep = false) {
+  const taken = info && typeof info === "object" ? info.versions || [] : [];
+  if (!taken.includes(version)) return { version };
+  if (keep) return { version, skip: true };
+  return { version: freeVersion(version, taken), taken: version };
+}
+
+/**
  * Why `pkg` can't be published as a `kind` package, or null. Mirrors the
  * registry's rule: a package keeps its kind.
  */
@@ -334,6 +352,7 @@ module.exports = {
   isOwnScope,
   themeKeyFor,
   planPackagePublish,
+  publishVersion,
   resolveForInstall,
   packageDownloadUrl,
   getPackageInfo,

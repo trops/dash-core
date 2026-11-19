@@ -667,6 +667,37 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
     const parsedName = parsePackageName(pkgJson.name || "");
     const resolvedScope = options.scope || callerScope;
 
+    // What the registry already has of it (DASH-22) — asked before
+    // anything is checked or rewritten, so a widget kept at a version the
+    // registry has (`keepIfPublished`, a dashboard's "Keep current
+    // version") is left exactly as it is: nothing changes, nothing is sent,
+    // what's there is used.
+    const {
+      getPackageInfo,
+      publishVersion,
+    } = require("../registry/registryPackages");
+    const registryInfo = options.version
+      ? null
+      : await getPackageInfo(
+          `@${resolvedScope}/${parsedName.name || pkgJson.name}`,
+        ).catch(() => null);
+    if (options.keepIfPublished && !options.version) {
+      const was = pkgJson.version || "1.0.0";
+      const kept = publishVersion(
+        resolveNextVersion(was, options),
+        registryInfo,
+        true,
+      );
+      if (kept.skip) {
+        return {
+          success: true,
+          skipped: true,
+          previousVersion: was,
+          newVersion: was,
+        };
+      }
+    }
+
     // Slice 13a: scan source for MCP usage and refresh the
     // `dash.permissions.mcp` block in package.json BEFORE the zip is
     // built. Always runs (even when a manifest exists) — catches
@@ -764,7 +795,15 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
 
     // 4. Compute + persist new version
     const previousVersion = pkgJson.version || "1.0.0";
-    const newVersion = resolveNextVersion(previousVersion, options);
+    let newVersion = resolveNextVersion(previousVersion, options);
+    // The registry keeps each version once (DASH-22): one it already has
+    // goes up as the next free one (a kept one was skipped above).
+    let versionTaken = null;
+    if (!options.version) {
+      const chosen = publishVersion(newVersion, registryInfo);
+      versionTaken = chosen.taken || null;
+      newVersion = chosen.version;
+    }
     if (newVersion !== previousVersion) {
       pkgJson.version = newVersion;
       // Persist the bump to BOTH metadata files when present — NOT one or the
@@ -962,6 +1001,7 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       registryResult,
       previousVersion,
       newVersion,
+      ...(versionTaken ? { versionTaken } : {}),
       ...(warnings ? { warnings } : {}),
     };
   } catch (error) {
