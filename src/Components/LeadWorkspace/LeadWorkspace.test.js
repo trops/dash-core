@@ -1837,17 +1837,22 @@ describe("release 3b: building in the conversation", () => {
       within(builder).getByRole("button", { name: "Build log ›" }),
     );
     const log = screen.getByTestId("workspace-build-log");
-    expect(log).toHaveTextContent("In progress");
+    // Every step from the start (DASH-20): where it is, and who's next.
     expect(
-      screen
-        .getAllByTestId("workspace-build-log-row")
-        .map((r) => r.textContent),
-    ).toEqual([
-      '21:14Create the "Home" dashboard',
-      "21:15Build Lights panel",
-      "21:16Check Lights panel",
-      "21:16Build Camera strip…",
+      within(log).getByTestId("workspace-build-log-head"),
+    ).toHaveTextContent(/^Step 4 of 7 · building for/);
+    const logRows = screen.getAllByTestId("workspace-build-log-row");
+    expect(logRows.map((r) => r.getAttribute("data-state"))).toEqual([
+      "done",
+      "done",
+      "done",
+      "running",
+      "next",
+      "next",
+      "next",
     ]);
+    expect(logRows[3]).toHaveTextContent("Builder · writing the draft");
+    expect(logRows[4]).toHaveTextContent("Check Camera stripChecker · next");
   });
 
   test("a failure: Let the Builder fix it, or leave it off — then Open Home (frames 33, 8)", async () => {

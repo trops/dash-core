@@ -16,7 +16,7 @@ import {
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { normalizeType } from "../Create/planChecklist";
-import { toolName } from "./handoffSteps";
+import { readableRequest, toolName } from "./handoffSteps";
 import { WhoWorks } from "./ModelInfo";
 import { BeforeItBuilds, OutputCard, PlanNext, PlanOutput } from "./PlanViews";
 import { BotTestOutput } from "./BotTestOutput";
@@ -29,7 +29,10 @@ import {
 import {
   buildMemberState,
   buildPlanLine,
+  activityText,
   buildStatus,
+  liveActivityOf,
+  logTime,
   waitingFor,
 } from "./workspaceBuild";
 import { planTarget } from "../../utils/teamPlan";
@@ -117,6 +120,28 @@ function useLiveLines(botIds) {
       if (id != null && b.removeListener) b.removeListener(id);
     };
   }, [key]);
+  return lines;
+}
+
+/**
+ * What a bot is doing, line by line, while `on` — its tool calls from its
+ * stream, with times (the last 12). Starts over when the bot changes.
+ */
+function useLiveActivity(botId, on) {
+  const [lines, setLines] = useState([]);
+  useEffect(() => {
+    setLines([]);
+    const b = botsApi();
+    if (!b || !b.onStream || !botId || !on) return undefined;
+    const id = b.onStream(({ botId: who, event } = {}) => {
+      if (who !== botId) return;
+      const a = liveActivityOf(event, new Date().toISOString());
+      if (a) setLines((cur) => [...cur, a].slice(-12));
+    });
+    return () => {
+      if (id != null && b.removeListener) b.removeListener(id);
+    };
+  }, [botId, on]);
   return lines;
 }
 
@@ -294,6 +319,18 @@ export const WorkspaceSide = ({
     contact && contact.kind === "bot" ? contact.botId : null,
   );
   const steps = (messages || []).filter((m) => m && m.who === "step");
+  // A step opened on the right — while it works, what it's doing (DASH-20).
+  const step =
+    open && open !== "plan" ? steps.find((s) => s.id === open) || null : null;
+  const stepBot = step
+    ? [...((contact && contact.members) || []), ...(dashTeam || [])].find(
+        (m) => norm(m.name) === norm(step.bot),
+      ) || null
+    : null;
+  const stepActivity = useLiveActivity(
+    stepBot ? stepBot.id : null,
+    !!step && step.status === "asking",
+  );
   // A dashboard lead that brought in the Dash team (release 3c): the team
   // shows under its own bots, "brought in by" it.
   // Only the roles in it (frames 18, 30): asked, building, or — a plan
@@ -411,6 +448,13 @@ export const WorkspaceSide = ({
       <BuildLogOutput
         build={build}
         state={buildState}
+        title={
+          plan
+            ? plan.widgetChange
+              ? `Change ${planName(plan)}`
+              : planName(plan)
+            : null
+        }
         onRemoved={() => onOpen(null)}
       />,
     );
@@ -453,8 +497,6 @@ export const WorkspaceSide = ({
   if (earlierStep && wp) {
     return opened(<PlanOutput wp={wp} plan={earlierStep.plan} />);
   }
-  const step =
-    open && open !== "plan" ? steps.find((s) => s.id === open) || null : null;
   if (step) {
     return opened(
       <>
@@ -467,7 +509,9 @@ export const WorkspaceSide = ({
         {step.request ? (
           <div className="flex flex-col gap-1">
             <span className={`text-xs ${muted}`}>What it was asked</span>
-            <span className="text-sm whitespace-pre-wrap">{step.request}</span>
+            <span className="text-sm whitespace-pre-wrap">
+              {readableRequest(step.request)}
+            </span>
           </div>
         ) : null}
         <div
@@ -477,6 +521,20 @@ export const WorkspaceSide = ({
           <span className={`text-xs ${muted}`}>
             {step.status === "asking" ? "Working on it…" : "Its answer"}
           </span>
+          {step.status === "asking" && stepActivity.length ? (
+            // What it's doing, as it goes (DASH-20).
+            <div className={`flex flex-col gap-1 border-l-2 pl-3 ${hairline}`}>
+              {stepActivity.map((a, i) => (
+                <span
+                  key={i}
+                  className={`font-mono text-xs ${i === stepActivity.length - 1 ? strong : muted}`}
+                  data-testid="workspace-step-activity"
+                >
+                  {`${logTime(a.at)} · ${activityText(a)}`}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <span className="text-sm whitespace-pre-wrap">
             {step.answer || ""}
           </span>

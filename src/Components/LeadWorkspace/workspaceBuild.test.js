@@ -6,8 +6,11 @@
 import {
   buildChat,
   buildKind,
-  buildLogLine,
-  buildLogRows,
+  activityText,
+  liveActivityOf,
+  buildLogHead,
+  buildLogSteps,
+  logDuration,
   buildMemberState,
   buildOptions,
   buildPlanLine,
@@ -191,38 +194,255 @@ describe("the plan's line and status", () => {
 });
 
 describe("the Build log and the Check report", () => {
-  test("a row per step that started, with its time; failures say why", () => {
-    const rows = buildLogRows(FAILED);
-    expect(rows.map((r) => r.time)).toEqual([
-      "21:14",
-      "21:15",
-      "21:16",
-      "21:17",
-      "",
-      "21:18",
-      "",
+  test("every step from the start: done, running, to come; the head says where", () => {
+    const now = Date.parse(at(21, 18)) + 40000;
+    const rows = buildLogSteps(RUNNING, [], { now });
+    expect(rows.map((r) => r.state)).toEqual([
+      "done",
+      "done",
+      "done",
+      "running",
+      "next",
+      "next",
+      "next",
     ]);
-    expect(rows[1]).toEqual({
-      time: "21:15",
-      text: "Build Lights panel",
-      tone: "",
+    expect(rows[3]).toMatchObject({
+      who: "Builder",
+      now: "Builder · writing the draft",
+      side: "started 21:16 · 2m 40s",
     });
-    expect(rows[3]).toEqual({
-      time: "21:17",
-      text: "Build Camera strip — cameras timed out after 30s",
+    expect(rows[4].side).toBe("Checker · next");
+    expect(rows[5].side).toBe("");
+    expect(rows[2].side).toMatch(/^passed/);
+    expect(buildLogHead(RUNNING, [], { now })).toEqual({
+      lead: "Step 4 of 7",
+      rest: "building for 4m 40s",
+      tone: "running",
+    });
+  });
+
+  test("a step that can't finish says why once; the steps after it say not started", () => {
+    const rows = buildLogSteps(FAILED);
+    expect(rows[3]).toMatchObject({
+      state: "bad",
+      note: "Cameras timed out after 30s",
+      side: "21:16 – 21:17",
+    });
+    expect(rows[4]).toMatchObject({ state: "off", side: "not started" });
+    expect(rows[4].note).toBe("");
+    expect(buildLogSteps(FAILED, ["piece:1"])[3]).toMatchObject({
+      state: "warn",
+      side: "left off",
+    });
+    expect(buildLogHead(FAILED)).toEqual({
+      lead: "Stopped at step 4 of 7",
+      rest: "4m 00s",
       tone: "bad",
     });
-    expect(rows[4].text).toBe(
-      "Check Camera strip — skipped: Build Camera strip didn't finish",
-    );
-    expect(buildLogRows(FAILED, ["piece:1"])[3]).toEqual({
-      time: "21:17",
-      text: "Build Camera strip — left off",
-      tone: "warn",
+    expect(buildLogHead(DONE)).toEqual({
+      lead: "Done",
+      rest: "7 steps in 6m 00s",
+      tone: "ok",
     });
-    expect(buildLogLine(RUNNING)).toBe("In progress");
-    expect(buildLogLine(FAILED)).toBe("Stopped on 1 step");
-    expect(buildLogLine(DONE)).toBe("Finished in 6 min");
+  });
+
+  test("a try sent back shows on its step, with why; the head counts it", () => {
+    const tried = {
+      ...DONE,
+      steps: DONE.steps.map((s) =>
+        s.id === "build:1"
+          ? {
+              ...s,
+              startedAt: at(21, 16),
+              finishedAt: at(21, 19),
+              tries: [
+                {
+                  startedAt: at(21, 16),
+                  finishedAt: at(21, 17),
+                  by: "check",
+                  error: "1 thing doesn't match what the user chose",
+                  mismatch: [
+                    { main: "It shows past events", chose: "today only" },
+                  ],
+                },
+              ],
+            }
+          : s,
+      ),
+    };
+    const row = buildLogSteps(tried).find((r) => r.id === "build:1");
+    expect(row.badge).toBe("2nd try");
+    expect(row.side).toBe("2 tries · 3m 00s");
+    expect(row.tries).toEqual([
+      {
+        time: "21:17",
+        text: "1st try sent back — The draft didn't match what you chose: It shows past events (you chose: today only).",
+        tone: "warn",
+      },
+    ]);
+    // A line in the log, before what this try did.
+    expect(row.activity[0]).toEqual(row.tries[0]);
+    expect(buildLogHead(tried).rest).toBe("7 steps in 6m 00s · sent back once");
+  });
+
+  test("steps waiting for the user say so; the ones after them wait on it", () => {
+    const cell = {
+      status: "running",
+      startedAt: at(21, 0),
+      steps: [
+        step({
+          id: "build:0",
+          kind: "build",
+          role: "builder",
+          label: "Write the change into a draft",
+          status: "running",
+          startedAt: at(21, 0),
+        }),
+        step({
+          id: "check:0",
+          kind: "check",
+          role: "checker",
+          label: "Check the draft",
+        }),
+        step({
+          id: "preview:0",
+          kind: "preview",
+          role: "you",
+          label: "Preview it",
+        }),
+        step({ id: "save:0", kind: "save", label: "Update Calendar" }),
+      ],
+    };
+    expect(
+      buildLogSteps(cell, [], { now: Date.parse(at(21, 1)) }).map(
+        (r) => r.side,
+      ),
+    ).toEqual([
+      "started 21:00 · 1m 00s",
+      "Checker · next",
+      "waits for your look",
+      "after you say it looks good",
+    ]);
+    const stopped = {
+      ...cell,
+      status: "finished-with-problems",
+      steps: cell.steps.map((s) =>
+        s.id === "build:0" ? { ...s, status: "failed", error: "no" } : s,
+      ),
+    };
+    expect(buildLogSteps(stopped, [], { edit: true })[3].side).toBe(
+      "not started · your widget is unchanged",
+    );
+  });
+
+  test("at the user's look, what comes after waits on it; a stop or a cut-off says so once", () => {
+    const steps = [
+      step({
+        id: "build:0",
+        kind: "build",
+        role: "builder",
+        label: "Write the change into a draft",
+        status: "done",
+        startedAt: at(21, 0),
+        finishedAt: at(21, 2),
+      }),
+      step({
+        id: "check:0",
+        kind: "check",
+        role: "checker",
+        label: "Check the draft",
+        status: "done",
+        startedAt: at(21, 2),
+        finishedAt: at(21, 3),
+      }),
+      step({
+        id: "preview:0",
+        kind: "preview",
+        role: "you",
+        label: "Preview it",
+        status: "needs-you",
+      }),
+      step({ id: "save:0", kind: "save", label: "Update Calendar" }),
+    ];
+    const look = {
+      status: "waiting-for-you",
+      startedAt: at(21, 0),
+      finishedAt: at(21, 3),
+      steps,
+    };
+    expect(buildLogSteps(look, [], { edit: true }).map((r) => r.side)).toEqual([
+      "2m 00s",
+      "passed · 1m 00s",
+      "waiting for your look",
+      "after you say it looks good",
+    ]);
+    expect(buildLogHead(look).lead).toBe("Waiting for you at step 3 of 4");
+    const stopped = {
+      status: "stopped",
+      steps: [
+        step({ id: "a", label: "A", status: "done", finishedAt: at(21, 0) }),
+        step({ id: "b", label: "B", status: "stopped" }),
+        step({ id: "c", label: "C", status: "stopped" }),
+      ],
+    };
+    expect(buildLogSteps(stopped).map((r) => [r.state, r.side])).toEqual([
+      ["done", "21:00"],
+      ["warn", "stopped"],
+      ["off", "not started"],
+    ]);
+    const cut = {
+      status: "interrupted",
+      steps: [
+        step({ id: "a", label: "A", startedAt: at(21, 0) }),
+        step({ id: "b", label: "B" }),
+      ],
+    };
+    expect(buildLogSteps(cut).map((r) => r.side)).toEqual([
+      "interrupted",
+      "not started",
+    ]);
+  });
+
+  test("what a role did, in words", () => {
+    expect(activityText({ tool: "read_widget", what: "HaCalendar.js" })).toBe(
+      "Read HaCalendar.js",
+    );
+    expect(activityText({ tool: "widget_guide" })).toBe(
+      "Read the widget guide",
+    );
+    expect(activityText({ tool: "gmail_search", what: "today" })).toBe(
+      "Gmail search · today",
+    );
+    // The Claude CLI's tools, and a long answer it saved to read in parts.
+    expect(
+      activityText({
+        tool: "Grep",
+        what: "mcp-bot-mcp-widget_guide-1795094171452-q6uyzz.txt",
+      }),
+    ).toBe("Searched the widget guide");
+    expect(
+      activityText({ tool: "Read", what: "MusicAssistantPlayerHaMcp.js" }),
+    ).toBe("Read MusicAssistantPlayerHaMcp.js");
+    expect(activityText({ tool: "Glob", what: "Dash" })).toBe(
+      "Looked for files",
+    );
+    // A bot's live tool call, as the opened step lists it.
+    expect(
+      liveActivityOf(
+        {
+          type: "tool_call",
+          name: "mcp__dash__search_library",
+          args: '{"query":"clock"}',
+        },
+        "t",
+      ),
+    ).toEqual({ at: "t", tool: "search_library", what: "clock" });
+    expect(
+      liveActivityOf({ type: "tool_call", name: "memory_read" }, "t"),
+    ).toBe(null);
+    expect(liveActivityOf({ type: "text", text: "hi" }, "t")).toBe(null);
+    expect(logDuration(65000)).toBe("1m 05s");
+    expect(logDuration(3 * 3600000 + 60000)).toBe("3h 1m");
   });
 
   test("the Check report: each widget the Checker looked at", () => {
@@ -445,7 +665,7 @@ describe("seen live (release 3b)", () => {
     expect(buildChat(one).step.label).toBe(
       "Builder built 1 widget · Checker checked it",
     );
-    expect(buildLogRows(one).map((r) => r.text)).toEqual([
+    expect(buildLogSteps(one).map((r) => r.label)).toEqual([
       "Build Friday Countdown",
       "Check Friday Countdown",
       "Place Friday Countdown",

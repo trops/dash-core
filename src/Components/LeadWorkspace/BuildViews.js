@@ -6,6 +6,7 @@ import {
   ChatMessage,
   ConfirmationModal,
   FontAwesomeIcon,
+  Tag,
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
@@ -24,10 +25,10 @@ import { AnswerPart, WizardAnswer } from "./WidgetWizard/WizardAnswer";
 import { usePlanBuild } from "./usePlanBuild";
 import {
   buildChat,
-  buildLogLine,
+  buildLogHead,
+  buildLogSteps,
   buildPlanLine,
   isBuilding,
-  buildLogRows,
   checkLine,
   checkRows,
   heldRows,
@@ -839,17 +840,87 @@ const OutputHead = ({ from, title, sub }) => {
 };
 
 /**
- * The Build log, opened (frame 4): a row per step — its time and what
- * happened — then the bots it saved to try, and Remove what was built.
+ * A Build log step's mark: done, running, stopped on it, waiting on the
+ * user, or to come (a dashed ring for one that won't start this time).
  */
-export const BuildLogOutput = ({ build, state, onRemoved = null }) => {
-  const { muted, strong, hairline } = useConfigTokens();
+const StepMark = ({ state, tone, ring }) => {
+  if (state === "next" || state === "off")
+    return (
+      <span className="w-4 flex-shrink-0 pt-1">
+        <span
+          className={`block w-3.5 h-3.5 rounded-full border-2 ${state === "off" ? "border-dashed" : ""} ${ring}`}
+        />
+      </span>
+    );
+  const [name, color] = {
+    done: ["circle-check", tone.ok],
+    running: ["circle-notch", tone.running],
+    bad: ["circle-exclamation", tone.bad],
+    warn: ["circle-pause", tone.warn],
+    you: ["circle-user", tone.warn],
+  }[state] || ["circle", tone.idle];
+  return (
+    <span className="w-4 flex-shrink-0 pt-0.5">
+      <FontAwesomeIcon
+        icon={name}
+        spin={state === "running"}
+        className={color}
+      />
+    </span>
+  );
+};
+
+/** What the step's role did, with times — its earlier tries first. */
+const LogActivity = ({ activity, muted, strong, hairline, live, warn }) =>
+  activity.length ? (
+    <div className={`flex flex-col gap-1 border-l-2 pl-3 ${hairline}`}>
+      {activity.map((a, i) => (
+        <span
+          key={i}
+          className={`font-mono text-xs ${a.tone === "warn" ? warn : live && i === activity.length - 1 ? strong : muted}`}
+          data-testid={
+            a.tone === "warn"
+              ? "workspace-build-log-try"
+              : "workspace-build-log-activity"
+          }
+        >
+          {a.time ? `${a.time} · ` : ""}
+          {a.text}
+        </span>
+      ))}
+    </div>
+  ) : null;
+
+/**
+ * The Build log, opened (DASH-20): every step from the start — the running
+ * one with who's on it, what it did lately and its earlier tries; the ones
+ * to come with who does them; a finished one opens to how it went. Then the
+ * bots it saved to try, and Remove what was built.
+ */
+export const BuildLogOutput = ({
+  build,
+  state,
+  title = null,
+  onRemoved = null,
+}) => {
+  const { muted, strong, hairline, selectedBg } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const [confirm, setConfirm] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState(null);
+  const [opened, setOpened] = useState(null);
+  const building = isBuilding(state);
+  // The running step's time counts up while it builds.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!building) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [building]);
   const leftOff = build.leftOff || [];
-  const rows = buildLogRows(state, leftOff);
+  const edit = build.kind === "edit" || build.kind === "settings";
+  const rows = buildLogSteps(state, leftOff, { now, edit });
+  const head = buildLogHead(state, leftOff, { now });
   const status = state && state.status;
   const finished = status && status !== "waiting" && status !== "running";
   const built = (state && state.built) || {};
@@ -866,11 +937,18 @@ export const BuildLogOutput = ({ build, state, onRemoved = null }) => {
     (b) => b && b.id,
   );
   const tone = {
+    ok: statusTokens.success.icon,
     bad: statusTokens.error.icon,
     warn: statusTokens.warning.icon,
+    running: statusTokens.info.icon,
+    idle: muted,
   };
-  const toneOf = (t) =>
-    t === "bad" ? tone.bad : t === "warn" ? tone.warn : muted;
+  const headTone =
+    { running: tone.running, bad: tone.bad, warn: tone.warn, ok: tone.ok }[
+      head.tone
+    ] || strong;
+  const sideTone = (r) =>
+    r.state === "you" ? tone.warn : r.state === "bad" ? tone.bad : muted;
   const remove = async () => {
     if (removing) return;
     setRemoving(true);
@@ -887,32 +965,112 @@ export const BuildLogOutput = ({ build, state, onRemoved = null }) => {
     }
   };
   return (
-    <div className="flex flex-col gap-4" data-testid="workspace-build-log">
-      <OutputHead
-        from="Builder · build log"
-        title="Build log"
-        sub={buildLogLine(state, leftOff)}
-      />
+    <div
+      // Full height in its scrolling column: a long log scrolls, never squeezed.
+      className="flex flex-col gap-4 flex-shrink-0"
+      data-testid="workspace-build-log"
+    >
+      <div className="flex flex-col gap-1">
+        <span className={`text-xs ${muted}`}>Builder · build log</span>
+        <span className={`text-lg font-semibold ${strong}`}>
+          {title || "Build log"}
+        </span>
+        <span className="text-sm" data-testid="workspace-build-log-head">
+          <span className={`font-semibold ${headTone}`}>{head.lead}</span>
+          {head.rest ? (
+            <span className={muted}>{` · ${head.rest}`}</span>
+          ) : null}
+        </span>
+      </div>
       {rows.length ? (
         <div
-          className={`dr-chat-card flex flex-col rounded-xl border overflow-hidden ${hairline}`}
+          className={`dr-chat-card flex flex-col flex-shrink-0 rounded-xl border overflow-hidden ${hairline}`}
         >
-          {rows.map((r, i) => (
-            <div
-              key={i}
-              className={`flex flex-row items-start gap-3 px-4 py-2.5 font-mono text-xs ${i ? `border-t ${hairline}` : ""}`}
-              data-testid="workspace-build-log-row"
-            >
-              <span className={`w-10 flex-shrink-0 ${toneOf(r.tone)}`}>
-                {r.time}
-              </span>
-              <span
-                className={`flex-1 min-w-0 ${r.tone === "bad" ? tone.bad : strong}`}
+          {rows.map((r, i) => {
+            const live = r.state === "running";
+            const failed = r.state === "bad";
+            const more =
+              !live &&
+              !failed &&
+              (r.tries.length || r.activity.length || r.detail);
+            const isOpen = opened === r.id;
+            const body = live || failed || isOpen;
+            const dim = r.state === "next" || r.state === "off";
+            return (
+              <div
+                key={r.id || i}
+                className={`flex flex-row items-start gap-3 px-4 py-3 ${i ? `border-t ${hairline}` : ""} ${live || failed ? selectedBg : ""}`}
+                data-testid="workspace-build-log-row"
+                data-state={r.state}
               >
-                {r.text}
-              </span>
-            </div>
-          ))}
+                <StepMark state={r.state} tone={tone} ring={hairline} />
+                <div className="flex flex-col gap-2 flex-1 min-w-0">
+                  <div className="flex flex-row items-center gap-2 flex-wrap">
+                    {more ? (
+                      <button
+                        type="button"
+                        onClick={() => setOpened(isOpen ? null : r.id)}
+                        aria-expanded={isOpen}
+                        className={`text-left text-sm ${strong}`}
+                      >
+                        {r.label}
+                        <FontAwesomeIcon
+                          icon={isOpen ? "chevron-down" : "chevron-right"}
+                          className={`ml-2 text-xs ${muted}`}
+                        />
+                      </button>
+                    ) : (
+                      <span
+                        className={`text-sm ${live || failed ? "font-semibold" : ""} ${dim ? muted : strong}`}
+                      >
+                        {r.label}
+                      </span>
+                    )}
+                    {r.badge && (live || failed) ? (
+                      <Tag
+                        text={r.badge}
+                        padding="px-2 py-0.5"
+                        textSize="text-xs"
+                        rounded="rounded-full"
+                        className={tone.warn}
+                      />
+                    ) : null}
+                    <span className="flex-1" />
+                    <span
+                      className={`text-xs ${live || failed || r.state === "done" ? "font-mono" : ""} ${sideTone(r)}`}
+                    >
+                      {r.side}
+                    </span>
+                  </div>
+                  {body ? (
+                    <>
+                      {r.now ? (
+                        <span className={`text-sm ${strong}`}>{r.now}</span>
+                      ) : null}
+                      {r.note ? (
+                        <span className={`text-sm ${tone.bad}`}>{r.note}</span>
+                      ) : null}
+                      <LogActivity
+                        activity={r.activity}
+                        muted={muted}
+                        strong={strong}
+                        hairline={hairline}
+                        live={live}
+                        warn={tone.warn}
+                      />
+                      {(isOpen || failed) && r.detail ? (
+                        <span
+                          className={`whitespace-pre-wrap font-mono text-xs ${muted}`}
+                        >
+                          {r.detail}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <span className={`text-sm ${muted}`}>Nothing has started yet.</span>

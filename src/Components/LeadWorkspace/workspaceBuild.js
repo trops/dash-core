@@ -222,64 +222,352 @@ const firstLine = (t) =>
     .find(Boolean) || "";
 
 /**
- * The Build log (frame 4): a row per step that has started — its time and
- * what happened. tone: "bad" (failed), "warn" (waiting, stopped, left
- * off), or "" .
+ * The Build log (DASH-20): every step from the start, in order — the ones
+ * done, the one running (who's on it, what it did lately, its earlier
+ * tries), and the ones to come (who does them, which wait for you).
  */
-export function buildLogRows(state, leftOff = []) {
-  return stepsOf(state)
-    .filter((s) => s.status !== "waiting")
-    .map((s) => {
-      const time = logTime(s.finishedAt || s.startedAt);
-      if (isLeftOff(s, leftOff))
-        return { time, text: `${s.label} — left off`, tone: "warn" };
-      switch (s.status) {
-        case "running":
-          return { time, text: `${s.label}…`, tone: "" };
-        case "failed":
-          return {
-            time,
-            text: `${s.label} — ${firstLine(s.error) || "it didn't work"}`,
-            tone: "bad",
-          };
-        case "skipped":
-          return {
-            time,
-            text: `${s.label} — skipped: ${firstLine(s.error)}`,
-            tone: "warn",
-          };
-        case "needs-provider":
-          return {
-            time,
-            text: `${s.label} — waiting for ${andList((s.waitingFor || []).map(providerLabel))}`,
-            tone: "warn",
-          };
-        case "needs-you":
-          return { time, text: `${s.label} — waiting for you`, tone: "warn" };
-        case "stopped":
-          return { time, text: `${s.label} — stopped`, tone: "warn" };
-        default:
-          // The step in words — its detail is often an id (a draft, a package).
-          return { time, text: s.label, tone: "" };
-      }
-    });
+const ORDINAL = ["1st", "2nd", "3rd"];
+const ordinal = (n) => ORDINAL[n - 1] || `${n}th`;
+
+const WHO = { builder: "Builder", checker: "Checker", you: "You" };
+
+/** "45s" · "2m 40s" · "1h 5m" — from ms. */
+export function logDuration(ms) {
+  if (!(ms >= 0)) return "";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-/** "Finished in 6 min" · "In progress" · "Stopped on 1 step" (frame 4). */
-export function buildLogLine(state, leftOff = []) {
-  const status = buildStatus(state, leftOff);
-  if (isBuilding(state)) return "In progress";
-  const failed = failedSteps(state, leftOff).length;
-  if (failed)
-    return `Stopped on ${failed === 1 ? "1 step" : `${failed} steps`}`;
-  if (status === "stopped") return "Stopped";
-  const start = Date.parse(state && state.startedAt);
-  const end = Date.parse(state && state.finishedAt);
-  if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
-    const min = Math.max(1, Math.round((end - start) / 60000));
-    return `Finished in ${min} min`;
+const between = (from, to) => {
+  const a = Date.parse(from || "");
+  const b = typeof to === "number" ? to : Date.parse(to || "");
+  return Number.isNaN(a) || Number.isNaN(b) || b < a ? "" : logDuration(b - a);
+};
+
+// A tool's long answer the role saved to read in parts
+// ("mcp-bot-mcp-widget_guide-1795…-q6uyzz.txt") → "the widget guide".
+const SAVED_ANSWER = /^mcp-.+?-([a-z]+(?:_[a-z]+)*)-\d{6,}-[a-z0-9]+\.txt$/i;
+const fileWords = (w) => {
+  const m = SAVED_ANSWER.exec(String(w || ""));
+  if (!m) return w;
+  return m[1] === "widget_guide"
+    ? "the widget guide"
+    : `what ${m[1].replace(/_/g, " ")} returned`;
+};
+
+// What a role's tool call was, in words.
+const ACTIVITY_WORDS = {
+  // The Claude CLI's own tools.
+  Read: (w) => (w ? `Read ${fileWords(w)}` : "Read a file"),
+  Grep: (w) => (w ? `Searched ${fileWords(w)}` : "Searched the files"),
+  Glob: () => "Looked for files",
+  Write: (w) => (w ? `Wrote ${w}` : "Wrote a file"),
+  Edit: (w) => (w ? `Changed ${w}` : "Changed a file"),
+  read_widget: (w) => (w ? `Read ${w}` : "Read the widget"),
+  widget_guide: () => "Read the widget guide",
+  build_widget: () => "Wrote the draft",
+  check_widget: () => "Checked the draft",
+  search_library: () => "Searched the widget library",
+  list_providers: () => "Looked at your providers",
+  see_marked_spots: () => "Looked at the spots you marked",
+};
+
+/**
+ * A bot's tool call from its live stream, as a log line keeps it — the
+ * window's copy of what a plan build keeps for its steps (planBuild
+ * activityOf). Its notes to itself (memory_*) aren't kept.
+ * @returns {{ at, tool, what? } | null}
+ */
+export function liveActivityOf(event, at) {
+  if (!event || event.type !== "tool_call" || !event.name) return null;
+  let input = event.input ?? event.args;
+  if (typeof input === "string") {
+    try {
+      input = JSON.parse(input);
+    } catch (_e) {
+      input = null;
+    }
   }
-  return "Finished";
+  if (!input || typeof input !== "object") input = {};
+  const raw = [
+    "file",
+    "file_path",
+    "path",
+    "name",
+    "componentName",
+    "query",
+    "pattern",
+  ]
+    .map((k) => input[k])
+    .find((v) => typeof v === "string" && v.trim());
+  const what = raw ? raw.trim().split(/[\\/]/).filter(Boolean).pop() || "" : "";
+  const tool = String(event.name)
+    .replace(/^mcp__.+?__/, "")
+    .slice(0, 60);
+  if (/^memory/.test(tool)) return null;
+  return { at, tool, ...(what ? { what: what.slice(0, 80) } : {}) };
+}
+
+/** One kept tool call → "Read HaCalendar.js". */
+export function activityText(a) {
+  if (!a || !a.tool) return "";
+  const words = ACTIVITY_WORDS[a.tool];
+  if (words) return words(a.what);
+  const t = String(a.tool).replace(/[_-]+/g, " ");
+  return `${t.charAt(0).toUpperCase()}${t.slice(1)}${a.what ? ` · ${a.what}` : ""}`;
+}
+
+// "Lights (you chose: only reads)" — what didn't match, one line.
+const mismatchWords = (mismatch) =>
+  (mismatch || [])
+    .map((m) => (m.chose ? `${m.main} (you chose: ${m.chose})` : m.main))
+    .join("; ");
+
+/** Why a try or a step didn't make it, in a sentence. */
+function whyOf(x) {
+  if (x.mismatch && x.mismatch.length)
+    return `The draft didn't match what you chose: ${mismatchWords(x.mismatch)}.`;
+  const line = firstLine(x.error);
+  return line ? `${line.charAt(0).toUpperCase()}${line.slice(1)}` : "";
+}
+
+// What the running step's role is doing, while it works.
+const NOW_WORDS = {
+  build: "writing the draft",
+  check: "checking the draft",
+  checkbot: "checking the bot",
+};
+
+const youWait = (s) =>
+  s.kind === "testbot" ? "waits for your test" : "waits for your look";
+const youAfter = (s) =>
+  s.kind === "testbot" ? "after you test it" : "after you say it looks good";
+
+/**
+ * The log's rows. Each: { id, label, state, who, side, note, now,
+ * activity: [{ time, text, tone }] (earlier tries first, tone "warn"),
+ * tries: the try lines alone, badge, detail }.
+ * state: "done" | "running" | "bad" | "warn" | "you" (waits for you) |
+ * "next" (to come) | "off" (not started, and won't be this time).
+ * @param {{ now?: number, edit?: boolean }} [opts] — now: the time the
+ *   running step is shown at; edit: a change to a widget the user has.
+ */
+export function buildLogSteps(state, leftOff = [], opts = {}) {
+  const at = typeof opts.now === "number" ? opts.now : Date.now();
+  // Still to come: while it builds, and while it waits for the user's look.
+  const building =
+    isBuilding(state) || (state && state.status) === "waiting-for-you";
+  let stoppedSeen = false;
+  let waitingOn = null; // a step of the user's, not done, before this one
+  let nextSeen = false;
+  return stepsOf(state).map((s) => {
+    // Each earlier try is a line in the log, before what this try did.
+    const tries = (s.tries || []).map((t, i) => {
+      const why = whyOf(t);
+      return {
+        time: logTime(t.finishedAt),
+        text: `${ordinal(i + 1)} try ${s.role === "builder" ? "sent back" : "didn't work"}${why ? ` — ${why}` : ""}`,
+        tone: "warn",
+      };
+    });
+    const activity = [
+      ...tries,
+      ...(s.activity || []).map((a) => ({
+        time: logTime(a.at),
+        text: activityText(a),
+        tone: "",
+      })),
+    ];
+    const row = {
+      id: s.id,
+      label: s.label,
+      who: WHO[s.role] || "",
+      state: "next",
+      side: "",
+      note: "",
+      now: "",
+      activity,
+      tries,
+      badge: tries.length ? `${ordinal(tries.length + 1)} try` : "",
+      detail: String(s.detail || "").slice(0, 1200),
+    };
+    const took = between(s.startedAt, s.finishedAt);
+    const triesWord = tries.length ? `${tries.length + 1} tries` : "";
+    if (isLeftOff(s, leftOff)) {
+      row.state = "warn";
+      row.side = "left off";
+    } else
+      switch (s.status) {
+        case "done":
+          row.state = "done";
+          row.side =
+            s.role === "you"
+              ? s.kind === "testbot"
+                ? "you tested it"
+                : "you said it looks good"
+              : s.kind === "check"
+                ? ["passed", took].filter(Boolean).join(" · ")
+                : s.role === "builder" || s.role === "checker"
+                  ? [triesWord, took].filter(Boolean).join(" · ") ||
+                    logTime(s.finishedAt)
+                  : // Dash's own steps take a moment: when it was done.
+                    logTime(s.finishedAt);
+          break;
+        case "running":
+          row.state = "running";
+          row.side = [
+            s.startedAt ? `started ${logTime(s.startedAt)}` : "",
+            between(s.startedAt, at),
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          row.now = row.who
+            ? `${row.who} · ${NOW_WORDS[s.kind] || "working on it"}`
+            : "";
+          break;
+        case "failed":
+          row.state = "bad";
+          row.note = whyOf(s) || "It didn't work.";
+          row.side = [
+            [logTime(s.startedAt), logTime(s.finishedAt)]
+              .filter(Boolean)
+              .join(" – "),
+            triesWord,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          break;
+        case "needs-you":
+          row.state = "warn";
+          row.side =
+            s.kind === "testbot"
+              ? "waiting for your test"
+              : "waiting for your look";
+          break;
+        case "needs-provider":
+          row.state = "warn";
+          row.side = `waiting for ${andList((s.waitingFor || []).map(providerLabel))}`;
+          break;
+        case "stopped":
+          // Stopped once, on the step it was on; the rest never started.
+          row.state = stoppedSeen ? "off" : "warn";
+          row.side = stoppedSeen ? "not started" : "stopped";
+          stoppedSeen = true;
+          break;
+        case "skipped":
+          // What held it back says why, once — not every step after it.
+          row.state = "off";
+          row.side = "not started";
+          break;
+        default:
+          // Not started yet — or cut off when the app closed mid-step.
+          if (!building && s.startedAt && !s.finishedAt) {
+            row.state = "warn";
+            row.side = "interrupted";
+          } else if (!building) {
+            row.state = "off";
+            row.side = "not started";
+          } else if (s.role === "you") {
+            row.state = "you";
+            row.side = waitingOn ? youAfter(waitingOn) : youWait(s);
+          } else if (waitingOn) {
+            row.side = youAfter(waitingOn);
+          } else {
+            row.side = [row.who, nextSeen ? "" : "next"]
+              .filter(Boolean)
+              .join(" · ");
+            nextSeen = true;
+          }
+      }
+    if (row.state === "off" && opts.edit && s.kind === "save")
+      row.side = "not started · your widget is unchanged";
+    if (s.role === "you" && s.status !== "done" && !waitingOn) waitingOn = s;
+    return row;
+  });
+}
+
+/**
+ * The log's top line (DASH-20): "Step 2 of 4 · building for 2m 40s",
+ * "Stopped at step 1 of 4 · 3m 10s", "Done · 4 steps in 6m 20s · sent back
+ * once". tone: "running" | "bad" | "warn" | "ok" | "".
+ * @returns {{ lead, rest, tone }}
+ */
+export function buildLogHead(state, leftOff = [], opts = {}) {
+  const at = typeof opts.now === "number" ? opts.now : Date.now();
+  const steps = stepsOf(state);
+  const total = steps.length;
+  const status = buildStatus(state, leftOff);
+  const nth = (pred) => steps.findIndex(pred) + 1;
+  const of = (n) => `${n} of ${total}`;
+  const start = state && state.startedAt;
+  const sentBack = steps.reduce((n, s) => n + (s.tries || []).length, 0);
+  const sent = sentBack
+    ? `sent back ${sentBack === 1 ? "once" : `${sentBack} times`}`
+    : "";
+  const join = (...parts) => parts.filter(Boolean).join(" · ");
+  if (isBuilding(state)) {
+    const n =
+      nth((s) => s.status === "running") ||
+      nth((s) => s.status === "waiting") ||
+      1;
+    return {
+      lead: `Step ${of(n)}`,
+      rest: start ? `building for ${between(start, at)}` : "starting…",
+      tone: "running",
+    };
+  }
+  const took = between(start, state && state.finishedAt);
+  switch (status) {
+    case "done":
+      return {
+        lead: "Done",
+        rest: join(
+          `${total === 1 ? "1 step" : `${total} steps`}${took ? ` in ${took}` : ""}`,
+          sent,
+        ),
+        tone: "ok",
+      };
+    case "waiting-for-you": {
+      const n = nth((s) => s.status === "needs-you");
+      return {
+        lead: `Waiting for you at step ${of(n)}`,
+        rest: took,
+        tone: "warn",
+      };
+    }
+    case "waiting-for-providers":
+      return {
+        lead: `Waiting for ${andList(waitingFor(state).map(providerLabel))}`,
+        rest: "",
+        tone: "warn",
+      };
+    case "finished-with-problems": {
+      const failed = failedSteps(state, leftOff)[0];
+      const n = failed ? steps.indexOf(failed) + 1 : 0;
+      return {
+        lead: n ? `Stopped at step ${of(n)}` : "Stopped",
+        rest: join(took, sent),
+        tone: "bad",
+      };
+    }
+    case "stopped": {
+      const n = nth((s) => s.status === "stopped");
+      return {
+        lead: n ? `Stopped at step ${of(n)}` : "Stopped",
+        rest: took,
+        tone: "warn",
+      };
+    }
+    case "removed":
+      return { lead: "Removed", rest: "", tone: "" };
+    case "interrupted":
+      return { lead: "Interrupted", rest: took, tone: "warn" };
+    default:
+      return { lead: "Not started", rest: "", tone: "" };
+  }
 }
 
 const nameOf = (label, verb) =>

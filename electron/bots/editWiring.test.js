@@ -47,7 +47,7 @@ describe("a change to a widget in the bot controller", () => {
   it("its roles run held to that widget, one change at a time", () => {
     assert.match(
       src,
-      /askRole: editTarget\s*\? \(role, request\) => this\._editAskRole\(role, request, editTarget\)/,
+      /askRole: editTarget\s*\? \(role, request, live\) =>\s*this\._editAskRole\(role, request, editTarget, live\)/,
     );
     assert.match(src, /if \(this\._editRun && this\._editRun !== target\)/);
     assert.match(src, /this\._editRun = target;\s*this\._cellRoleRuns =/);
