@@ -9,6 +9,7 @@ const {
   getPackageInfo,
   nextFreeVersion,
   kindConflict,
+  publishVersion,
 } = require("./registryPackages");
 
 function fakeFetch(status, body, seen = []) {
@@ -127,5 +128,32 @@ describe("kindConflict", () => {
       /"@trops\/k" is already a widget package — a dashboard can't/,
     );
     assert.ok(kindConflict("@trops/k", "bot", { type: "bot-team" }));
+  });
+});
+
+describe("publishVersion (DASH-22: 1.0.0 already published)", () => {
+  const info = { versions: ["1.0.0"] };
+  it("a version the registry doesn't have goes up as it is", () => {
+    assert.deepEqual(publishVersion("1.0.1", info), { version: "1.0.1" });
+    assert.deepEqual(publishVersion("1.0.0", null), { version: "1.0.0" });
+    assert.deepEqual(publishVersion("1.0.0", "unreachable"), {
+      version: "1.0.0",
+    });
+  });
+  it("one it has goes up as the next free one, and says so", () => {
+    assert.deepEqual(publishVersion("1.0.0", info), {
+      version: "1.0.1",
+      taken: "1.0.0",
+    });
+    assert.deepEqual(
+      publishVersion("1.0.0", { versions: ["1.0.0", "1.0.1", "1.2.0"] }),
+      { version: "1.2.1", taken: "1.0.0" },
+    );
+  });
+  it("kept on purpose: not sent again", () => {
+    assert.deepEqual(publishVersion("1.0.0", info, true), {
+      version: "1.0.0",
+      skip: true,
+    });
   });
 });

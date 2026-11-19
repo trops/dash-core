@@ -75,6 +75,20 @@ function broadcastStateChanged(toolName, result) {
 // --- State ---
 let mcpServer = null;
 let httpsServer = null;
+
+// Where the server's certificate is kept (tlsCert.js), or null before
+// the first start made it.
+function certPathOf() {
+  try {
+    const { app } = require("electron");
+    const path = require("path");
+    const fs = require("fs");
+    const p = path.join(app.getPath("userData"), "certs", "cert.pem");
+    return fs.existsSync(p) ? p : null;
+  } catch (_e) {
+    return null;
+  }
+}
 let transport = null;
 let startTime = null;
 let connectionCount = 0;
@@ -481,6 +495,9 @@ const mcpDashServerController = {
       uptime: startTime ? Math.floor((Date.now() - startTime) / 1000) : 0,
       toolCount: registeredTools.length,
       resourceCount: registeredResources.length,
+      // Its self-made certificate: a client trusts it through
+      // NODE_EXTRA_CA_CERTS (Settings › MCP Server shows how).
+      certPath: certPathOf(),
     };
   },
 

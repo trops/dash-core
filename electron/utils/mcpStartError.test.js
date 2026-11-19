@@ -104,6 +104,41 @@ describe("describeStartFailure", () => {
     }
   });
 
+  it('a script it can\'t open says so — not "it closed the connection"', () => {
+    const stderr =
+      "/Library/Developer/CommandLineTools/usr/bin/python3: can’t open file ‘/opt/mcp/server.py’: [Errno 1] Operation not permitted";
+    assert.equal(
+      describeStartFailure({ serverName: "Notes", message: CLOSED, stderr }),
+      "Notes couldn't start: /Library/Developer/CommandLineTools/usr/bin/python3: can’t open file ‘/opt/mcp/server.py’: [Errno 1] Operation not permitted. " +
+        NEXT,
+    );
+    assert.match(
+      describeStartFailure({
+        serverName: "Notes",
+        message: CLOSED,
+        stderr:
+          "python3: can't open file '/x/y.py': [Errno 2] No such file or directory",
+      }),
+      /couldn't start: .*No such file or directory/,
+    );
+  });
+
+  it("not permitted in Documents, Desktop or Downloads: macOS is blocking Dash, and where to allow it", () => {
+    const stderr =
+      "/usr/bin/python3: can’t open file ‘/Users/x/Documents/a/server.py’: [Errno 1] Operation not permitted";
+    const msg = describeStartFailure({
+      serverName: "Notes",
+      message: CLOSED,
+      stderr,
+    });
+    assert.match(
+      msg,
+      /Operation not permitted\. macOS is blocking Dash from that folder/,
+    );
+    assert.match(msg, /Privacy & Security › Files & Folders/);
+    assert.ok(!msg.includes(NEXT));
+  });
+
   it("leaves specific errors alone", () => {
     const message = "spawn uvx ENOENT";
     assert.equal(

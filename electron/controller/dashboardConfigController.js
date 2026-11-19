@@ -1462,6 +1462,9 @@ async function collectDashboardDependencies(
         widgetName: dep.widgetName,
         component: dep.widgetName,
         localVersion: dep.version,
+        // The package's own version — what a publish sends (the version
+        // the dashboard recorded can be older).
+        packageVersion: match?.version || null,
         packageDir: match?.path || null,
         packageId:
           match?.packageId ||

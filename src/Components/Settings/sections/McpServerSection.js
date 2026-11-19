@@ -8,6 +8,39 @@ import {
 } from "@trops/dash-react";
 import { useMcpDashServer } from "../../../hooks/useMcpDashServer";
 import { TaskPassphraseSection } from "./TaskPassphraseSection";
+import { useConfigTokens } from "../../Dashboard/ConfigListRow";
+import { mcpClientSetup } from "./mcpClientSetup";
+
+// One way to connect: its ready-to-paste text and a Copy button.
+const SetupSnippet = ({ title, note, text, testId }) => {
+  const { muted, strong, hairline, fieldBg } = useConfigTokens();
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API not available
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2" data-testid={testId}>
+      <div className="flex flex-row items-center justify-between gap-3">
+        <div className="flex flex-col">
+          <span className={`text-sm font-medium ${strong}`}>{title}</span>
+          <span className={`text-xs ${muted}`}>{note}</span>
+        </div>
+        <Button title={copied ? "Copied!" : "Copy"} onClick={copy} size="sm" />
+      </div>
+      <pre
+        className={`text-xs rounded border p-3 overflow-auto max-h-48 select-all whitespace-pre-wrap break-all ${fieldBg} ${hairline} ${strong}`}
+      >
+        {text}
+      </pre>
+    </div>
+  );
+};
 
 /**
  * McpServerSection
@@ -18,6 +51,38 @@ import { TaskPassphraseSection } from "./TaskPassphraseSection";
  *
  * @param {object[]} [workspaces]  dashboards (which teams take tasks)
  */
+const ConnectClaude = ({ port, token, certPath }) => {
+  const { muted } = useConfigTokens();
+  const setup = mcpClientSetup({ port, token, certPath });
+  return (
+    <div className="flex flex-col gap-4" data-testid="mcp-connect-claude">
+      <div className="flex flex-col gap-1">
+        <SubHeading3 title="Connect Claude" padding={false} />
+        <span className={`text-xs ${muted}`}>
+          Dash's server is at {setup.url}, over https with a certificate Dash
+          makes itself — these trust it for you.
+        </span>
+      </div>
+      <SetupSnippet
+        testId="mcp-setup-claude-code"
+        title="Claude Code"
+        note="Run this once in Terminal. It holds your token — don't share it."
+        text={setup.claudeCode}
+      />
+      <SetupSnippet
+        testId="mcp-setup-claude-desktop"
+        title="Claude Desktop"
+        note="Add to claude_desktop_config.json (Settings › Developer › Edit Config), then restart Claude."
+        text={setup.claudeDesktop}
+      />
+      <span className={`text-xs ${muted}`}>
+        Claude on the web (claude.ai connectors) can't reach Dash — it connects
+        from the internet, and Dash's server is only open to this computer.
+      </span>
+    </div>
+  );
+};
+
 export const McpServerSection = ({ workspaces = [] }) => {
   const {
     running,
@@ -27,6 +92,7 @@ export const McpServerSection = ({ workspaces = [] }) => {
     toolCount,
     resourceCount,
     token,
+    certPath,
     loading,
     error,
     startServer,
@@ -219,31 +285,11 @@ export const McpServerSection = ({ workspaces = [] }) => {
         </div>
       )}
 
-      {/* Claude Desktop Config Hint */}
-      {running && token && (
-        <div className="flex flex-col space-y-3">
-          <SubHeading3 title="Client Configuration" padding={false} />
-          <span className="text-xs opacity-50">
-            Add to your MCP client config (e.g. Claude Desktop):
-          </span>
-          <pre className="text-xs bg-black/20 rounded p-3 overflow-auto max-h-40 select-all">
-            {JSON.stringify(
-              {
-                mcpServers: {
-                  dash: {
-                    url: `http://127.0.0.1:${port}/mcp`,
-                    headers: {
-                      Authorization: `Bearer ${token}`,
-                    },
-                  },
-                },
-              },
-              null,
-              2,
-            )}
-          </pre>
-        </div>
-      )}
+      {/* Connect Claude on this computer: the https address, with Dash's
+          own certificate trusted (it only speaks https). */}
+      {running && token ? (
+        <ConnectClaude port={port} token={token} certPath={certPath} />
+      ) : null}
     </div>
   );
 };

@@ -80,11 +80,26 @@ function collectComponentConfigs() {
   return componentConfigs;
 }
 
+// Whether version a is newer than b ("1.0.10" > "1.0.9").
+function newerVersion(a, b) {
+  const p = (v) =>
+    String(v || "")
+      .split(/[.-]/)
+      .slice(0, 3)
+      .map((n) => Number(n) || 0);
+  const x = p(a);
+  const y = p(b);
+  for (let i = 0; i < 3; i++) {
+    if (x[i] !== y[i]) return x[i] > y[i];
+  }
+  return false;
+}
+
 // Build default per-dependency selections. Owned dependencies default
 // to "include + patch bump" unless the local version is newer than what's
 // in the registry (then "include + use local"). Third-party refs get a
 // fixed "reference" entry.
-function seedSelections(plan, dashboardVisibility) {
+export function seedSelections(plan, dashboardVisibility) {
   const selections = {};
   for (const w of plan.widgets || []) {
     if (!w.scope || !w.packageName) continue;
@@ -111,10 +126,15 @@ function seedSelections(plan, dashboardVisibility) {
       // when the widget requires republishing (can't ship a dashboard
       // pointing at a scope the installer can't resolve).
       include: w.requiresRepublish ? true : !!owned,
-      // Bump default: none if not yet in registry (publish local version as-is),
-      // patch if already in registry at same version
+      // Bump default: none when its own version is new to the registry
+      // (publish it as-is), patch when the registry already has it or
+      // newer. Its own version is what's sent — the version the dashboard
+      // recorded can be older (DASH-22: "1.0.0 already published").
       bump:
-        !reg?.exists || reg.latestVersion !== w.localVersion ? "none" : "patch",
+        !reg?.exists ||
+        newerVersion(w.packageVersion || w.localVersion, reg.latestVersion)
+          ? "none"
+          : "patch",
       // Per-widget visibility inherits dashboard visibility by default
       visibility: reg?.visibility || dashboardVisibility || "public",
     };
@@ -532,7 +552,9 @@ export const PublishDashboardModal = ({
         if (step.kind === "widget") {
           const bump = step.selection.bump;
           const options = {
-            ...(bump && bump !== "none" ? { bump } : {}),
+            // Kept at its version: one the registry already has isn't sent
+            // again — the dashboard uses what's there (DASH-22).
+            ...(bump && bump !== "none" ? { bump } : { keepIfPublished: true }),
             visibility: step.selection.visibility,
             // Plumb the publisher's display name through to the widget
             // publish call so the manifest — and the rewritten dash.json
@@ -567,9 +589,14 @@ export const PublishDashboardModal = ({
             setIsPublishing(false);
             return;
           }
+          const v = res.newVersion || res.manifest?.version;
           updateStep(i, {
             status: "complete",
-            message: `v${res.newVersion || res.manifest?.version}`,
+            message: res.skipped
+              ? `v${v} is already in the registry — kept`
+              : res.versionTaken
+                ? `v${v} (v${res.versionTaken} was taken)`
+                : `v${v}`,
           });
         } else if (step.kind === "theme") {
           const res = await window.mainApi.themes.publishTheme(
