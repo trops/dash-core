@@ -376,58 +376,62 @@ export const StepReview = ({
                 className={`h-4 w-4 mt-1 flex-shrink-0 ${r.set ? statusTokens.success.icon : statusTokens.warning.icon}`}
                 aria-label={r.set ? "Set" : "To choose"}
               />
-              <span
-                className={`w-40 flex-shrink-0 text-sm font-semibold ${strong}`}
-              >
-                {r.label}
-              </span>
+              {/* The part's name and its badge on one line, what it is
+                  under them at full width — readable in a narrow column. */}
               <span className="flex-1 min-w-0 flex flex-col gap-1">
+                <span className="flex flex-row flex-wrap items-center justify-between gap-2">
+                  <span className={`text-sm font-semibold ${strong}`}>
+                    {r.label}
+                  </span>
+                  <span className="flex flex-row items-center gap-2">
+                    {r.tag ? (
+                      <StatusBadge
+                        state={r.tag === "You chose" ? "success" : "neutral"}
+                        label={r.tag}
+                      />
+                    ) : null}
+                    {readOnly || !r.change ? null : r.change === "choose" ? (
+                      <Button size="sm" title="Choose" onClick={onChoose} />
+                    ) : isOpen ? (
+                      <Button
+                        size="sm"
+                        title="Done"
+                        ariaLabel={`Done changing ${r.label}`}
+                        onClick={() => doneRef.current && doneRef.current()}
+                      />
+                    ) : (
+                      <Button2
+                        size="sm"
+                        title="Change"
+                        ariaLabel={`Change ${r.label}`}
+                        onClick={() => {
+                          if (r.change === "provider") onChoose();
+                          else if (r.change === "settings") setOpen(r.key);
+                          else if (
+                            r.change === "does" ||
+                            r.change === "talks" ||
+                            r.change === "looks"
+                          )
+                            onStep(r.change);
+                          else onChat(r.label);
+                        }}
+                      />
+                    )}
+                  </span>
+                </span>
                 {r.value.map((v, i) => (
                   <span
                     key={i}
-                    className={`text-sm ${r.set ? strong : statusTokens.warning.text}`}
+                    className={`text-sm break-words ${r.set ? strong : statusTokens.warning.text}`}
                   >
                     {v}
                   </span>
                 ))}
                 {r.sub ? (
-                  <span className={`text-xs ${muted}`}>{r.sub}</span>
+                  <span className={`text-xs break-words ${muted}`}>
+                    {r.sub}
+                  </span>
                 ) : null}
-              </span>
-              <span className="w-44 flex-shrink-0 flex flex-row items-center justify-end gap-2">
-                {r.tag ? (
-                  <StatusBadge
-                    state={r.tag === "You chose" ? "success" : "neutral"}
-                    label={r.tag}
-                  />
-                ) : null}
-                {readOnly || !r.change ? null : r.change === "choose" ? (
-                  <Button size="sm" title="Choose" onClick={onChoose} />
-                ) : isOpen ? (
-                  <Button
-                    size="sm"
-                    title="Done"
-                    ariaLabel={`Done changing ${r.label}`}
-                    onClick={() => doneRef.current && doneRef.current()}
-                  />
-                ) : (
-                  <Button2
-                    size="sm"
-                    title="Change"
-                    ariaLabel={`Change ${r.label}`}
-                    onClick={() => {
-                      if (r.change === "provider") onChoose();
-                      else if (r.change === "settings") setOpen(r.key);
-                      else if (
-                        r.change === "does" ||
-                        r.change === "talks" ||
-                        r.change === "looks"
-                      )
-                        onStep(r.change);
-                      else onChat(r.label);
-                    }}
-                  />
-                )}
               </span>
             </div>
             {isOpen && r.key === "settings" ? (

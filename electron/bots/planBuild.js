@@ -84,6 +84,14 @@ const CANT_TELL_WHICH =
 
 // How much of the Builder's answer a failed build keeps.
 const ANSWER_KEPT = 1500;
+// The end of the Builder's answer, from a whole line (never mid-word).
+const answerTail = (text) => {
+  const all = String(text || "");
+  if (all.length <= ANSWER_KEPT) return all;
+  const tail = all.slice(-ANSWER_KEPT);
+  const at = tail.indexOf("\n");
+  return at === -1 ? tail : tail.slice(at + 1);
+};
 
 const STATUS = {
   waiting: "waiting",
@@ -2125,11 +2133,11 @@ function createPlanBuild(plan, deps, opts = {}) {
         const cant = cantOf(record.output);
         // About one of Dash's own tools, not a choice: a fix can sort that.
         if (cant && DASH_TOOL_TROUBLE.test(cant.what)) {
-          step.detail = String(record.output || "").slice(-ANSWER_KEPT);
+          step.detail = answerTail(record.output);
           throw new Error(`the Builder got stuck: ${cant.what}`);
         }
         if (cant) {
-          step.detail = String(record.output || "").slice(-ANSWER_KEPT);
+          step.detail = answerTail(record.output);
           const err = notFixable(`the Builder can't: ${cant.what}`);
           err.endOfLine = cant;
           throw err;
@@ -2137,9 +2145,7 @@ function createPlanBuild(plan, deps, opts = {}) {
         const outcome = buildOutcome(record);
         if (outcome.error) {
           // The Builder's own account, to read under the step.
-          step.detail = record.output
-            ? String(record.output).slice(-ANSWER_KEPT)
-            : "";
+          step.detail = record.output ? answerTail(record.output) : "";
           throw new Error(outcome.error);
         }
         const pkg = outcome.package;

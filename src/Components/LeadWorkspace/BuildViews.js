@@ -490,60 +490,6 @@ function chatOf(build, state, { actions = {}, cell, change, restored }) {
   });
 }
 
-/**
- * The plan card's next step once it builds (plan → build, frames 5-7):
- * where the build stands, Stop while it runs, and the same choices as the
- * chat — Try again, Leave it off, Looks good, Open it, … — so the right
- * column always has a way on.
- */
-export const BuildNext = ({
-  build,
-  state,
-  actions = {},
-  cell = null,
-  change = null,
-  restored = false,
-  onStop = null,
-  stopping = false,
-  actionError = null,
-}) => {
-  const { muted, strong } = useConfigTokens();
-  if (!build) return null;
-  if (!state) {
-    return <span className={`text-sm ${muted}`}>Starting the build…</span>;
-  }
-  const chat = chatOf(build, state, { actions, cell, change, restored });
-  const running = isBuilding(state);
-  return (
-    <div className="flex flex-col gap-3" data-testid="workspace-build-next">
-      <span className={`text-sm ${strong}`}>
-        {buildPlanLine(state, build.leftOff || [])}
-      </span>
-      {running && onStop ? (
-        <div>
-          <Button3
-            size="sm"
-            title={stopping ? "Stopping…" : "Stop"}
-            disabled={stopping}
-            onClick={onStop}
-          />
-        </div>
-      ) : null}
-      {running ? null : (
-        <BuildChoices
-          chat={chat}
-          state={state}
-          build={build}
-          actions={actions}
-        />
-      )}
-      {actionError ? (
-        <span className={`text-xs ${muted}`}>{actionError}</span>
-      ) : null}
-    </div>
-  );
-};
-
 /** The reply choices under the lead's words about the build. */
 const BuildChoices = ({ chat, state, build, actions }) => {
   const { muted } = useConfigTokens();
@@ -909,6 +855,7 @@ export const BuildLogOutput = ({
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState(null);
   const [opened, setOpened] = useState(null);
+  const [said, setSaid] = useState(null);
   const building = isBuilding(state);
   // The running step's time counts up while it builds.
   const [now, setNow] = useState(() => Date.now());
@@ -994,6 +941,7 @@ export const BuildLogOutput = ({
               !failed &&
               (r.tries.length || r.activity.length || r.detail);
             const isOpen = opened === r.id;
+            const saidOpen = said === r.id;
             const body = live || failed || isOpen;
             const dim = r.state === "next" || r.state === "off";
             return (
@@ -1058,9 +1006,25 @@ export const BuildLogOutput = ({
                         live={live}
                         warn={tone.warn}
                       />
-                      {(isOpen || failed) && r.detail ? (
+                      {/* The Builder's own answer: folded — the line above
+                          already says why; open it to read the rest. */}
+                      {r.detail ? (
+                        <button
+                          type="button"
+                          onClick={() => setSaid(saidOpen ? null : r.id)}
+                          aria-expanded={saidOpen}
+                          className={`text-left text-xs ${muted}`}
+                        >
+                          {`What the ${r.who || "bot"} said`}
+                          <FontAwesomeIcon
+                            icon={saidOpen ? "chevron-down" : "chevron-right"}
+                            className="ml-2"
+                          />
+                        </button>
+                      ) : null}
+                      {saidOpen && r.detail ? (
                         <span
-                          className={`whitespace-pre-wrap font-mono text-xs ${muted}`}
+                          className={`whitespace-pre-wrap text-xs ${muted}`}
                         >
                           {r.detail}
                         </span>

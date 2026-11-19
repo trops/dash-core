@@ -248,7 +248,13 @@ async function start(text, { providers = null } = {}) {
 }
 
 const side = () => screen.getByTestId("workspace-side");
-const nextBox = () => within(side()).getByTestId("workspace-plan-next");
+// The plan's next step is in the chat (DASH-21): its choices under the
+// plan, or — no new plan, gaps, the Planner answering — under the latest
+// message.
+const nextBox = () =>
+  screen.queryByTestId("workspace-plan-next") ||
+  screen.getByTestId("chat-plan-next");
+const chatBox = () => screen.getByTestId("ask-step");
 const nextIs = async (state) =>
   waitFor(() => expect(nextBox()).toHaveAttribute("data-next", state));
 const reply = (text) => {
@@ -322,12 +328,15 @@ describe("a theme plan with a question (the Halloween bug)", () => {
         expect.anything(),
       ),
     );
-    await nextIs("build");
+    // The build and its choices are told in the chat (DASH-21).
+    await waitFor(() =>
+      expect(screen.queryByTestId("chat-plan-next")).toBeNull(),
+    );
 
     sendBuild({ status: "running", steps: [THEME_STEP("running")] });
     await waitFor(() =>
       expect(
-        within(nextBox()).getByRole("button", { name: "Stop" }),
+        within(chatBox()).getByRole("button", { name: "Stop" }),
       ).toBeInTheDocument(),
     );
     sendBuild({
@@ -337,15 +346,15 @@ describe("a theme plan with a question (the Halloween bug)", () => {
     });
     await waitFor(() =>
       expect(
-        within(nextBox()).getByRole("button", { name: "Use it for the app" }),
+        within(chatBox()).getByRole("button", { name: "Use it for the app" }),
       ).toBeInTheDocument(),
     );
     fireEvent.click(
-      within(nextBox()).getByRole("button", { name: "Use it for the app" }),
+      within(chatBox()).getByRole("button", { name: "Use it for the app" }),
     );
     expect(changeCurrentTheme).toHaveBeenCalledWith("halloween");
     fireEvent.click(
-      within(nextBox()).getByRole("button", {
+      within(chatBox()).getByRole("button", {
         name: "Open in the theme editor",
       }),
     );
@@ -526,7 +535,10 @@ describe("saying yes", () => {
     await start("Make me a Halloween theme");
     await nextIs("ready");
     fireEvent.click(within(nextBox()).getByRole("button", { name: /^Yes/ }));
-    await nextIs("build");
+    // The build and its choices are told in the chat (DASH-21).
+    await waitFor(() =>
+      expect(screen.queryByTestId("chat-plan-next")).toBeNull(),
+    );
     sendBuild({
       status: "finished-with-problems",
       steps: [
@@ -536,7 +548,7 @@ describe("saying yes", () => {
         }),
       ],
     });
-    const retry = await within(nextBox()).findByRole("button", {
+    const retry = await within(chatBox()).findByRole("button", {
       name: "Try again",
     });
     fireEvent.click(retry);
@@ -547,7 +559,7 @@ describe("saying yes", () => {
       ),
     );
     expect(
-      within(nextBox()).getByRole("button", { name: "Leave it out" }),
+      within(chatBox()).getByRole("button", { name: "Leave it out" }),
     ).toBeInTheDocument();
   });
 });
@@ -707,9 +719,10 @@ test("a widget only a provider the user hasn't got can serve: the plan waits and
   };
   script.d_l = [() => leadAsked("planner", planned(dash), "Build it?")];
   await start("A dashboard for my smart home");
-  expect(
-    await within(side()).findByTestId("workspace-waiting-pick"),
-  ).toHaveTextContent(/Nothing is planned or built until you do/);
+  // Asked in the chat; the sidebar holds no plan until the pick (DASH-21).
+  await waitFor(() =>
+    expect(within(side()).queryByTestId("workspace-output-plan")).toBeNull(),
+  );
   expect(
     await screen.findByText(
       "None of your providers can give Lights panel what it needs yet.",
@@ -938,10 +951,7 @@ describe("the wizard, step 1 · Reads from — the app asks, from providers.json
         "Widgets can't use Claude connectors yet — bots can.",
       ),
     ).toBeInTheDocument();
-    expect(
-      within(side()).getByTestId("workspace-waiting-pick"),
-    ).toBeInTheDocument();
-    expect(within(side()).queryByTestId("workspace-plan-box")).toBeNull();
+    expect(within(side()).queryByTestId("workspace-output-plan")).toBeNull();
     expect(within(side()).queryByTestId("workspace-before")).toBeNull();
     expect(screen.queryByTestId("workspace-plan-card")).toBeNull();
     // The lead's words on a plan that isn't one yet stay out.
@@ -988,9 +998,7 @@ describe("the wizard, step 1 · Reads from — the app asks, from providers.json
     const cards = await screen.findAllByTestId("wizard-reads-from");
     expect(cards).toHaveLength(1);
     expect(within(side()).queryAllByTestId("provider-pick")).toHaveLength(0);
-    expect(
-      within(side()).getByTestId("workspace-waiting-pick"),
-    ).toBeInTheDocument();
+    expect(within(side()).queryByTestId("workspace-output-plan")).toBeNull();
     expect(screen.queryByTestId("workspace-plan-card")).toBeNull();
     expect(
       within(cards[0]).getByText("reads events from a Home Assistant calendar"),

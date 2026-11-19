@@ -392,7 +392,10 @@ export function buildLogSteps(state, leftOff = [], opts = {}) {
       activity,
       tries,
       badge: tries.length ? `${ordinal(tries.length + 1)} try` : "",
-      detail: String(s.detail || "").slice(0, 1200),
+      // Plain words: the Builder writes Markdown, read here as text.
+      detail: String(s.detail || "")
+        .replace(/\*\*|__|`/g, "")
+        .slice(0, 1200),
     };
     const took = between(s.startedAt, s.finishedAt);
     const triesWord = tries.length ? `${tries.length + 1} tries` : "";
@@ -727,10 +730,18 @@ export function heldRows(state) {
 }
 
 /** "2 new widgets checked" — the report's line. */
+// Steps the Checker really looked at (or is looking at) — one skipped
+// because its build didn't finish was never checked.
+const CHECKED = new Set(["running", "done", "failed"]);
+export const checkRan = (state) =>
+  stepsOf(state).some((s) => s.kind === "check" && CHECKED.has(s.status));
+
 export function checkLine(state) {
-  const n = stepsOf(state).filter(
-    (s) => s.kind === "check" && s.status !== "waiting",
+  const steps = stepsOf(state).filter((s) => s.kind === "check");
+  const n = steps.filter(
+    (s) => s.status === "done" || s.status === "failed",
   ).length;
+  if (!n && steps.some((s) => s.status === "running")) return "Checking…";
   return n === 1 ? "1 new widget checked" : `${n} new widgets checked`;
 }
 

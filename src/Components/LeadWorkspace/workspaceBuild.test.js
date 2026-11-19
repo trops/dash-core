@@ -16,6 +16,7 @@ import {
   buildPlanLine,
   buildStatus,
   checkLine,
+  checkRan,
   checkRows,
   isLeftOff,
   pieceKey,
@@ -892,5 +893,26 @@ describe("a failure's way on", () => {
     const chat = buildChat(failed({ canRetry: true }), { restored: true });
     expect(chat.reply).not.toContain("Try it again");
     expect(chat.reply).toContain("carry on building");
+  });
+});
+
+describe("the Check report only once the Checker looked", () => {
+  const st = (check) => ({
+    status: "failed",
+    steps: [
+      { id: "build:0", kind: "build", status: "failed" },
+      { id: "check:0", kind: "check", status: check },
+    ],
+  });
+  test("a check skipped because its build failed was never checked", () => {
+    expect(checkRan(st("skipped"))).toBe(false);
+    expect(checkRan(st("waiting"))).toBe(false);
+    expect(checkLine(st("skipped"))).toBe("0 new widgets checked");
+  });
+  test("looking, or looked", () => {
+    expect(checkRan(st("running"))).toBe(true);
+    expect(checkLine(st("running"))).toBe("Checking…");
+    expect(checkRan(st("failed"))).toBe(true);
+    expect(checkLine(st("done"))).toBe("1 new widget checked");
   });
 });

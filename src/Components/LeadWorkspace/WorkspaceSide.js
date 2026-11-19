@@ -1,24 +1,18 @@
-import React, { useContext, useEffect, useState } from "react";
-import {
-  readsFromNames,
-  sketchOf,
-  widgetLabel,
-} from "./WidgetWizard/widgetSpec";
+import React, { useEffect, useState } from "react";
+import { sketchOf, widgetLabel } from "./WidgetWizard/widgetSpec";
 import { ReviewSketch } from "./WidgetWizard/StepReview";
 import { cellPlace } from "./workspaceStart";
 import {
   Button2,
   Button3,
   FontAwesomeIcon,
-  ThemeContext,
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { normalizeType } from "../Create/planChecklist";
-import { readableRequest, toolName } from "./handoffSteps";
-import { WhoWorks } from "./ModelInfo";
-import { BeforeItBuilds, OutputCard, PlanNext, PlanOutput } from "./PlanViews";
+import { readableRequest } from "./handoffSteps";
+import { BeforeItBuilds, OutputCard, PlanOutput } from "./PlanViews";
 import { BotTestOutput } from "./BotTestOutput";
 import {
   BuildLogOutput,
@@ -27,46 +21,28 @@ import {
   PreviewOutput,
 } from "./BuildViews";
 import {
-  buildMemberState,
-  buildPlanLine,
   activityText,
+  buildLogHead,
+  checkRan,
+  buildPlanLine,
+  checkLine,
   buildStatus,
   liveActivityOf,
   logTime,
   waitingFor,
 } from "./workspaceBuild";
 import { planTarget } from "../../utils/teamPlan";
-import { useRegistryUsername } from "../../hooks/useRegistryUsername";
 import {
   isThemeChangeOnly,
   isThemeOnly,
-  nextNeedsYou,
   planName,
   planStatus,
-  planSubLine,
-  providersLine,
 } from "./workspacePlan";
 
 function botsApi() {
   return typeof window !== "undefined" && window.mainApi
     ? window.mainApi.bots
     : null;
-}
-
-// "gmail_search_messages" → "gmail search messages"; the team's own
-// tools in words.
-const TOOL_WORDS = {
-  team_ask_bot: "asking a bot",
-  team_ask_dash_team: "bringing in the Dash team",
-  team_recent_runs: "reading what the bots did",
-  team_list_bots: "looking at the team",
-  team_memory_read: "reading the team's notes",
-  ask_role: "asking a role",
-  search_library: "searching widgets",
-};
-function plainTool(name) {
-  const t = toolName(name);
-  return TOOL_WORDS[t] || t.replace(/[_-]+/g, " ");
 }
 
 // "the Scout's answer" → "The Scout's answer" at the start of a title.
@@ -77,51 +53,6 @@ const norm = (name) =>
     .replace(/^the /i, "")
     .trim()
     .toLowerCase();
-
-// What each Dash team role is for, under its name until it's asked (frame
-// 13), and what its output is called (frame 1).
-const ROLE_LINES = {
-  scout: "finds what you already have",
-  planner: "turns your request into a plan",
-  builder: "builds what you approve",
-  checker: "checks what's built",
-};
-const ROLE_OUTPUT = { scout: "Findings" };
-// The roles a build uses, and their output (release 3b, frames 4, 7).
-const BUILD_ROLES = {
-  builder: { label: "Build log", open: "buildlog" },
-  checker: { label: "Report", open: "check" },
-};
-
-/**
- * What each bot is doing right now — one line, from its stream: the tool
- * it's calling, or that it's writing. Cleared when its run ends.
- */
-function useLiveLines(botIds) {
-  const [lines, setLines] = useState({});
-  const key = (botIds || []).join(",");
-  useEffect(() => {
-    const b = botsApi();
-    if (!b || !b.onStream) return undefined;
-    const want = new Set(key ? key.split(",") : []);
-    const id = b.onStream(({ botId, event } = {}) => {
-      if (!want.has(botId) || !event) return;
-      let line = null;
-      // Its notes to itself aren't what it's doing (memory_list…).
-      if (event.type === "tool_call" && /^memory/.test(toolName(event.name)))
-        return;
-      if (event.type === "tool_call") line = `› ${plainTool(event.name)}`;
-      else if (event.type === "text") line = "writing its answer…";
-      else if (event.type === "done" || event.type === "error") line = "";
-      if (line === null) return;
-      setLines((cur) => ({ ...cur, [botId]: line }));
-    });
-    return () => {
-      if (id != null && b.removeListener) b.removeListener(id);
-    };
-  }, [key]);
-  return lines;
-}
 
 /**
  * What a bot is doing, line by line, while `on` — its tool calls from its
@@ -181,80 +112,15 @@ function shortTime(at) {
 }
 
 /**
- * A team member's state and line (frames 1, 13): working (its live line),
- * done (what it answered), or not asked yet — ready, or waiting while a plan
- * waits for the go-ahead.
- */
-function memberState(
-  m,
-  last,
-  status,
-  { plan, lines, rawThemes = null, username = null, picking = null },
-) {
-  const working = !!(last && last.status === "asking");
-  if (working)
-    return {
-      tone: "working",
-      state: "working",
-      line: lines[m.id] || "starting…",
-    };
-  if (last) {
-    if (last.status === "failed")
-      return { tone: "bad", state: "couldn't answer", line: last.result || "" };
-    if (last.status === "stopped")
-      return { tone: "idle", state: "stopped", line: last.result || "" };
-    // A plan says what it is ("drafted a plan — 2 widgets"), not the
-    // Planner's first words.
-    // Waiting for the user to pick what the widget reads from.
-    if (last.plan && picking) {
-      return {
-        tone: "ok",
-        state: "asked you",
-        line: `which provider ${picking} reads from`,
-      };
-    }
-    if (last.plan) {
-      const what = planSubLine(last.plan, [], { rawThemes, username });
-      return {
-        tone: "ok",
-        state: "done",
-        line: what ? `drafted a plan — ${what}` : "drafted a plan",
-      };
-    }
-    return { tone: "ok", state: "done", line: last.result || "" };
-  }
-  // A dashboard lead's own bot, not asked for this plan (frame 18).
-  if (plan && !m.role) return { tone: "idle", state: "not needed", line: "" };
-  if (status === "Running")
-    return { tone: "idle", state: "busy with its own run", line: "" };
-  if (status === "Paused") return { tone: "idle", state: "paused", line: "" };
-  if (plan && m.role === "builder")
-    return {
-      tone: "idle",
-      state: "waiting",
-      line: picking
-        ? `builds once you pick what ${picking} reads from`
-        : "waiting for your go-ahead",
-    };
-  if (plan && m.role === "checker")
-    return { tone: "idle", state: "waiting", line: ROLE_LINES.checker };
-  // The plan came without it (the lead looked itself).
-  if (plan && m.role === "scout")
-    return { tone: "idle", state: "not needed", line: "" };
-  return { tone: "idle", state: "ready", line: ROLE_LINES[m.role] || "" };
-}
-
-/**
- * WorkspaceSide — the workspace's right column (lead-workspace releases 2
- * and 3a, frames 1, 6, 13): Outputs — where to start from (a new Dash Lead
- * conversation), Before it builds, the team's approvals, the plan and the
- * team's answers — then Team in this conversation (each bot: its state, a
- * live line while it works, its output) and the providers the plan needs. A
- * lone bot shows its runs instead of a team.
+ * WorkspaceSide — the workspace's right column: the conversation's outputs
+ * (DASH-21 frame 4) — the plan, its Build log, the Check report, the preview,
+ * what was built and the team's answers, one row each; opening one shows
+ * only that one. What waits on the user before it can go on (connects,
+ * approvals) sits above them until the chat asks it; everything else is
+ * told in the chat. A lone bot shows its runs.
  *
  * @param {object} contact     workspaceContacts' contact
  * @param {object[]} messages  the conversation (AskStep's), with its steps
- * @param {(id) => string} statusOf  "Running" | "Paused" | "Idle" | …
  * @param {object|null} wp    the conversation's plan (useWorkspacePlan)
  * @param {boolean} planReadOnly  the lead is answering: a new plan may come
  * @param {() => void} onBuild  Yes, build it
@@ -266,18 +132,15 @@ function memberState(
  *   leftOff }); its outputs open as "buildlog", "check" and "preview"
  * @param {object|null} pb     the build, live (usePlanBuild)
  * @param {object[]} dashTeam  the Dash team's working roles ({ id, name,
- *   role }), shown under a dashboard lead's own bots once it brings them in
- *   (release 3c, frame 18)
+ *   role }): finds the bot working a step, for its live activity
  * @param {({ count, needsYou }) => void} [onSummary]  told what the column
  *   holds — the folded column's button (release 6a)
- * @param {string|null} [next]  the plan's next step (planNext): shown on
- *   its card, with `planActions` (PlanNext's handlers) and, once it
- *   builds, `buildNext` (the build's choices)
+ * @param {object|null} [planActions]  PlanNext's handlers: an answer typed
+ *   on the plan goes to the Planner (its choices are asked in the chat)
  */
 export const WorkspaceSide = ({
   contact,
   messages = [],
-  statusOf = () => "Idle",
   wp = null,
   planReadOnly = false,
   onBuild = null,
@@ -292,7 +155,6 @@ export const WorkspaceSide = ({
   // A change to one widget (release 6c): in place or new; sign in.
   onWidgetMode = null,
   onSignIn = null,
-  next = null,
   planActions = null,
   // Review & build is in the chat: its yes is the one way to build.
   reviewInChat = false,
@@ -302,19 +164,10 @@ export const WorkspaceSide = ({
   sketchHidden = false,
   // A wizard step, checked before it's asked (askChecks.askRows).
   checkedBefore = null,
-  buildNext = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
-  // rawThemes: whose a changed theme is (theme change round).
-  const { currentTheme, rawThemes } = useContext(ThemeContext) || {};
-  const username = useRegistryUsername();
-  // The link colour: the accent role (Aurora gives it its own text shade).
-  const link = `${(currentTheme && currentTheme["text-primary-medium"]) || ""} dr-role-accent`;
   const statusTokens = useStatusTokens();
   const members = (contact && contact.members) || [];
-  const lines = useLiveLines(
-    [...members, ...(dashTeam || [])].map((m) => m.id),
-  );
   const runs = useRuns(
     contact && contact.kind === "bot" ? contact.botId : null,
   );
@@ -331,24 +184,6 @@ export const WorkspaceSide = ({
     stepBot ? stepBot.id : null,
     !!step && step.status === "asking",
   );
-  // A dashboard lead that brought in the Dash team (release 3c): the team
-  // shows under its own bots, "brought in by" it.
-  // Only the roles in it (frames 18, 30): asked, building, or — a plan
-  // waiting for a yes — the Builder.
-  const broughtInRoles = (dashTeam || []).filter(
-    (m) =>
-      steps.some((st) => st.dashTeam && norm(st.bot) === norm(m.name)) ||
-      (build && pb && pb.state
-        ? !!BUILD_ROLES[m.role] &&
-          !!buildMemberState(m.role, pb.state, (build && build.leftOff) || [])
-        : !!(wp && wp.plan) && m.role === "builder"),
-  );
-  const broughtIn =
-    !!contact &&
-    contact.kind === "lead" &&
-    (dashTeam || []).length > 0 &&
-    (steps.some((st) => st.dashTeam) || !!(wp && wp.plan) || !!build);
-
   const plan = wp && wp.plan ? wp.plan : null;
   const back = (
     <div className="flex flex-row items-center gap-2">
@@ -376,9 +211,6 @@ export const WorkspaceSide = ({
   const approvalBots = contact
     ? [{ id: contact.botId, name: contact.name }, ...members]
     : [];
-  // Connected for real — a connect skipped before building isn't.
-  const connected = (it) =>
-    !!(wp && wp.have && wp.have.has(normalizeType(it.providerType)));
   // What the build waits for that still isn't connected (Needs you).
   const needs = buildState
     ? waitingFor(buildState)
@@ -400,13 +232,18 @@ export const WorkspaceSide = ({
 
   // For the folded column's button (frames 35, 36): how many outputs, and
   // whether something waits on the user.
+  // What's decided is asked in the chat, so only a look or an approval
+  // here needs the user.
+  const checkedAny = !!buildState && checkRan(buildState);
+  const planShown = !!plan && !(wp && wp.waitingForPick);
   const outputCount =
     (previewStep ? 1 : 0) +
-    (plan ? 1 : 0) +
+    (planShown ? 1 : 0) +
+    (build ? 1 : 0) +
+    (checkedAny ? 1 : 0) +
     (builtDashboard ? 1 : 0) +
     answered.length;
-  const needsYou =
-    needs.length > 0 || !!previewStep || (!!planActions && nextNeedsYou(next));
+  const needsYou = needs.length > 0 || !!previewStep;
   useEffect(() => {
     if (onSummary) onSummary({ count: outputCount, needsYou });
   }, [onSummary, outputCount, needsYou]);
@@ -550,95 +387,9 @@ export const WorkspaceSide = ({
     : 0;
   const hasCheck =
     !!buildState && (buildState.steps || []).some((x) => x.kind === "check");
-  const dot = {
-    ok: statusTokens.success.icon,
-    bad: statusTokens.error.icon,
-    idle: muted,
-  };
-
-  // A team member's row: its state, live line and output (frames 1, 3, 18).
-  // `dash`: one of the Dash team a dashboard lead brought in — matched to
-  // its own steps only (a lead's bot could share a role's name).
-  const renderMember = (m, dash = false) => {
-    const mine = steps.filter(
-      (s) =>
-        norm(s.bot) === norm(m.name) &&
-        (contact.kind !== "lead" || !!s.dashTeam === dash),
-    );
-    const last = mine[mine.length - 1] || null;
-    // Once it builds, the Builder and Checker follow the build
-    // (frames 3, 8, 33) — or weren't needed for it.
-    const inBuild =
-      buildState && BUILD_ROLES[m.role]
-        ? buildMemberState(m.role, buildState, leftOff, {
-            [m.role]: lines[m.id],
-          }) || { tone: "idle", state: "not needed", line: "" }
-        : null;
-    const { tone, state, line } =
-      inBuild ||
-      memberState(m, last, statusOf(m.id), {
-        picking: wp && wp.waitingForPick && wp.pick ? wp.pick.name : null,
-        plan,
-        lines,
-        rawThemes,
-        username,
-      });
-    const out =
-      inBuild && inBuild.out === "preview"
-        ? { label: "Preview", open: "preview" }
-        : inBuild && inBuild.out === false
-          ? null
-          : inBuild && inBuild.state !== "not needed"
-            ? BUILD_ROLES[m.role]
-            : last && last.plan && plan && !(wp && wp.waitingForPick)
-              ? {
-                  // A change to a dashboard the user has (frame 30).
-                  label:
-                    planTarget(plan) || plan.widgetChange ? "Changes" : "Plan",
-                  open: "plan",
-                }
-              : last && last.answer
-                ? {
-                    label: ROLE_OUTPUT[m.role] || "Answer",
-                    open: last.id,
-                  }
-                : null;
-    return (
-      <div
-        key={m.id}
-        className={`flex flex-row items-start gap-3 ${dash ? "pl-4" : ""}`}
-        data-testid="workspace-member"
-      >
-        <FontAwesomeIcon
-          icon={tone === "working" ? "spinner" : "circle"}
-          className={`h-2 w-2 mt-1 ${tone === "working" ? `animate-spin ${muted}` : dot[tone]}`}
-          aria-hidden="true"
-        />
-        <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-          <span className="text-sm">
-            <span className={`font-semibold ${strong}`}>{m.name}</span>
-            <span className={`text-xs ${muted}`}> · {state}</span>
-          </span>
-          {line ? (
-            <span
-              className={`text-xs truncate ${tone === "working" ? "font-mono" : ""} ${muted}`}
-            >
-              {line}
-            </span>
-          ) : null}
-        </span>
-        {out ? (
-          <button
-            type="button"
-            onClick={() => onOpen(out.open)}
-            className={`flex-shrink-0 text-sm ${link}`}
-          >
-            {out.label} ›
-          </button>
-        ) : null}
-      </div>
-    );
-  };
+  // The Check report, once the Checker has looked at something.
+  const checked = checkedAny;
+  const logHead = buildState ? buildLogHead(buildState, leftOff) : null;
 
   return (
     <div
@@ -741,90 +492,53 @@ export const WorkspaceSide = ({
           onClick={() => onOpen("preview")}
         />
       ) : null}
-      {/* Nothing is planned until the user picks what it reads from. */}
-      {wp && wp.waitingForPick && wp.pick ? (
-        <div
-          className={`flex flex-col gap-1 rounded-xl border px-4 py-3 ${statusTokens.info.accentBorder}`}
-          data-testid="workspace-waiting-pick"
-        >
-          <span className={`text-sm font-semibold ${strong}`}>
-            Waiting for you
-          </span>
-          <span className={`text-sm ${muted}`}>
-            Pick which provider {wp.pick.name} reads from, in the chat. Nothing
-            is planned or built until you do.
-          </span>
-        </div>
+      {/* The conversation's outputs (DASH-21 frame 4): one row each, with
+          a status line — opening one shows only that one. What to decide is
+          asked in the chat, never here. */}
+      {planShown ? (
+        <OutputCard
+          testId="workspace-output-plan"
+          icon={
+            isThemeOnly(plan) || isThemeChangeOnly(plan) ? "palette" : undefined
+          }
+          // One new widget in a cell: the widget is the plan.
+          title={
+            plan.cell && wp.wizard && !wp.reuse
+              ? `${widgetLabel(wp.wizard.piece)} — new widget`
+              : `${planName(plan)} — ${planTarget(plan) || plan.widgetChange ? "changes" : "plan"}`
+          }
+          sub={
+            build
+              ? "You said yes"
+              : planStatus({ plan, check: wp.check, open: wp.open })
+          }
+          kind="Plan"
+          onClick={() => onOpen("plan")}
+        />
       ) : null}
-      {/* The plan, with its next step — never a dead end (plan → build). */}
-      {!(wp && wp.waitingForPick) && (plan || (planActions && next)) ? (
-        <div
-          className={`flex flex-col rounded-xl border overflow-hidden ${
-            planActions && nextNeedsYou(next)
-              ? statusTokens.info.accentBorder
-              : hairline
-          }`}
-          data-testid="workspace-plan-box"
-        >
-          {plan ? (
-            <OutputCard
-              testId="workspace-output-plan"
-              icon={
-                isThemeOnly(plan) || isThemeChangeOnly(plan)
-                  ? "palette"
-                  : undefined
-              }
-              // One new widget in a cell: the widget is the plan.
-              title={
-                plan.cell && wp.wizard && !wp.reuse
-                  ? `${widgetLabel(wp.wizard.piece)} — new widget`
-                  : `${planName(plan)} — ${planTarget(plan) || plan.widgetChange ? "changes" : "plan"}`
-              }
-              sub={
-                buildLine ||
-                [
-                  planStatus({ plan, check: wp.check, open: wp.open }),
-                  wp.wizard &&
-                  readsFromNames(wp.wizard.piece, wp.providers, wp.picked)
-                    ? `reads from ${readsFromNames(
-                        wp.wizard.piece,
-                        wp.providers,
-                        wp.picked,
-                      )}`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-              }
-              kind="Plan"
-              bordered={false}
-              onClick={() => onOpen("plan")}
-            />
-          ) : null}
-          {planActions && next && reviewInChat && !build ? (
-            <div
-              className={`px-4 py-3 ${plan ? `border-t ${hairline}` : ""}`}
-              data-testid="workspace-review-in-chat"
-            >
-              <span className={`text-sm ${muted}`}>
-                {reuseInChat
-                  ? "Choose each part in the chat, then Yes, preview it."
-                  : "Check each part in the chat, then Yes, build it."}
-              </span>
-            </div>
-          ) : planActions && next ? (
-            <div className={`px-4 py-3 ${plan ? `border-t ${hairline}` : ""}`}>
-              <PlanNext
-                next={next}
-                plan={plan}
-                check={wp ? wp.check : null}
-                leadName={contact ? contact.name : undefined}
-                buildSlot={buildNext}
-                {...planActions}
-              />
-            </div>
-          ) : null}
-        </div>
+      {build ? (
+        <OutputCard
+          testId="workspace-output-buildlog"
+          icon="list"
+          title="Build log"
+          sub={
+            buildState
+              ? [logHead.lead, logHead.rest].filter(Boolean).join(" · ")
+              : "Starting the build…"
+          }
+          kind="Build"
+          onClick={() => onOpen("buildlog")}
+        />
+      ) : null}
+      {checked ? (
+        <OutputCard
+          testId="workspace-output-check"
+          icon="clipboard-check"
+          title="Check report"
+          sub={checkLine(buildState)}
+          kind="Check"
+          onClick={() => onOpen("check")}
+        />
       ) : null}
       {builtDashboard ? (
         <OutputCard
@@ -851,17 +565,15 @@ export const WorkspaceSide = ({
           onClick={() => onOpen(s.id)}
         />
       ))}
-      {!answered.length && !plan && !(planActions && next) ? (
+      {!answered.length && !planShown && !build && !previewStep ? (
         <span
           className={`rounded-xl border border-dashed p-6 text-center text-sm ${hairline} ${muted}`}
         >
           {isBot
             ? "Its answers and results show here."
-            : "What the team makes shows here."}
+            : "The plan, its build log, the check report and the preview show up here as the team makes them."}
         </span>
       ) : null}
-
-      <div className={`border-t ${hairline}`} aria-hidden="true" />
 
       {isBot ? (
         <div className="flex flex-col gap-2" data-testid="workspace-runs">
@@ -887,47 +599,6 @@ export const WorkspaceSide = ({
           ) : (
             <span className={`text-sm ${muted}`}>No runs yet.</span>
           )}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3" data-testid="workspace-team">
-          <span className={`text-sm font-semibold ${strong}`}>
-            Team in this conversation
-          </span>
-          {members.map((m) => renderMember(m))}
-          {!members.length && !broughtIn ? (
-            <span className={`text-sm ${muted}`}>
-              This team has no bots yet.
-            </span>
-          ) : null}
-          {/* A dashboard lead's Dash team, brought in (frame 18). */}
-          {broughtIn ? (
-            <>
-              <span className="text-sm" data-testid="workspace-team-group">
-                <span className={`font-semibold ${strong}`}>Dash team</span>
-                <span className={`text-xs ${muted}`}>
-                  {` · brought in by ${contact.name}`}
-                </span>
-              </span>
-              {broughtInRoles.map((m) => renderMember(m, true))}
-            </>
-          ) : null}
-        </div>
-      )}
-
-      {/* Which model ran it: who works on this, and on what. */}
-      {contact && contact.kind !== "bot" ? <WhoWorks /> : null}
-
-      {plan ? (
-        <div
-          className="flex flex-row gap-2 text-sm"
-          data-testid="workspace-providers"
-        >
-          <span className={`font-semibold ${strong}`}>Providers</span>
-          <span className={muted}>
-            {wp.waitingForPick
-              ? "you're choosing"
-              : providersLine(wp.checklist, connected, plan)}
-          </span>
         </div>
       ) : null}
     </div>
