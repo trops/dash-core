@@ -1303,10 +1303,18 @@ export const LeadWorkspace = ({
     ((pb.state && pb.state.steps) || []).some((s) => s.kind === "build");
   const previewSawRunning = useRef(null);
   const previewOpened = useRef(null);
-  const previewKey =
-    previewWaiting && wp.build
-      ? `${wp.build.buildId}:${previewWaiting.id}`
+  // A bot made but not saved, waiting for its test (bot-test-run TST-003):
+  // its test opens on the right by itself too. (What's typed still goes to
+  // the Planner — a bot changes through its plan.)
+  const testWaiting =
+    wp.build && !removed && pb.state && pb.state.status === "waiting-for-you"
+      ? (pb.state.steps || []).find(
+          (s) => s.kind === "testbot" && s.status === "needs-you",
+        ) || null
       : null;
+  const lookWaiting = previewWaiting || testWaiting;
+  const previewKey =
+    lookWaiting && wp.build ? `${wp.build.buildId}:${lookWaiting.id}` : null;
   const buildStatusNow = pb.state ? pb.state.status : null;
   useEffect(() => {
     if (!wp.build) return;
@@ -3147,11 +3155,14 @@ export const LeadWorkspace = ({
                           }`
                         : t.id === selectedId && wp.waitingForPick
                           ? "Waiting for you"
-                          : t.built
-                            ? BUILT_TAG[t.built] || null
-                            : t.planned
-                              ? "Plan"
-                              : null,
+                          : // A bot made but not saved (TST-003).
+                            t.waitingTest
+                            ? "Waiting for its test"
+                            : t.built
+                              ? BUILT_TAG[t.built] || null
+                              : t.planned
+                                ? "Plan"
+                                : null,
                     ]
                       .filter(Boolean)
                       .join(" · ")

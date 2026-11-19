@@ -195,7 +195,8 @@ function cellSteps(widgets, add, edit = null) {
 }
 
 /**
- * A bot build's steps (opts.bot): one bot, checked, then saved paused — on
+ * A bot build's steps (opts.bot): one bot, checked, tested by the user,
+ * then saved paused — on
  * the dashboard the plan names (its results card there too, if planned) or
  * Unassigned. Never a new dashboard.
  */
@@ -222,13 +223,23 @@ function botSteps(plan, add) {
         label: "Check the bot",
         needs: target ? ["dashboard"] : [],
       });
+      // Tested before it's saved (bot-test-run TST-003): the build waits
+      // for the user to test it, then Save keeps the test as its sample.
+      add({
+        id: `testbot:${i}`,
+        kind: "testbot",
+        bot: i,
+        role: "you",
+        label: `Test ${b.name}`,
+        needs: [`checkbot:${i}`],
+      });
       add({
         id: `bot:${i}`,
         kind: "bot",
         bot: i,
         role: "dash",
         label: `Save ${b.name} — paused`,
-        needs: [`checkbot:${i}`],
+        needs: [`testbot:${i}`],
       });
       if (target && b.showResults) {
         add({
@@ -1388,7 +1399,16 @@ function reuseEarlier(plan, steps, state, earlier) {
     if (!saved) return;
     state.bots[i] = { ...saved };
     if (pieceSignature(bots[i]) === pieceSignature(prevBots[j])) {
-      keep(`bot:${i}`, `bot:${j}`);
+      keep(`testbot:${i}`, `testbot:${j}`);
+      // Saved already (a build from before bots were tested first, too):
+      // its test is behind it.
+      if (keep(`bot:${i}`, `bot:${j}`)) {
+        const t = byId.get(`testbot:${i}`);
+        if (t && t.status !== STATUS.done) {
+          t.status = STATUS.done;
+          t.reused = true;
+        }
+      }
     } else {
       // Changed: saved over the old bot (its triggers stay; new ones added).
       const s = byId.get(`bot:${i}`);
@@ -1618,8 +1638,11 @@ function undoOnDashboard(workspace, built) {
  *     connection and settings it couldn't use, said under the step
  *   checkBot({ dashboardId, piece }) → { detail } | throws — a bot build's
  *     check before the save (opts.bot); dashboardId null = Unassigned
- *   saveBot({ dashboardId, piece, botId? }) → { id, name } | throws (an
- *     error with waitingFor = provider names → the step waits for them)
+ *   botDefinition({ dashboardId, piece }) → the bot exactly as saveBot
+ *     will save it — what the user tests (testbot)
+ *   saveBot({ dashboardId, piece, botId?, sample? }) → { id, name } | throws
+ *     (an error with waitingFor = provider names → the step waits for
+ *     them); sample: what its test returned, kept as its sample
  *   placeBotResults({ dashboardId, botId }) → { component, widgetId, pageId } | throws
  *   wireTrigger({ dashboardId, botId, widgetId, component, event }) | throws
  *   wireListener({ dashboardId, widgetId, component, handler, botId, result }) | throws
@@ -1679,6 +1702,10 @@ function createPlanBuild(plan, deps, opts = {}) {
   let busy = false;
   const pieces = widgetPieces(plan);
   const bots = botPieces(plan);
+  // bot index → what its test returned, until it's saved as its sample.
+  // Held here, never in the state (Recent keeps that): an answer can hold
+  // anything.
+  const samples = {};
   // A change's widget as it is now (opts.edit): its cell's connection and
   // settings, to preview the change with.
   const editOf = (key) =>
@@ -2188,13 +2215,31 @@ function createPlanBuild(plan, deps, opts = {}) {
         step.detail = (res && res.detail) || "";
         return;
       }
+      case "testbot": {
+        // What the user tests is exactly what Save saves.
+        if (!step.definition && deps.botDefinition) {
+          step.definition = await deps.botDefinition({
+            dashboardId: state.dashboard ? state.dashboard.id : null,
+            piece: bots[step.bot],
+          });
+        }
+        if (step.approved) {
+          step.detail = "Tested";
+          return;
+        }
+        const wait = new Error("waiting for you to test it");
+        wait.needsYou = true;
+        throw wait;
+      }
       case "bot": {
         const saved = await deps.saveBot({
           // A bot build with no dashboard saves it Unassigned.
           dashboardId: state.dashboard ? state.dashboard.id : null,
           piece: bots[step.bot],
           ...(step.replaces ? { botId: step.replaces } : {}),
+          ...(samples[step.bot] ? { sample: samples[step.bot] } : {}),
         });
+        delete samples[step.bot];
         state.bots[step.bot] = { id: saved.id, name: saved.name };
         step.detail = saved.name;
         return;
@@ -2330,8 +2375,11 @@ function createPlanBuild(plan, deps, opts = {}) {
       (b) => b.status !== STATUS.done,
     );
     if (!blocked) return false;
-    // Behind the user's preview: it waits, untouched, until they decide.
-    if (blocked.status === STATUS.needsYou) return true;
+    // Behind the user's preview or test — or a step still waiting behind
+    // one (a bot's results card, behind its save): it waits, untouched,
+    // until they decide.
+    if (blocked.status === STATUS.needsYou || blocked.status === STATUS.waiting)
+      return true;
     if (blocked.status === STATUS.needsProvider) {
       step.status = STATUS.needsProvider;
       step.waitingFor = (blocked.waitingFor || []).slice();
@@ -2535,7 +2583,9 @@ function createPlanBuild(plan, deps, opts = {}) {
   /** The preview, as the user decided it. */
   const waitingPreview = (stepId) => {
     const step = steps.find((s) => s.id === stepId);
-    return step && step.kind === "preview" && step.status === STATUS.needsYou
+    return step &&
+      (step.kind === "preview" || step.kind === "testbot") &&
+      step.status === STATUS.needsYou
       ? step
       : null;
   };
@@ -2549,6 +2599,23 @@ function createPlanBuild(plan, deps, opts = {}) {
     const step = waitingPreview(stepId);
     if (!step) return Promise.resolve({ error: "Nothing is waiting there." });
     const picked = inputs && typeof inputs === "object" ? inputs : {};
+    // A bot's test (TST-003): Save only once a test finished, keeping it.
+    if (step.kind === "testbot") {
+      const sample = picked.sample;
+      if (
+        !sample ||
+        typeof sample !== "object" ||
+        typeof sample.answer !== "string"
+      ) {
+        return Promise.resolve({
+          error: "Test it first: Save turns on once a test finishes.",
+        });
+      }
+      reset(step);
+      samples[step.bot] = JSON.parse(JSON.stringify(sample));
+      step.approved = { tested: true };
+      return run();
+    }
     reset(step);
     step.approved = JSON.parse(
       JSON.stringify({
@@ -2569,6 +2636,9 @@ function createPlanBuild(plan, deps, opts = {}) {
     if (busy) return "The build is still running.";
     const step = waitingPreview(stepId);
     if (!step) return "Nothing is waiting there.";
+    // A bot is changed by asking the Planner (the plan changes, then it's
+    // built and tested again).
+    if (step.kind === "testbot") return "Ask the Planner for the change.";
     const w = step.piece;
     if (!steps.some((s) => s.id === `build:${w}`)) {
       return "This widget wasn't built here — ask the Planner for another.";

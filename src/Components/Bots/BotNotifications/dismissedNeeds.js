@@ -15,9 +15,15 @@ const DAY = 24 * 60 * 60 * 1000;
 // Older than any card can be (plans and failures show for 7 days).
 const KEEP_DAYS = 30;
 
-/** Can this card be dismissed? Plans and failed runs; not asks. */
+/**
+ * Can this card be dismissed? Plans, bots waiting for their test (TST-003)
+ * and failed runs; not asks, nor a kept form (it has Discard).
+ */
 export function canDismiss(item) {
-  return !!item && (item.kind === "plan" || item.kind === "failed");
+  return (
+    !!item &&
+    (item.kind === "plan" || item.kind === "test" || item.kind === "failed")
+  );
 }
 
 /** The same thing across times: a bot's failures share one key. */

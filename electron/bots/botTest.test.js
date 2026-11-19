@@ -396,3 +396,28 @@ describe("a sample sent with Create", () => {
     assert.equal(c._store.getSample(other.id), null);
   });
 });
+
+// TST-003: an Ask AI build saves its bot with the test the user ran.
+describe("a bot an Ask AI build saves", () => {
+  it("keeps the test it was saved after as its sample", () => {
+    const c = fake();
+    c._appId = null;
+    c._scheduler = { register() {} };
+    c._pause.pauseBot = () => {};
+    c._logAudit = () => {};
+    c._botCheckContext = () => ({
+      existing: null,
+      connections: null,
+      knownAiProvider: () => true,
+      cronValid: () => true,
+      widgetOnDashboard: () => true,
+      botExists: () => false,
+      toolsOf: () => null,
+    });
+    c._planBotDefinition = () => ({ ...FORM });
+    const sample = { at: "t", answer: DEALS, results: [], shape: {} };
+    const saved = c._planSaveBot({ dashboardId: null, piece: {}, sample });
+    assert.deepEqual(c._store.getSample(saved.id), sample);
+    assert.equal(c._store.get(saved.id).sample, undefined);
+  });
+});

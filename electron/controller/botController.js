@@ -1743,7 +1743,10 @@ const botController = {
       return { id: carried.id, title: carried.title };
     }
     const entry = this._recent.save(req || {});
-    this._writePlanMemory(entry.id, conversationFacts(entry));
+    // A bot form (TST-003) is no conversation: it has no plan memory.
+    if (entry.kind !== "botform") {
+      this._writePlanMemory(entry.id, conversationFacts(entry));
+    }
     return { id: entry.id, title: entry.title };
   },
 
@@ -4376,6 +4379,8 @@ const botController = {
               : { success: false, error: "installing isn't available here" },
         // A bot build's check before the save (2c-1).
         checkBot: (req) => this._planCheckBot(req),
+        // What the user tests before it's saved (bot-test-run TST-003).
+        botDefinition: (req) => this._planBotDefinition(req),
         saveBot: (req) => this._planSaveBot(req),
         placeBotResults: ({ dashboardId, botId }) => {
           const res = this.addBotWidget(dashboardId, {
@@ -4503,7 +4508,11 @@ const botController = {
     const { entry, step, error } = this._finishedBuild(buildId, stepId);
     if (error) return { error };
     if (!entry.build) return { error: "Continue building first." };
-    if (step.kind !== "preview" || step.status !== "needs-you") {
+    // A widget's preview, or a bot's test (bot-test-run TST-003).
+    if (
+      (step.kind !== "preview" && step.kind !== "testbot") ||
+      step.status !== "needs-you"
+    ) {
       return { error: "Nothing is waiting there." };
     }
     return this._continueBuild(entry.build.approve(stepId, inputs));
@@ -5442,25 +5451,32 @@ const botController = {
    * providers and tools taken as chosen. A provider that isn't connected
    * fails the step instead of saving a bot that can't work.
    */
-  _planSaveBot({ dashboardId, piece, botId = null }) {
-    const definition = planBotDefinition(piece, {
-      dashboardId,
-      sources: this.listToolSources(dashboardId),
-      team: this._planBotTeam(dashboardId),
-    });
+  _planSaveBot({ dashboardId, piece, botId = null, sample = null }) {
+    const definition = this._planBotDefinition({ dashboardId, piece });
     // An edited plan's changed bot is saved over the one built before
     // (4d-3); its triggers stay.
     const existing = botId ? this._store.get(botId) : null;
-    const saved = this.save(
-      existing
+    const saved = this.save({
+      ...(existing
         ? {
             ...definition,
             id: existing.id,
             subscriptions: existing.subscriptions || [],
           }
-        : definition,
-    );
+        : definition),
+      // Its test, before it was saved (TST-003): kept as its sample.
+      ...(sample ? { sample } : {}),
+    });
     return { id: saved.id, name: saved.name };
+  },
+
+  /** A plan's bot, exactly as _planSaveBot saves it: what the user tests. */
+  _planBotDefinition({ dashboardId, piece }) {
+    return planBotDefinition(piece, {
+      dashboardId,
+      sources: this.listToolSources(dashboardId),
+      team: this._planBotTeam(dashboardId),
+    });
   },
 
   /** What a placed widget sends and handles ({ events, handlers }), or null. */

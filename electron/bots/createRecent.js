@@ -44,7 +44,9 @@ function titleFor(entry) {
  *   status   draft | building | built | ready | problems | waiting |
  *            stopped | interrupted | removed (ready: built, waiting for you
  *            — a preview to look at) — and for a question (5e): asked |
- *            answered
+ *            answered — and for a bot form (TST-003): untested
+ *   waitingTest the name of a bot its build made, waiting for its test
+ *   workspaceId a bot form's dashboard
  *   progress { done, total } of the build's steps
  *   tokens   the build's tokens so far
  *   waitingFor  provider names the build waits for
@@ -120,6 +122,28 @@ function summarize(entry) {
     widget: !!(entry.conversation && entry.conversation.widget),
     widgetAdded: !!(entry.conversation && entry.conversation.widgetAdded),
   };
+  // A bot its build made, waiting for the user to test it before it's
+  // saved (bot-test-run TST-003): its name.
+  // Only while the build waits for it (not once it's removed or stopped).
+  const testing =
+    state && state.status === "waiting-for-you" && Array.isArray(state.steps)
+      ? state.steps.find(
+          (s) => s && s.kind === "testbot" && s.status === "needs-you",
+        )
+      : null;
+  if (testing) {
+    out.waitingTest = String(testing.label || "").replace(/^Test /, "");
+  }
+  // A new bot's form closed before it was created (TST-003): untested.
+  if (out.kind === "botform") {
+    const form = (entry.conversation && entry.conversation.botForm) || {};
+    out.status = "untested";
+    out.workspaceId =
+      form.workspaceId === null || form.workspaceId === undefined
+        ? null
+        : String(form.workspaceId);
+    return out;
+  }
   if (out.kind === "question") {
     const messages = (entry.conversation && entry.conversation.messages) || [];
     const last = messages[messages.length - 1];
@@ -170,7 +194,8 @@ function summarize(entry) {
   return out;
 }
 
-const KINDS = new Set(["plan", "question"]);
+// botform: a new bot's form, kept until it's tested and created.
+const KINDS = new Set(["plan", "question", "botform"]);
 
 class CreateRecent {
   /**

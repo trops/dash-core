@@ -623,3 +623,73 @@ describe("botController — a carried Create plan (lead-workspace 6c)", () => {
     assert.match(ctrl, /restored: !entry\.build/);
   });
 });
+
+// A bot not created until it's tested (bot-test-run TST-003).
+describe("CreateRecent — bots waiting for their test", () => {
+  it("a build waiting at a bot's test names the bot", () => {
+    const r = recent();
+    const e = r.save({ kind: "question", prompt: "Remind me of meetings" });
+    r.saveBuild(e.id, {
+      buildId: "b1",
+      plan: { pieces: [] },
+      state: {
+        status: "waiting-for-you",
+        steps: [
+          { id: "checkbot:0", kind: "checkbot", status: "done" },
+          {
+            id: "testbot:0",
+            kind: "testbot",
+            status: "needs-you",
+            label: "Test Meeting Reminder",
+          },
+        ],
+      },
+    });
+    assert.equal(r.list()[0].waitingTest, "Meeting Reminder");
+  });
+
+  it("a new bot's form is kept, untested, until it's created", () => {
+    const r = recent();
+    const e = r.save({
+      kind: "botform",
+      prompt: "Deal Finder",
+      conversation: {
+        botForm: { definition: { name: "Deal Finder" }, workspaceId: 7 },
+      },
+    });
+    const [row] = r.list();
+    assert.equal(row.kind, "botform");
+    assert.equal(row.title, "Deal Finder");
+    assert.equal(row.status, "untested");
+    assert.equal(row.workspaceId, "7");
+    assert.equal(row.waitingTest, undefined);
+    assert.deepEqual(r.get(e.id).conversation.botForm.definition, {
+      name: "Deal Finder",
+    });
+    assert.equal(r.remove(e.id), true);
+    assert.deepEqual(r.list(), []);
+  });
+});
+
+describe("CreateRecent — a removed build isn't waiting for anything", () => {
+  it("no waitingTest once the build is removed", () => {
+    const r = recent();
+    const e = r.save({ kind: "question", prompt: "Remind me" });
+    r.saveBuild(e.id, {
+      buildId: "b1",
+      plan: { pieces: [] },
+      state: {
+        status: "removed",
+        steps: [
+          {
+            id: "testbot:0",
+            kind: "testbot",
+            status: "needs-you",
+            label: "Test X",
+          },
+        ],
+      },
+    });
+    assert.equal(r.list()[0].waitingTest, undefined);
+  });
+});

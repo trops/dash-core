@@ -32,9 +32,9 @@ Today a bot is created, then run for real to find out what it answers — and th
 
 ### TST-003 (PR A2, DASH-17): No bot until a test finishes (P0)
 
-- [ ] AC1: Ask AI's bot build stops at a Test step before saving (frame C1): the test in the right-hand panel, then Change something, Test again, Save the bot (only after a test finishes; keeps it as the sample). The after-save "Run <bot> now" goes away.
-- [ ] AC2: A test that can't finish says why with the next step (e.g. Set up <provider>); nothing is saved.
-- [ ] AC3: An untested bot waits in Recent › Unfinished (frame C2): an Ask AI build, or a bot form closed before it was tested; opening one returns to its test or form as left.
+- [x] AC1: Ask AI's bot build stops at a Test step before saving (frame C1): Check the bot → **Test <bot>** (waits for the user) → Save → its results card. The chat says "Made <bot> · not saved yet" with a card and **Test it**; the outputs panel shows the test (what it runs on, uses and shows; Test it with; the result), with Change something (to the Planner), Test again and **Save the bot** (only once a test finished; keeps it as the sample). The test runs exactly the definition Save saves. After Save the Build log offers only Turn on (the old Run now, a real run, is gone).
+- [x] AC2: A provider that isn't connected stops the build at Check the bot (it waits for it, as before), so nothing is saved; a test that can't finish says why, with Test again.
+- [x] AC3: An untested bot waits where the user finds it (deviation from frame C2's "Unfinished" list, which the app doesn't have): an Ask AI build waiting at its test is in its conversation and in Needs you ("<bot> is waiting for its test" · Test it); a new bot's form closed before it was created is kept in Recent (kind `botform`) and in Needs you ("<bot> isn't created yet" · Open its form / Discard), reopening as it was left. Create removes it. Leaving a new bot's form no longer asks to discard: nothing is lost.
 
 ### TST-002 (PR B, DASH-16): Checks from the sample (P0)
 
@@ -56,6 +56,7 @@ Today a bot is created, then run for real to find out what it answers — and th
 - **Shape:** `electron/bots/answerShape.js` (pure): an answer is JSON when it all parses as an object or list, or has exactly one ```json block.
 - **Sample:** `BotStore.setSample/getSample`, sealed like results; `save()` takes a `sample` off the definition and keeps it.
 - **IPC:** `bots-test` (`mainApi.bots.test(definition, { testId, prompt })`); events stream on `bot-stream` under the test id; Stop is `bots.stop(testId)`. The handler is in dash-electron `public/electron.js`.
+- **Ask AI (TST-003):** planBuild's `testbot` step (role you) waits with `step.definition` (deps.botDefinition = \_planBotDefinition, the same as \_planSaveBot); approve(stepId, { sample }) needs a sample; the sample is held in the build's closure, never its state (Recent keeps that), and goes to saveBot. An edited plan keeps the test of an unchanged bot. A step behind a waiting one (its results card) waits too. Recent summaries carry `waitingTest`; kind `botform` holds { definition, workspaceId } (no plan memory). UI: BotTestOutput, WorkspaceSide, BuildViews/workspaceBuild (choices "testbot"), botFormDrafts, BotDetail onLeave, needsYou.
 - **UI:** `useBotTest` (state and stream), `TestResult` (frames A1/A2), `testResultText` (words); approvals reuse `DashTeamApprovals` (`allowAlways={false}`, a test's note).
 
 ## Revision History
@@ -63,4 +64,5 @@ Today a bot is created, then run for real to find out what it answers — and th
 | Date       | Change                                                                                                                                                    |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-11-18 | Created; TST-001 (PR A, DASH-15) built.                                                                                                                   |
+| 2026-11-18 | TST-003 (DASH-17) built: Ask AI ends with a test; untested bots wait in Recent and Needs you.                                                             |
 | 2026-11-18 | Review fixes (budgets, long JSON shape, a changed bot's sample, tests not "running", memory read-only); AC6 Create after a test; TST-003 (DASH-17) added. |

@@ -88,16 +88,17 @@ export const RemoveSummary = ({ built, muted = "", strong = "" }) => {
 };
 
 /**
- * The bots a build saved (they start paused, Phase 1d): Run <bot> now is a
- * test run, and a pass offers Turn on. In Create's build and the lead
- * workspace's Build log (release 3b).
+ * The bots a build saved (they start paused, Phase 1d). Each was tested
+ * before it was saved (bot-test-run TST-003), so what's left is Turn on —
+ * no real run from here, which would hand its work on. In Create's build
+ * and the lead workspace's Build log (release 3b).
  */
 export const TryBots = ({ bots: saved = [] }) => {
   const { muted } = useConfigTokens();
-  // botId → "starting" | "passed" | "on" | error text
+  // botId → "on" | error text
   const [runs, setRuns] = useState({});
   // Which of them are paused — Turn on is offered only for those.
-  const [pausedBots, setPausedBots] = useState([]);
+  const [pausedBots, setPausedBots] = useState(null);
   const savedIds = saved.map((b) => b.id).join(",");
   useEffect(() => {
     const bots = window.mainApi && window.mainApi.bots;
@@ -112,51 +113,22 @@ export const TryBots = ({ bots: saved = [] }) => {
       alive = false;
     };
   }, [savedIds]);
-  const runBot = async (bot) => {
-    setRuns((r) => ({ ...r, [bot.id]: "starting" }));
-    try {
-      const res = await window.mainApi.bots.run(bot.id);
-      setRuns((r) => ({
-        ...r,
-        [bot.id]:
-          res && res.skipped
-            ? `It didn't run: ${res.reason || "it was skipped"}.`
-            : res && (res.error || res.status === "failed")
-              ? String(res.error || "The run failed.")
-              : "passed",
-      }));
-    } catch (err) {
-      setRuns((r) => ({
-        ...r,
-        [bot.id]: (err && err.message) || "It couldn't start.",
-      }));
-    }
-  };
   return (
     <div className="flex flex-col gap-2" data-testid="building-run-bots">
-      <SectionLabel text="Try the bots" />
+      <SectionLabel text="Turn the bots on" />
       <span className={`text-xs ${muted}`}>
-        New bots start paused — try one, then turn it on.
+        New bots start paused. Each was tested before it was saved — turn one on
+        to let it run on its own.
       </span>
       {saved.map((b) => {
         const run = runs[b.id];
+        // Nothing said until it's known whether it's paused.
+        if (!pausedBots && !run) return null;
+        const paused =
+          !!pausedBots && pausedBots.includes(b.id) && run !== "on";
         return (
           <div key={b.id} className="flex flex-row items-center gap-3">
-            <Button3
-              title={`Run ${b.name} now`}
-              onClick={() => runBot(b)}
-              disabled={run === "starting"}
-            />
-            <span className={`text-xs ${muted}`}>
-              {run === "starting"
-                ? "Running…"
-                : run === "passed"
-                  ? "It worked — turn it on?"
-                  : run === "on"
-                    ? `${b.name} is on.`
-                    : run || ""}
-            </span>
-            {pausedBots.includes(b.id) && run !== "on" ? (
+            {paused ? (
               <Button3
                 title={`Turn ${b.name} on`}
                 onClick={async () => {
@@ -172,6 +144,11 @@ export const TryBots = ({ bots: saved = [] }) => {
                 }}
               />
             ) : null}
+            <span className={`text-xs ${muted}`}>
+              {run === "on"
+                ? `${b.name} is on.`
+                : run || (paused ? "" : `${b.name} is on.`)}
+            </span>
           </div>
         );
       })}

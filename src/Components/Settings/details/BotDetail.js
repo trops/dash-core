@@ -248,6 +248,9 @@ export const BotDetail = ({
   // A new bot filled in from a copy of another (botCopy's `initial`): the
   // form starts from it; nothing is saved until Create.
   initial = null,
+  // (definition) — a new bot's form closed before it was created
+  // (bot-test-run TST-003): what was typed, to keep in Recent.
+  onLeave = null,
 }) => {
   const from = bot || initial;
   const showInstructions = !section || section === "instructions";
@@ -802,6 +805,7 @@ export const BotDetail = ({
       } else {
         await onSave(definition);
       }
+      if (isCreating) createdRef.current = true;
       openedRef.current = edited;
       setBaseline(snapshot);
       setJustSaved(true);
@@ -872,6 +876,23 @@ export const BotDetail = ({
   // compares against to tell which fields this form changed.
   const openedRef = useRef(null);
   if (openedRef.current === null) openedRef.current = formDefinition();
+
+  // A new bot's form closed before it was created: what was typed is kept
+  // (TST-003) — read as the form stands when it closes.
+  const createdRef = useRef(false);
+  const leaveRef = useRef(null);
+  leaveRef.current =
+    isCreating && typeof onLeave === "function"
+      ? () => {
+          if (!createdRef.current) onLeave(formDefinition());
+        }
+      : null;
+  useEffect(
+    () => () => {
+      if (leaveRef.current) leaveRef.current();
+    },
+    [],
+  );
 
   // The edit panel: hand each valid change over right away (no Save here).
   useEffect(() => {
