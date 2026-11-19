@@ -16,6 +16,7 @@ import { useTeamLeads } from "../../AiAssistant/components/RecipientPicker";
 import { BotAvatar } from "../BotAvatar";
 import { ApprovalPreview } from "../ApprovalPreview";
 import { needsYou, whenText } from "./needsYou";
+import { dropBotForm, reopenBotForm } from "../botFormDrafts";
 import { activityLog } from "./activityLog";
 import {
   canDismiss,
@@ -44,10 +45,12 @@ const UNDO_MS = 8000;
 /** What the Undo line says after dismissing `items`. */
 export function dismissedText(items) {
   const list = items || [];
-  const plans = list.filter((n) => n.kind === "plan").length;
+  // Plans and bots waiting for their test stay in Recents.
+  const inRecents = (n) => n.kind === "plan" || n.kind === "test";
+  const plans = list.filter(inRecents).length;
   if (list.length === 1) {
     const n = list[0];
-    return n.kind === "plan"
+    return inRecents(n)
       ? `Dismissed “${String(n.title || "").replace(/^A plan is ready: /, "")}”. It's still in Recents.`
       : `Dismissed “${n.title}”. Its run is still in Activity.`;
   }
@@ -671,6 +674,26 @@ export const BotNotificationsPanel = ({
                       onClick={() => act(n, () => botsApi().run(n.botId))}
                     />
                   )
+                ) : n.kind === "test" ? (
+                  // Its test is in the conversation's panel (TST-003).
+                  <Button
+                    size="sm"
+                    title="Test it"
+                    onClick={() => openPlace(n.open)}
+                  />
+                ) : n.kind === "botform" ? (
+                  <>
+                    <Button
+                      size="sm"
+                      title="Open its form"
+                      onClick={() => reopenBotForm(n.draftId)}
+                    />
+                    <Button3
+                      size="sm"
+                      title="Discard"
+                      onClick={() => dropBotForm(n.draftId)}
+                    />
+                  </>
                 ) : (
                   <Button
                     size="sm"
@@ -679,7 +702,7 @@ export const BotNotificationsPanel = ({
                   />
                 )}
                 <span className="flex-1" />
-                {n.kind !== "plan" && n.open ? (
+                {n.kind !== "plan" && n.kind !== "test" && n.open ? (
                   <button
                     type="button"
                     onClick={() => openPlace(n.open)}

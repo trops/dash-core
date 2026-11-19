@@ -600,6 +600,7 @@ export function buildChat(state, opts = {}) {
     opts.restored &&
     (chat.choices === "failed" ||
       chat.choices === "preview" ||
+      chat.choices === "testbot" ||
       chat.choices === "endofline" ||
       buildStatus(state, opts.leftOff || []) === "waiting-for-providers")
   ) {
@@ -783,6 +784,17 @@ function chatFor(
   }
   if (status === "waiting-for-you") {
     const at = steps.find((s) => s.status === "needs-you");
+    // A bot made but not saved: it waits for the user to test it
+    // (bot-test-run TST-003).
+    if (at && at.kind === "testbot") {
+      const bot = String(at.label).replace(/^Test /, "");
+      return {
+        step: { label: `Made ${bot} · not saved yet`, status: "done" },
+        card: { kind: "bot", title: bot, sub: "Bot · ready to test" },
+        reply: `${bot} is ready to test on the right — press Test to see what it gives back. Save it once a test works; nothing is saved before that.`,
+        choices: "testbot",
+      };
+    }
     const name = at ? String(at.label).replace(/^Preview /, "") : "It";
     // A widget the user already has: nothing was built — it's theirs, set
     // as they chose.
@@ -1076,10 +1088,12 @@ function chatFor(
     return {
       step: { label: "Saved the bot", status: "done" },
       card: bot
-        ? { kind: "bot", title: bot.name, sub: "Bot · saved, paused" }
+        ? { kind: "bot", title: bot.name, sub: "Bot · tested, saved, paused" }
         : null,
-      reply: `${bot ? bot.name : "The bot"} is saved, paused — try it from the Build log on the right, then turn it on.${waitNote}`,
-      choices: null,
+      // Tested before it was saved (TST-003): only turning it on is left.
+      reply: `${bot ? bot.name : "The bot"} is saved, paused, with its test kept as its sample. Turn it on when you want it to run on its own.${waitNote}`,
+      // Turn on, right here (BuildViews).
+      choices: bot ? "turnon" : null,
     };
   }
   const placed = steps.filter(

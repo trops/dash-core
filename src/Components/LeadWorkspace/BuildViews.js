@@ -328,7 +328,7 @@ export const BuildInChat = ({
         ? (state.steps || []).some((s) => s.kind === "check")
           ? "check"
           : "buildlog"
-        : chat.choices === "preview"
+        : chat.choices === "preview" || chat.choices === "testbot"
           ? "preview"
           : "buildlog",
     );
@@ -358,7 +358,13 @@ export const BuildInChat = ({
                 sub={card.sub}
                 // A card to open, as the mockup: an edge, a fill, and
                 // what a click does.
-                go={chat.choices === "preview" ? "Open preview" : "Open"}
+                go={
+                  chat.choices === "preview"
+                    ? "Open preview"
+                    : chat.choices === "testbot"
+                      ? "Test it"
+                      : "Open"
+                }
                 onClick={openCard}
               />
             </div>
@@ -739,6 +745,21 @@ const BuildChoices = ({ chat, state, build, actions }) => {
             change.
           </span>
         ) : null}
+      </div>
+    );
+  }
+  // Saved, tested, paused (TST-003): turn it on here.
+  if (chat.choices === "turnon") {
+    return <TryBots bots={Object.values((state && state.bots) || {})} />;
+  }
+  // A bot to test before it's saved (TST-003): its test is on the right.
+  if (chat.choices === "testbot") {
+    return (
+      <div
+        className="flex flex-row flex-wrap items-center gap-2"
+        data-testid="workspace-build-choices"
+      >
+        <Button title="Test it" onClick={() => actions.open("preview")} />
       </div>
     );
   }

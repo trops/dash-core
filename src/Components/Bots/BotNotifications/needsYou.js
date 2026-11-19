@@ -84,7 +84,8 @@ function placeOf(bot, { leads, dashboards }) {
  * @param {string|null} p.current  the dashboard shown
  * @param {number} p.now
  * @param {number} p.seenAt        when the user last looked (for NEW)
- * @returns {object[]} items: { id, kind: "approval" | "failed" | "plan",
+ * @returns {object[]} items: { id, kind: "approval" | "failed" | "plan" |
+ *   "test" | "botform",
  *   at, who, where, title, text, convo?, isNew, open, … }
  */
 export function needsYou({
@@ -192,6 +193,56 @@ export function needsYou({
       convo: `In your conversation with ${leadName} · “${clip(r.title || "Plan", 60)}”`,
       open: { key, recentId: r.id },
     });
+  }
+
+  // Bots not created until they're tested (bot-test-run TST-003): one an
+  // Ask AI build made, waiting for its test; a new bot's form closed before
+  // it was created.
+  for (const r of recents || []) {
+    if (!r) continue;
+    const at = ms(r.updatedAt);
+    if (!at) continue;
+    // A kept form stays until it's created or discarded — nowhere else
+    // lists it; a waiting test goes quiet after a week, like a plan.
+    if (r.kind !== "botform" && now - at > PLAN_DAYS * DAY) continue;
+    if (r.kind === "question" && r.waitingTest) {
+      const key = r.with || "role:dashlead";
+      const lead = key.startsWith("lead:")
+        ? (leads || []).find((l) => `lead:${l.botId}` === key) || null
+        : null;
+      const leadName = lead ? lead.leadName : r.to || "Dash Lead";
+      const dashboard = lead ? String(lead.dashboardId) : null;
+      items.push({
+        id: `test:${r.id}`,
+        kind: "test",
+        at,
+        who: lead ? `Dash team, for ${leadName}` : "Dash team",
+        where:
+          dashboard && dashboard !== here
+            ? (dashboards && dashboards[dashboard]) || lead.dashboardName || ""
+            : "",
+        title: `${clip(r.waitingTest, 48)} is waiting for its test`,
+        text: "Nothing is saved until you test it and save it.",
+        convo: `In your conversation with ${leadName} · “${clip(r.title || "Plan", 60)}”`,
+        open: { key, recentId: r.id },
+      });
+    } else if (r.kind === "botform") {
+      const dashboard = r.workspaceId == null ? null : String(r.workspaceId);
+      items.push({
+        id: `botform:${r.id}`,
+        kind: "botform",
+        at,
+        who: "New bot",
+        where:
+          dashboard && dashboard !== here
+            ? (dashboards && dashboards[dashboard]) || ""
+            : "",
+        title: `${clip(r.title || "New bot", 48)} isn't created yet`,
+        text: "Test it to create it. What you typed is kept.",
+        draftId: r.id,
+        open: null,
+      });
+    }
   }
 
   return items

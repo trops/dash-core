@@ -99,6 +99,8 @@ export function questionThreads(plans = [], now = Date.now()) {
       // A plan in it (lead workspace, release 3a), and its build (3b).
       planned: !!p.planned,
       built: p.built || null,
+      // A bot it made, waiting for its test before it's saved (TST-003).
+      waitingTest: p.waitingTest || null,
       updatedAt: ms(p.updatedAt),
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt)

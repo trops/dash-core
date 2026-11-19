@@ -261,3 +261,76 @@ test("a plan's time is when it came in, not the conversation's last change; its 
   expect(item.at).toBe(Date.parse(at(8)));
   expect(item.title).toBe("A plan is ready: Big Clock");
 });
+
+// Bots not created until they're tested (bot-test-run TST-003).
+describe("needsYou — bots waiting for their test", () => {
+  it("a bot an Ask AI build made, waiting for its test, opens its conversation", () => {
+    const items = needsYou({
+      recents: [
+        {
+          id: "q1",
+          kind: "question",
+          title: "Remind me of meetings",
+          updatedAt: at(9),
+          with: "role:dashlead",
+          planned: true,
+          built: "ready",
+          waitingTest: "Meeting Reminder",
+        },
+      ],
+      now: NOW,
+    });
+    const test = items.find((i) => i.kind === "test");
+    expect(test).toMatchObject({
+      title: "Meeting Reminder is waiting for its test",
+      text: "Nothing is saved until you test it and save it.",
+      open: { key: "role:dashlead", recentId: "q1" },
+    });
+    // Not also a plan waiting for a yes: it was said yes to.
+    expect(items.some((i) => i.kind === "plan")).toBe(false);
+  });
+
+  it("a new bot's form closed before it was created", () => {
+    const items = needsYou({
+      recents: [
+        {
+          id: "f1",
+          kind: "botform",
+          title: "Deal Finder",
+          status: "untested",
+          updatedAt: at(9),
+          workspaceId: "9",
+        },
+      ],
+      dashboards: { 9: "Kitchen" },
+      current: "7",
+      now: NOW,
+    });
+    expect(items).toEqual([
+      expect.objectContaining({
+        kind: "botform",
+        title: "Deal Finder isn't created yet",
+        text: "Test it to create it. What you typed is kept.",
+        where: "Kitchen",
+        draftId: "f1",
+      }),
+    ]);
+  });
+
+  it("a kept form stays until it's created or discarded; an old test goes quiet", () => {
+    const items = needsYou({
+      recents: [
+        { id: "f1", kind: "botform", title: "X", updatedAt: at(9, 0, -10) },
+        {
+          id: "q1",
+          kind: "question",
+          title: "Y",
+          waitingTest: "Y bot",
+          updatedAt: at(9, 0, -10),
+        },
+      ],
+      now: NOW,
+    });
+    expect(items.map((i) => i.kind)).toEqual(["botform"]);
+  });
+});

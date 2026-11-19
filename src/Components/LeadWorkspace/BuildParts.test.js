@@ -76,12 +76,12 @@ describe("RemoveSummary — what goes and what stays", () => {
   });
 });
 
-describe("TryBots — new bots start paused: run one, then turn it on", () => {
+describe("TryBots — new bots start paused, tested: turn one on", () => {
   beforeEach(() => {
     window.mainApi = {
       bots: {
         getPauseState: jest.fn().mockResolvedValue({ bots: ["bot_1"] }),
-        run: jest.fn().mockResolvedValue({ status: "completed" }),
+        run: jest.fn(),
         resumeBot: jest.fn().mockResolvedValue({ ok: true }),
       },
     };
@@ -90,49 +90,32 @@ describe("TryBots — new bots start paused: run one, then turn it on", () => {
     delete window.mainApi;
   });
 
-  test("Run now, then a pass offers Turn on, which turns it on", async () => {
+  test("Turn on turns it on; there's no real run from here", async () => {
     render(<TryBots bots={[{ id: "bot_1", name: "Greeter" }]} />);
     const turnOn = await screen.findByRole("button", {
       name: "Turn Greeter on",
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run Greeter now" }));
     expect(
-      await screen.findByText("It worked — turn it on?"),
+      screen.queryByRole("button", { name: "Run Greeter now" }),
+    ).toBeNull();
+    expect(
+      screen.getByText(/Each was tested before it was saved/),
     ).toBeInTheDocument();
-    expect(window.mainApi.bots.run).toHaveBeenCalledWith("bot_1");
     fireEvent.click(turnOn);
     expect(await screen.findByText("Greeter is on.")).toBeInTheDocument();
     expect(window.mainApi.bots.resumeBot).toHaveBeenCalledWith("bot_1");
+    expect(window.mainApi.bots.run).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("button", { name: "Turn Greeter on" }),
     ).toBeNull();
   });
 
-  test("a skipped or failed run says why", async () => {
-    window.mainApi.bots.run = jest
-      .fn()
-      .mockResolvedValueOnce({ skipped: true, reason: "it's paused" })
-      .mockResolvedValueOnce({ status: "failed", error: "No key." });
-    render(<TryBots bots={[{ id: "bot_1", name: "Greeter" }]} />);
-    const run = screen.getByRole("button", { name: "Run Greeter now" });
-    fireEvent.click(run);
-    expect(
-      await screen.findByText("It didn't run: it's paused."),
-    ).toBeInTheDocument();
-    fireEvent.click(run);
-    await waitFor(() =>
-      expect(screen.getByText("No key.")).toBeInTheDocument(),
-    );
-  });
-
-  test("a bot that isn't paused has no Turn on", async () => {
+  test("a bot that isn't paused says it's on, and has no Turn on", async () => {
     window.mainApi.bots.getPauseState = jest
       .fn()
       .mockResolvedValue({ bots: [] });
     render(<TryBots bots={[{ id: "bot_1", name: "Greeter" }]} />);
-    await waitFor(() =>
-      expect(window.mainApi.bots.getPauseState).toHaveBeenCalled(),
-    );
+    expect(await screen.findByText("Greeter is on.")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Turn Greeter on" }),
     ).toBeNull();

@@ -303,11 +303,14 @@ describe("screens say a new bot is paused, and Turn on", () => {
     fs.readFileSync(path.join(__dirname, "..", "..", "src", ...p), "utf8");
   // The Create window's bot form said so too until it was retired
   // (lead-workspace release 6c); the Build log says it now.
-  it("the Build log says new bots start paused — try one, then turn it on", () => {
+  // Tested before they were saved (bot-test-run TST-003): Turn on is left.
+  it("the Build log says new bots start paused, and offers Turn on", () => {
+    const parts = read("Components", "LeadWorkspace", "BuildParts.js");
     assert.match(
-      read("Components", "LeadWorkspace", "BuildParts.js"),
-      /New bots start paused — try one, then turn it on\./,
+      parts,
+      /New bots start paused\. Each was tested before it was saved/,
     );
+    assert.match(parts, /title=\{\`Turn \$\{b\.name\} on\`\}/);
   });
   it("Resume reads Turn on — in the chat and the bot page", () => {
     // A paused bot's chat stays open: a message the user sends goes through.

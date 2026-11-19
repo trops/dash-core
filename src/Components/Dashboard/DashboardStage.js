@@ -713,11 +713,16 @@ const DashboardStageInner = ({
   }, []);
   // A new bot's form from Create (making a bot: a blank bot or a copy).
   // On a dashboard: that dashboard's Bots view; on none: the bot form in a
-  // window. detail: { workspaceId | null, initial?, note? }
+  // window. detail: { workspaceId | null, initial?, note?, draftId? }
   const [newBotRequest, setNewBotRequest] = useState(null);
   const newBotRef = useRef(null);
   newBotRef.current = (d) => {
-    const extra = { initial: d.initial || null, note: d.note || null };
+    const extra = {
+      initial: d.initial || null,
+      note: d.note || null,
+      // A form kept in Recent, picked up again (bot-test-run TST-003).
+      draftId: d.draftId || null,
+    };
     if (
       d.workspaceId === undefined ||
       d.workspaceId === null ||
@@ -729,7 +734,11 @@ const DashboardStageInner = ({
     const ws = (workspaceConfig || []).find(
       (w) => w && String(w.id) === String(d.workspaceId),
     );
-    if (!ws) return;
+    if (!ws) {
+      // A kept form whose dashboard is gone (TST-003): on no dashboard.
+      if (d.draftId) setNewBotRequest({ ...extra, seq: Date.now() });
+      return;
+    }
     // Unsaved edits, or the dashboard being edited: say so instead of
     // asking — a form waiting behind a question could open later, by itself.
     const here =

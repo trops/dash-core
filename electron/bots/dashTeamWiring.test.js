@@ -260,8 +260,12 @@ describe("botController — building a plan (phase 4d-1)", () => {
 describe("botController — bots and wiring in a build (phase 4d-2)", () => {
   it("saves planned bots (not drafts) and wires both ways", () => {
     assert.match(ctrl, /saveBot: \(req\) => this\._planSaveBot\(req\)/);
-    assert.match(ctrl, /const definition = planBotDefinition\(piece,/);
-    assert.match(ctrl, /const saved = this\.save\(\s*existing\s*\?/);
+    assert.match(ctrl, /return planBotDefinition\(piece,/);
+    assert.match(
+      ctrl,
+      /const definition = this\._planBotDefinition\(\{ dashboardId, piece \}\);/,
+    );
+    assert.match(ctrl, /const saved = this\.save\(\{\s*\.\.\.\(existing\s*\?/);
     assert.match(
       ctrl,
       /this\.addBotWidget\(dashboardId, \{\s*kind: "results",/,

@@ -48,6 +48,7 @@ import { useGoals } from "../../hooks/useGoals";
 import { applyWiringChanges } from "../../utils/listenerResolution";
 import { applyBulkUserPrefs } from "../../utils/applyBulkUserPrefs";
 import { findWidgetTarget } from "../LeadWorkspace/useWidgetTarget";
+import { dropBotForm, keepBotForm } from "./botFormDrafts";
 
 /**
  * BotsView — a dashboard's team, full stage (bot-teams PRD TEAM-011).
@@ -388,7 +389,14 @@ export const BotsView = ({
       guarded(() => {
         setDirty(false);
         setNewFrom(
-          focus.initial ? { initial: focus.initial, note: focus.note } : null,
+          focus.initial
+            ? {
+                initial: focus.initial,
+                note: focus.note,
+                // A form kept in Recent, picked up again (TST-003).
+                draftId: focus.draftId || null,
+              }
+            : null,
         );
         setSelectedId(NEW_BOT);
         setTab("settings");
@@ -677,6 +685,10 @@ export const BotsView = ({
   const saveBot = async (definition, opts = {}) => {
     const bots = api();
     const saved = await bots.save(definition);
+    // Created: a form kept in Recent for it goes (TST-003).
+    if (selectedId === NEW_BOT && newFrom && newFrom.draftId) {
+      dropBotForm(newFrom.draftId);
+    }
     setNewFrom(null);
     if (opts.showOnDashboard && saved && saved.id) {
       await showOnDashboard("results", saved);
@@ -1151,7 +1163,9 @@ export const BotsView = ({
                 <div className="flex flex-row items-start justify-between gap-4 px-5 pt-4">
                   <div className="min-w-0">
                     <h2 className="text-lg font-semibold truncate">
-                      {newFrom ? "New bot — a copy" : "New bot"}
+                      {newFrom && !newFrom.draftId
+                        ? "New bot — a copy"
+                        : "New bot"}
                     </h2>
                     <div className={`text-sm ${muted}`}>
                       {`Joins the ${workspace ? workspace.name : "dashboard"} team`}
@@ -1203,11 +1217,17 @@ export const BotsView = ({
                     bots={allBots}
                     onSave={saveBot}
                     canShowOnDashboard={!!workspace}
-                    onDirtyChange={setDirty}
-                    onDiscard={() => {
-                      setDirty(false);
-                      setFormKey((k) => k + 1);
-                    }}
+                    // Leaving a new bot's form loses nothing — it's kept
+                    // in Recent (TST-003) — so it never asks to discard.
+                    onLeave={(definition) =>
+                      keepBotForm({
+                        definition,
+                        workspaceId: workspace
+                          ? workspace.id
+                          : definition.workspaceId,
+                        draftId: newFrom ? newFrom.draftId : null,
+                      })
+                    }
                   />
                 </div>
               </>

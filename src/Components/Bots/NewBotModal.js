@@ -7,6 +7,7 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 import { BotDetail } from "../Settings/details/BotDetail";
+import { dropBotForm, keepBotForm } from "./botFormDrafts";
 import { AppContext } from "../../Context/App/AppContext";
 import { ComponentManager } from "../../ComponentManager";
 
@@ -20,7 +21,8 @@ const getWidgetConfig = (name) =>
  * Create: a blank bot or a copy, when it goes on no dashboard). A bot on a
  * dashboard gets the form in that dashboard's Bots view instead. Nothing is
  * saved until Create; unsaved edits keep the window open on a click
- * outside or Escape (Cancel closes it).
+ * outside or Escape (Cancel closes it). Closed before Create, what was
+ * typed is kept in Recent, to pick up from Needs you (TST-003).
  *
  * @param {{ initial?: object, note?: string }} request  a copy's values
  *   (botCopy) and what came along, or {} for a blank bot
@@ -51,6 +53,8 @@ export const NewBotModal = ({
         : null;
     if (!bots || !bots.save) throw new Error("Saving bots isn't available.");
     const saved = await bots.save(definition);
+    // Created: a form kept in Recent for it goes (TST-003).
+    dropBotForm(request.draftId);
     onClose();
     if (saved && saved.id && onSaved) onSaved(saved);
     return saved;
@@ -73,7 +77,9 @@ export const NewBotModal = ({
       >
         <div className="flex flex-col gap-1 px-5 pt-4 pb-2">
           <h2 className="text-lg font-semibold">
-            {request.initial ? "New bot — a copy" : "New bot"}
+            {request.initial && !request.draftId
+              ? "New bot — a copy"
+              : "New bot"}
           </h2>
           <span className={`text-sm ${muted}`}>
             On no dashboard — it still runs, and you find it on the Bots page.
@@ -102,6 +108,14 @@ export const NewBotModal = ({
             onSave={save}
             onCancel={onClose}
             onDirtyChange={setDirty}
+            // Closed before it's created: kept in Recent (TST-003).
+            onLeave={(definition) =>
+              keepBotForm({
+                definition,
+                workspaceId: definition.workspaceId,
+                draftId: request.draftId || null,
+              })
+            }
           />
         </div>
       </div>

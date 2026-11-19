@@ -19,6 +19,7 @@ import { normalizeType } from "../Create/planChecklist";
 import { toolName } from "./handoffSteps";
 import { WhoWorks } from "./ModelInfo";
 import { BeforeItBuilds, OutputCard, PlanNext, PlanOutput } from "./PlanViews";
+import { BotTestOutput } from "./BotTestOutput";
 import {
   BuildLogOutput,
   BuildNeedsYou,
@@ -419,6 +420,16 @@ export const WorkspaceSide = ({
   }
   // The preview, while it waits for a look — once it's past, Outputs.
   if (open === "preview" && build && pb && previewStep) {
+    // A bot to test before it's saved (bot-test-run TST-003).
+    if (previewStep.kind === "testbot") {
+      return opened(
+        <BotTestOutput
+          step={previewStep}
+          pb={pb}
+          onChange={planActions && !planReadOnly ? planActions.onAnswer : null}
+        />,
+      );
+    }
     return opened(
       <PreviewOutput
         state={buildState}
@@ -650,7 +661,16 @@ export const WorkspaceSide = ({
       />
       <DashTeamApprovals compact bots={approvalBots} />
 
-      {previewStep ? (
+      {previewStep && previewStep.kind === "testbot" ? (
+        <OutputCard
+          testId="workspace-output-test"
+          icon="robot"
+          title={String(previewStep.label || "New bot").replace(/^Test /, "")}
+          sub="Ready to test · not saved yet"
+          kind="Bot"
+          onClick={() => onOpen("preview")}
+        />
+      ) : previewStep ? (
         <OutputCard
           testId="workspace-output-preview"
           icon="puzzle-piece"

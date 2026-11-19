@@ -553,3 +553,80 @@ test("review fixes: waiting for your look, removed, counts and agreement", () =>
     ).reply,
   ).toContain("The Checker passed 1 new widget.");
 });
+
+// A bot made but not saved until it's tested (bot-test-run TST-003).
+describe("a bot build waiting for its test", () => {
+  const waiting = {
+    status: "waiting-for-you",
+    steps: [
+      {
+        id: "checkbot:0",
+        kind: "checkbot",
+        role: "dash",
+        status: "done",
+        label: "Check the bot",
+      },
+      {
+        id: "testbot:0",
+        kind: "testbot",
+        role: "you",
+        status: "needs-you",
+        label: "Test Meeting Reminder",
+      },
+      {
+        id: "bot:0",
+        kind: "bot",
+        role: "dash",
+        status: "waiting",
+        label: "Save Meeting Reminder — paused",
+      },
+    ],
+  };
+  it("says it's made, not saved yet, and sends the user to its test", () => {
+    const chat = buildChat(waiting, { kind: "bot" });
+    expect(chat.step.label).toBe("Made Meeting Reminder · not saved yet");
+    expect(chat.card).toEqual({
+      kind: "bot",
+      title: "Meeting Reminder",
+      sub: "Bot · ready to test",
+    });
+    expect(chat.reply).toMatch(/nothing is saved before that/);
+    expect(chat.choices).toBe("testbot");
+  });
+  it("a build saved before Dash closed carries on first", () => {
+    expect(buildChat(waiting, { kind: "bot", restored: true }).choices).toBe(
+      "continue",
+    );
+  });
+});
+
+describe("a bot build, saved after its test", () => {
+  it("says it's saved with its test, and offers Turn on right there", () => {
+    const chat = buildChat(
+      {
+        status: "done",
+        bots: { 0: { id: "bot_1", name: "Meeting Reminder" } },
+        steps: [
+          {
+            id: "testbot:0",
+            kind: "testbot",
+            role: "you",
+            status: "done",
+            label: "Test Meeting Reminder",
+          },
+          {
+            id: "bot:0",
+            kind: "bot",
+            role: "dash",
+            status: "done",
+            label: "Save Meeting Reminder — paused",
+          },
+        ],
+      },
+      { kind: "bot" },
+    );
+    expect(chat.card.sub).toBe("Bot · tested, saved, paused");
+    expect(chat.reply).toMatch(/with its test kept as its sample/);
+    expect(chat.choices).toBe("turnon");
+  });
+});

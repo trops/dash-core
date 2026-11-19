@@ -2028,6 +2028,42 @@ describe("BotDetail — Test", () => {
     expect(onSave.mock.calls[0][0].sample).toEqual(SAMPLE);
   });
 
+  it("a new bot's form closed before Create is kept, as it stands", () => {
+    const onLeave = jest.fn();
+    const { unmount } = render(
+      <BotDetail
+        isCreating
+        providers={{}}
+        onSave={jest.fn()}
+        onLeave={onLeave}
+      />,
+    );
+    fill();
+    unmount();
+    expect(onLeave).toHaveBeenCalledTimes(1);
+    expect(onLeave.mock.calls[0][0]).toMatchObject({
+      name: "Deal Finder",
+      instructions: "Find three deals. Answer with JSON.",
+    });
+  });
+
+  it("once created, closing it keeps nothing", async () => {
+    const onLeave = jest.fn();
+    const onSave = jest.fn().mockResolvedValue({});
+    const { unmount } = render(
+      <BotDetail isCreating providers={{}} onSave={onSave} onLeave={onLeave} />,
+    );
+    fill();
+    fireEvent.click(screen.getByText("Test"));
+    await act(async () => {
+      resolveTest({ status: "completed", answer: "ok", sample: SAMPLE });
+    });
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    unmount();
+    expect(onLeave).not.toHaveBeenCalled();
+  });
+
   it("a lead has no Test: it's asked in its conversation", () => {
     render(
       <BotDetail
