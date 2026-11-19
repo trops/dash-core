@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { ModelTag, RanOn } from "./ModelInfo";
 import { JobCheckCard } from "./JobCheckCard";
+import { readableRequest } from "./handoffSteps";
 
 /**
  * What a step's line ends with, when the conversation knows better than
@@ -81,7 +82,9 @@ export const HandoffStep = ({ step }) => {
           {step.request ? (
             <div className="flex flex-col gap-0.5">
               <span className={`text-xs ${muted}`}>Asked</span>
-              <span className="whitespace-pre-wrap">{step.request}</span>
+              <span className="whitespace-pre-wrap">
+                {readableRequest(step.request)}
+              </span>
             </div>
           ) : null}
           <div className="flex flex-col gap-0.5">

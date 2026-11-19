@@ -57,14 +57,8 @@ import { useDashboard } from "./useDashboard";
 import { useWidgetTarget } from "./useWidgetTarget";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { useWorkspacePlan } from "./useWorkspacePlan";
-import { PlanCard, PlanChoices, PlanOutput } from "./PlanViews";
-import {
-  BuildInChat,
-  BuildNext,
-  BuildWalk,
-  PastBuild,
-  PastFix,
-} from "./BuildViews";
+import { PlanCard, PlanChoices, PlanNext, PlanOutput } from "./PlanViews";
+import { BuildInChat, BuildWalk, PastBuild, PastFix } from "./BuildViews";
 import { usePlanBuild } from "./usePlanBuild";
 import {
   choicesIndex,
@@ -1065,14 +1059,10 @@ export const LeadWorkspace = ({
   // Yes, build it: what's left to review first, then the build. Once —
   // again only after what was built was removed.
   const reviewHeld = useRef(false);
-  // Yes said here: its preview opens by itself when it's ready.
-  const previewAskedHere = useRef(false);
   const buildIt = () => {
     if (!wp.plan || walking || starting || (wp.build && !removed)) return;
     // The wizard: not before Review & build, nor until every part is set.
     if (reviewHeld.current) return;
-    // This conversation's: another one's preview never opens for it.
-    previewAskedHere.current = wp.key || true;
     setBuildError(null);
     setWalking(true);
   };
@@ -1295,48 +1285,10 @@ export const LeadWorkspace = ({
           (s) => s.kind === "preview" && s.status === "needs-you",
         ) || null
       : null;
-  // Its preview ready after the user said yes here: it opens on the right
-  // by itself (once) — saying yes was asking to see it, no second click.
   // Built here (the Builder's draft), or a widget the user already has.
   const previewBuilt =
     !!previewWaiting &&
     ((pb.state && pb.state.steps) || []).some((s) => s.kind === "build");
-  const previewSawRunning = useRef(null);
-  const previewOpened = useRef(null);
-  // A bot made but not saved, waiting for its test (bot-test-run TST-003):
-  // its test opens on the right by itself too. (What's typed still goes to
-  // the Planner — a bot changes through its plan.)
-  const testWaiting =
-    wp.build && !removed && pb.state && pb.state.status === "waiting-for-you"
-      ? (pb.state.steps || []).find(
-          (s) => s.kind === "testbot" && s.status === "needs-you",
-        ) || null
-      : null;
-  const lookWaiting = previewWaiting || testWaiting;
-  const previewKey =
-    lookWaiting && wp.build ? `${wp.build.buildId}:${lookWaiting.id}` : null;
-  const buildStatusNow = pb.state ? pb.state.status : null;
-  useEffect(() => {
-    if (!wp.build) return;
-    if (!previewKey) {
-      if (buildStatusNow === "running")
-        previewSawRunning.current = wp.build.buildId;
-      return;
-    }
-    // Seen running here, or started here (a widget the user already has
-    // can be ready before it's ever seen running).
-    if (
-      (previewSawRunning.current === wp.build.buildId ||
-        previewAskedHere.current === (wp.key || true)) &&
-      previewOpened.current !== previewKey
-    ) {
-      previewAskedHere.current = false;
-      previewOpened.current = previewKey;
-      setSideOpen("preview");
-      if (narrow) setOutsOpen(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewKey, buildStatusNow]);
   const sendFix = async (stepId, note, marks = null) => {
     const res = await pb.revise(stepId, note, marks);
     const say = askCtl.current && askCtl.current.say;
@@ -2076,7 +2028,7 @@ export const LeadWorkspace = ({
         .filter((j) => j >= 0)
     : [];
   const lastFix = fixAts.length ? fixAts[fixAts.length - 1] : -1;
-  const renderAfter = (m, i, api) => {
+  const renderAfterMessage = (m, i, api) => {
     // Under a fix: the Builder changing the widget, then the widget changed
     // (the latest), or what an earlier one did.
     const fixN = fixAts.indexOf(i);
@@ -2548,7 +2500,12 @@ export const LeadWorkspace = ({
       ) : i === choicesAt && reuseOn && !api.busy ? (
         reuseCard
       ) : i === choicesAt && wp.plan && !wp.build && !api.busy ? (
-        <>
+        // The plan's next step, in the chat (DASH-21): its questions, or Yes.
+        <div
+          className="flex flex-col gap-2"
+          data-testid="chat-plan-next"
+          data-next={next || ""}
+        >
           <PlanChoices
             plan={wp.plan}
             check={wp.check}
@@ -2569,7 +2526,7 @@ export const LeadWorkspace = ({
               {buildError}
             </span>
           ) : null}
-        </>
+        </div>
       ) : null;
     if (m.who === "step" && wp.step && m.id === wp.step.id && wp.plan) {
       // Nothing is planned until the user picks: the pick, not the plan.
@@ -2620,6 +2577,33 @@ export const LeadWorkspace = ({
       );
     }
     return choices;
+  };
+  // The plan's next step where the chat has no choices of its own for it
+  // (DASH-21): no new plan (Ask again, Decide for me, Start over), gaps to
+  // fill, the Planner still answering (Stop) — under the latest message,
+  // never only in the sidebar. Questions, Yes and the build's choices are
+  // already in the chat.
+  const nextInChat =
+    !!next && !wizardOn && !reuseOn && !pickCard && next !== "build";
+  const renderAfter = (m, i, api) => {
+    const out = renderAfterMessage(m, i, api);
+    // Shown under the plan already: its card has the choices.
+    const underPlan = !!wp.plan && !wp.build && choicesAt !== -1 && !api.busy;
+    if (!nextInChat || underPlan || i !== messages.length - 1) return out;
+    return (
+      <>
+        {out}
+        <div className="self-start w-full max-w-2xl">
+          <PlanNext
+            next={next}
+            plan={wp.plan}
+            check={wp.check}
+            leadName={leadName}
+            {...planActions}
+          />
+        </div>
+      </>
+    );
   };
 
   // The Dash team's working roles, in the order they work — under a
@@ -3677,8 +3661,6 @@ export const LeadWorkspace = ({
             {contact && !(wizardStage === "looks" && !narrow) ? (
               <WorkspaceSide
                 contact={contact}
-                // The plan card's next step (plan → build).
-                next={next}
                 planActions={planActions}
                 reviewInChat={wizardOn || reuseOn}
                 reuseInChat={reuseOn}
@@ -3693,21 +3675,6 @@ export const LeadWorkspace = ({
                       )
                     : null
                 }
-                buildNext={
-                  wp.build ? (
-                    <BuildNext
-                      build={wp.build}
-                      state={pb.state}
-                      actions={buildActions}
-                      restored={pb.restored}
-                      change={buildChange(wp.build)}
-                      cell={buildCell(wp.build)}
-                      onStop={pb.stop}
-                      stopping={pb.stopping}
-                      actionError={pb.actionError || buildError}
-                    />
-                  ) : null
-                }
                 // A change to one widget (release 6c): in place or new, and
                 // signing in to change it in place.
                 onWidgetMode={
@@ -3719,7 +3686,6 @@ export const LeadWorkspace = ({
                     : null
                 }
                 messages={messages}
-                statusOf={all.statusOf}
                 wp={wp}
                 planReadOnly={answering}
                 onBuild={starting || walking ? null : buildIt}

@@ -84,6 +84,14 @@ const CANT_TELL_WHICH =
 
 // How much of the Builder's answer a failed build keeps.
 const ANSWER_KEPT = 1500;
+// The end of the Builder's answer, from a whole line (never mid-word).
+const answerTail = (text) => {
+  const all = String(text || "");
+  if (all.length <= ANSWER_KEPT) return all;
+  const tail = all.slice(-ANSWER_KEPT);
+  const at = tail.indexOf("\n");
+  return at === -1 ? tail : tail.slice(at + 1);
+};
 
 const STATUS = {
   waiting: "waiting",
@@ -1188,6 +1196,35 @@ function builtPackage(output) {
 }
 
 /**
+ * One build_widget result, as the build step reads it: the package the
+ * draft is installed as, the draft, or why not. A change to the user's own
+ * widget keeps its package ("installed as @scope/name"), so any scope counts
+ * — not only @ai-built.
+ * @returns {{ ok: true, package, draft, said? } | { ok: false, error }}
+ */
+function buildNoteOf(result) {
+  // A tool's answer comes fenced (roleTools fence()): its words are inside.
+  const raw = String((result && result.text) || "");
+  const fenced = /<dash_data>\n?([\s\S]*?)\n?<\/dash_data>/.exec(raw);
+  const text = fenced ? fenced[1] : raw;
+  if (!result || result.isError)
+    return { ok: false, error: text.slice(0, 500) };
+  const m =
+    text.match(/installed as (@[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]*[a-z0-9])/i) ||
+    text.match(/(@ai-built\/[a-z0-9][a-z0-9-]*)/i);
+  // The draft it wrote (draft:<Name>) — checked, then installed.
+  const d = text.match(/draft:[A-Z][A-Za-z0-9]*/);
+  return {
+    ok: true,
+    package: m ? m[1].toLowerCase() : null,
+    draft: d ? d[0] : null,
+    // A draft that doesn't match what the user chose yet names no
+    // package: what it said is the reason the build didn't finish.
+    ...(m ? {} : { said: text.slice(0, 800) }),
+  };
+}
+
+/**
  * What a Builder run built: build_widget's own results (record.builds, noted
  * by the controller), else the package its answer names. A failure says why.
  * @returns {{ package: string } | { error: string }}
@@ -1209,9 +1246,11 @@ function buildOutcome(record) {
       error: `the draft doesn't match what you chose: ${unmatched}`,
     };
   }
-  const failed = last((b) => b && !b.ok);
-  const said =
-    failed && failed.error ? String(failed.error).split("\n")[0].trim() : "";
+  // Never just "didn't build it": what build_widget said last, failed or
+  // not (a draft it wrote whose package it didn't name).
+  const final = last((b) => !!b);
+  const lastSaid = final ? (final.ok ? final.said : final.error) || "" : "";
+  const said = String(lastSaid).split("\n")[0].trim().slice(0, 300);
   return {
     error: said
       ? `the Builder didn't build it — build_widget said: ${said}`
@@ -1687,6 +1726,63 @@ function undoOnDashboard(workspace, built) {
  * @returns {{ state, run, stop, fix, retry, resume }} — run/fix/retry/resume
  *   resolve with the state when that pass ends, or { error }
  */
+// The Build log (DASH-20): a step's earlier tries, and what its role did
+// lately — kept small, since Recent keeps the build's state.
+const MAX_TRIES = 6;
+const MAX_ACTIVITY = 6;
+const LIVE_EMIT_MS = 2000;
+const clip = (v, n) => String(v == null ? "" : v).slice(0, n);
+
+/** One try of a step that was sent back: when, and why. */
+function tryOf(started, failed) {
+  return {
+    startedAt: started.startedAt || null,
+    finishedAt: failed.finishedAt || null,
+    by: failed.kind,
+    error: clip(failed.error, 300),
+    mismatch: (failed.mismatch || []).slice(0, 5).map((p) => ({
+      main: clip(p && p.main, 160),
+      chose: clip(p && p.chose, 160),
+    })),
+  };
+}
+
+function keepTry(step, t) {
+  step.tries = [...(step.tries || []), t].slice(-MAX_TRIES);
+}
+
+/** A tool call in a role's run, as the Build log keeps it. */
+function activityOf(event, at) {
+  if (!event || event.type !== "tool_call" || !event.name) return null;
+  // Engines send it as input or args, an object or JSON.
+  let input = event.input ?? event.args;
+  if (typeof input === "string") {
+    try {
+      input = JSON.parse(input);
+    } catch {
+      input = null;
+    }
+  }
+  if (!input || typeof input !== "object") input = {};
+  // A path says its file's name ("/x/HaCalendar.js" → "HaCalendar.js").
+  const raw = [
+    "file",
+    "file_path",
+    "path",
+    "name",
+    "componentName",
+    "query",
+    "pattern",
+  ]
+    .map((k) => input[k])
+    .find((v) => typeof v === "string" && v.trim());
+  const what = raw ? raw.trim().split(/[\\/]/).filter(Boolean).pop() || "" : "";
+  const tool = clip(String(event.name).replace(/^mcp__.+?__/, ""), 60);
+  // Its notes to itself aren't what it's doing.
+  if (/^memory/.test(tool)) return null;
+  return { at, tool, ...(what ? { what: clip(what.trim(), 80) } : {}) };
+}
+
 function createPlanBuild(plan, deps, opts = {}) {
   const now = deps.now || (() => new Date().toISOString());
   const steps = planSteps(plan, opts);
@@ -1755,6 +1851,34 @@ function createPlanBuild(plan, deps, opts = {}) {
     state.built = builtSummary(state, plan);
     if (deps.emit) deps.emit(JSON.parse(JSON.stringify(state)));
   };
+
+  // What the role is doing, as it goes (DASH-20). Each emit saves the build
+  // (Recent, plan memory): at most one per LIVE_EMIT_MS, the last one late.
+  let liveAt = 0;
+  let liveTimer = null;
+  const emitLive = () => {
+    const wait = LIVE_EMIT_MS - (Date.now() - liveAt);
+    if (wait <= 0) {
+      liveAt = Date.now();
+      emit();
+      return;
+    }
+    if (liveTimer) return;
+    liveTimer = setTimeout(() => {
+      liveTimer = null;
+      liveAt = Date.now();
+      emit();
+    }, wait);
+    if (liveTimer.unref) liveTimer.unref();
+  };
+  const live = (step) => ({
+    onEvent: (event) => {
+      const a = activityOf(event, now());
+      if (!a || step.status !== STATUS.running) return;
+      step.activity = [...(step.activity || []), a].slice(-MAX_ACTIVITY);
+      emitLive();
+    },
+  });
 
   const account = (step, record) => {
     if (!record) return;
@@ -1993,6 +2117,7 @@ function createPlanBuild(plan, deps, opts = {}) {
               standalone: !!opts.standalone,
               edit: opts.edit || null,
             }),
+            live(step),
           );
         } finally {
           if (typeof release === "function") release();
@@ -2008,11 +2133,11 @@ function createPlanBuild(plan, deps, opts = {}) {
         const cant = cantOf(record.output);
         // About one of Dash's own tools, not a choice: a fix can sort that.
         if (cant && DASH_TOOL_TROUBLE.test(cant.what)) {
-          step.detail = String(record.output || "").slice(-ANSWER_KEPT);
+          step.detail = answerTail(record.output);
           throw new Error(`the Builder got stuck: ${cant.what}`);
         }
         if (cant) {
-          step.detail = String(record.output || "").slice(-ANSWER_KEPT);
+          step.detail = answerTail(record.output);
           const err = notFixable(`the Builder can't: ${cant.what}`);
           err.endOfLine = cant;
           throw err;
@@ -2020,9 +2145,7 @@ function createPlanBuild(plan, deps, opts = {}) {
         const outcome = buildOutcome(record);
         if (outcome.error) {
           // The Builder's own account, to read under the step.
-          step.detail = record.output
-            ? String(record.output).slice(-ANSWER_KEPT)
-            : "";
+          step.detail = record.output ? answerTail(record.output) : "";
           throw new Error(outcome.error);
         }
         const pkg = outcome.package;
@@ -2050,6 +2173,7 @@ function createPlanBuild(plan, deps, opts = {}) {
             edit: opts.edit || null,
             held,
           }),
+          live(step),
         );
         account(step, record);
         if (!record || record.skipped)
@@ -2390,6 +2514,8 @@ function createPlanBuild(plan, deps, opts = {}) {
       "endOfLine",
       "mismatch",
       "freshStart",
+      // A new try starts with nothing done (its earlier tries stay).
+      "activity",
     ]) {
       delete step[k];
     }
@@ -2565,6 +2691,8 @@ function createPlanBuild(plan, deps, opts = {}) {
       (!!step.freshStart || state.fixes[w] >= FRESH_AT);
     if (fresh) state.fresh[w] = true;
     if (build) {
+      // The try that was sent back, and why (DASH-20).
+      keepTry(build, tryOf(build, step));
       reset(build);
       build.fix = {
         package: fresh ? null : made.package || null,
@@ -2591,6 +2719,7 @@ function createPlanBuild(plan, deps, opts = {}) {
     if (!step || step.status !== STATUS.failed || !step.canRetry) {
       return Promise.resolve({ error: "That step can't be tried again." });
     }
+    keepTry(step, tryOf(step, step));
     reset(step);
     resetSkipped();
     return run();
@@ -2804,6 +2933,7 @@ module.exports = {
   eventsToSend,
   builtPackage,
   buildOutcome,
+  buildNoteOf,
   verdictOf,
   createPlanBuild,
 };

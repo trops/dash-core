@@ -197,6 +197,7 @@ const {
   widgetWiring,
   placeChoices,
   settingKeys,
+  buildNoteOf,
 } = require("../bots/planBuild");
 // Pure JS, main-process safe (see its header): a plan's new theme.
 const { generateCustomTheme } = require("../../src/utils/themeGenerator");
@@ -3679,6 +3680,13 @@ const botController = {
       emit: (event) => {
         if (!alreadyRunning) this._events.onRunEvent(botId, event);
         this._broadcast(BOT_STREAM, { botId, event });
+        if (typeof opts.onEvent === "function") {
+          try {
+            opts.onEvent(event);
+          } catch {
+            // What the caller does with it never stops the run.
+          }
+        }
       },
     });
     // The runner marks the bot active synchronously, so the active count is
@@ -4283,17 +4291,19 @@ const botController = {
         // A cell build's own Builder / Checker: while they run, the Dash
         // team's place_widget / installDraft refuse (Phase 2b).
         askRole: editTarget
-          ? (role, request) => this._editAskRole(role, request, editTarget)
+          ? (role, request, live) =>
+              this._editAskRole(role, request, editTarget, live)
           : cell
-            ? async (role, request) => {
+            ? async (role, request, live) => {
                 this._cellRoleRuns = (this._cellRoleRuns || 0) + 1;
                 try {
-                  return await this._planAskRole(role, request, planId);
+                  return await this._planAskRole(role, request, planId, live);
                 } finally {
                   this._cellRoleRuns -= 1;
                 }
               }
-            : (role, request) => this._planAskRole(role, request, planId),
+            : (role, request, live) =>
+                this._planAskRole(role, request, planId, live),
         abortRole: (role) => {
           const bot = dashTeamBot(this._store.list(), role);
           if (bot) this._runner.abort(bot.id);
@@ -4616,7 +4626,7 @@ const botController = {
    * is held to that widget (_editRun), and — as for a cell build — the
    * team installs or places nothing. One change builds at a time.
    */
-  async _editAskRole(role, request, target) {
+  async _editAskRole(role, request, target, live = null) {
     if (this._editRun && this._editRun !== target) {
       return {
         status: "failed",
@@ -4627,7 +4637,7 @@ const botController = {
     this._editRun = target;
     this._cellRoleRuns = (this._cellRoleRuns || 0) + 1;
     try {
-      return await this._planAskRole(role, request, null);
+      return await this._planAskRole(role, request, null, live);
     } finally {
       this._cellRoleRuns -= 1;
       if (this._editRun === target) this._editRun = null;
@@ -5550,7 +5560,9 @@ const botController = {
   },
 
   /** A Dash team role's run inside an approved plan build. */
-  async _planAskRole(role, request, planId = null) {
+  // live.onEvent: the role's run as it goes — the Build log shows what it's
+  // doing (DASH-20).
+  async _planAskRole(role, request, planId = null, live = null) {
     const bot = dashTeamBot(this._store.list(), role);
     if (!bot) return { skipped: true, reason: `the ${role} isn't set up` };
     this._takeBuilds(bot.id);
@@ -5562,6 +5574,9 @@ const botController = {
           trigger: "ask",
           via: "plan-build",
           approvalPolicy: "allow",
+          ...(live && typeof live.onEvent === "function"
+            ? { onEvent: live.onEvent }
+            : {}),
           // The plan's build memory (4e-1).
           ...(planId ? { planId: String(planId) } : {}),
         }),
@@ -5592,22 +5607,9 @@ const botController = {
   _noteBuild(botId, result) {
     if (!this._buildNotes) this._buildNotes = new Map();
     const list = this._buildNotes.get(botId) || [];
-    const text = String((result && result.text) || "");
-    if (result && !result.isError) {
-      const m = text.match(/@ai-built\/[a-z0-9][a-z0-9-]*/i);
-      // The draft it wrote (draft:<Name>) — checked, then installed.
-      const d = text.match(/draft:[A-Z][A-Za-z0-9]*/);
-      list.push({
-        ok: true,
-        package: m ? m[0].toLowerCase() : null,
-        draft: d ? d[0] : null,
-        // A draft that doesn't match what the user chose yet names no
-        // package: what it said is the reason the build didn't finish.
-        ...(m ? {} : { said: text.slice(0, 800) }),
-      });
-    } else {
-      list.push({ ok: false, error: text.slice(0, 500) });
-    }
+    // The draft it wrote (draft:<Name>) and its package — checked, then
+    // installed.
+    list.push(buildNoteOf(result));
     this._buildNotes.set(botId, list.slice(-10));
   },
 

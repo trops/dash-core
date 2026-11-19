@@ -108,15 +108,17 @@ export const OutputCard = ({
       >
         <FontAwesomeIcon icon={icon} className="h-4 w-4" />
       </span>
+      {/* The kind sits over the title, so a narrow column still gives
+          the title and its line the full width — they wrap, never squeeze. */}
       <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-        <span className={`text-sm font-semibold truncate ${strong}`}>
+        {kind ? <span className={`text-xs ${muted}`}>{kind}</span> : null}
+        <span className={`text-sm font-semibold break-words ${strong}`}>
           {title}
         </span>
-        {sub ? <span className={`text-xs ${muted}`}>{sub}</span> : null}
+        {sub ? (
+          <span className={`text-xs break-words ${muted}`}>{sub}</span>
+        ) : null}
       </span>
-      {kind ? (
-        <span className={`flex-shrink-0 text-xs ${muted}`}>{kind}</span>
-      ) : null}
       {onClick && go ? (
         <span
           className={`flex-shrink-0 flex flex-row items-center gap-1.5 text-xs font-semibold ${accent} dr-role-accent`}
@@ -548,8 +550,8 @@ export const PlanChoices = ({
  * state, a way on — never a dead end. Questions are answered right here
  * (taps or your own words) and go straight to the Planner; Decide for me
  * has the Planner pick; an answer with no new plan offers Decide for me,
- * Ask again and Start the plan over. Once it builds, `buildSlot` — the
- * build's own choices.
+ * Ask again and Start the plan over. Once it builds, the build's choices
+ * are in the chat (BuildInChat).
  *
  * @param {string} next  planNext's result
  * @param {object|null} plan
@@ -576,7 +578,6 @@ export const PlanNext = ({
   onChange = () => {},
   onStopPlanner = null,
   leadName = "The Dash Lead",
-  buildSlot = null,
   onPicked = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
@@ -602,8 +603,7 @@ export const PlanNext = ({
       <Button2 title="Decide for me and finish the plan" onClick={onDecide} />
     );
   let body = null;
-  if (next === "build") body = buildSlot;
-  else if (next === "waiting") {
+  if (next === "waiting") {
     body = (
       <div className="flex flex-col gap-2">
         <span className={`text-sm ${strong}`}>

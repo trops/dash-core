@@ -542,15 +542,18 @@ describe("WorkspaceSide", () => {
     expect(screen.getByTestId("workspace-side")).toHaveTextContent("Outputs");
   });
 
-  test("an answer is an output; each bot says whether it was asked", () => {
+  test("an answer is an output; the sidebar holds only outputs (DASH-21)", () => {
     render(<WorkspaceSide contact={contact} messages={messages} />);
     expect(screen.getByTestId("workspace-output")).toHaveTextContent(
       "Inbox Watch's answer",
     );
-    const rows = screen.getAllByTestId("workspace-member");
-    expect(rows[0]).toHaveTextContent("Inbox Watch · done");
-    expect(rows[0]).toHaveTextContent("2 need attention.");
-    expect(rows[1]).toHaveTextContent("Morning Briefer · ready");
+    expect(screen.getByTestId("workspace-output")).toHaveTextContent(
+      "2 need attention.",
+    );
+    // No team list, no models table.
+    expect(screen.queryByTestId("workspace-team")).toBeNull();
+    expect(screen.queryByTestId("workspace-member")).toBeNull();
+    expect(screen.queryByTestId("workspace-who-works")).toBeNull();
   });
 
   test("it tells the folded button how many outputs it holds (release 6a)", () => {
@@ -581,7 +584,7 @@ describe("WorkspaceSide", () => {
       );
     };
     render(<Host />);
-    fireEvent.click(screen.getByRole("button", { name: "Answer ›" }));
+    fireEvent.click(screen.getByTestId("workspace-output"));
     expect(screen.getByText("Anything urgent since 9:00?")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-output-detail")).toHaveTextContent(
       "Dana wants to move Thursday.",
@@ -589,10 +592,10 @@ describe("WorkspaceSide", () => {
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
     expect(onToggleWide).toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "← Outputs" }));
-    expect(screen.getByTestId("workspace-team")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-output")).toBeInTheDocument();
   });
 
-  test("a bot still asking shows as working", () => {
+  test("a bot still asking isn't an output yet", () => {
     render(
       <WorkspaceSide
         contact={contact}
@@ -606,8 +609,9 @@ describe("WorkspaceSide", () => {
         ]}
       />,
     );
-    expect(screen.getAllByTestId("workspace-member")[0]).toHaveTextContent(
-      "Inbox Watch · working",
+    expect(screen.queryByTestId("workspace-output")).toBeNull();
+    expect(screen.getByTestId("workspace-side")).toHaveTextContent(
+      "show up here as the team makes them",
     );
   });
 });
@@ -1127,18 +1131,11 @@ describe("release 3a: matches the mockup", () => {
     // Outputs holds only what's made: nothing yet.
     const side = screen.getByTestId("workspace-side");
     expect(within(side).queryByTestId("workspace-start-from")).toBeNull();
-    expect(side).toHaveTextContent("What the team makes shows here.");
-    // The team in the order it works, each saying what it's for.
-    const rows = screen.getAllByTestId("workspace-member");
-    expect(rows[0]).toHaveTextContent("Scout · ready");
-    expect(rows[0]).toHaveTextContent("finds what you already have");
-    expect(rows[1]).toHaveTextContent("Planner · ready");
-    expect(rows[1]).toHaveTextContent("turns your request into a plan");
-
-    // A role's line, until it's asked, is in the normal font.
-    expect(
-      within(rows[0]).getByText("finds what you already have"),
-    ).not.toHaveClass("font-mono");
+    expect(side).toHaveTextContent(
+      "The plan, its build log, the check report and the preview show up here as the team makes them.",
+    );
+    // Only outputs (DASH-21): no team list.
+    expect(within(side).queryByTestId("workspace-member")).toBeNull();
     fireEvent.click(within(from).getByText("Edit a widget you have"));
     expect(onOpenPage).toHaveBeenLastCalledWith("widgets");
     // The registry's dashboards open on their own, in the middle — no box
@@ -1570,17 +1567,9 @@ describe("release 3a: matches the mockup", () => {
     expect(within(side).getByTestId("workspace-output-plan")).toHaveTextContent(
       "Plan",
     );
-    const rows = screen.getAllByTestId("workspace-member");
-    expect(rows[1]).toHaveTextContent("Planner · done");
-    // What it made, not its first words; the Scout wasn't needed.
-    expect(rows[1]).toHaveTextContent("drafted a plan — 2 widgets");
-    expect(rows[0]).toHaveTextContent("Scout · not needed");
-    expect(
-      within(rows[1]).getByRole("button", { name: "Plan ›" }),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("workspace-providers")).toHaveTextContent(
-      "Home Assistant · not connected yet",
-    );
+    // Only outputs (DASH-21): no team list, no providers line.
+    expect(within(side).queryByTestId("workspace-member")).toBeNull();
+    expect(screen.queryByTestId("workspace-providers")).toBeNull();
     // Before it builds: the action on each row (Review, Connect).
     const before = screen.getByTestId("workspace-before");
     expect(
@@ -1822,32 +1811,33 @@ describe("release 3b: building in the conversation", () => {
     });
     expect(window.mainApi.bots.stopPlanBuild).toHaveBeenCalledWith("build_1");
 
+    // The outputs (DASH-21): the plan you said yes to, and its Build log.
     const side = screen.getByTestId("workspace-side");
     expect(within(side).getByTestId("workspace-output-plan")).toHaveTextContent(
-      "Building · 3 of 7 done",
+      "You said yes",
     );
-    const rows = screen.getAllByTestId("workspace-member");
-    const builder = rows.find((r) => r.textContent.startsWith("Builder"));
-    const checker = rows.find((r) => r.textContent.startsWith("Checker"));
-    expect(builder).toHaveTextContent("Builder · working");
-    expect(builder).toHaveTextContent("› Build Camera strip");
-    expect(checker).toHaveTextContent("Checker · waiting");
-    // The Build log, from the Builder's row (frame 4).
-    fireEvent.click(
-      within(builder).getByRole("button", { name: "Build log ›" }),
-    );
-    const log = screen.getByTestId("workspace-build-log");
-    expect(log).toHaveTextContent("In progress");
     expect(
-      screen
-        .getAllByTestId("workspace-build-log-row")
-        .map((r) => r.textContent),
-    ).toEqual([
-      '21:14Create the "Home" dashboard',
-      "21:15Build Lights panel",
-      "21:16Check Lights panel",
-      "21:16Build Camera strip…",
+      within(side).getByTestId("workspace-output-buildlog"),
+    ).toHaveTextContent(/Step 4 of 7 · building for/);
+    expect(within(side).queryByTestId("workspace-member")).toBeNull();
+    fireEvent.click(within(side).getByTestId("workspace-output-buildlog"));
+    const log = screen.getByTestId("workspace-build-log");
+    // Every step from the start (DASH-20): where it is, and who's next.
+    expect(
+      within(log).getByTestId("workspace-build-log-head"),
+    ).toHaveTextContent(/^Step 4 of 7 · building for/);
+    const logRows = screen.getAllByTestId("workspace-build-log-row");
+    expect(logRows.map((r) => r.getAttribute("data-state"))).toEqual([
+      "done",
+      "done",
+      "done",
+      "running",
+      "next",
+      "next",
+      "next",
     ]);
+    expect(logRows[3]).toHaveTextContent("Builder · writing the draft");
+    expect(logRows[4]).toHaveTextContent("Check Camera stripChecker · next");
   });
 
   test("a failure: Let the Builder fix it, or leave it off — then Open Home (frames 33, 8)", async () => {
@@ -1868,10 +1858,10 @@ describe("release 3b: building in the conversation", () => {
       ),
     );
     expect(
-      screen
-        .getAllByTestId("workspace-member")
-        .find((r) => r.textContent.startsWith("Builder")),
-    ).toHaveTextContent("Builder · failed");
+      within(screen.getByTestId("workspace-side")).getByTestId(
+        "workspace-output-buildlog",
+      ),
+    ).toHaveTextContent("Stopped at step 4 of 7");
     c = chat();
     fireEvent.click(within(c).getByRole("button", { name: "Leave it out" }));
     c = chat();
@@ -1880,9 +1870,9 @@ describe("release 3b: building in the conversation", () => {
     );
     expect(
       within(screen.getByTestId("workspace-side")).getByTestId(
-        "workspace-output-plan",
+        "workspace-output-buildlog",
       ),
-    ).toHaveTextContent("Built · Camera strip left off");
+    ).toHaveTextContent(/Build log.*Done/);
     // The built dashboard is an output; it opens the Check report (frame 7).
     fireEvent.click(screen.getByTestId("workspace-output-dashboard"));
     expect(screen.getByTestId("workspace-check-report")).toHaveTextContent(
@@ -1963,8 +1953,9 @@ describe("release 3b: building in the conversation", () => {
         s({ id: "save:0", kind: "save", piece: 0, label: "Install Calendar" }),
       ],
     });
-    // Said yes here: its preview is open on the right by itself.
-    expect(screen.getByTestId("workspace-preview")).toBeInTheDocument();
+    // Ready: listed in Outputs, never opened on the right by itself.
+    expect(screen.queryByTestId("workspace-preview")).toBeNull();
+    expect(screen.getByTestId("workspace-output-preview")).toBeInTheDocument();
     const c = chat();
     fireEvent.click(within(c).getByRole("button", { name: "Looks good" }));
     await waitFor(() =>
@@ -1976,7 +1967,7 @@ describe("release 3b: building in the conversation", () => {
     );
   });
 
-  test("its preview ready after yes here: it opens on the right by itself — no second click", async () => {
+  test("its preview ready after yes here: listed in Outputs, opened only by a click", async () => {
     const ONE = {
       summary: "A light shopping list",
       pieces: [{ kind: "widget", name: "Shopping Lite", source: "new" }],
@@ -2003,6 +1994,8 @@ describe("release 3b: building in the conversation", () => {
     push({ status: "running", steps: steps("running", "waiting") });
     expect(screen.queryByTestId("workspace-preview")).toBeNull();
     push({ status: "waiting-for-you", steps: steps("done", "needs-you") });
+    expect(screen.queryByTestId("workspace-preview")).toBeNull();
+    fireEvent.click(screen.getByTestId("workspace-output-preview"));
     expect(screen.getByTestId("workspace-preview")).toBeInTheDocument();
   });
 
@@ -2686,26 +2679,15 @@ describe("release 3c: leads bring in the Dash team; Create opens here; changes s
     });
   };
 
-  test("a dashboard lead's Dash team shows under its own bots, brought in by it (frame 18)", () => {
+  test("a dashboard lead's change: the sidebar shows what was made, not who (DASH-21)", () => {
     openLead();
-    expect(screen.getByTestId("workspace-team-group")).toHaveTextContent(
-      "Dash team · brought in by Kitchen Sink Lead",
+    const side = screen.getByTestId("workspace-side");
+    expect(within(side).queryByTestId("workspace-team-group")).toBeNull();
+    expect(within(side).queryByTestId("workspace-member")).toBeNull();
+    // The Planner made the changes: they are the output.
+    expect(within(side).getByTestId("workspace-output-plan")).toHaveTextContent(
+      "— changes",
     );
-    const rows = screen
-      .getAllByTestId("workspace-member")
-      .map((r) => r.textContent);
-    // Its own bot wasn't asked for this plan; the Planner drafted it, and
-    // the Builder waits for the yes — only the roles in it (frame 18).
-    expect(rows[0]).toMatch(/^Inbox Watch · not needed/);
-    expect(rows.slice(1).map((r) => r.split(" · ")[0])).toEqual([
-      "Planner",
-      "Builder",
-    ]);
-    expect(rows[1]).toMatch(/Planner · done/);
-    // Its link says what the Planner made: the changes (frame 30).
-    expect(
-      screen.getByRole("button", { name: "Changes ›" }),
-    ).toBeInTheDocument();
   });
 
   test("a plan for this dashboard shows what changes: now and after, and Yes, make the changes (frame 30)", async () => {
@@ -2839,12 +2821,13 @@ describe("release 3c: leads bring in the Dash team; Create opens here; changes s
     await waitFor(() =>
       expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalled(),
     );
+    // Built: its Build log says Done (DASH-21: the plan row says you said yes).
     await waitFor(() =>
       expect(
         within(screen.getByTestId("workspace-side")).getByTestId(
-          "workspace-output-plan",
+          "workspace-output-buildlog",
         ),
-      ).toHaveTextContent("Built"),
+      ).toHaveTextContent("Done"),
     );
     fireEvent.click(
       within(screen.getByTestId("workspace-side")).getByTestId(
@@ -3174,7 +3157,7 @@ describe("an empty cell (release 6c, frames 38, 39)", () => {
       window.mainApi.bots.startPlanBuild.mock.calls[0],
     );
     expect(sent).toContain("trops.clock.FlipClockWidget");
-    // Nothing to build: ready at once — and open on the right by itself.
+    // Nothing to build: ready at once — listed in Outputs.
     await waitFor(() => expect(push).not.toBeNull());
     push({
       status: "waiting-for-you",
@@ -3189,7 +3172,7 @@ describe("an empty cell (release 6c, frames 38, 39)", () => {
         },
       ],
     });
-    expect(screen.getByTestId("workspace-preview")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-output-preview")).toBeInTheDocument();
     expect(sent).toMatch(/\\?"hourFormat\\?":\\?"24\\?"/);
     c.unmount();
     mockRegistry.map = {};
@@ -3554,7 +3537,8 @@ describe("an empty cell (release 6c, frames 38, 39)", () => {
     expect(
       within(c).queryByRole("button", { name: "Yes, build it" }),
     ).toBeNull();
-    expect(screen.getByTestId("workspace-review-in-chat")).toBeInTheDocument();
+    // The sidebar holds outputs only; the steps are in the chat (DASH-21).
+    expect(screen.queryByTestId("workspace-review-in-chat")).toBeNull();
     fireEvent.click(within(c).getByRole("radio", { name: "Every hour" }));
     fireEvent.click(within(c).getByRole("button", { name: "Next: talks to" }));
     // Step 3: Dash's three, its own proposed, the dashboard's bot.

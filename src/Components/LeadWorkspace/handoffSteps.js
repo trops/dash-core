@@ -17,6 +17,34 @@ const ROLE_NAMES = {
   checker: "the Checker",
 };
 
+// A plan sent along as data, in words: its summary.
+const planWords = (json) => {
+  try {
+    const p = JSON.parse(json);
+    const s = p && typeof p === "object" ? String(p.summary || "").trim() : "";
+    return s ? `“${s}”` : "(its details, attached)";
+  } catch (_e) {
+    return "(its details, attached)";
+  }
+};
+
+/**
+ * What a bot was asked, for people to read: a plan sent along as data
+ * (```json {…}```) reads as its summary, and the app's notes to the
+ * Planner on how to answer are left out — never raw JSON on screen.
+ */
+export function readableRequest(text) {
+  return String(text || "")
+    .replace(
+      /\(?The plan as it stands[^:\n]*:\s*```json\s*([\s\S]*?)```\)?/g,
+      (_m, json) => `The plan so far: ${planWords(json)}`,
+    )
+    .replace(/```(?:json)?\s*(\{[\s\S]*?)```/g, (_m, json) => planWords(json))
+    .replace(/[^\n]*<plan>[\s\S]*?<\/plan>[^\n]*/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** "mcp__bot-mcp__team_ask_bot" → "team_ask_bot" (bridged tool names). */
 export function toolName(name) {
   return String(name || "").replace(/^mcp__[^_]+(?:-[^_]+)*__/, "");
