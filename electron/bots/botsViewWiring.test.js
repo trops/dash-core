@@ -193,7 +193,7 @@ describe("botController — results (team-dashboards TD-001/TD-002)", () => {
   it("routes send_result to sendResult with the store and the bus", () => {
     assert.match(
       ctrl,
-      /if \(serverName === RESULTS_SERVER\) \{[\s\S]{0,120}return sendResult\(\s*\{ store: this\._store, publisher: this\._events \},\s*opts\.botId,\s*args,/,
+      /if \(serverName === RESULTS_SERVER\) \{[\s\S]{0,320}return sendResult\(\s*\{ store: this\._store, publisher: this\._events \},\s*opts\.botId,\s*args,/,
     );
   });
 

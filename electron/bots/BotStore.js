@@ -215,6 +215,7 @@ class BotStore {
     delete data.bots[id];
     delete data.runs[id];
     if (data.results) delete data.results[id];
+    if (data.samples) delete data.samples[id];
     this._save(data);
 
     if (isValidBotId(id)) {
@@ -392,6 +393,37 @@ class BotStore {
   getResult(id, name) {
     const { results } = this._load();
     const stored = results && results[id] && results[id][name];
+    if (typeof stored !== "string") return null;
+    const json = this._box ? this._box.open(stored) : stored;
+    if (typeof json !== "string") return null;
+    try {
+      return JSON.parse(json);
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  // ---- A bot's sample: what its last test returned (bot-test-run) ------
+
+  /**
+   * Keep what a test of the bot returned — its answer, results and their
+   * shape — as its sample, replacing the last one. Kept apart from the
+   * definition (never in a profile or package) and sealed at rest like
+   * results: an answer can hold anything.
+   */
+  setSample(id, sample) {
+    const data = this._load();
+    if (!data.bots[id]) throw new Error(`BotStore.setSample: no bot "${id}"`);
+    const json = JSON.stringify(sample);
+    data.samples = data.samples || {};
+    data.samples[id] = this._box ? this._box.seal(json) : json;
+    this._save(data);
+  }
+
+  /** The bot's sample, or null. */
+  getSample(id) {
+    const { samples } = this._load();
+    const stored = samples && samples[id];
     if (typeof stored !== "string") return null;
     const json = this._box ? this._box.open(stored) : stored;
     if (typeof json !== "string") return null;

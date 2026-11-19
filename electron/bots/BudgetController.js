@@ -115,8 +115,11 @@ class BudgetController {
     const mk = monthKey(this._now());
     if (!d.spend[mk]) d.spend[mk] = {};
 
-    const keys = [scopeKey("bot", botId), scopeKey("global")];
-    if (workspaceId) keys.splice(1, 0, scopeKey("workspace", workspaceId));
+    // No bot (a test of a bot never saved, bot-test-run): the dashboard,
+    // global and provider totals only.
+    const keys = [scopeKey("global")];
+    if (workspaceId) keys.unshift(scopeKey("workspace", workspaceId));
+    if (botId) keys.unshift(scopeKey("bot", botId));
     // Spending by AI provider too (the Spending view; no limits on it).
     if (providerId) keys.push(`provider:${providerId}`);
     for (const key of keys) {
@@ -167,7 +170,7 @@ class BudgetController {
   status(botId, workspaceId) {
     const d = this._load();
     const mk = monthKey(this._now());
-    const applicable = [scopeKey("bot", botId)];
+    const applicable = botId ? [scopeKey("bot", botId)] : [];
     if (workspaceId) applicable.push(scopeKey("workspace", workspaceId));
     applicable.push(scopeKey("global"));
 
@@ -177,7 +180,7 @@ class BudgetController {
       let budget = d.budgets[key];
       // A bot without its own limit gets the default (Settings › AI).
       let fromDefault = false;
-      if (budget == null && key === scopeKey("bot", botId)) {
+      if (budget == null && botId && key === scopeKey("bot", botId)) {
         budget = this._defaultBudget(botId);
         fromDefault = budget != null;
       }
@@ -204,7 +207,7 @@ class BudgetController {
   isOverBudget(botId, workspaceId) {
     const mk = monthKey(this._now());
     const d = this._load();
-    if (d.overrides[mk] && d.overrides[mk][botId]) return false;
+    if (botId && d.overrides[mk] && d.overrides[mk][botId]) return false;
     return this.status(botId, workspaceId).overall === "exceeded";
   }
 

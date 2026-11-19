@@ -47,7 +47,14 @@ export function approvalText(request, botName) {
  *
  * Renders nothing when none is waiting.
  */
-export const DashTeamApprovals = ({ compact = false, bots = null }) => {
+export const DashTeamApprovals = ({
+  compact = false,
+  bots = null,
+  // A test of a bot (bot-test-run): its Always allow isn't kept, and the
+  // note says what's real.
+  allowAlways = true,
+  note = "It's waiting for your answer before it carries on.",
+}) => {
   const { muted, strong, hairline } = useConfigTokens();
   // `bots` (lead-workspace release 2): the bots whose approvals to show — a
   // dashboard team in a lead's conversation. Default: the Dash team.
@@ -128,9 +135,7 @@ export const DashTeamApprovals = ({ compact = false, bots = null }) => {
           >
             <span>{approvalText(a.request, bot && bot.name)}</span>
             <ApprovalPreview request={a.request} />
-            <span className={`text-xs ${muted}`}>
-              It&apos;s waiting for your answer before it carries on.
-            </span>
+            <span className={`text-xs ${muted}`}>{note}</span>
             <div className="flex flex-row flex-wrap items-center gap-2">
               <Button
                 title="Allow once"
@@ -139,7 +144,8 @@ export const DashTeamApprovals = ({ compact = false, bots = null }) => {
               />
               {/* Always allow saves a grant — not for the team's build
                   tools (nothing shows a Dash team bot's grants to undo). */}
-              {a.request.serverName &&
+              {allowAlways &&
+              a.request.serverName &&
               a.request.serverName !== "dash-team-build" ? (
                 <Button3
                   title="Always allow"

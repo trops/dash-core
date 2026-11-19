@@ -28,6 +28,7 @@
 const { createRequestPermission } = require("./PermissionGate");
 const { truncateText } = require("./botEvents");
 const { appendAnswerText } = require("./answerText");
+const { answerShape } = require("./answerShape");
 const {
   connectorForTool,
   runsOnClaudeLogin,
@@ -43,6 +44,10 @@ const {
 const { redactArgs } = require("../issues/issueStore");
 
 const QUIT = Symbol("quit");
+
+// How much of a test's answer comes back (bot-test-run PRD): enough for a
+// long JSON answer, and the sample stays small.
+const TEST_ANSWER_LIMIT = 32 * 1024;
 
 /** Wait `ms`, or less if the run is stopped meanwhile. */
 /** What a run stopped by its time limit says. */
@@ -272,7 +277,10 @@ class BotRunner {
       return skip;
     }
 
-    const bot = this._store.get(botId);
+    // A test (bot-test-run PRD) runs the definition it's given — the form as
+    // it stands, saved or not — and keeps nothing: no session, no record.
+    const test = !!opts.test;
+    const bot = opts.bot || this._store.get(botId);
     if (!bot) throw new Error(`BotRunner.run: no bot "${botId}"`);
 
     const blocked = this._startBlocker(botId);
@@ -648,6 +656,7 @@ class BotRunner {
             }
           }
           if (event.type === "session") {
+            if (test) continue;
             this._store.saveSession(
               botId,
               engine.id,
@@ -840,13 +849,26 @@ class BotRunner {
       runRecord.goalId = opts.goal.goalId;
       if (opts.goal.taskId) runRecord.taskId = opts.goal.taskId;
     }
-    this._store.appendRun(botId, runRecord);
+    if (test) {
+      // The whole answer from its start (a JSON answer cut at the front
+      // can't be read), not the record's last 8 KB.
+      runRecord.test = true;
+      // Its shape from the whole answer: JSON cut short no longer parses.
+      runRecord.answerShape = answerShape(answer);
+      runRecord.answer = answer.slice(0, TEST_ANSWER_LIMIT);
+      if (answer.length > TEST_ANSWER_LIMIT) runRecord.answerCut = true;
+    } else {
+      this._store.appendRun(botId, runRecord);
+    }
 
     // Feed usage to budgets (Slice 5). Optional hook; only when we captured
-    // usage and know which provider/model produced it.
+    // usage and know which provider/model produced it. A test counts toward
+    // the saved bot it tests (`chargeTo`); one never saved, toward its
+    // dashboard and the totals only (botId null).
+    const chargeTo = test ? opts.chargeTo || null : botId;
     if (usage && runProfile && this._onUsage) {
       this._onUsage({
-        botId,
+        botId: chargeTo,
         workspaceId: bot.workspaceId,
         providerId: runProfile.providerId,
         model: runProfile.model,

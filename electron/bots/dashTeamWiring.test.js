@@ -81,7 +81,7 @@ describe("botController — Dash team (CRE-011)", () => {
     assert.match(
       ctrl,
       // …except a test run the user started (Phase 1d).
-      /startBlocker: \(botId\) => \{[\s\S]{0,600}if \(this\._pause\.isPaused\(botId\) && !testRun\)\s*return "this bot is paused";/,
+      /startBlocker: \(botId\) => \{[\s\S]{0,900}if \(this\._pause\.isPaused\(botId\) && !testRun\)\s*return "this bot is paused";/,
     );
   });
 

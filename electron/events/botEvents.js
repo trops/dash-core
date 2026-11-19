@@ -12,6 +12,8 @@ const BOTS_SAVE = "bots-save";
 const BOTS_DELETE = "bots-delete";
 const BOTS_RUN = "bots-run";
 const BOTS_STOP = "bots-stop";
+// Test a bot from its form, saved or not (bot-test-run).
+const BOTS_TEST = "bots-test";
 const BOTS_APPROVE = "bots-approve";
 const BOTS_LIST_APPROVALS = "bots-list-approvals";
 const BOTS_GET_BUDGETS = "bots-get-budgets";
@@ -137,6 +139,7 @@ module.exports = {
   BOTS_DELETE,
   BOTS_RUN,
   BOTS_STOP,
+  BOTS_TEST,
   BOTS_APPROVE,
   BOTS_LIST_APPROVALS,
   BOTS_GET_BUDGETS,

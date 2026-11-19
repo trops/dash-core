@@ -538,6 +538,88 @@ describe("BotRunner — usage hook (budgets)", () => {
   });
 });
 
+// A test of the form as it stands (bot-test-run PRD): runs the definition
+// it's given and keeps nothing.
+describe("BotRunner — a test run", () => {
+  const usage = { inputTokens: 5, outputTokens: 2 };
+  const events = () => [
+    { type: "text", text: '{"deals":[1,2]}' },
+    { type: "session", session: { messages: [1] } },
+    { type: "done", stopReason: "end_turn", usage },
+  ];
+  const draft = {
+    id: "test-abc123",
+    name: "Deal Finder",
+    instructions: "find deals",
+    mcpServers: [],
+    allowedTools: [],
+    workspaceId: "ws_1",
+  };
+
+  it("runs a bot that was never saved, from its definition", async () => {
+    const engine = mockEngine(events());
+    const { runner, saved, runs } = makeRunner(engine);
+    const record = await runner.run("test-abc123", {
+      bot: draft,
+      test: true,
+      prompt: "today's deals",
+    });
+    assert.equal(record.status, "completed");
+    assert.equal(record.test, true);
+    assert.equal(record.answer, '{"deals":[1,2]}');
+    assert.match(engine.lastCtx.systemPrompt, /find deals/);
+    // Nothing kept: no session, no run record.
+    assert.deepEqual(saved, []);
+    assert.deepEqual(runs, []);
+  });
+
+  it("keeps the answer from its start, cut at 32 KB", async () => {
+    const long = "x".repeat(40 * 1024);
+    const engine = mockEngine([
+      { type: "text", text: JSON.stringify({ notes: long }) },
+      { type: "done", stopReason: "end_turn" },
+    ]);
+    const { runner } = makeRunner(engine);
+    const record = await runner.run("test-abc123", { bot: draft, test: true });
+    assert.equal(record.answer.length, 32 * 1024);
+    // Its shape comes from the whole answer, before the cut.
+    assert.equal(record.answerShape.kind, "json");
+    assert.ok(record.answer.startsWith('{"notes":"x'));
+    assert.equal(record.answerCut, true);
+  });
+
+  it("charges its usage to the saved bot it tests, else to no bot", async () => {
+    const seen = [];
+    const { runner } = makeRunner(mockEngine(events()), {
+      deps: { onUsage: (u) => seen.push(u) },
+    });
+    await runner.run("test-abc123", { bot: draft, test: true });
+    // A bot never saved: its dashboard and the totals still count it.
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].botId, null);
+    assert.equal(seen[0].workspaceId, "ws_1");
+    seen.length = 0;
+    const again = makeRunner(mockEngine(events()), {
+      deps: { onUsage: (u) => seen.push(u) },
+    });
+    await again.runner.run("test-abc123", {
+      bot: draft,
+      test: true,
+      chargeTo: "bot_1",
+    });
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].botId, "bot_1");
+  });
+
+  it("stays a normal run without `test`", async () => {
+    const { runner, runs } = makeRunner(mockEngine(events()));
+    const record = await runner.run("bot_1", {});
+    assert.equal(record.test, undefined);
+    assert.equal(record.answer, undefined);
+    assert.equal(runs.length, 1);
+  });
+});
+
 describe("BotRunner construction", () => {
   it("requires its core collaborators", () => {
     assert.throws(() => new BotRunner({}), /missing dependency/);

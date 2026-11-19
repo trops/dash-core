@@ -550,6 +550,60 @@ describe("BotStore — latest results", () => {
   });
 });
 
+// What a bot's last test returned (bot-test-run).
+describe("BotStore — a bot's sample", () => {
+  const { createSecretBox } = require("./secretBox");
+  const crypto = {
+    isEncryptionAvailable: () => true,
+    encryptString: (s) => Buffer.from("X" + s, "utf8"),
+    decryptString: (b) => b.toString("utf8").slice(1),
+  };
+  const sample = (n) => ({
+    at: "2026-11-18T10:00:00.000Z",
+    answer: `{"deals":[${n}]}`,
+    results: [],
+    shape: { kind: "json", top: "object", fields: [] },
+  });
+
+  it("keeps the latest sample apart from the definition", () => {
+    const { store, persistence, root } = freshStore();
+    const bot = store.create(validDef);
+    assert.equal(store.getSample(bot.id), null);
+    store.setSample(bot.id, sample(1));
+    store.setSample(bot.id, sample(2));
+    const again = new BotStore({ persistence, paths: { botsRoot: root } });
+    assert.deepEqual(again.getSample(bot.id), sample(2));
+    assert.equal(again.get(bot.id).sample, undefined);
+  });
+
+  it("refuses a sample for an unknown bot, and goes with the bot", () => {
+    const { store, persistence } = freshStore();
+    assert.throws(() => store.setSample("bot_nope", sample(1)), /no bot/);
+    const bot = store.create(validDef);
+    store.setSample(bot.id, sample(1));
+    store.delete(bot.id);
+    assert.equal(persistence._blob().samples[bot.id], undefined);
+    assert.equal(store.getSample(bot.id), null);
+  });
+
+  it("seals the sample at rest", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "botstore-test-"));
+    tmpRoots.push(root);
+    const persistence = memPersistence();
+    const store = new BotStore({
+      persistence,
+      paths: { botsRoot: root },
+      secretBox: createSecretBox(crypto),
+    });
+    const bot = store.create(validDef);
+    store.setSample(bot.id, sample(7));
+    const raw = persistence._blob().samples[bot.id];
+    assert.ok(raw.startsWith("enc:v1:"));
+    assert.ok(!raw.includes("deals"));
+    assert.deepEqual(store.getSample(bot.id), sample(7));
+  });
+});
+
 // Events waiting for paused bots (bot-factory US-011 AC8).
 describe("BotStore — paused-bot event queue", () => {
   const { createSecretBox } = require("./secretBox");
