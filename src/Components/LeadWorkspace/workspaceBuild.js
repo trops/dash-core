@@ -606,10 +606,11 @@ export function buildChat(state, opts = {}) {
   ) {
     return {
       ...chat,
-      reply: `${String(chat.reply).replace(
-        /\n\nTry it again, or leave it off for now\?$/,
-        "",
-      )}\n\nThis build was saved before Dash last closed — carry on building to pick it up from there.`,
+      reply: `${
+        chat.ask && String(chat.reply).endsWith(chat.ask)
+          ? String(chat.reply).slice(0, -chat.ask.length)
+          : chat.reply
+      }\n\nThis build was saved before Dash last closed — carry on building to pick it up from there.`,
       choices: "continue",
       continueLabel: "Carry on building",
     };
@@ -858,6 +859,17 @@ function chatFor(
     const label = first
       ? nameOf(nameOf(first.label, "Build"), "Check")
       : "One step";
+    // Only what's offered (BuildChoices): Try again, the Builder's fix, or
+    // — neither left — a change said in the reply. Then dropping it.
+    const leave =
+      kind === "edit" ? "Keep the widget as it was" : "Leave it out";
+    const ask = !first
+      ? ""
+      : first.canRetry
+        ? `\n\nTry it again, or ${leave.toLowerCase()}?`
+        : first.canFix
+          ? `\n\nLet the Builder fix it, or ${leave.toLowerCase()}?`
+          : `\n\nSay what to change in the reply, or ${leave.toLowerCase()}.`;
     return {
       step: {
         label: first
@@ -873,10 +885,12 @@ function chatFor(
         waiting.length
           ? ` What needs ${andList(waiting)} waits for it (on the right).`
           : "",
-        first ? "\n\nTry it again, or leave it off for now?" : "",
+        ask,
       ].join(""),
       choices: first ? "failed" : null,
       failed: first,
+      ask,
+      leave,
     };
   }
   if (status === "stopped" || status === "interrupted") {

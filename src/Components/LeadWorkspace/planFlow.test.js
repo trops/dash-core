@@ -547,7 +547,7 @@ describe("saying yes", () => {
       ),
     );
     expect(
-      within(nextBox()).getByRole("button", { name: "Leave it off" }),
+      within(nextBox()).getByRole("button", { name: "Leave it out" }),
     ).toBeInTheDocument();
   });
 });

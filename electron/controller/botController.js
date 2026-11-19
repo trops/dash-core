@@ -5601,6 +5601,9 @@ const botController = {
         ok: true,
         package: m ? m[0].toLowerCase() : null,
         draft: d ? d[0] : null,
+        // A draft that doesn't match what the user chose yet names no
+        // package: what it said is the reason the build didn't finish.
+        ...(m ? {} : { said: text.slice(0, 800) }),
       });
     } else {
       list.push({ ok: false, error: text.slice(0, 500) });

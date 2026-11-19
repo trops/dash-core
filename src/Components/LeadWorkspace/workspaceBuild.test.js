@@ -306,7 +306,7 @@ describe("the build in the chat", () => {
     );
   });
 
-  test("a failure: Try again or leave it off; left off, it's built", () => {
+  test("a failure: only what's offered, or leave it out; left out, it's built", () => {
     const chat = buildChat(FAILED);
     expect(chat.step).toEqual({
       label: "Builder couldn't finish Camera strip",
@@ -315,7 +315,10 @@ describe("the build in the chat", () => {
     expect(chat.reply).toContain(
       "Camera strip didn't work — cameras timed out after 30s.",
     );
-    expect(chat.reply).toContain("Try it again, or leave it off for now?");
+    // The Builder can fix it; there's no Try again here.
+    expect(chat.reply).toContain("Let the Builder fix it, or leave it out?");
+    expect(chat.reply).not.toContain("Try it again");
+    expect(chat.leave).toBe("Leave it out");
     expect(chat.choices).toBe("failed");
     expect(chat.failed.id).toBe("build:1");
     const off = buildChat(
@@ -628,5 +631,46 @@ describe("a bot build, saved after its test", () => {
     expect(chat.card.sub).toBe("Bot · tested, saved, paused");
     expect(chat.reply).toMatch(/with its test kept as its sample/);
     expect(chat.choices).toBe("turnon");
+  });
+});
+
+// DASH-19: the message offers only what's on screen.
+describe("a failure's way on", () => {
+  const failed = (step, extra = {}) => ({
+    status: "finished-with-problems",
+    steps: [
+      {
+        id: "build:0",
+        kind: "build",
+        role: "builder",
+        piece: 0,
+        status: "failed",
+        label: "Write the change into a draft",
+        error:
+          "the draft doesn't match what you chose: shows past events (you chose: today only)",
+        ...step,
+      },
+    ],
+    ...extra,
+  });
+  it("its fixes used up: say what to change, or keep the widget as it was", () => {
+    const chat = buildChat(failed({ fixesUsedUp: true }), { kind: "edit" });
+    expect(chat.reply).toContain(
+      "the draft doesn't match what you chose: shows past events (you chose: today only)",
+    );
+    expect(chat.reply).toContain(
+      "Say what to change in the reply, or keep the widget as it was.",
+    );
+    expect(chat.reply).not.toMatch(/Try it again/);
+    expect(chat.leave).toBe("Keep the widget as it was");
+  });
+  it("one that can be tried again says so", () => {
+    const chat = buildChat(failed({ canRetry: true }));
+    expect(chat.reply).toContain("Try it again, or leave it out?");
+  });
+  it("a build saved before Dash closed drops the question", () => {
+    const chat = buildChat(failed({ canRetry: true }), { restored: true });
+    expect(chat.reply).not.toContain("Try it again");
+    expect(chat.reply).toContain("carry on building");
   });
 });

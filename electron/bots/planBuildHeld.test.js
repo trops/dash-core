@@ -317,3 +317,48 @@ describe("held to your choices — what the roles are told", () => {
     assert.match(r, /Dash couldn't tell whether ha_call_service only reads/);
   });
 });
+
+// DASH-19: a draft that doesn't match what the user chose keeps its reason.
+describe("buildOutcome — a draft that doesn't match your choices", () => {
+  const { buildOutcome } = require("./planBuild");
+  it("says what doesn't match, on one line", () => {
+    const said = [
+      "Wrote draft:HaCalendar, but it doesn't match what the user chose yet — change exactly these, keep the rest, then build_widget again:",
+      "- shows past events — they chose: today only",
+      "- no place shown — they chose: time, title and place",
+    ].join("\n");
+    const out = buildOutcome({
+      builds: [{ ok: true, package: null, draft: "draft:HaCalendar", said }],
+    });
+    assert.equal(
+      out.error,
+      "the draft doesn't match what you chose: shows past events (you chose: today only); no place shown (you chose: time, title and place)",
+    );
+    assert.ok(!out.error.includes("\n"));
+  });
+  it("a built package is still a build", () => {
+    assert.deepEqual(
+      buildOutcome({
+        builds: [
+          {
+            ok: true,
+            package: null,
+            said: "doesn't match what the user chose",
+          },
+          {
+            ok: true,
+            package: "@ai-built/hacalendar",
+            draft: "draft:HaCalendar",
+          },
+        ],
+      }),
+      { package: "@ai-built/hacalendar", draft: "draft:HaCalendar" },
+    );
+  });
+  it("no build at all says so, as before", () => {
+    assert.match(
+      buildOutcome({ builds: [] }).error,
+      /never called build_widget/,
+    );
+  });
+});
