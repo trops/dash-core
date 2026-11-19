@@ -13,6 +13,7 @@ const {
   BOTS_DELETE,
   BOTS_RUN,
   BOTS_STOP,
+  BOTS_TEST,
   BOTS_APPROVE,
   BOTS_LIST_APPROVALS,
   BOTS_GET_BUDGETS,
@@ -131,6 +132,13 @@ const botApi = {
   getLatestResult: (eventType) =>
     ipcRenderer.invoke(BOTS_GET_LATEST_RESULT, { eventType }),
   stop: (botId) => ipcRenderer.invoke(BOTS_STOP, { botId }),
+  /**
+   * Test a bot from its form, saved or not (bot-test-run): its events stream
+   * on onStream under testId (stop it with stop(testId)); resolves to what
+   * it returned and its shape.
+   */
+  test: (definition, { testId, prompt = "", keep = true } = {}) =>
+    ipcRenderer.invoke(BOTS_TEST, { definition, testId, prompt, keep }),
   /** Save this dashboard's team as a .team.json (TEAM-006). meta: { name, description } */
   exportTeam: (workspaceId, meta) =>
     ipcRenderer.invoke(BOTS_EXPORT_TEAM, { workspaceId, meta }),

@@ -6,6 +6,7 @@ import {
   fireEvent,
   waitFor,
   act,
+  within,
 } from "@testing-library/react";
 import { BotDetail } from "./BotDetail";
 
@@ -1818,5 +1819,224 @@ describe("BotDetail — a copy of another bot", () => {
       allowedTools: ["search_threads"],
       schedules: [{ cron: "0 7 * * 1-5", prompt: "" }],
     });
+  });
+});
+
+// Test the form before it's saved (bot-test-run).
+describe("BotDetail — Test", () => {
+  const SAMPLE = { at: "t", answer: '{"deals":[]}', results: [], shape: {} };
+  let resolveTest;
+  beforeEach(() => {
+    window.mainApi = {
+      bots: {
+        test: jest.fn(
+          () =>
+            new Promise((r) => {
+              resolveTest = r;
+            }),
+        ),
+        stop: jest.fn(),
+        onStream: jest.fn(() => "s1"),
+        removeListener: jest.fn(),
+        listApprovals: jest.fn().mockResolvedValue([]),
+        onApprovalsChanged: jest.fn(() => "a1"),
+      },
+    };
+  });
+  afterEach(() => {
+    delete window.mainApi;
+  });
+
+  const fill = () => {
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Deal Finder" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Find three deals. Answer with JSON." },
+    });
+  };
+
+  it("tests the unsaved form, shows what came back, and Create keeps the sample", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    expect(screen.getByText("Test")).toBeDisabled();
+    fill();
+    fireEvent.change(screen.getByPlaceholderText("What to ask it"), {
+      target: { value: "Only knives" },
+    });
+    fireEvent.click(screen.getByText("Test"));
+    const [definition, opts] = window.mainApi.bots.test.mock.calls[0];
+    expect(definition).toMatchObject({
+      name: "Deal Finder",
+      instructions: "Find three deals. Answer with JSON.",
+    });
+    expect(definition.id).toBeUndefined();
+    expect(opts.prompt).toBe("Only knives");
+    expect(opts.testId).toMatch(/^test-[a-z0-9]{6,40}$/);
+    expect(screen.getByText("Testing…")).toBeDisabled();
+    expect(screen.getByText("Testing Deal Finder…")).toBeInTheDocument();
+    await act(async () => {
+      resolveTest({
+        status: "completed",
+        answer: '{"deals":[]}',
+        shape: { kind: "json", top: "object", fields: [] },
+        sample: SAMPLE,
+      });
+    });
+    expect(screen.getByText("What Deal Finder returned")).toBeInTheDocument();
+    expect(screen.getByText("Test again")).not.toBeDisabled();
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].sample).toEqual(SAMPLE);
+  });
+
+  it("Create stays off until a test finishes", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    fill();
+    expect(screen.getByText("Create")).toBeDisabled();
+    expect(screen.getByTestId("bot-test-note")).toHaveTextContent(
+      "Test it first: Create turns on once a test finishes.",
+    );
+    fireEvent.click(screen.getByText("Test"));
+    await act(async () => {
+      resolveTest({ status: "failed", error: "Web search isn't connected" });
+    });
+    expect(screen.getByText("Didn't finish")).toBeInTheDocument();
+    expect(screen.getByText("Create")).toBeDisabled();
+    fireEvent.click(
+      within(screen.getByTestId("bot-detail-footer")).getByText("Test again"),
+    );
+    await act(async () => {
+      resolveTest({ status: "completed", answer: "ok", sample: SAMPLE });
+    });
+    expect(screen.getByText("Create")).not.toBeDisabled();
+    expect(screen.queryByTestId("bot-test-note")).toBeNull();
+    // An edit after the test: test it again to create it.
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Deal Finder 2" },
+    });
+    expect(screen.getByText("Create")).toBeDisabled();
+    expect(screen.getByTestId("bot-test-note")).toHaveTextContent(
+      "Changed since its test: test it again to create it.",
+    );
+  });
+
+  it("a saved bot with unsaved changes says so until it's tested", async () => {
+    const bot = {
+      id: "bot_1",
+      name: "Deal Finder",
+      instructions: "Find deals.",
+      workspaceId: null,
+    };
+    render(<BotDetail bot={bot} providers={{}} onSave={jest.fn()} />);
+    expect(screen.queryByTestId("bot-test-note")).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Find five deals." },
+    });
+    expect(screen.getByTestId("bot-test-note")).toHaveTextContent(
+      "Changed since its last test.",
+    );
+    // Save still works: an edit isn't held hostage to a test.
+    expect(screen.getByText("Save")).not.toBeDisabled();
+    fireEvent.click(screen.getByText("Test"));
+    await act(async () => {
+      resolveTest({ status: "completed", answer: "ok", sample: SAMPLE });
+    });
+    expect(screen.queryByTestId("bot-test-note")).toBeNull();
+  });
+
+  it("a saved bot with unsaved changes tests with its id; its sample goes with Save", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    const bot = {
+      id: "bot_1",
+      name: "Deal Finder",
+      instructions: "Find deals.",
+      workspaceId: null,
+    };
+    render(<BotDetail bot={bot} providers={{}} onSave={onSave} />);
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Find five deals." },
+    });
+    fireEvent.click(screen.getByText("Test"));
+    const [definition] = window.mainApi.bots.test.mock.calls[0];
+    expect(definition).toMatchObject({
+      id: "bot_1",
+      instructions: "Find five deals.",
+    });
+    await act(async () => {
+      resolveTest({
+        status: "completed",
+        answer: "ok",
+        shape: { kind: "text", lines: 1, chars: 2 },
+        sample: SAMPLE,
+      });
+    });
+    expect(window.mainApi.bots.test.mock.calls[0][1].keep).toBe(false);
+    expect(
+      screen.getByText(/kept as its sample when you save it/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].sample).toEqual(SAMPLE);
+  });
+
+  it("a saved bot with no changes keeps its sample at once, not on Save", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    const bot = {
+      id: "bot_1",
+      name: "Deal Finder",
+      instructions: "Find deals.",
+      workspaceId: null,
+    };
+    render(<BotDetail bot={bot} providers={{}} onSave={onSave} />);
+    fireEvent.click(screen.getByText("Test"));
+    expect(window.mainApi.bots.test.mock.calls[0][1].keep).toBe(true);
+    await act(async () => {
+      resolveTest({
+        status: "completed",
+        answer: "ok",
+        sample: SAMPLE,
+        sampleKept: true,
+      });
+    });
+    expect(
+      screen.getByText(/kept as Deal Finder's sample/),
+    ).toBeInTheDocument();
+  });
+
+  it("a later test that doesn't finish keeps the last good sample", async () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    fill();
+    fireEvent.click(screen.getByText("Test"));
+    await act(async () => {
+      resolveTest({
+        status: "completed",
+        answer: "{}",
+        shape: { kind: "json", top: "object", fields: [] },
+        sample: SAMPLE,
+      });
+    });
+    fireEvent.click(screen.getByText("Test again"));
+    await act(async () => {
+      resolveTest({ status: "stopped" });
+    });
+    expect(screen.getByText("Stopped")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].sample).toEqual(SAMPLE);
+  });
+
+  it("a lead has no Test: it's asked in its conversation", () => {
+    render(
+      <BotDetail
+        bot={{ id: "lead_1", name: "Lead", role: "lead", instructions: "" }}
+        providers={{}}
+        onSave={jest.fn()}
+      />,
+    );
+    expect(screen.queryByText("Test")).toBeNull();
+    expect(screen.queryByLabelText("Test it with (optional)")).toBeNull();
   });
 });

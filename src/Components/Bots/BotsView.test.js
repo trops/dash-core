@@ -865,6 +865,27 @@ describe("BotsView — show bots on the dashboard (TEAM-012)", () => {
     ).toBeInTheDocument();
   });
 
+  it("Create closes the form and goes back to the team", async () => {
+    const save = jest.fn().mockResolvedValue({ id: "bot_new", name: "Digest" });
+    setup({
+      mode: null,
+      apiOver: { save },
+      focus: { botId: "__new__", tab: "settings", seq: 1 },
+    });
+    fireEvent.change(await screen.findByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "Digest" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Summarise" },
+    });
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText("e.g. PR Digest")).toBeNull(),
+    );
+    expect(screen.queryByText("New bot")).toBeNull();
+  });
+
   it("a new bot shows its results on the dashboard when the box is ticked", async () => {
     const addBotWidget = jest
       .fn()

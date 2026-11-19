@@ -185,6 +185,32 @@ describe("BudgetController.isOverBudget + override", () => {
   });
 });
 
+// A test of a bot never saved (bot-test-run): no bot to charge, but its
+// dashboard's and the global limits still count and still hold it.
+describe("BudgetController — usage with no bot", () => {
+  it("counts toward the dashboard, global and provider totals only", () => {
+    const { bc } = make();
+    bc.setBudget("global", null, 5);
+    bc.recordUsage({
+      botId: null,
+      workspaceId: "w1",
+      providerId: "anthropic",
+      model: "opus",
+      usage: usage(2_000_000, 0),
+    });
+    const spend = bc.getSpend();
+    assert.ok(spend["workspace:w1"].usd > 0);
+    assert.ok(spend.global.usd > 0);
+    assert.ok(spend["provider:anthropic"].usd > 0);
+    assert.equal(spend["bot:null"], undefined);
+    assert.equal(bc.isOverBudget(null, "w1"), true);
+    assert.deepEqual(
+      bc.status(null, "w1").scopes.map((s) => s.scope),
+      ["global"],
+    );
+  });
+});
+
 describe("BudgetController monthly keying", () => {
   it("spend and overrides reset the next month", () => {
     const ctx = make();

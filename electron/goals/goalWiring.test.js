@@ -60,7 +60,7 @@ describe("botController", () => {
   it("gives a bot on a dashboard the goal tools, allowed without a prompt", () => {
     assert.match(
       bots,
-      /if \(bot\.workspaceId != null && bot\.workspaceId !== ""\) \{\s*for \(const tool of GOAL_TOOLS\)/,
+      /bot\.workspaceId != null &&\s*bot\.workspaceId !== "" &&\s*!\(runOpts && runOpts\.test\)\s*\) \{\s*for \(const tool of GOAL_TOOLS\)/,
     );
     assert.match(
       bots,
@@ -69,7 +69,7 @@ describe("botController", () => {
     // A lead is refused the tools that claim or finish tasks.
     assert.match(
       bots,
-      /if \(serverName === GOALS_SERVER\) \{\s*if \(\s*isLead\(this\._store\.get\(opts\.botId\)\) &&\s*!LEAD_GOAL_TOOLS\.some\(\(t\) => t\.name === toolName\)\s*\) \{[\s\S]{0,250}\}\s*return handleGoalTool\(/,
+      /if \(serverName === GOALS_SERVER\) \{[\s\S]{0,300}?if \(\s*isLead\(this\._store\.get\(opts\.botId\)\) &&\s*!LEAD_GOAL_TOOLS\.some\(\(t\) => t\.name === toolName\)\s*\) \{[\s\S]{0,250}\}\s*return handleGoalTool\(/,
     );
   });
 

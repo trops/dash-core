@@ -683,9 +683,11 @@ export const BotsView = ({
     }
     setDirty(false);
     afterChange();
+    // A new bot: the form closes, back to the team with it selected.
     if (selectedId === NEW_BOT && saved && saved.id) {
       setSelectedId(saved.id);
       setTab("activity");
+      setDetailOpen(false);
     }
     return saved;
   };

@@ -11,6 +11,8 @@
  */
 "use strict";
 
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { Cron } = require("croner");
 const { createElectronHost } = require("../bots/host");
@@ -102,7 +104,8 @@ const {
   readRegistryRef,
   samePackage,
 } = require("../registry/packageRef");
-const { validateBotDefinition } = require("../bots/botSchema");
+const { validateBotDefinition, withDefaults } = require("../bots/botSchema");
+const { answerShape, resultsShape } = require("../bots/answerShape");
 const { botUpdatePatch } = require("../bots/botUpdate");
 const { publishFingerprint } = require("../registry/fingerprint");
 const { remixOrigin, checkRemix, checkRemixAll } = require("../registry/remix");
@@ -232,10 +235,12 @@ const {
   sourceFromEvent,
   composeEventPrompt,
   botEventType,
+  botRef,
 } = require("../bots/botEvents");
 const {
   RESULTS_SERVER,
   resultToolsFor,
+  checkResult,
   sendResult,
   latestResult,
 } = require("../bots/resultTools");
@@ -284,6 +289,25 @@ const {
 } = require("../bots/rememberGrant");
 // How many recent "Always allow" answers can still be undone.
 const UNDO_KEPT = 50;
+// A test's id, picked by the form (bot-test-run): never a saved bot's.
+const TEST_ID_RE = /^test-[a-z0-9]{6,40}$/;
+// The most a sample sent with a save may be (an answer is cut at 32 KB).
+const MAX_SAMPLE_BYTES = 512 * 1024;
+
+/** A test's sample, as test() made it, small enough to keep. */
+function isSample(sample) {
+  if (!sample || typeof sample !== "object" || Array.isArray(sample)) {
+    return false;
+  }
+  if (typeof sample.answer !== "string" || !Array.isArray(sample.results)) {
+    return false;
+  }
+  try {
+    return JSON.stringify(sample).length <= MAX_SAMPLE_BYTES;
+  } catch (_e) {
+    return false;
+  }
+}
 const grantStore = require("../mcp/grantedPermissions");
 const { isWriteTool, PATH_ARG_KEYS } = require("../mcp/permissionGate");
 const {
@@ -612,6 +636,10 @@ const botController = {
       // A paused bot doesn't start at all (CRE-011 AC3), and nor does one
       // over its budget (US-019 AC4) — it would still spend on the model.
       startBlocker: (botId) => {
+        // A test from the bot's form (bot-test-run): only Pause all, or the
+        // saved bot's budget, stops it.
+        const testing = this._testing(botId);
+        if (testing) return this._testBlocked(testing);
         // A test run the user started goes ahead (Phase 1d) — not while
         // everything is paused.
         const testRun =
@@ -636,16 +664,18 @@ const botController = {
       // Paused at the permission gate when: globally/individually paused, or
       // over any applicable budget.
       isPaused: (botId) =>
-        (this._pause.isPaused(botId) &&
-          !(
-            this._testRuns &&
-            this._testRuns.has(botId) &&
-            !this._pause.isGloballyPaused()
-          )) ||
-        this._budgets.isOverBudget(
-          botId,
-          (this._store.get(botId) || {}).workspaceId,
-        ),
+        this._testing(botId)
+          ? this._testBlocked(this._testing(botId)) !== null
+          : (this._pause.isPaused(botId) &&
+              !(
+                this._testRuns &&
+                this._testRuns.has(botId) &&
+                !this._pause.isGloballyPaused()
+              )) ||
+            this._budgets.isOverBudget(
+              botId,
+              (this._store.get(botId) || {}).workspaceId,
+            ),
       // A run whose model is gone: check the list, then run on what replaces
       // it, else on its job's default.
       replacementModel: (gone) => this._replacementModel(gone),
@@ -667,7 +697,7 @@ const botController = {
             dashboardNameOf: (id) => this._dashboardName(id),
           }),
         );
-        if (r.status.overall !== "ok") {
+        if (r.status.overall !== "ok" && u.botId) {
           this._broadcast(BOT_BUDGET_ALERT, {
             botId: u.botId,
             cost: r.cost,
@@ -1184,6 +1214,18 @@ const botController = {
    *   written onto the bot itself.
    */
   save(definition, opts = {}) {
+    // What a test of the form returned (bot-test-run): kept apart from the
+    // definition, so it never goes into a profile or a package.
+    let sample = null;
+    if (
+      definition &&
+      typeof definition === "object" &&
+      "sample" in definition
+    ) {
+      const { sample: s, ...rest } = definition;
+      sample = s;
+      definition = rest;
+    }
     const existing =
       definition && definition.id ? this._store.get(definition.id) : null;
     // The Dash team's identity is fixed: a form can't turn a team bot into a
@@ -1263,6 +1305,13 @@ const botController = {
     if (this._inActiveProfile(saved)) this._scheduler.register(saved);
     if (isNew && saved)
       this._logAudit({ type: "bot-created", botId: saved.id });
+    if (saved && isSample(sample)) {
+      try {
+        this._store.setSample(saved.id, sample);
+      } catch (_e) {
+        // The bot is saved; a sample that can't be kept is only lost.
+      }
+    }
     return saved;
   },
 
@@ -1458,6 +1507,182 @@ const botController = {
   /** A run the user started is going on this bot (see _asUserRun). */
   _inUserRun(botId) {
     return !!this._userRuns && this._userRuns.has(botId);
+  },
+
+  /**
+   * Test a bot from its form (bot-test-run PRD): run the definition as it
+   * stands — unsaved changes, or a bot never saved — once, as `testId`
+   * (the form picks it, to follow the run's events). Its tools run as in
+   * a real run and ask as it would; nothing is handed on: no events, its
+   * results are kept here instead of sent, no checks job, no run record.
+   * What it returned comes back with its shape; a completed test is the
+   * bot's sample, kept now for a saved bot (a new one keeps it on Create,
+   * and a saved one with unsaved changes, `keep` false, on Save).
+   * @returns {Promise<object>} { status, error, answer, results, shape,
+   *   resultsShape, sample?, sampleKept? } | { error }
+   */
+  async test(definition, { testId, prompt = "", keep = true } = {}) {
+    if (!definition || typeof definition !== "object") {
+      return { error: "There's nothing to test." };
+    }
+    if (typeof testId !== "string" || !TEST_ID_RE.test(testId)) {
+      return { error: "That test can't start: it has no id." };
+    }
+    if (this._testing(testId) || this._runner.isRunning(testId)) {
+      return { error: "This test is already running." };
+    }
+    const saved = definition.id ? this._store.get(definition.id) : null;
+    const { sample: _s, ...form } = definition;
+    const whole = withDefaults(saved ? { ...saved, ...form } : form);
+    if (isLead(whole) || isDashTeam(whole)) {
+      return {
+        error: `${whole.name || "This bot"} isn't tested here: ask it in its conversation.`,
+      };
+    }
+    const { valid, errors } = validateBotDefinition(whole);
+    if (!valid)
+      return { error: `It can't be tested yet: ${errors.join("; ")}.` };
+    const bot = {
+      ...whole,
+      id: testId,
+      ref: saved ? saved.ref : botRef(whole),
+      session: null,
+      chatSession: null,
+    };
+    // Its own folder when it's saved (its files, as a run sees them); a
+    // bot never saved works in a folder made for the test, then removed.
+    const scratch = saved
+      ? null
+      : fs.mkdtempSync(path.join(os.tmpdir(), "dash-bot-test-"));
+    const workingDir = saved ? this._store.workingDir(saved.id) : scratch;
+    const entry = { bot, results: [], chargeTo: saved ? saved.id : null };
+    if (!this._testBots) this._testBots = new Map();
+    this._testBots.set(testId, entry);
+    const asked =
+      String(prompt || "").trim() ||
+      (whole.schedules && whole.schedules[0] && whole.schedules[0].prompt) ||
+      "";
+    let record;
+    try {
+      const run = this._runner.run(testId, {
+        bot,
+        test: true,
+        trigger: "test",
+        prompt: asked,
+        chargeTo: entry.chargeTo,
+        workingDir,
+        emit: (event) => this._broadcast(BOT_STREAM, { botId: testId, event }),
+      });
+      this._broadcastRunActive();
+      record = await run;
+    } catch (err) {
+      record = { status: "failed", error: (err && err.message) || String(err) };
+    } finally {
+      this._testBots.delete(testId);
+      this._allowedByBot.delete(testId);
+      // Its private memory was the test's alone.
+      this._memory.forgetBot(testId);
+      if (scratch) fs.rmSync(scratch, { recursive: true, force: true });
+      this._broadcastRunActive();
+    }
+    if (record.skipped) {
+      return {
+        testId,
+        status: "skipped",
+        error: `It didn't run: ${record.reason}.`,
+      };
+    }
+    let warnings = [];
+    try {
+      warnings = record.warnings ? JSON.parse(record.warnings) : [];
+    } catch (_e) {
+      warnings = [];
+    }
+    const answer = record.answer || "";
+    const out = {
+      testId,
+      status: record.status,
+      error: record.error || null,
+      startedAt: record.startedAt || null,
+      endedAt: record.endedAt || null,
+      provider: record.provider || null,
+      model: record.model || null,
+      cost: record.cost || null,
+      toolCalls: record.toolCalls || [],
+      approvals: record.approvals || [],
+      warnings,
+      prompt: asked,
+      answer,
+      answerCut: !!record.answerCut,
+      results: entry.results,
+      shape: record.answerShape || answerShape(answer),
+      resultsShape: resultsShape(entry.results),
+    };
+    if (record.status === "completed") {
+      out.sample = {
+        at: out.endedAt,
+        prompt: asked,
+        answer,
+        answerCut: out.answerCut,
+        results: out.results,
+        shape: out.shape,
+        resultsShape: out.resultsShape,
+      };
+      // A saved bot's form with unsaved changes: its sample goes with Save
+      // (`keep` false), so a discarded edit doesn't replace it.
+      if (saved && keep !== false) {
+        try {
+          this._store.setSample(saved.id, out.sample);
+          out.sampleKept = true;
+        } catch (_e) {
+          out.sampleKept = false;
+        }
+      }
+    }
+    return out;
+  },
+
+  /** The test running as `botId` (see test), or null. */
+  _testing(botId) {
+    return (this._testBots && this._testBots.get(botId)) || null;
+  },
+
+  /**
+   * Why a test can't start or go on, or null: only Pause all, or a budget
+   * used up (the saved bot's, its dashboard's or the global one). A bot
+   * paused on its own is still tested.
+   */
+  _testBlocked(testing) {
+    if (this._pause.isGloballyPaused()) return "all bots are paused";
+    // A bot never saved: its dashboard's and the global limits.
+    return this._budgets.isOverBudget(
+      testing.chargeTo || null,
+      testing.bot.workspaceId,
+    )
+      ? testing.chargeTo
+        ? "this bot is over its budget"
+        : "the budget is used up"
+      : null;
+  },
+
+  /**
+   * A test's send_result: checked as a real one is, then kept for the form
+   * (the latest per name, as a real one replaces the last) — never saved
+   * or sent.
+   */
+  _keepTestResult(testing, args) {
+    const check = checkResult(testing.bot, args);
+    if (!check.ok) return { text: check.message, isError: true };
+    const { name, label, items, summary } = check.result;
+    testing.results = [
+      ...testing.results.filter((r) => r.name !== name),
+      { name, label, items, summary: summary || null },
+    ];
+    const n = items.length;
+    return {
+      text: `Kept "${label}" (${n} item${n === 1 ? "" : "s"}): this is a test, so nothing was sent.`,
+      isError: false,
+    };
   },
 
   // ── Create's Recent (create-entry CRE-007 AC2, phase 4e-1) ──────────────
@@ -2969,8 +3194,16 @@ const botController = {
       return { ok: this._approvals.deny(approvalId, decision.reason) };
     }
     let remembered = false;
-    if (decision.remember) {
-      const pending = this._approvals.get(approvalId);
+    const asked = this._approvals.get(approvalId);
+    // A test's Always allow isn't kept: the bot it tests may never be saved.
+    const fromTest = !!(
+      this._testBots &&
+      asked &&
+      asked.request &&
+      this._testBots.has(asked.request.botId)
+    );
+    if (decision.remember && !fromTest) {
+      const pending = asked;
       const req = pending && pending.request;
       const before = req && req.botId ? grantStore.getGrant(req.botId) : null;
       let next = null;
@@ -3177,6 +3410,8 @@ const botController = {
 
   /** A bot's name for the log — kept on the entry so it outlives the bot. */
   _botName(botId) {
+    const testing = this._testBots && this._testBots.get(botId);
+    if (testing) return `${testing.bot.name} (test)`;
     const bot = botId ? this._store.get(botId) : null;
     return (bot && bot.name) || null;
   },
@@ -3307,7 +3542,9 @@ const botController = {
 
   /** @returns {Array<{id: string, name: string}>} bots with an in-flight run */
   listRunning() {
-    return this._runner.listActive().map((id) => {
+    // A test from a bot's form isn't a bot running (bot-test-run): it
+    // saves nothing, and quitting just stops it.
+    return this._activeRuns().map((id) => {
       const bot = this._store.get(id) || {};
       return {
         id,
@@ -3537,8 +3774,15 @@ const botController = {
     }
   },
 
+  /** Bots running now — not tests from a bot's form (bot-test-run). */
+  _activeRuns() {
+    return this._runner
+      .listActive()
+      .filter((id) => !(this._testBots && this._testBots.has(id)));
+  },
+
   _broadcastRunActive() {
-    const running = this._runner.listActive();
+    const running = this._activeRuns();
     this._broadcast(BOT_RUN_ACTIVE, { count: running.length, running });
   },
 
@@ -3709,7 +3953,8 @@ const botController = {
     if (this._modelList) await this._modelList.checkNow();
     const next = migrateModelId(providerId, model);
     if (next && next !== model) return { model: next, known: true };
-    const bot = this._store.get(botId);
+    const testing = this._testBots && this._testBots.get(botId);
+    const bot = testing ? testing.bot : this._store.get(botId);
     if (bot) {
       const settings = this._store.getSettings();
       const fallback = this._modelPick({ ...bot, model: null }, settings);
@@ -6150,8 +6395,13 @@ const botController = {
       toolServer[tool.name] = RESULTS_SERVER;
     }
     // The dashboard's goals ledger, for a bot on a dashboard (goals-ledger
-    // PRD). A bot on no dashboard has no ledger.
-    if (bot.workspaceId != null && bot.workspaceId !== "") {
+    // PRD). A bot on no dashboard has no ledger, and a test (bot-test-run)
+    // doesn't work on the dashboard's jobs.
+    if (
+      bot.workspaceId != null &&
+      bot.workspaceId !== "" &&
+      !(runOpts && runOpts.test)
+    ) {
       for (const tool of GOAL_TOOLS) {
         tools.push(tool);
         toolServer[tool.name] = GOALS_SERVER;
@@ -6318,6 +6568,17 @@ const botController = {
   async _callTool(serverName, toolName, args, opts = {}) {
     // In-process memory tools bypass MCP; scoped to the calling bot's workspace.
     if (serverName === MEMORY_SERVER) {
+      // A test reads memory but changes none: team memory is shared, and a
+      // test hands nothing on (bot-test-run).
+      if (
+        this._testing(opts.botId) &&
+        (toolName === "memory_set" || toolName === "memory_delete")
+      ) {
+        return {
+          text: "This is a test, so memory isn't changed. Carry on without saving it.",
+          isError: false,
+        };
+      }
       return handleMemoryTool(
         this._memory,
         {
@@ -6330,6 +6591,12 @@ const botController = {
       );
     }
     if (serverName === GOALS_SERVER) {
+      if (this._testing(opts.botId)) {
+        return {
+          text: "A test doesn't work on the dashboard's jobs.",
+          isError: true,
+        };
+      }
       if (
         isLead(this._store.get(opts.botId)) &&
         !LEAD_GOAL_TOOLS.some((t) => t.name === toolName)
@@ -6353,6 +6620,9 @@ const botController = {
       );
     }
     if (serverName === RESULTS_SERVER) {
+      // A test's results are kept for the form, never saved or sent.
+      const testing = this._testing(opts.botId);
+      if (testing) return this._keepTestResult(testing, args);
       // Saved as the latest result for its name, then put on the bus.
       return sendResult(
         { store: this._store, publisher: this._events },
@@ -6438,7 +6708,8 @@ const botController = {
     );
     const normalized = normalizeMcpResult(result);
     // tool.<providerType>.<tool> → the bus (successful provider calls only).
-    if (opts.botId) {
+    // A test hands nothing on.
+    if (opts.botId && !this._testing(opts.botId)) {
       this._events.toolCalled(this._store.get(opts.botId), {
         serverName,
         toolName,

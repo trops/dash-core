@@ -51,6 +51,8 @@ import { choiceLabel, choiceNow, isLatest } from "../modelChoices";
 import { cleanIpcError } from "../../../utils/errorUtils";
 import { BuiltinInstructions } from "./BuiltinInstructions";
 import { AlwaysAllowedList } from "../../Bots/AlwaysAllowedList";
+import { useBotTest } from "../../Bots/useBotTest";
+import { TestResult } from "../../Bots/TestResult";
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -719,11 +721,63 @@ export const BotDetail = ({
 
   // An existing bot saves only when something changed, so Save visibly does
   // something; a new bot can always be created once it has a name.
+  // Test the form as it stands, before it's saved (bot-test-run). Not a
+  // lead or Dash team role: they're asked in their conversation.
+  const botTest = useBotTest();
+  const [testPrompt, setTestPrompt] = useState("");
+  const testRef = useRef(null);
+  // The form as it was when the last finished test started: the test is
+  // of the form as it is now only while they match.
+  const testingSnapshot = useRef(null);
+  const [testedSnapshot, setTestedSnapshot] = useState(null);
+  useEffect(() => {
+    if (botTest.sample) setTestedSnapshot(testingSnapshot.current);
+  }, [botTest.sample]);
+  const testedNow = testedSnapshot !== null && testedSnapshot === snapshot;
+  // A new bot is created only once a test of it finishes (no bot that
+  // can't run). Where tests can't run at all, nobody is trapped.
+  const testsRun = !!getMainApi()?.bots?.test;
+  const needsTest = isCreating && !hasBuiltin && testsRun && !testedNow;
   const canSave =
     name.trim() &&
     (hasBuiltin || instructions.trim()) &&
     !saving &&
-    (isCreating || dirty);
+    (isCreating || dirty) &&
+    !needsTest;
+  // What the footer says about testing, if anything.
+  const testNote = hasBuiltin
+    ? null
+    : needsTest
+      ? testedSnapshot
+        ? "Changed since its test: test it again to create it."
+        : "Test it first: Create turns on once a test finishes."
+      : !isCreating && dirty && !testedNow
+        ? "Changed since its last test."
+        : null;
+
+  const canTest =
+    !hasBuiltin &&
+    !!name.trim() &&
+    !!instructions.trim() &&
+    botTest.phase !== "testing";
+  const handleTest = () => {
+    setError(null);
+    testingSnapshot.current = snapshot;
+    // A saved bot with unsaved changes: its sample waits for Save, so a
+    // discarded edit doesn't replace it.
+    botTest.start(formDefinition(), testPrompt, {
+      keep: isCreating || !dirty,
+    });
+    setTimeout(() => {
+      if (testRef.current && testRef.current.scrollIntoView) {
+        testRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+  };
+  // The last good test's sample, when the test didn't keep it already: a
+  // new bot's goes with Create, a changed saved bot's with Save.
+  const testSample =
+    botTest.sample && !botTest.sampleKept ? botTest.sample : null;
 
   const handleSave = async () => {
     setError(null);
@@ -742,6 +796,7 @@ export const BotDetail = ({
         );
         definition = keepLatest(edited, openedRef.current, latest);
       }
+      if (testSample) definition = { ...definition, sample: testSample };
       if (isCreating && canShowOnDashboard) {
         await onSave(definition, { showOnDashboard });
       } else {
@@ -1554,44 +1609,90 @@ export const BotDetail = ({
               </div>
             </>
           )}
+          {!stageChanges && botTest.phase !== "idle" ? (
+            <div ref={testRef}>
+              <TestResult
+                test={botTest}
+                botName={name.trim()}
+                isCreating={isCreating}
+                onStop={botTest.stop}
+                onTestAgain={handleTest}
+              />
+            </div>
+          ) : null}
         </div>
       </div>
 
       {!stageChanges && (
         <div
           data-testid="bot-detail-footer"
-          className={`flex-shrink-0 flex flex-row justify-between gap-2 px-6 py-4 border-t ${hairline}`}
+          className={`flex-shrink-0 flex flex-col gap-3 px-6 py-4 border-t ${hairline}`}
         >
-          <div>
-            {!isCreating && onDelete ? (
-              <Button title="Delete" onClick={onDelete} size="sm" />
-            ) : null}
-          </div>
-          <div className="flex flex-row items-center gap-2">
-            {error ? (
-              <span className="text-sm text-red-500 whitespace-pre-line">
-                {error}
-              </span>
-            ) : justSaved ? (
-              <span className="text-sm opacity-70">Saved</span>
-            ) : null}
-            {isCreating && onCancel ? (
-              <Button title="Cancel" onClick={onCancel} size="sm" />
-            ) : null}
-            {onDiscard && !isCreating ? (
-              <Button
-                title="Discard changes"
-                onClick={onDiscard}
-                size="sm"
-                disabled={!dirty || saving}
-              />
-            ) : null}
-            <Button
-              title={saving ? "Saving…" : isCreating ? "Create" : "Save"}
-              onClick={handleSave}
-              size="sm"
-              disabled={!canSave}
+          {!hasBuiltin ? (
+            <InputText
+              label="Test it with (optional)"
+              value={testPrompt}
+              onChange={setTestPrompt}
+              placeholder={
+                schedulePrompt.trim()
+                  ? `What it's asked on its schedule: ${schedulePrompt.trim()}`
+                  : "What to ask it"
+              }
             />
+          ) : null}
+          <div className="flex flex-row justify-between gap-2">
+            <div>
+              {!isCreating && onDelete ? (
+                <Button title="Delete" onClick={onDelete} size="sm" />
+              ) : null}
+            </div>
+            <div className="flex flex-row items-center gap-2">
+              {error ? (
+                <span className="text-sm text-red-500 whitespace-pre-line">
+                  {error}
+                </span>
+              ) : justSaved ? (
+                <span className="text-sm opacity-70">Saved</span>
+              ) : testNote ? (
+                <span
+                  className="text-xs opacity-70"
+                  data-testid="bot-test-note"
+                >
+                  {testNote}
+                </span>
+              ) : null}
+              {isCreating && onCancel ? (
+                <Button title="Cancel" onClick={onCancel} size="sm" />
+              ) : null}
+              {onDiscard && !isCreating ? (
+                <Button
+                  title="Discard changes"
+                  onClick={onDiscard}
+                  size="sm"
+                  disabled={!dirty || saving}
+                />
+              ) : null}
+              {!hasBuiltin ? (
+                <Button
+                  title={
+                    botTest.phase === "testing"
+                      ? "Testing…"
+                      : botTest.phase === "idle"
+                        ? "Test"
+                        : "Test again"
+                  }
+                  onClick={handleTest}
+                  size="sm"
+                  disabled={!canTest}
+                />
+              ) : null}
+              <Button
+                title={saving ? "Saving…" : isCreating ? "Create" : "Save"}
+                onClick={handleSave}
+                size="sm"
+                disabled={!canSave}
+              />
+            </div>
           </div>
         </div>
       )}
