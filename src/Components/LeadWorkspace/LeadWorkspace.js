@@ -19,6 +19,7 @@ import { useAllBots } from "../AppPages/useAllBots";
 import { useTeamLeads } from "../AiAssistant/components/RecipientPicker";
 import { AskStep, isAsking } from "../Create/AskStep";
 import { BotChat } from "../Bots/BotChat";
+import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { questionThreads } from "../Create/recentRows";
 import { RecentsList } from "./RecentsList";
@@ -1321,6 +1322,8 @@ export const LeadWorkspace = ({
     setPlanChange(false);
     return res;
   };
+  // The lead is still answering: the plan isn't changed meanwhile.
+  const answering = stillAnswering(messages) || askBusy;
   const buildActions = {
     placeInCell,
     swapInPlace,
@@ -1342,7 +1345,7 @@ export const LeadWorkspace = ({
     // A bot's test, run in the chat (DASH-21 frame 8): the build, and a
     // change to the bot, for the Planner.
     pb,
-    changeBot: (t) => (answering ? null : planActions.onAnswer(t)),
+    changeBot: answering ? null : (t) => planActions.onAnswer(t),
     // What's connected, and a provider just connected (DASH-21 frame 6).
     have: wp.have,
     onConnected: () => {
@@ -1356,8 +1359,6 @@ export const LeadWorkspace = ({
       }
     },
   };
-  // The lead is still answering: the plan isn't changed meanwhile.
-  const answering = stillAnswering(messages) || askBusy;
 
   // Or start from shows in a new Dash Lead conversation, in the middle.
   // Making a bot or a dashboard has its own ways instead.
@@ -3321,6 +3322,20 @@ export const LeadWorkspace = ({
                     {aboutShown.text}
                   </span>
                 </span>
+              </div>
+            ) : null}
+            {/* Where no conversation shows them (a bot's own chat, the start):
+                its approvals, answered here (DASH-21 frame 7). An open
+                conversation asks in its own messages. */}
+            {contact && !loading && !missing && (!open || (isBot && lone)) ? (
+              <div className="flex-shrink-0 px-6 pt-3 empty:hidden">
+                <DashTeamApprovals
+                  compact
+                  bots={[
+                    { id: contact.botId, name: contact.name },
+                    ...(contact.members || []),
+                  ]}
+                />
               </div>
             ) : null}
             {loading ? (

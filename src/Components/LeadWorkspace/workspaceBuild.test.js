@@ -526,7 +526,7 @@ describe("the build in the chat", () => {
       ],
     };
     expect(buildChat(needs).reply).toMatch(
-      /^Building now\. One thing needs you — connect .+, below\. Everything else carries on\.$/,
+      /^Building now\. One thing needs you — connect .+, above\. Everything else carries on\.$/,
     );
   });
 

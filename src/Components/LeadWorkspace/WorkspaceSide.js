@@ -11,7 +11,6 @@ import {
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { readableRequest } from "./handoffSteps";
 import { OutputCard, PlanOutput } from "./PlanViews";
-import { BotTestOutput } from "./BotTestOutput";
 import { BuildLogOutput, CheckReportOutput, PreviewOutput } from "./BuildViews";
 import {
   activityText,
@@ -282,17 +281,14 @@ export const WorkspaceSide = ({
     return opened(<CheckReportOutput state={buildState} />);
   }
   // The preview, while it waits for a look — once it's past, Outputs.
-  if (open === "preview" && build && pb && previewStep) {
-    // A bot to test before it's saved (bot-test-run TST-003).
-    if (previewStep.kind === "testbot") {
-      return opened(
-        <BotTestOutput
-          step={previewStep}
-          pb={pb}
-          onChange={planActions && !planReadOnly ? planActions.onAnswer : null}
-        />,
-      );
-    }
+  // (A bot's test runs in the chat — DASH-21 frame 8.)
+  if (
+    open === "preview" &&
+    build &&
+    pb &&
+    previewStep &&
+    previewStep.kind !== "testbot"
+  ) {
     return opened(
       <PreviewOutput
         state={buildState}

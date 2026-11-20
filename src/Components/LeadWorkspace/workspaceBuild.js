@@ -7,7 +7,7 @@
  * AI call per update. Pure.
  */
 import { formatTokens } from "../../utils/runCostLabel";
-import { providerLabel } from "../Create/planChecklist";
+import { normalizeType, providerLabel } from "../Create/planChecklist";
 import { planTarget } from "../../utils/teamPlan";
 import {
   isSettingsChange,
@@ -496,7 +496,7 @@ function stopToldNow(chat, state, edit) {
   // Who has to connect what, for what's left (another piece).
   const waiting = waitingFor(state).map(providerLabel);
   const waitLine = waiting.length
-    ? `What needs ${andList(waiting)} waits for it — connect it below.`
+    ? `What needs ${andList(waiting)} waits for it — connect it above.`
     : "";
   const anyDone = stepsOf(state).some(
     (x) => x.status === "done" && x.role !== "you" && x.kind !== "check",
@@ -610,6 +610,9 @@ function stopToldNow(chat, state, edit) {
  * A provider the build waits for, asked in the chat (DASH-21 frame 6): for
  * each type, its name and what waits for it ("Inbox Summary").
  */
+// What a provider is for, named by what's built — not the steps after it.
+const NEEDS_KINDS = new Set(["build", "install", "check", "bot", "widget"]);
+
 export function needsTold(state, types = []) {
   const steps = stepsOf(state);
   return (types || []).map((t) => {
@@ -619,9 +622,8 @@ export function needsTold(state, types = []) {
           .filter(
             (x) =>
               x.status === "needs-provider" &&
-              (x.waitingFor || []).some(
-                (w) => String(w).toLowerCase() === String(t).toLowerCase(),
-              ),
+              NEEDS_KINDS.has(x.kind) &&
+              (x.waitingFor || []).some((w) => normalizeType(w) === t),
           )
           .map((x) =>
             String(x.label || "").replace(
@@ -1367,7 +1369,7 @@ function chatFor(
       },
       card: null,
       reply: waiting.length
-        ? `Building now. One thing needs you — connect ${andList(waiting)}, below. Everything else carries on.`
+        ? `Building now. One thing needs you — connect ${andList(waiting)}, above. Everything else carries on.`
         : "Building now — I'll tell you when it's done.",
       choices: null,
     };
@@ -1472,7 +1474,7 @@ function chatFor(
           ? `${label} didn't work — ${firstLine(first.error) || "it didn't finish"}. Everything else that could be done is done.`
           : "Part of it didn't finish. Everything else that could be done is done.",
         waiting.length
-          ? ` What needs ${andList(waiting)} waits for it — connect it below.`
+          ? ` What needs ${andList(waiting)} waits for it — connect it above.`
           : "",
         ask,
       ].join(""),
@@ -1512,7 +1514,7 @@ function chatFor(
     ? ` ${andList(off)} ${off.length === 1 ? "is" : "are"} left off.`
     : "";
   const waitNote = waiting.length
-    ? ` What needs ${andList(waiting)} runs once it's connected — connect it below.`
+    ? ` What needs ${andList(waiting)} runs once it's connected — connect it above.`
     : "";
   if (kind === "theme") {
     const made = state && state.madeTheme;

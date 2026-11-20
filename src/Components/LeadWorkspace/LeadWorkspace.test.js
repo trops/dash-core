@@ -2032,6 +2032,12 @@ describe("release 3b: building in the conversation", () => {
       within(needs).getByRole("button", { name: "Later — it waits" }),
     );
     expect(within(c).queryByTestId("workspace-build-needs")).toBeNull();
+    // …and one line stays, to connect it later.
+    expect(
+      within(c).getByTestId("workspace-build-needs-later"),
+    ).toHaveTextContent(
+      "Connect Home Assistant — The Lights-off bot waits for it",
+    );
     expect(window.mainApi.bots.resumePlanBuild).not.toHaveBeenCalled();
   });
 

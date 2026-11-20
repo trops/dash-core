@@ -505,7 +505,7 @@ export const BuildInChat = ({
         ? (state.steps || []).some((s) => s.kind === "check")
           ? "check"
           : "buildlog"
-        : chat.choices === "preview" || chat.choices === "testbot"
+        : chat.choices === "preview"
           ? "preview"
           : "buildlog",
     );
@@ -522,7 +522,12 @@ export const BuildInChat = ({
         />
       ) : null}
       {needs.length ? (
-        <BuildNeedsYou told={needs} onConnected={actions.onConnected} />
+        <BuildNeedsYou
+          told={needs}
+          onConnected={actions.onConnected}
+          building={isBuilding(state)}
+          restored={restored}
+        />
       ) : null}
       {state ? (
         <>
@@ -553,13 +558,7 @@ export const BuildInChat = ({
                 sub={card.sub}
                 // A card to open, as the mockup: an edge, a fill, and
                 // what a click does.
-                go={
-                  chat.choices === "preview"
-                    ? "Open preview"
-                    : chat.choices === "testbot"
-                      ? "Test it"
-                      : "Open"
-                }
+                go={chat.choices === "preview" ? "Open preview" : "Open"}
                 onClick={openCard}
               />
             </div>
@@ -597,7 +596,7 @@ export const BuildInChat = ({
               actions={actions}
             />
           ) : null}
-          {current && actionError ? (
+          {current && actionError && chat.choices !== "testbot" ? (
             <span
               className={`text-xs ${muted}`}
               data-testid="workspace-build-error"
@@ -901,7 +900,6 @@ const BuildChoices = ({ chat, state, build, actions }) => {
   if (chat.choices === "turnon") {
     return <TryBots bots={Object.values((state && state.bots) || {})} />;
   }
-  // A bot to test before it's saved (TST-003): its test is on the right.
   // A bot to test before it's saved: the test runs here, in the chat, its
   // result right above Save (DASH-21 frame 8).
   if (chat.choices === "testbot") {
@@ -1452,17 +1450,42 @@ export const PreviewOutput = ({ state, pb, wire = null }) => {
  * frame 6): what needs it, that the rest keeps building, Connect right
  * there — or Later, and what needs it waits.
  */
-export const BuildNeedsYou = ({ told = [], onConnected }) => {
+export const BuildNeedsYou = ({
+  told = [],
+  onConnected,
+  building = false,
+  restored = false,
+}) => {
   const statusTokens = useStatusTokens();
   const [connecting, setConnecting] = useState(null);
   const [later, setLater] = useState([]);
-  const shown = told.filter((n) => !later.includes(n.type));
-  if (!shown.length) return null;
+  if (!told.length) return null;
+  // What connecting does now: the build carries on, or picks up again.
+  const then = restored
+    ? "Connect it here, then carry on building."
+    : building
+      ? "Connect it here — everything else keeps building meanwhile."
+      : "Connect it here — what needs it runs once it's connected.";
   return (
     <>
-      {shown.map((n) => {
-        const list = n.what.length ? n.what.join(", ") : "What needs it";
+      {told.map((n) => {
+        const list = n.what.length ? n.what.join(", ") : "";
         const what = list.charAt(0).toUpperCase() + list.slice(1);
+        // Later: one line to come back to, not gone.
+        if (later.includes(n.type)) {
+          return (
+            <span
+              key={n.type}
+              className="self-start"
+              data-testid="workspace-build-needs-later"
+            >
+              <TextLink
+                title={`Connect ${n.label} — ${what || "what needs it"} waits for it`}
+                onClick={() => setConnecting(n.type)}
+              />
+            </span>
+          );
+        }
         return (
           <div
             key={n.type}
@@ -1472,11 +1495,11 @@ export const BuildNeedsYou = ({ told = [], onConnected }) => {
             <span
               className={`font-semibold ${statusTokens.warning.strongText}`}
             >
-              {`${what} ${n.what.length > 1 ? "need" : "needs"} ${n.label} before ${n.what.length > 1 ? "they" : "it"} can work.`}
+              {what
+                ? `${what} ${n.what.length > 1 ? "need" : "needs"} ${n.label} before ${n.what.length > 1 ? "they" : "it"} can work.`
+                : `Part of this needs ${n.label} before it can work.`}
             </span>
-            <span>
-              Connect it here — everything else keeps building meanwhile.
-            </span>
+            <span>{then}</span>
             <div className="flex flex-row flex-wrap items-center gap-2">
               <Button
                 title={`Connect ${n.label}`}

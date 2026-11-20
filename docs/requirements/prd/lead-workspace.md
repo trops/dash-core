@@ -480,5 +480,10 @@ The conversation card touched the Recents column and the Outputs column. The Nee
   - frame 1 on the user's real Music Assistant plan (8/8 checks);
   - frame 3 on the user's real stopped Latest Notes build (6/6), which is where the reopened case was found and fixed;
   - frame 2 by the user in a real widget change.
-- **Still to do in DASH-21:** approvals, connects, Before it builds and a bot's test card still sit on the right. They move into the chat next.
+- **The last decisions, in the chat (frames 5–8, approved 2026-11-19).**
+  - **Before it builds** is in the plan in the chat, above Yes. Each item says why it's needed (`beforeWhy`), and a line says what yes does with what's still open (`beforeYesLine`): installs and approvals are asked first, and what needs a connection waits while the rest builds.
+  - **A provider the build waits for** is asked in the build's message (`BuildNeedsYou` from `needsTold`). It has Connect, or Later, which leaves one line to connect it later. What connecting does is said for a running, finished or reopened build.
+  - **Approvals** show only in the chat. Where no conversation shows them (a bot's own chat, the start), they show at the top of the middle. Each says what its answers do.
+  - **A bot's test** runs in the chat (`BotTestOutput` under the build's message), with Save the bot under the result.
+  - The right column now holds only outputs.
 
