@@ -28,6 +28,7 @@ import { OutputCard } from "./PlanViews";
 import { TextLink } from "./WidgetWizard/TextLink";
 import { AnswerPart, WizardAnswer } from "./WidgetWizard/WizardAnswer";
 import { usePlanBuild } from "./usePlanBuild";
+import { BotTestOutput } from "./BotTestOutput";
 import {
   buildChat,
   buildLogHead,
@@ -543,7 +544,7 @@ export const BuildInChat = ({
               onLink={actions.open ? () => actions.open("check") : null}
             />
           ))}
-          {card ? (
+          {card && chat.choices !== "testbot" ? (
             <div className="self-start w-full max-w-md">
               <OutputCard
                 testId="workspace-build-card"
@@ -692,7 +693,7 @@ function chatOf(build, state, { actions = {}, cell, change, restored }) {
 
 /** The reply choices under the lead's words about the build. */
 const BuildChoices = ({ chat, state, build, actions }) => {
-  const { muted } = useConfigTokens();
+  const { muted, hairline } = useConfigTokens();
   // Use the remix for the app, once clicked (theme change leftovers).
   const [usedForApp, setUsedForApp] = useState(false);
   // A cell build (release 6c): not in its cell — put it in; in it — put
@@ -901,15 +902,24 @@ const BuildChoices = ({ chat, state, build, actions }) => {
     return <TryBots bots={Object.values((state && state.bots) || {})} />;
   }
   // A bot to test before it's saved (TST-003): its test is on the right.
+  // A bot to test before it's saved: the test runs here, in the chat, its
+  // result right above Save (DASH-21 frame 8).
   if (chat.choices === "testbot") {
-    return (
+    const at = (state.steps || []).find(
+      (s) => s.kind === "testbot" && s.status === "needs-you",
+    );
+    return at && actions.pb ? (
       <div
-        className="flex flex-row flex-wrap items-center gap-2"
+        className={`dr-chat-card self-start w-full max-w-2xl rounded-xl border p-4 ${hairline}`}
         data-testid="workspace-build-choices"
       >
-        <Button title="Test it" onClick={() => actions.open("preview")} />
+        <BotTestOutput
+          step={at}
+          pb={actions.pb}
+          onChange={actions.changeBot || null}
+        />
       </div>
-    );
+    ) : null;
   }
   if (chat.choices === "preview") {
     const at = (state.steps || []).find((s) => s.status === "needs-you");

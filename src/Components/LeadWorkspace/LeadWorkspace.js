@@ -1339,6 +1339,10 @@ export const LeadWorkspace = ({
       : null,
     appThemeKey: themeKey || null,
     open: setSideOpen,
+    // A bot's test, run in the chat (DASH-21 frame 8): the build, and a
+    // change to the bot, for the Planner.
+    pb,
+    changeBot: (t) => (answering ? null : planActions.onAnswer(t)),
     // What's connected, and a provider just connected (DASH-21 frame 6).
     have: wp.have,
     onConnected: () => {

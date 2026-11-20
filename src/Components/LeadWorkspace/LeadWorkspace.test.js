@@ -2035,6 +2035,42 @@ describe("release 3b: building in the conversation", () => {
     expect(window.mainApi.bots.resumePlanBuild).not.toHaveBeenCalled();
   });
 
+  test("a bot to test before it's saved: the test runs in the chat, not on the right (DASH-21 frame 8)", async () => {
+    await buildIt();
+    push({
+      ...RUNNING,
+      status: "waiting-for-you",
+      steps: [
+        ...RUNNING.steps.map((x) => ({ ...x, status: "done" })),
+        s({
+          id: "testbot:0",
+          kind: "testbot",
+          role: "you",
+          label: "Test Lights-off bot",
+          status: "needs-you",
+          definition: {
+            name: "Lights-off bot",
+            mcpServers: ["Home Assistant"],
+          },
+        }),
+      ],
+    });
+    const c = chat();
+    expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
+      "Lights-off bot is made — test it here before it's saved.",
+    );
+    const test = within(c).getByTestId("bot-test-output");
+    expect(
+      within(test).getByRole("button", { name: "Test" }),
+    ).toBeInTheDocument();
+    expect(
+      within(test).getByRole("button", { name: "Save the bot" }),
+    ).toBeDisabled();
+    // Nothing to open on the right for it.
+    expect(screen.queryByTestId("workspace-output-test")).toBeNull();
+    expect(within(c).queryByTestId("workspace-build-card")).toBeNull();
+  });
+
   test("one widget on its own: built to look at first — Looks good adds it (frame 31)", async () => {
     const ONE = {
       summary: "A calendar widget",

@@ -1381,7 +1381,7 @@ function chatFor(
       return {
         step: { label: `Made ${bot} · not saved yet`, status: "done" },
         card: { kind: "bot", title: bot, sub: "Bot · ready to test" },
-        reply: `${bot} is ready to test on the right — press Test to see what it gives back. Save it once a test works; nothing is saved before that.`,
+        reply: `${bot} is made — test it here before it's saved. A test runs it once and shows what it gives back. Save it once a test works; nothing is saved before that.`,
         choices: "testbot",
       };
     }

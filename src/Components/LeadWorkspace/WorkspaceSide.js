@@ -219,13 +219,13 @@ export const WorkspaceSide = ({
   const checkedAny = !!buildState && checkRan(buildState);
   const planShown = !!plan && !(wp && wp.waitingForPick);
   const outputCount =
-    (previewStep ? 1 : 0) +
+    (previewStep && previewStep.kind !== "testbot" ? 1 : 0) +
     (planShown ? 1 : 0) +
     (build ? 1 : 0) +
     (checkedAny ? 1 : 0) +
     (builtDashboard ? 1 : 0) +
     answered.length;
-  const needsYou = !!previewStep;
+  const needsYou = !!previewStep && previewStep.kind !== "testbot";
   useEffect(() => {
     if (onSummary) onSummary({ count: outputCount, needsYou });
   }, [onSummary, outputCount, needsYou]);
@@ -438,16 +438,8 @@ export const WorkspaceSide = ({
         </div>
       ) : null}
 
-      {previewStep && previewStep.kind === "testbot" ? (
-        <OutputCard
-          testId="workspace-output-test"
-          icon="robot"
-          title={String(previewStep.label || "New bot").replace(/^Test /, "")}
-          sub="Ready to test · not saved yet"
-          kind="Bot"
-          onClick={() => onOpen("preview")}
-        />
-      ) : previewStep ? (
+      {/* A bot's test runs in the chat (DASH-21 frame 8). */}
+      {previewStep && previewStep.kind !== "testbot" ? (
         <OutputCard
           testId="workspace-output-preview"
           icon="puzzle-piece"
