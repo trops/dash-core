@@ -149,11 +149,15 @@ describe("botController — asking a lead from the Assistant (TEAM-004)", () => 
   it("askLead takes `via` and _run forwards it to the runner", () => {
     assert.match(
       ctrl,
-      /askLead\(\s*botId,\s*question,\s*\{ continueConversation = false, via = null, conversationId = null \} = \{\},\s*\)/,
+      /askLead\(\s*botId,\s*question,\s*\{\s*continueConversation = false,\s*via = null,\s*conversationId = null,[\s\S]{0,200}\} = \{\},\s*\)/,
     );
     assert.match(ctrl, /continueSession: !!continueConversation,\s*via,/);
-    // And the asking conversation (lead-workspace release 5).
-    assert.match(ctrl, /via,\s*\/\/[^\n]*\n[^\n]*\n\s*conversationId,\s*\}\);/);
+    // And the asking conversation (lead-workspace release 5) — or the one
+    // kept for an ask from outside the app.
+    assert.match(
+      ctrl,
+      /conversationId: conversationId \|\| \(kept && kept\.id\) \|\| null,/,
+    );
     assert.match(ctrl, /via: opts\.via \|\| null,/);
   });
 
