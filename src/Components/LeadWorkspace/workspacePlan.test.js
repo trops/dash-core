@@ -328,3 +328,21 @@ test("why each thing before it builds is needed (DASH-21 frame 5)", () => {
   );
   expect(why({ kind: "approve", label: "Turn on the bot" })).toBe("");
 });
+
+test("a new bot in the plan says how it acts, its limits, and that it starts paused (DASH-26)", () => {
+  const { planRows } = require("./workspacePlan");
+  const [row] = planRows({
+    pieces: [
+      {
+        kind: "bot",
+        name: "Designer",
+        source: "new",
+        approvalPolicy: "allow",
+        runLimits: { steps: 60, minutes: 20 },
+      },
+    ],
+  });
+  expect(row.sub).toMatch(
+    /uses its tools without asking when it runs on its own · up to 60 steps, 20 min a run · starts paused — you turn it on$/,
+  );
+});

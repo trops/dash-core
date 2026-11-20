@@ -687,6 +687,28 @@ function validatePlan(plan, context = {}) {
       ) {
         warnings.push(`${at}.keeps should be a list of short lines.`);
       }
+      // A bot's approval policy and run limits (DASH-26): saved as planned;
+      // a value the bot can't take is left out, and said.
+      if (
+        p.approvalPolicy !== undefined &&
+        !["ask", "ask-every", "allow"].includes(p.approvalPolicy)
+      ) {
+        warnings.push(
+          `${at}.approvalPolicy should be "ask", "ask-every" or "allow" — it's left as "ask".`,
+        );
+      }
+      if (
+        p.runLimits !== undefined &&
+        !(
+          p.runLimits &&
+          typeof p.runLimits === "object" &&
+          ["steps", "minutes"].some((k) => Number(p.runLimits[k]) > 0)
+        )
+      ) {
+        warnings.push(
+          `${at}.runLimits should be { steps, minutes } with positive numbers — the defaults are kept.`,
+        );
+      }
       // Made-up preview data (5d): never blocks building — the preview
       // only shows short text lines.
       if (

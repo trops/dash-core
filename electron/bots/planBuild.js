@@ -1053,6 +1053,8 @@ function planBotDefinition(piece, { dashboardId, sources, team }) {
     workspaceId: dashboardId == null ? null : String(dashboardId),
     mcpServers: [],
     toolSelections: {},
+    // How it may act and how long a run may take, as planned (DASH-26).
+    ...planBotSettings(piece),
   };
   for (const sug of draft.suggestions) {
     definition.mcpServers.push(sug.provider);
@@ -1075,6 +1077,28 @@ function planBotDefinition(piece, { dashboardId, sources, team }) {
     definition.provider = "claude-code";
   }
   return definition;
+}
+
+/**
+ * A planned bot's approval policy and run limits (DASH-26): only valid
+ * values — anything else keeps the bot's defaults.
+ */
+const PLAN_POLICIES = new Set(["ask", "ask-every", "allow"]);
+function planBotSettings(piece) {
+  const out = {};
+  if (piece && PLAN_POLICIES.has(piece.approvalPolicy)) {
+    out.approvalPolicy = piece.approvalPolicy;
+  }
+  const lim = piece && piece.runLimits;
+  if (lim && typeof lim === "object") {
+    const runLimits = {};
+    for (const k of ["steps", "minutes"]) {
+      const n = Number(lim[k]);
+      if (Number.isFinite(n) && n > 0) runLimits[k] = Math.round(n);
+    }
+    if (Object.keys(runLimits).length) out.runLimits = runLimits;
+  }
+  return out;
 }
 
 // `api.publishEvent(...)` publishes the bare name — no widget prefix — so no
@@ -1322,6 +1346,8 @@ function pieceSignature(p) {
       p.results || [],
       p.on || [],
       !!p.showResults,
+      p.approvalPolicy || null,
+      p.runLimits || null,
     ]);
   }
   return BUILT.has(p.source)

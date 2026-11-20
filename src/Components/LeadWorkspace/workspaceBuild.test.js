@@ -1207,3 +1207,23 @@ test("a provider it waits for: its name and what waits (DASH-21 frame 6)", () =>
     { type: "gmail", label: "Gmail", what: ["Inbox Summary", "Inbox Watch"] },
   ]);
 });
+
+test("a dashboard build that made bots names them: they start paused, turn them on below (DASH-26)", () => {
+  const { buildChat } = require("./workspaceBuild");
+  const chat = buildChat({
+    status: "done",
+    dashboard: { id: "7", name: "Woodworking" },
+    bots: {
+      0: { id: "b1", name: "Designer" },
+      1: { id: "b2", name: "Drafter" },
+    },
+    steps: [
+      { id: "bot:0", kind: "bot", status: "done", label: "Save Designer" },
+      { id: "bot:1", kind: "bot", status: "done", label: "Save Drafter" },
+    ],
+  });
+  expect(chat.reply).toMatch(
+    /Designer and Drafter start paused — turn them on below when you want them to run on their own\./,
+  );
+  expect(chat.choices).toBe("open");
+});

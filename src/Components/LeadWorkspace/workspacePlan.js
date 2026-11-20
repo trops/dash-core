@@ -673,6 +673,26 @@ export function planSubLine(
  * connect. `isDone(item)` says whether a connect is done.
  * @returns {{ main: string, sub: string, warn?: boolean }[]}
  */
+// How a planned new bot acts, as the plan says (DASH-26).
+const POLICY_WORDS = {
+  // Its lead's requests still ask (DASH-29).
+  allow: "uses its tools without asking when it runs on its own",
+  ask: "asks before it changes anything",
+  "ask-every": "asks before every tool",
+};
+function newBotLine(p) {
+  const parts = [];
+  if (POLICY_WORDS[p.approvalPolicy])
+    parts.push(POLICY_WORDS[p.approvalPolicy]);
+  const lim = p.runLimits || {};
+  const steps = Number(lim.steps) > 0 ? `${Math.round(lim.steps)} steps` : "";
+  const mins = Number(lim.minutes) > 0 ? `${Math.round(lim.minutes)} min` : "";
+  if (steps || mins)
+    parts.push(`up to ${[steps, mins].filter(Boolean).join(", ")} a run`);
+  parts.push("starts paused — you turn it on");
+  return parts.join(" · ");
+}
+
 export function planRows(
   plan,
   checklist = [],
@@ -686,7 +706,12 @@ export function planRows(
     .map((p) => {
       const source = SOURCE_LINE[p.source] || SOURCE_LINE.new;
       const what = String(p.adds || p.notes || p.package || "").trim();
-      return { main: p.name, sub: what ? `${source} — ${what}` : source };
+      // A new bot: how it may act, its limits, and that it starts paused
+      // (DASH-26).
+      const botLine =
+        p.kind === "bot" && p.source === "new" ? newBotLine(p) : "";
+      const sub = what ? `${source} — ${what}` : source;
+      return { main: p.name, sub: botLine ? `${sub} · ${botLine}` : sub };
     });
   // A new theme: its colors (theme round).
   if (isThemeOnly(plan)) rows.push(...themeColorRows(newTheme(plan)));
