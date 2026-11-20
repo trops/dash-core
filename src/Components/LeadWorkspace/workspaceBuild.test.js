@@ -18,6 +18,7 @@ import {
   buildStory,
   checkLine,
   checkRan,
+  needsTold,
   stopTold,
   checkRows,
   isLeftOff,
@@ -525,7 +526,7 @@ describe("the build in the chat", () => {
       ],
     };
     expect(buildChat(needs).reply).toMatch(
-      /^Building now\. One thing needs you — connect .+, on the right\. Everything else carries on\.$/,
+      /^Building now\. One thing needs you — connect .+, above\. Everything else carries on\.$/,
     );
   });
 
@@ -1174,4 +1175,35 @@ describe("when it can't finish, told in full (DASH-21 frame 3)", () => {
     expect(stopTold({ choices: "preview" }, state(build()))).toBeNull();
     expect(stopTold(null, null)).toBeNull();
   });
+});
+
+test("a provider it waits for: its name and what waits (DASH-21 frame 6)", () => {
+  const state = {
+    status: "running",
+    steps: [
+      {
+        id: "build:0",
+        kind: "build",
+        label: "Build Inbox Summary",
+        status: "needs-provider",
+        waitingFor: ["gmail"],
+      },
+      {
+        id: "bot:0",
+        kind: "bot",
+        label: "Save Inbox Watch",
+        status: "needs-provider",
+        waitingFor: ["gmail"],
+      },
+      {
+        id: "build:1",
+        kind: "build",
+        label: "Build Weather",
+        status: "running",
+      },
+    ],
+  };
+  expect(needsTold(state, ["gmail"])).toEqual([
+    { type: "gmail", label: "Gmail", what: ["Inbox Summary", "Inbox Watch"] },
+  ]);
 });

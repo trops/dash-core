@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Button, Button3 } from "@trops/dash-react";
+import { Button, Button3, useStatusTokens } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { ApprovalPreview } from "./ApprovalPreview";
 import { toolWords } from "./alwaysAllow";
@@ -55,7 +55,8 @@ export const DashTeamApprovals = ({
   allowAlways = true,
   note = "It's waiting for your answer before it carries on.",
 }) => {
-  const { muted, strong, hairline } = useConfigTokens();
+  const { muted, strong } = useConfigTokens();
+  const statusTokens = useStatusTokens();
   // `bots` (lead-workspace release 2): the bots whose approvals to show — a
   // dashboard team in a lead's conversation. Default: the Dash team.
   const [dashTeam, setTeam] = useState([]);
@@ -130,10 +131,12 @@ export const DashTeamApprovals = ({
         return (
           <div
             key={a.id}
-            className={`flex flex-col gap-2 rounded-lg border p-3 text-sm ${hairline} ${strong}`}
+            className={`flex flex-col gap-2 rounded-xl border p-4 text-sm ${statusTokens.info.bg} ${statusTokens.info.border} ${strong}`}
             data-testid="dash-team-approval"
           >
-            <span>{approvalText(a.request, bot && bot.name)}</span>
+            <span className="font-semibold">
+              {approvalText(a.request, bot && bot.name)}
+            </span>
             <ApprovalPreview request={a.request} />
             <span className={`text-xs ${muted}`}>{note}</span>
             <div className="flex flex-row flex-wrap items-center gap-2">
@@ -159,6 +162,16 @@ export const DashTeamApprovals = ({
                 onClick={() => answer(a.id, { allow: false })}
               />
             </div>
+            {/* What each answer does, said (DASH-21 frame 7). */}
+            <span className={`text-xs ${muted}`} data-testid="approval-means">
+              {`Allow once lets ${(bot && bot.name) || "it"} do this now${
+                allowAlways &&
+                a.request.serverName &&
+                a.request.serverName !== "dash-team-build"
+                  ? "; Always allow lets it do this again without asking"
+                  : ""
+              }. Deny and it isn't done — it's told no.`}
+            </span>
           </div>
         );
       })}

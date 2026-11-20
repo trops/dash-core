@@ -386,6 +386,8 @@ export const PlanChecklistRows = ({
   who = null,
   readOnly = false,
   rows = false,
+  // (item) => why it's needed, said under it (DASH-21 frame 5), or "".
+  why = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
@@ -457,6 +459,14 @@ export const PlanChecklistRows = ({
                   </span>
                 ) : null}
                 <span className={done ? muted : strong}>{it.label}</span>
+                {why && !skipped && why(it) ? (
+                  <span
+                    className={`text-xs ${muted}`}
+                    data-testid="checklist-why"
+                  >
+                    {why(it)}
+                  </span>
+                ) : null}
                 {it.package || skipped ? (
                   <span
                     className={`text-xs ${muted}`}

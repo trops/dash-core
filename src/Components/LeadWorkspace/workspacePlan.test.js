@@ -289,3 +289,42 @@ test("the plan names its providers, and a widget still to choose for is a warnin
     },
   ]);
 });
+
+describe("what yes does with what's still open (DASH-21 frame 5)", () => {
+  const { beforeYesLine } = require("./workspacePlan");
+  const connect = { id: "c1", kind: "connect", providerType: "gmail" };
+  const install = { id: "i1", kind: "install", package: "@trops/weather" };
+  test("nothing open: nothing to say", () => {
+    expect(beforeYesLine({ checklist: [] })).toBe("");
+  });
+  test("only a connect: yes now, what needs it waits", () => {
+    expect(beforeYesLine({ checklist: [connect], have: new Set() })).toMatch(
+      /^You can say yes now: what needs Gmail waits for it while everything else builds\.$/,
+    );
+  });
+  test("an install too: asked first, then the connect waits", () => {
+    expect(
+      beforeYesLine({ checklist: [connect, install], have: new Set() }),
+    ).toMatch(/I'll ask about the rest first, and what needs Gmail waits/);
+    expect(beforeYesLine({ checklist: [install] })).toBe(
+      "Say yes now and I'll ask you about these first, one at a time.",
+    );
+  });
+});
+
+test("why each thing before it builds is needed (DASH-21 frame 5)", () => {
+  const { beforeWhy } = require("./workspacePlan");
+  const why = beforeWhy({
+    pieces: [
+      { kind: "widget", name: "Inbox Summary", providers: ["gmail"] },
+      { kind: "widget", name: "Weather" },
+    ],
+  });
+  expect(why({ kind: "connect", providerType: "gmail" })).toBe(
+    "Inbox Summary reads through it.",
+  );
+  expect(why({ kind: "install", package: "@trops/weather" })).toMatch(
+    /what it can do before it's installed/,
+  );
+  expect(why({ kind: "approve", label: "Turn on the bot" })).toBe("");
+});

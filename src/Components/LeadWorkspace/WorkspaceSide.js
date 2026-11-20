@@ -9,17 +9,9 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
-import { normalizeType } from "../Create/planChecklist";
 import { readableRequest } from "./handoffSteps";
-import { BeforeItBuilds, OutputCard, PlanOutput } from "./PlanViews";
-import { BotTestOutput } from "./BotTestOutput";
-import {
-  BuildLogOutput,
-  BuildNeedsYou,
-  CheckReportOutput,
-  PreviewOutput,
-} from "./BuildViews";
+import { OutputCard, PlanOutput } from "./PlanViews";
+import { BuildLogOutput, CheckReportOutput, PreviewOutput } from "./BuildViews";
 import {
   activityText,
   buildLogHead,
@@ -29,7 +21,6 @@ import {
   buildStatus,
   liveActivityOf,
   logTime,
-  waitingFor,
 } from "./workspaceBuild";
 import { planTarget } from "../../utils/teamPlan";
 import {
@@ -167,7 +158,6 @@ export const WorkspaceSide = ({
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
-  const members = (contact && contact.members) || [];
   const runs = useRuns(
     contact && contact.kind === "bot" ? contact.botId : null,
   );
@@ -208,15 +198,6 @@ export const WorkspaceSide = ({
     (s) => s.status !== "asking" && s.answer && !s.plan && !s.nothing,
   );
   const isBot = contact && contact.kind === "bot";
-  const approvalBots = contact
-    ? [{ id: contact.botId, name: contact.name }, ...members]
-    : [];
-  // What the build waits for that still isn't connected (Needs you).
-  const needs = buildState
-    ? waitingFor(buildState)
-        .map(normalizeType)
-        .filter((t) => t && !(wp && wp.have && wp.have.has(t)))
-    : [];
   const status = buildState ? buildStatus(buildState, leftOff) : null;
   // A new widget waiting for your look (frame 31).
   const previewStep =
@@ -237,13 +218,13 @@ export const WorkspaceSide = ({
   const checkedAny = !!buildState && checkRan(buildState);
   const planShown = !!plan && !(wp && wp.waitingForPick);
   const outputCount =
-    (previewStep ? 1 : 0) +
+    (previewStep && previewStep.kind !== "testbot" ? 1 : 0) +
     (planShown ? 1 : 0) +
     (build ? 1 : 0) +
     (checkedAny ? 1 : 0) +
     (builtDashboard ? 1 : 0) +
     answered.length;
-  const needsYou = needs.length > 0 || !!previewStep;
+  const needsYou = !!previewStep && previewStep.kind !== "testbot";
   useEffect(() => {
     if (onSummary) onSummary({ count: outputCount, needsYou });
   }, [onSummary, outputCount, needsYou]);
@@ -300,17 +281,14 @@ export const WorkspaceSide = ({
     return opened(<CheckReportOutput state={buildState} />);
   }
   // The preview, while it waits for a look — once it's past, Outputs.
-  if (open === "preview" && build && pb && previewStep) {
-    // A bot to test before it's saved (bot-test-run TST-003).
-    if (previewStep.kind === "testbot") {
-      return opened(
-        <BotTestOutput
-          step={previewStep}
-          pb={pb}
-          onChange={planActions && !planReadOnly ? planActions.onAnswer : null}
-        />,
-      );
-    }
+  // (A bot's test runs in the chat — DASH-21 frame 8.)
+  if (
+    open === "preview" &&
+    build &&
+    pb &&
+    previewStep &&
+    previewStep.kind !== "testbot"
+  ) {
     return opened(
       <PreviewOutput
         state={buildState}
@@ -456,30 +434,8 @@ export const WorkspaceSide = ({
         </div>
       ) : null}
 
-      {/* Once it builds, what's left is asked for as Needs you (frame 3). */}
-      {/* Nothing to do before building while the user picks a provider. */}
-      {wp && !build && !wp.waitingForPick ? (
-        <BeforeItBuilds wp={wp} readOnly={planReadOnly} />
-      ) : null}
-      <BuildNeedsYou
-        types={needs}
-        onConnected={() => {
-          if (wp && wp.refreshProviders)
-            Promise.resolve(wp.refreshProviders()).catch(() => {});
-        }}
-      />
-      <DashTeamApprovals compact bots={approvalBots} />
-
-      {previewStep && previewStep.kind === "testbot" ? (
-        <OutputCard
-          testId="workspace-output-test"
-          icon="robot"
-          title={String(previewStep.label || "New bot").replace(/^Test /, "")}
-          sub="Ready to test · not saved yet"
-          kind="Bot"
-          onClick={() => onOpen("preview")}
-        />
-      ) : previewStep ? (
+      {/* A bot's test runs in the chat (DASH-21 frame 8). */}
+      {previewStep && previewStep.kind !== "testbot" ? (
         <OutputCard
           testId="workspace-output-preview"
           icon="puzzle-piece"

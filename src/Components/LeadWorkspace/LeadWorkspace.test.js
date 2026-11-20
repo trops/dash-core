@@ -767,13 +767,23 @@ describe("a plan in the conversation (release 3a)", () => {
     );
     // The Planner's step is the plan, not another answer.
     expect(within(side).queryAllByTestId("workspace-output")).toHaveLength(0);
-    const before = within(side).getByTestId("workspace-before");
+    // What has to happen first is in the plan in the chat, above Yes
+    // (DASH-21 frame 5) — never only on the right.
+    expect(within(side).queryByTestId("workspace-before")).toBeNull();
+    let plan = render(after(1));
+    const before = within(plan.container).getByTestId("workspace-before");
     expect(before).toHaveTextContent("Before it builds · 0 of 1 done");
     expect(before).toHaveTextContent("Planner · Dash team");
+    expect(
+      within(plan.container).getByTestId("workspace-before-yes"),
+    ).toHaveTextContent("Say yes now and I'll ask you about these first");
     fireEvent.click(within(before).getByRole("button", { name: "OK" }));
-    expect(screen.getByTestId("workspace-before")).toHaveTextContent(
-      "Before it builds · 1 of 1 done",
-    );
+    plan.unmount();
+    plan = render(after(1));
+    expect(
+      within(plan.container).getByTestId("workspace-before"),
+    ).toHaveTextContent("Before it builds · 1 of 1 done");
+    plan.unmount();
 
     // Under the Planner's step: the whole plan, not a card to click.
     expect(after(0)).toBeNull();
@@ -805,10 +815,11 @@ describe("a plan in the conversation (release 3a)", () => {
     );
     // The Planner's approval is asked first, as Create does.
     await waitFor(() =>
-      expect(screen.getAllByText("Turn on the lights-off bot")).toHaveLength(2),
+      // The window (the plan's own row is in the chat, rendered apart).
+      expect(screen.getAllByText("Turn on the lights-off bot")).toHaveLength(1),
     );
     expect(window.mainApi.bots.startPlanBuild).not.toHaveBeenCalled();
-    // The window's OK (the last one; the row's own is first).
+    // The window's OK.
     fireEvent.click(screen.getAllByRole("button", { name: "OK" }).pop());
     await waitFor(() =>
       expect(window.mainApi.bots.startPlanBuild).toHaveBeenCalledWith(PLAN, {
@@ -964,9 +975,14 @@ describe("release 3a review fixes", () => {
         reply,
       ],
     );
-    expect(await screen.findByTestId("workspace-before")).toHaveTextContent(
-      "Before it builds · 1 of 1 done",
-    );
+    await screen.findByTestId("workspace-output-plan");
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(planStep("2:t1"), 4, api);
+    });
+    expect(
+      within(render(node).container).getByTestId("workspace-before"),
+    ).toHaveTextContent("Before it builds · 1 of 1 done");
   });
 
   test("sent to Create: reopened, it says so and isn't offered to build again", async () => {
@@ -1006,12 +1022,15 @@ describe("release 3a review fixes", () => {
       ]);
     });
     // Answering: nothing to press in Before it builds, no remove on pieces.
-    expect(
-      within(screen.getByTestId("workspace-before")).queryByRole("button"),
-    ).toBeNull();
+    let planNode = null;
     act(() => {
-      mockAskProps.renderAfter(planStep("1:t1"), 1, api);
+      planNode = mockAskProps.renderAfter(planStep("1:t1"), 1, api);
     });
+    const inChat = render(planNode);
+    expect(
+      within(inChat.getByTestId("workspace-before")).queryByRole("button"),
+    ).toBeNull();
+    inChat.unmount();
     fireEvent.click(screen.getByText("Home — plan"));
     expect(
       screen.queryByRole("button", { name: /Remove .* from the plan/ }),
@@ -1635,11 +1654,9 @@ describe("release 3a: matches the mockup", () => {
     expect(mockAskProps.placeholder).toBe("Reply");
     expect(mockAskProps.hint).toBeNull();
     const side = screen.getByTestId("workspace-side");
-    // Outputs heads the column; Before it builds sits under it.
-    const text = side.textContent;
-    expect(text.indexOf("Outputs")).toBeLessThan(
-      text.indexOf("Before it builds"),
-    );
+    // Outputs heads the column; Before it builds is in the chat (frame 5).
+    expect(side).toHaveTextContent("Outputs");
+    expect(within(side).queryByTestId("workspace-before")).toBeNull();
     expect(screen.queryByTestId("workspace-start-from")).toBeNull();
     expect(within(side).getByTestId("workspace-output-plan")).toHaveTextContent(
       "Plan",
@@ -1647,8 +1664,14 @@ describe("release 3a: matches the mockup", () => {
     // Only outputs (DASH-21): no team list, no providers line.
     expect(within(side).queryByTestId("workspace-member")).toBeNull();
     expect(screen.queryByTestId("workspace-providers")).toBeNull();
-    // Before it builds: the action on each row (Review, Connect).
-    const before = screen.getByTestId("workspace-before");
+    // Before it builds, in the plan in the chat: the action on each row.
+    let planNode = null;
+    act(() => {
+      planNode = mockAskProps.renderAfter(planStep("1:t1"), 1, api);
+    });
+    const before = within(render(planNode).container).getByTestId(
+      "workspace-before",
+    );
     expect(
       within(before)
         .getAllByRole("button")
@@ -1656,7 +1679,8 @@ describe("release 3a: matches the mockup", () => {
     ).toEqual(expect.arrayContaining(["Review", "Connect"]));
     // The opened plan: what's missing to connect, as a row.
     fireEvent.click(within(side).getByTestId("workspace-output-plan"));
-    const out = screen.getByTestId("workspace-plan-output");
+    // The one opened on the right (the chat's plan is rendered after it).
+    const out = screen.getAllByTestId("workspace-plan-output")[0];
     expect(out).toHaveTextContent("2 widgets · uses Home Assistant");
     expect(out).toHaveTextContent("Needs Home Assistant connected");
   });
@@ -1971,7 +1995,7 @@ describe("release 3b: building in the conversation", () => {
     expect(onOpenDashboard).toHaveBeenCalledWith("12");
   });
 
-  test("a provider it waits for: Needs you on the right; connected, it carries on", async () => {
+  test("a provider it waits for: asked in the chat, with Connect or Later (DASH-21 frame 6)", async () => {
     await buildIt();
     const waiting = {
       ...RUNNING,
@@ -1989,12 +2013,68 @@ describe("release 3b: building in the conversation", () => {
       ],
     };
     push(waiting);
-    const needs = screen.getByTestId("workspace-build-needs");
-    expect(needs).toHaveTextContent("Needs you: connect");
+    // Asked in the chat as it's needed (DASH-21 frame 6), not on the right.
     expect(
-      within(needs).getByRole("button", { name: "Connect" }),
+      within(screen.getByTestId("workspace-side")).queryByTestId(
+        "workspace-build-needs",
+      ),
+    ).toBeNull();
+    const c = chat();
+    const needs = within(c).getByTestId("workspace-build-needs");
+    expect(needs).toHaveTextContent(
+      "The Lights-off bot needs Home Assistant before it can work.",
+    );
+    expect(
+      within(needs).getByRole("button", { name: "Connect Home Assistant" }),
     ).toBeInTheDocument();
+    // Later: it waits, and the chat stops asking.
+    fireEvent.click(
+      within(needs).getByRole("button", { name: "Later — it waits" }),
+    );
+    expect(within(c).queryByTestId("workspace-build-needs")).toBeNull();
+    // …and one line stays, to connect it later.
+    expect(
+      within(c).getByTestId("workspace-build-needs-later"),
+    ).toHaveTextContent(
+      "Connect Home Assistant — The Lights-off bot waits for it",
+    );
     expect(window.mainApi.bots.resumePlanBuild).not.toHaveBeenCalled();
+  });
+
+  test("a bot to test before it's saved: the test runs in the chat, not on the right (DASH-21 frame 8)", async () => {
+    await buildIt();
+    push({
+      ...RUNNING,
+      status: "waiting-for-you",
+      steps: [
+        ...RUNNING.steps.map((x) => ({ ...x, status: "done" })),
+        s({
+          id: "testbot:0",
+          kind: "testbot",
+          role: "you",
+          label: "Test Lights-off bot",
+          status: "needs-you",
+          definition: {
+            name: "Lights-off bot",
+            mcpServers: ["Home Assistant"],
+          },
+        }),
+      ],
+    });
+    const c = chat();
+    expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
+      "Lights-off bot is made — test it here before it's saved.",
+    );
+    const test = within(c).getByTestId("bot-test-output");
+    expect(
+      within(test).getByRole("button", { name: "Test" }),
+    ).toBeInTheDocument();
+    expect(
+      within(test).getByRole("button", { name: "Save the bot" }),
+    ).toBeDisabled();
+    // Nothing to open on the right for it.
+    expect(screen.queryByTestId("workspace-output-test")).toBeNull();
+    expect(within(c).queryByTestId("workspace-build-card")).toBeNull();
   });
 
   test("one widget on its own: built to look at first — Looks good adds it (frame 31)", async () => {

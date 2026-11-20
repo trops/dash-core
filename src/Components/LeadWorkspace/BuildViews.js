@@ -10,7 +10,12 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { isDone, providerLabel, removePiece } from "../Create/planChecklist";
+import {
+  isDone,
+  normalizeType,
+  providerLabel,
+  removePiece,
+} from "../Create/planChecklist";
 import {
   ConnectDialog,
   InstallReviewDialog,
@@ -23,12 +28,15 @@ import { OutputCard } from "./PlanViews";
 import { TextLink } from "./WidgetWizard/TextLink";
 import { AnswerPart, WizardAnswer } from "./WidgetWizard/WizardAnswer";
 import { usePlanBuild } from "./usePlanBuild";
+import { BotTestOutput } from "./BotTestOutput";
 import {
   buildChat,
   buildLogHead,
   buildLogSteps,
   buildPlanLine,
   buildStory,
+  needsTold,
+  waitingFor,
   stopTold,
   isBuilding,
   logDuration,
@@ -329,9 +337,6 @@ const StopCard = ({ told, chat, build, actions }) => {
   );
 };
 
-// The plain "building" line (buildChat): the story says more.
-const GENERIC_BUILDING = "Building now — I'll tell you when it's done.";
-
 const BuildStory = ({ story, leadName, live, onLog }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
@@ -448,6 +453,16 @@ export const BuildInChat = ({
   // a fix after it tells its own.
   const story = !earlier && !fix ? buildStory(state) : null;
   const telling = !!story && isBuilding(state);
+  // A provider it waits for, asked here as it's needed (DASH-21 frame 6).
+  const needs =
+    current && state
+      ? needsTold(
+          state,
+          waitingFor(state)
+            .map(normalizeType)
+            .filter((t) => t && !(actions.have && actions.have.has(t))),
+        )
+      : [];
   // It couldn't finish: said in full, with its choices (DASH-21 frame 3).
   // Reopened after Dash closed, it's still told — what needs the build
   // running becomes Carry on building.
@@ -490,7 +505,7 @@ export const BuildInChat = ({
         ? (state.steps || []).some((s) => s.kind === "check")
           ? "check"
           : "buildlog"
-        : chat.choices === "preview" || chat.choices === "testbot"
+        : chat.choices === "preview"
           ? "preview"
           : "buildlog",
     );
@@ -504,6 +519,14 @@ export const BuildInChat = ({
           leadName={leadName}
           live={current}
           onLog={actions.open ? () => actions.open("buildlog") : null}
+        />
+      ) : null}
+      {needs.length ? (
+        <BuildNeedsYou
+          told={needs}
+          onConnected={actions.onConnected}
+          building={isBuilding(state)}
+          restored={restored}
         />
       ) : null}
       {state ? (
@@ -526,7 +549,7 @@ export const BuildInChat = ({
               onLink={actions.open ? () => actions.open("check") : null}
             />
           ))}
-          {card ? (
+          {card && chat.choices !== "testbot" ? (
             <div className="self-start w-full max-w-md">
               <OutputCard
                 testId="workspace-build-card"
@@ -535,13 +558,7 @@ export const BuildInChat = ({
                 sub={card.sub}
                 // A card to open, as the mockup: an edge, a fill, and
                 // what a click does.
-                go={
-                  chat.choices === "preview"
-                    ? "Open preview"
-                    : chat.choices === "testbot"
-                      ? "Test it"
-                      : "Open"
-                }
+                go={chat.choices === "preview" ? "Open preview" : "Open"}
                 onClick={openCard}
               />
             </div>
@@ -551,7 +568,7 @@ export const BuildInChat = ({
           {told ? (
             <StopCard told={told} chat={chat} build={build} actions={actions} />
           ) : null}
-          {told || (telling && chat.reply === GENERIC_BUILDING) ? null : (
+          {told || (telling && !(chat.off && chat.off.length)) ? null : (
             <ChatMessage
               role="reply"
               label={leadName}
@@ -579,7 +596,7 @@ export const BuildInChat = ({
               actions={actions}
             />
           ) : null}
-          {current && actionError ? (
+          {current && actionError && chat.choices !== "testbot" ? (
             <span
               className={`text-xs ${muted}`}
               data-testid="workspace-build-error"
@@ -675,7 +692,7 @@ function chatOf(build, state, { actions = {}, cell, change, restored }) {
 
 /** The reply choices under the lead's words about the build. */
 const BuildChoices = ({ chat, state, build, actions }) => {
-  const { muted } = useConfigTokens();
+  const { muted, hairline } = useConfigTokens();
   // Use the remix for the app, once clicked (theme change leftovers).
   const [usedForApp, setUsedForApp] = useState(false);
   // A cell build (release 6c): not in its cell — put it in; in it — put
@@ -883,16 +900,24 @@ const BuildChoices = ({ chat, state, build, actions }) => {
   if (chat.choices === "turnon") {
     return <TryBots bots={Object.values((state && state.bots) || {})} />;
   }
-  // A bot to test before it's saved (TST-003): its test is on the right.
+  // A bot to test before it's saved: the test runs here, in the chat, its
+  // result right above Save (DASH-21 frame 8).
   if (chat.choices === "testbot") {
-    return (
+    const at = (state.steps || []).find(
+      (s) => s.kind === "testbot" && s.status === "needs-you",
+    );
+    return at && actions.pb ? (
       <div
-        className="flex flex-row flex-wrap items-center gap-2"
+        className={`dr-chat-card self-start w-full max-w-2xl rounded-xl border p-4 ${hairline}`}
         data-testid="workspace-build-choices"
       >
-        <Button title="Test it" onClick={() => actions.open("preview")} />
+        <BotTestOutput
+          step={at}
+          pb={actions.pb}
+          onChange={actions.changeBot || null}
+        />
       </div>
-    );
+    ) : null;
   }
   if (chat.choices === "preview") {
     const at = (state.steps || []).find((s) => s.status === "needs-you");
@@ -1421,38 +1446,73 @@ export const PreviewOutput = ({ state, pb, wire = null }) => {
 };
 
 /**
- * Needs you, during a build (frames 3, 33): a provider the build waits for —
- * Connect (or Reconnect); what needs it carries on once it's there.
+ * A provider the build waits for, asked in the chat as it's needed (DASH-21
+ * frame 6): what needs it, that the rest keeps building, Connect right
+ * there — or Later, and what needs it waits.
  */
-export const BuildNeedsYou = ({ types = [], onConnected }) => {
-  const { muted, strong } = useConfigTokens();
+export const BuildNeedsYou = ({
+  told = [],
+  onConnected,
+  building = false,
+  restored = false,
+}) => {
   const statusTokens = useStatusTokens();
   const [connecting, setConnecting] = useState(null);
-  if (!types.length) return null;
+  const [later, setLater] = useState([]);
+  if (!told.length) return null;
+  // What connecting does now: the build carries on, or picks up again.
+  const then = restored
+    ? "Connect it here, then carry on building."
+    : building
+      ? "Connect it here — everything else keeps building meanwhile."
+      : "Connect it here — what needs it runs once it's connected.";
   return (
     <>
-      {types.map((t) => (
-        <div
-          key={t}
-          className={`dr-chat-card flex flex-col gap-2 rounded-xl border px-4 py-3 ${statusTokens.warning.accentBorder}`}
-          data-testid="workspace-build-needs"
-        >
-          <span className={`text-xs ${muted}`}>Builder · Dash team</span>
-          <span className={`text-sm font-semibold ${strong}`}>
-            Needs you: connect {providerLabel(t)}
-          </span>
-          <span className={`text-sm ${muted}`}>
-            What uses it waits for it. The rest keeps building.
-          </span>
-          <div>
-            <Button2
-              size="sm"
-              title="Connect"
-              onClick={() => setConnecting(t)}
-            />
+      {told.map((n) => {
+        const list = n.what.length ? n.what.join(", ") : "";
+        const what = list.charAt(0).toUpperCase() + list.slice(1);
+        // Later: one line to come back to, not gone.
+        if (later.includes(n.type)) {
+          return (
+            <span
+              key={n.type}
+              className="self-start"
+              data-testid="workspace-build-needs-later"
+            >
+              <TextLink
+                title={`Connect ${n.label} — ${what || "what needs it"} waits for it`}
+                onClick={() => setConnecting(n.type)}
+              />
+            </span>
+          );
+        }
+        return (
+          <div
+            key={n.type}
+            className={`flex flex-col gap-2 rounded-xl border px-4 py-3 text-sm ${statusTokens.warning.bg} ${statusTokens.warning.border} ${statusTokens.warning.text}`}
+            data-testid="workspace-build-needs"
+          >
+            <span
+              className={`font-semibold ${statusTokens.warning.strongText}`}
+            >
+              {what
+                ? `${what} ${n.what.length > 1 ? "need" : "needs"} ${n.label} before ${n.what.length > 1 ? "they" : "it"} can work.`
+                : `Part of this needs ${n.label} before it can work.`}
+            </span>
+            <span>{then}</span>
+            <div className="flex flex-row flex-wrap items-center gap-2">
+              <Button
+                title={`Connect ${n.label}`}
+                onClick={() => setConnecting(n.type)}
+              />
+              <Button2
+                title={`Later — ${n.what.length > 1 ? "they wait" : "it waits"}`}
+                onClick={() => setLater((l) => [...l, n.type])}
+              />
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {connecting ? (
         <ConnectDialog
           item={{

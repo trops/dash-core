@@ -135,3 +135,26 @@ test("approvalText", () => {
     ),
   ).toBe("Inbox Watch wants to use Search messages on Gmail.");
 });
+
+test("each answer says what it does (DASH-21 frame 7)", async () => {
+  mount([builderAsks]);
+  expect(await screen.findByTestId("approval-means")).toHaveTextContent(
+    "Allow once lets Builder do this now. Deny and it isn't done — it's told no.",
+  );
+});
+
+test("a tool that can be always allowed says what that does", async () => {
+  mount([
+    {
+      id: "ap2",
+      request: {
+        botId: "b_builder",
+        toolName: "ha_call_service",
+        serverName: "home-assistant",
+      },
+    },
+  ]);
+  expect(await screen.findByTestId("approval-means")).toHaveTextContent(
+    "Always allow lets it do this again without asking",
+  );
+});
