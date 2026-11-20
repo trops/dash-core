@@ -4,7 +4,12 @@
  * keeps it there); the latest one is the plan the conversation is about.
  * Pure.
  */
-import { countsLine, editNote } from "../Create/planChecklist";
+import {
+  countsLine,
+  editNote,
+  isDone,
+  providerLabel,
+} from "../Create/planChecklist";
 import { planTarget } from "../../utils/teamPlan";
 import { reuseIndex } from "./WidgetWizard/reuseSpec";
 import {
@@ -805,4 +810,70 @@ export function seedConversation(seed) {
       "Here's the plan from your chat with the Planner — it's on the right. Want me to build it?",
   });
   return out;
+}
+
+/**
+ * Under Before it builds in the chat (DASH-21 frame 5): what saying yes
+ * does with what's still open. Yes asks about installs, approvals and
+ * provider picks first (BuildWalk); what needs a connection waits for it
+ * while the rest builds. "" when nothing's open.
+ */
+export function beforeYesLine({ checklist = [], checks = {}, have } = {}) {
+  const open = (checklist || []).filter(
+    (it) => it && !isDone(it, checks || {}, have || new Set()),
+  );
+  if (!open.length) return "";
+  const connects = [
+    ...new Set(
+      open
+        .filter((it) => it.kind === "connect")
+        .map((it) => providerLabel(it.providerType)),
+    ),
+  ];
+  const asks = open.some((it) => it.kind !== "connect");
+  const and = (xs) =>
+    xs.length < 2
+      ? xs.join("")
+      : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+  if (connects.length && asks)
+    return `Say yes now: I'll ask about the rest first, and what needs ${and(connects)} waits for it while everything else builds.`;
+  if (connects.length)
+    return `You can say yes now: what needs ${and(connects)} waits for it while everything else builds.`;
+  return "Say yes now and I'll ask you about these first, one at a time.";
+}
+
+/**
+ * Why each thing before it builds is needed, under it in the chat (DASH-21
+ * frame 5): what uses a provider to connect; where an install comes from.
+ */
+export function beforeWhy(plan) {
+  const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+  return (it) => {
+    if (!it) return "";
+    if (it.kind === "connect") {
+      const names = pieces
+        .filter((p) =>
+          ((p && p.providers) || []).some(
+            (t) =>
+              String(t || "")
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, "") ===
+              String(it.providerType || "")
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, ""),
+          ),
+        )
+        .map((p) => p.name)
+        .filter(Boolean);
+      if (!names.length) return "";
+      const list =
+        names.length < 2
+          ? names[0]
+          : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+      return `${list} ${names.length === 1 ? "reads" : "read"} through it.`;
+    }
+    if (it.kind === "install")
+      return "From the registry — you see what it can do before it's installed.";
+    return "";
+  };
 }

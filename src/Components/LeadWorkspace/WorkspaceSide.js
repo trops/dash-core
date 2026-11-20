@@ -12,7 +12,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { normalizeType } from "../Create/planChecklist";
 import { readableRequest } from "./handoffSteps";
-import { BeforeItBuilds, OutputCard, PlanOutput } from "./PlanViews";
+import { OutputCard, PlanOutput } from "./PlanViews";
 import { BotTestOutput } from "./BotTestOutput";
 import {
   BuildLogOutput,
@@ -456,11 +456,6 @@ export const WorkspaceSide = ({
         </div>
       ) : null}
 
-      {/* Once it builds, what's left is asked for as Needs you (frame 3). */}
-      {/* Nothing to do before building while the user picks a provider. */}
-      {wp && !build && !wp.waitingForPick ? (
-        <BeforeItBuilds wp={wp} readOnly={planReadOnly} />
-      ) : null}
       <BuildNeedsYou
         types={needs}
         onConnected={() => {

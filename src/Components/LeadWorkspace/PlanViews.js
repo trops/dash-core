@@ -46,6 +46,8 @@ import {
   planSubLine,
   whoAsks,
   yesLabel,
+  beforeWhy,
+  beforeYesLine,
 } from "./workspacePlan";
 import { planTarget } from "../../utils/teamPlan";
 import { planChanges, widgetChangeDetail, widgetChanges } from "./planChanges";
@@ -835,9 +837,9 @@ export const PlanNext = ({
  * @param {object} wp  useWorkspacePlan's result
  * @param {boolean} readOnly  the lead is answering: a new plan may come
  */
-export const BeforeItBuilds = ({ wp, readOnly = false }) => {
+export const BeforeItBuilds = ({ wp, readOnly = false, inChat = false }) => {
   const [dialog, setDialog] = useState(null);
-  const { strong } = useConfigTokens();
+  const { strong, muted } = useConfigTokens();
   const statusTokens = useStatusTokens();
   const { plan, checklist, checks, have } = wp;
   if (!plan || !checklist.length) return null;
@@ -865,7 +867,18 @@ export const BeforeItBuilds = ({ wp, readOnly = false }) => {
               : setDialog({ kind: it.kind, item: it })
           }
           onPickProvider={wp.pickProvider}
+          why={inChat ? beforeWhy(plan) : null}
         />
+        {/* In the plan, above Yes (DASH-21 frame 5): what yes does with
+            what's still open. */}
+        {inChat && beforeYesLine(wp) ? (
+          <span
+            className={`px-4 py-3 text-xs ${muted}`}
+            data-testid="workspace-before-yes"
+          >
+            {beforeYesLine(wp)}
+          </span>
+        ) : null}
       </div>
       {/* Mounted only while open: a dialog inside the workspace's window. */}
       {dialog && dialog.kind === "install" ? (

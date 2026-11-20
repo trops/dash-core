@@ -57,7 +57,13 @@ import { useDashboard } from "./useDashboard";
 import { useWidgetTarget } from "./useWidgetTarget";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { useWorkspacePlan } from "./useWorkspacePlan";
-import { PlanCard, PlanChoices, PlanNext, PlanOutput } from "./PlanViews";
+import {
+  BeforeItBuilds,
+  PlanCard,
+  PlanChoices,
+  PlanNext,
+  PlanOutput,
+} from "./PlanViews";
 import { widgetChangeDetail } from "./planChanges";
 import { BuildInChat, BuildWalk, PastBuild, PastFix } from "./BuildViews";
 import { usePlanBuild } from "./usePlanBuild";
@@ -2568,6 +2574,13 @@ export const LeadWorkspace = ({
                   : null
               }
             />
+            {/* What has to happen first, in the plan above Yes (DASH-21
+                frame 5) — once it builds, what's left is asked as it's needed. */}
+            {!wp.build && !wp.waitingForPick ? (
+              <div className="mt-4">
+                <BeforeItBuilds wp={wp} readOnly={answering} inChat />
+              </div>
+            ) : null}
           </div>
           {/* Brought by the app's own hand-off: its choices are here. */}
           {choices}
