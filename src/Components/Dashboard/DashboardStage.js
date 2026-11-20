@@ -69,7 +69,6 @@ import {
 } from "./useWidgetSources";
 import { BotConfigPanel } from "./BotConfigPanel";
 import { keepLatest } from "../Settings/details/botFormMerge";
-import { EditBotsRow } from "./EditBotsRow";
 import {
   EditSelectionContext,
   findWidgetCell,
@@ -389,19 +388,10 @@ const DashboardStageInner = ({
   // opened, so Save can merge over the latest copy (keepLatest) and not
   // put back changes made elsewhere meanwhile. botId → { edited, opened }.
   const pendingBotFormsRef = useRef({});
-  // This month's spend per bot (bots.getSpend buckets), for the bots row.
-  const [monthSpend, setMonthSpend] = useState(null);
   useEffect(() => {
     if (!isEditingDashboard) {
       setEditSelection(null);
       return undefined;
-    }
-    let alive = true;
-    const api = typeof window !== "undefined" ? window.mainApi : null;
-    if (api?.bots?.getSpend) {
-      Promise.resolve(api.bots.getSpend())
-        .then((s) => alive && setMonthSpend(s || {}))
-        .catch(() => {});
     }
     // Esc goes back from a selection to the dashboard.
     const onKey = (e) => {
@@ -409,7 +399,6 @@ const DashboardStageInner = ({
     };
     window.addEventListener("keydown", onKey);
     return () => {
-      alive = false;
       window.removeEventListener("keydown", onKey);
     };
   }, [isEditingDashboard]);
@@ -3536,15 +3525,8 @@ const DashboardStageInner = ({
                             {renderComponent(workspaceSelected)}
                           </div>
                         </div>
-                        {isEditingDashboard && (
-                          <EditBotsRow
-                            bots={editTeamBots}
-                            spend={monthSpend}
-                            selection={editSelection}
-                            related={editRelated}
-                            onSelect={setEditSelection}
-                          />
-                        )}
+                        {/* Bots are on the Bots tab — the editor keeps the
+                            room for the layout. */}
                       </>
                     )}
                   </DashboardThemeProvider>
