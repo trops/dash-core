@@ -2194,12 +2194,29 @@ const botController = {
   askLead(
     botId,
     question,
-    { continueConversation = false, via = null, conversationId = null } = {},
+    {
+      continueConversation = false,
+      via = null,
+      conversationId = null,
+      // What to show as asked (an MCP task without the app's notes), and who.
+      shown = null,
+      from = null,
+    } = {},
   ) {
     const bot = this._store.get(botId);
     if (!isLead(bot)) {
       return Promise.resolve({ error: "Not a team lead.", status: "failed" });
     }
+    const viaMcp = /^mcp/.test(via || "");
+    // Asked from outside the app: kept as a conversation with the lead, so
+    // Open conversation shows the ask, the answer and any plan to say yes
+    // to (not an empty one).
+    // A task (give_task), not a quick question (ask_team_lead): quick
+    // questions would crowd the user's own conversations out of Recent.
+    const kept =
+      /^mcp-task(:|$)/.test(via || "") && !conversationId
+        ? this._keepBackgroundConversation(bot, shown || question, from)
+        : null;
     const start = () =>
       this._run(botId, {
         prompt: question,
@@ -2208,11 +2225,113 @@ const botController = {
         via,
         // The lead-workspace conversation asking (release 5): the bots it
         // asks record it on their runs.
-        conversationId,
+        conversationId: conversationId || (kept && kept.id) || null,
+        ...(kept ? { onEvent: kept.onEvent } : {}),
       });
     // Asked in the app, it's the user's run: a paused lead still answers.
     // Asked over MCP ("mcp", "mcp-task…"), pause holds.
-    return /^mcp/.test(via || "") ? start() : this._asUserRun(botId, start);
+    const run = viaMcp ? start() : this._asUserRun(botId, start);
+    if (!kept) return run;
+    return Promise.resolve(run).then(
+      (result) => {
+        kept.finish(result);
+        return result;
+      },
+      (err) => {
+        kept.finish({ status: "failed", error: err && err.message });
+        throw err;
+      },
+    );
+  },
+
+  /**
+   * A lead asked from outside the app (an MCP task or question): a Recent
+   * conversation with it, holding what was asked, the lead's hand-offs as
+   * they happen (calls and results — the app turns them into its steps,
+   * plan and all) and its answer. → { id, onEvent, finish } or null.
+   */
+  _keepBackgroundConversation(bot, asked, from) {
+    let recipient = null;
+    try {
+      recipient =
+        (this.listLeads() || []).find((l) => l && l.botId === bot.id) || null;
+    } catch (_e) {
+      recipient = null;
+    }
+    recipient = recipient || { botId: bot.id, leadName: bot.name };
+    const background = {
+      from: from || "mcp",
+      status: "running",
+      events: [],
+      answer: "",
+      error: null,
+    };
+    let entry;
+    try {
+      entry = this._recent.save({
+        kind: "question",
+        prompt: String(asked || ""),
+        conversation: { recipient, background },
+      });
+    } catch (_e) {
+      return null;
+    }
+    const id = entry.id;
+    const HANDOFF = /(^|__)(team_ask_dash_team|team_ask_bot|ask_role)$/;
+    const calls = new Set();
+    const keep = () => {
+      try {
+        this._recent.save({ id, conversation: { background } });
+      } catch (_e) {
+        // kept in memory; the next event tries again
+      }
+    };
+    return {
+      id,
+      onEvent: (event) => {
+        if (!event) return;
+        if (
+          event.type === "tool_call" &&
+          HANDOFF.test(String(event.name || ""))
+        ) {
+          calls.add(String(event.id));
+          background.events.push({
+            type: "tool_call",
+            id: event.id,
+            name: event.name,
+            input: event.input ?? event.args ?? null,
+          });
+          keep();
+        } else if (
+          event.type === "tool_result" &&
+          calls.has(String(event.id))
+        ) {
+          background.events.push({
+            type: "tool_result",
+            id: event.id,
+            output: event.output,
+            isError: !!event.isError,
+          });
+          keep();
+        }
+      },
+      finish: (result) => {
+        const r = result || {};
+        // It never started (busy, paused): nothing to keep.
+        if (r.skipped) {
+          try {
+            this._recent.remove(id);
+          } catch (_e) {
+            // left as it is
+          }
+          return;
+        }
+        background.status = r.skipped ? "skipped" : r.status || "completed";
+        background.answer = String(r.output || "");
+        background.error = r.error || r.reason || null;
+        keep();
+      },
+    };
   },
 
   /**

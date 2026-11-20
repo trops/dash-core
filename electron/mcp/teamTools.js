@@ -233,7 +233,14 @@ function makeTeamToolHandlers({
       (bots.takeTaskNotes && bots.takeTaskNotes(task.leadId)) || [];
     takeNotes();
     return Promise.resolve()
-      .then(() => bots.askLead(task.leadId, taskPrompt(task), { via }))
+      .then(() =>
+        bots.askLead(task.leadId, taskPrompt(task), {
+          via,
+          // Kept as a conversation: the task as it was given, and by whom.
+          shown: task.task,
+          from: task.from || "mcp",
+        }),
+      )
       .then((result) => {
         if (result && result.skipped) {
           return tasks.failed(
@@ -594,6 +601,8 @@ function makeTeamToolHandlers({
 
       const result = await bots.askLead(lead.id, question, {
         via: "mcp",
+        shown: question,
+        from: "mcp",
       });
       if (result && result.skipped) {
         return reply(

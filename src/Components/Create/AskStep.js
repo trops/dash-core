@@ -22,6 +22,7 @@ import { extractPlan } from "../../utils/teamPlan";
 import { runCostLabel } from "../../utils/runCostLabel";
 import { extractHandoff, withoutHandoff } from "../../utils/handoff";
 import {
+  backgroundMessages,
   stepFromCall,
   withResult,
   withStopped,
@@ -76,6 +77,24 @@ export function isAsking(conversationId) {
  * `onStarted(id)` says which Recent entry a new question was saved as (the
  * Dash team's conversation list selects it, Phase 4a).
  */
+/**
+ * A conversation kept from a lead run outside the app (an MCP task): its
+ * messages from the run as kept, and whether the run still goes — or null.
+ * Once the user carries on after it, what's saved (longer) wins.
+ */
+function keptMessages(conv, asked) {
+  const bg = conv && conv.background;
+  if (!bg) return null;
+  const lead = (conv.recipient && conv.recipient.leadName) || "";
+  const built = backgroundMessages(bg, asked, lead);
+  const saved = Array.isArray(conv.messages) ? conv.messages : [];
+  const running = bg.status === "running";
+  return {
+    running,
+    messages: !running && saved.length > built.length ? saved : built,
+  };
+}
+
 export const AskStep = ({
   question = "",
   recentId = null,
@@ -135,6 +154,10 @@ export const AskStep = ({
   const [busy, setBusy] = useState(!recentId);
   // The app asked the Planner itself (askPlanner): its step shows working.
   const [plannerBusy, setPlannerBusy] = useState(false);
+  // A lead run from outside the app (an MCP task) still going: its
+  // messages come from the run as kept — nothing is saved over them, and
+  // nothing can be asked meanwhile.
+  const [bgBusy, setBgBusy] = useState(false);
   // The role didn't answer because it's still busy: offer to stop it.
   const [roleBusy, setRoleBusy] = useState(false);
   const [soFar, setSoFar] = useState("");
@@ -364,8 +387,12 @@ export const AskStep = ({
               teamRoleRef.current = conv.recipient;
               setTeamRole(conv.recipient);
             }
-            let loadedMessages =
-              Array.isArray(conv.messages) && conv.messages.length
+            // Asked from outside the app (an MCP task): its run, as kept.
+            const kept = keptMessages(conv, firstAsked.current);
+            setBgBusy(!!kept && kept.running);
+            let loadedMessages = kept
+              ? kept.messages
+              : Array.isArray(conv.messages) && conv.messages.length
                 ? conv.messages
                 : [{ who: "you", text: firstAsked.current }];
             // The app's hand-off to the Planner, saved while it ran: still
@@ -437,6 +464,8 @@ export const AskStep = ({
     if (!loaded || !askId.current) return undefined;
     const bots = window.mainApi && window.mainApi.bots;
     if (!bots || !bots.saveCreateRecent) return undefined;
+    // The run outside the app still writes this conversation.
+    if (bgBusy) return undefined;
     const t = setTimeout(() => {
       Promise.resolve(
         bots.saveCreateRecent({
@@ -446,7 +475,7 @@ export const AskStep = ({
       ).catch(() => {});
     }, 300);
     return () => clearTimeout(t);
-  }, [loaded, messages]);
+  }, [loaded, messages, bgBusy]);
 
   useEffect(() => {
     if (onMessagesChange) onMessagesChange(messages);
@@ -454,9 +483,9 @@ export const AskStep = ({
   }, [messages]);
 
   useEffect(() => {
-    if (onBusyChange) onBusyChange(busy || plannerBusy);
+    if (onBusyChange) onBusyChange(busy || plannerBusy || bgBusy);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, plannerBusy]);
+  }, [busy, plannerBusy, bgBusy]);
 
   // Reopened while an earlier copy of this conversation is still being
   // answered (switched away mid-run): take the saved conversation when it
@@ -472,8 +501,22 @@ export const AskStep = ({
       if (busyRef.current) return;
       Promise.resolve(bots.getCreateRecent(recentId))
         .then((entry) => {
-          const saved =
-            entry && entry.conversation && entry.conversation.messages;
+          const conv = (entry && entry.conversation) || {};
+          // A run from outside the app goes on: its steps as they come —
+          // a plan arriving on a step counts, not only a new message.
+          const kept = keptMessages(conv, (entry && entry.prompt) || "");
+          if (kept) {
+            if (!alive.current) return;
+            setBgBusy(kept.running);
+            if (
+              JSON.stringify(kept.messages) !==
+              JSON.stringify(messagesRef.current)
+            ) {
+              setMessages(kept.messages);
+            }
+            return;
+          }
+          const saved = conv.messages;
           if (
             alive.current &&
             Array.isArray(saved) &&
@@ -520,7 +563,7 @@ export const AskStep = ({
     request,
     label = "Sent your answer to the Planner",
   ) => {
-    if (!request || busy || plannerBusy || working) return false;
+    if (!request || busy || plannerBusy || bgBusy || working) return false;
     const text = typeof request === "function" ? request() : request;
     if (!text) return false;
     askSeq.current += 1;
@@ -646,7 +689,7 @@ export const AskStep = ({
   // problems behind "Ask the Planner to fix it").
   const send = (text, details = "") => {
     const t = String(text || "").trim();
-    if (!t || busy || plannerBusy || working) return;
+    if (!t || busy || plannerBusy || bgBusy || working) return;
     if (!details && takeReply && takeReply(t)) {
       setReply("");
       return;
@@ -751,7 +794,7 @@ export const AskStep = ({
       ? renderAfter(m, i, {
           send,
           focusReply,
-          busy: busy || plannerBusy,
+          busy: busy || plannerBusy || bgBusy,
           askPlanner,
         })
       : null;
@@ -775,6 +818,17 @@ export const AskStep = ({
                   ref={i === anchor ? anchorEl : undefined}
                   data-testid={i === anchor ? "answer-on-top" : undefined}
                 >
+                  {/* Asked from outside the app: who sent it. */}
+                  {m.via ? (
+                    <span
+                      className={`block text-right text-xs pb-1 ${muted}`}
+                      data-testid="ask-sent-via"
+                    >
+                      {m.via === "mcp"
+                        ? "Sent through Dash's MCP server"
+                        : `Sent by ${m.via} through Dash's MCP server`}
+                    </span>
+                  ) : null}
                   <ChatMessage role="you">
                     {m.text}
                     {/* A fix with marked spots: what you marked, small. */}
@@ -890,7 +944,7 @@ export const AskStep = ({
         value={reply}
         onChange={(v) => setReply(v)}
         onSend={() => send(reply)}
-        busy={busy || plannerBusy || !!working}
+        busy={busy || plannerBusy || bgBusy || !!working}
         onStop={
           plannerBusy && !busy
             ? stopPlanner

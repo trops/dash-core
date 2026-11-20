@@ -78,7 +78,19 @@ export function activityLog({
               : "idle",
         // Under All, which other dashboard it's on (frame 29).
         where: scope === "all" && ws && ws !== here ? dashboards[ws] || "" : "",
-        open: isLead ? { key: `lead:${e.botId}` } : null,
+        // The conversation the run belongs to (one asked in the app, or an
+        // MCP task kept as one) — not the lead's empty start.
+        // A quick question over MCP has no conversation here: no link to
+        // an empty one.
+        open:
+          isLead && !(/^mcp/.test(String(run.via || "")) && !run.conversationId)
+            ? {
+                key: `lead:${e.botId}`,
+                ...(run.conversationId
+                  ? { recentId: String(run.conversationId) }
+                  : {}),
+              }
+            : null,
       };
     })
     .sort((a, b) => b.at - a.at);
