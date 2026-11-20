@@ -1749,7 +1749,11 @@ function chatFor(
       leftNote,
       waitNote,
       bots.length
-        ? ` New bots start paused — try ${bots.length === 1 ? "it" : "them"} from the Build log.`
+        ? ` ${andList(bots.map((b) => b.name || "The bot"))} ${
+            bots.length === 1 ? "starts" : "start"
+          } paused — turn ${bots.length === 1 ? "it" : "them"} on below when you want ${
+            bots.length === 1 ? "it" : "them"
+          } to run on ${bots.length === 1 ? "its" : "their"} own.`
         : "",
     ].join(""),
     choices: dashboard ? "open" : null,

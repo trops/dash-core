@@ -10,7 +10,8 @@
 "use strict";
 
 const ABOUT_CHARS = 200;
-// The same limit a task has when it's kept (mcpTasks.js).
+// Routing reads up to this much of a task to pick its team (a task itself
+// can be longer — mcpTasks.js MAX_TASK_CHARS — and goes to the lead whole).
 const MAX_TASK_CHARS = 4000;
 
 const oneLine = (s) =>

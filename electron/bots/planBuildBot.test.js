@@ -297,6 +297,25 @@ describe("bot builds — the bot as saved", () => {
     const def = planBotDefinition(piece, { dashboardId: "7", sources });
     assert.equal(def.workspaceId, "7");
   });
+  it("the approval policy and run limits it was planned with (DASH-26)", () => {
+    const def = planBotDefinition(
+      {
+        ...piece,
+        approvalPolicy: "allow",
+        runLimits: { steps: 60, minutes: 20 },
+      },
+      { dashboardId: "7", sources },
+    );
+    assert.equal(def.approvalPolicy, "allow");
+    assert.deepEqual(def.runLimits, { steps: 60, minutes: 20 });
+    // A value the bot can't take keeps its default.
+    const odd = planBotDefinition(
+      { ...piece, approvalPolicy: "whatever", runLimits: { steps: -1 } },
+      { dashboardId: "7", sources },
+    );
+    assert.equal(odd.approvalPolicy, "ask");
+    assert.equal(odd.runLimits, undefined);
+  });
 });
 
 describe("botController — bot builds (Phase 2c-1)", () => {

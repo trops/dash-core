@@ -109,6 +109,21 @@ describe("layeredPrompt", () => {
 });
 
 describe("userPartOf", () => {
+  it("an older Planner's copy, the current one or any earlier version, goes — none of them changed under it (DASH-26)", () => {
+    const planner = ROLES.find((r) => r.role === "planner");
+    for (const version of [planner.instructions, ...planner.history]) {
+      const bot = {
+        ...dashTeamDefinition("planner"),
+        instructions: version,
+        promptLayers: 0,
+      };
+      assert.equal(userPartOf(bot), "", version.slice(0, 60));
+    }
+    // The plan format with a bot's policy and limits is only the current
+    // one's: the versions before it are kept as they were.
+    assert.match(planner.instructions, /"approvalPolicy"/);
+    assert.ok(planner.history.every((h) => !/approvalPolicy/.test(h)));
+  });
   it("new leads and roles hold only the user's words", () => {
     const def = leadDefinition({ workspaceId: "ws1", dashboardName: "Home" });
     assert.equal(def.instructions, "");

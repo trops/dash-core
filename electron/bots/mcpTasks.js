@@ -26,7 +26,9 @@ const LOCK_MS = 15 * 60 * 1000;
 const MAX_TASKS = 50;
 const MIN_LETTERS = 4;
 const SHORT_LETTERS = 8;
-const MAX_TASK_CHARS = 4000;
+// A task's longest text. give_task refuses a longer one — never cuts it
+// (DASH-23: a 5,389-character task lost the end of a bot's instructions).
+const MAX_TASK_CHARS = 20000;
 const MAX_PASSPHRASE_CHARS = 200;
 
 /** "Purple, Otter." → "purple otter" */
@@ -318,4 +320,5 @@ module.exports = {
   MAX_WRONG,
   LOCK_MS,
   MIN_LETTERS,
+  MAX_TASK_CHARS,
 };

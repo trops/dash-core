@@ -89,6 +89,44 @@ function setup(over = {}) {
 const body = (r) => JSON.parse(r.content[0].text);
 
 describe("give_task", () => {
+  it("a task over the limit is refused, saying so — never cut (DASH-23)", async () => {
+    const { handlers, calls, tasks } = setup();
+    const long = "Plan the shop. ".repeat(1500);
+    const r = body(
+      await handlers.give_task({ task: long, team: "room design" }),
+    );
+    assert.equal(r.status, "invalid");
+    assert.match(r.message, /the limit is 20,000/);
+    assert.match(r.message, /nothing was cut or started/);
+    assert.equal(calls.length, 0);
+    assert.equal((tasks.list ? tasks.list() : []).length, 0);
+  });
+
+  it("list_tasks trims each task, saying where the whole of it is", async () => {
+    const { handlers } = setup();
+    await handlers.give_task({
+      task: "y".repeat(5000),
+      team: "room design",
+      from: "ha-bridge",
+    });
+    const r = body(await handlers.list_tasks({}));
+    assert.ok(r.tasks[0].task.length < 600);
+    assert.match(r.tasks[0].task, /get_task_status has all of it/);
+  });
+
+  it("a long task under the limit is kept whole", async () => {
+    const { handlers } = setup();
+    const long = "x".repeat(5389);
+    const r = body(
+      await handlers.give_task({
+        task: long,
+        team: "room design",
+        from: "ha-bridge",
+      }),
+    );
+    assert.equal(r.task.length, 5389);
+  });
+
   it("waits for the passphrase, naming the team", async () => {
     const { handlers, calls } = setup();
     const r = body(

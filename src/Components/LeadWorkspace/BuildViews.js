@@ -713,12 +713,20 @@ const BuildChoices = ({ chat, state, build, actions }) => {
     );
   }
   if (chat.choices === "open" && state.dashboard && actions.openDashboard) {
+    const madeBots = Object.values(state.bots || {}).filter((b) => b && b.id);
     return (
-      <div data-testid="workspace-build-choices">
-        <Button
-          title={`Open ${state.dashboard.name}`}
-          onClick={() => actions.openDashboard(state.dashboard.id)}
-        />
+      <div
+        className="flex flex-col gap-3"
+        data-testid="workspace-build-choices"
+      >
+        <div>
+          <Button
+            title={`Open ${state.dashboard.name}`}
+            onClick={() => actions.openDashboard(state.dashboard.id)}
+          />
+        </div>
+        {/* The bots it made start paused: turn them on right here (DASH-26). */}
+        {madeBots.length ? <TryBots bots={madeBots} /> : null}
       </div>
     );
   }

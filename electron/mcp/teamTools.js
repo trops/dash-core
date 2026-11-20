@@ -66,7 +66,8 @@ const TEAM_TOOLS = [
       properties: {
         task: {
           type: "string",
-          description: "What the user wants done, in their words.",
+          description:
+            "What the user wants done, in their words — up to 20,000 characters. A longer task is refused, not cut: shorten it or split it.",
         },
         team: {
           type: "string",
@@ -137,6 +138,9 @@ const timeOf = (iso) => {
     return iso;
   }
 };
+
+// How much of each task and summary list_tasks shows.
+const LIST_CHARS = 500;
 
 /** A task as the agent sees it — no internal ids. */
 const taskView = (t) => ({
@@ -386,6 +390,14 @@ function makeTeamToolHandlers({
     async give_task(args = {}) {
       const text = String((args && args.task) || "").trim();
       if (!text) return json({ message: "give_task needs a 'task'." }, true);
+      // Never cut: a longer task is refused, with the limit (DASH-23).
+      const { MAX_TASK_CHARS } = require("../bots/mcpTasks");
+      if (text.length > MAX_TASK_CHARS) {
+        return json({
+          status: "invalid",
+          message: `The task is ${text.length.toLocaleString("en-US")} characters; the limit is ${MAX_TASK_CHARS.toLocaleString("en-US")}. Shorten it or split it into separate tasks — nothing was cut or started.`,
+        });
+      }
       const tasks = bots.tasks();
       if (tasks.mentionsPassphrase && tasks.mentionsPassphrase(text)) {
         // Never kept: not in a task, the routing log or the lead's prompt.
@@ -524,7 +536,23 @@ function makeTeamToolHandlers({
     },
 
     async list_tasks() {
-      return json({ tasks: bots.tasks().list({ limit: 10 }).map(taskView) });
+      // A list stays short: each task and summary trimmed — get_task_status
+      // has the whole of one.
+      const clip = (v) =>
+        typeof v === "string" && v.length > LIST_CHARS
+          ? `${v.slice(0, LIST_CHARS)}… (get_task_status has all of it)`
+          : v;
+      return json({
+        tasks: bots
+          .tasks()
+          .list({ limit: 10 })
+          .map(taskView)
+          .map((t) => ({
+            ...t,
+            task: clip(t.task),
+            ...(t.summary ? { summary: clip(t.summary) } : {}),
+          })),
+      });
     },
 
     async list_teams() {
