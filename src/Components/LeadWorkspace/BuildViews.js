@@ -10,7 +10,12 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { isDone, providerLabel, removePiece } from "../Create/planChecklist";
+import {
+  isDone,
+  normalizeType,
+  providerLabel,
+  removePiece,
+} from "../Create/planChecklist";
 import {
   ConnectDialog,
   InstallReviewDialog,
@@ -29,6 +34,8 @@ import {
   buildLogSteps,
   buildPlanLine,
   buildStory,
+  needsTold,
+  waitingFor,
   stopTold,
   isBuilding,
   logDuration,
@@ -329,9 +336,6 @@ const StopCard = ({ told, chat, build, actions }) => {
   );
 };
 
-// The plain "building" line (buildChat): the story says more.
-const GENERIC_BUILDING = "Building now — I'll tell you when it's done.";
-
 const BuildStory = ({ story, leadName, live, onLog }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
@@ -448,6 +452,16 @@ export const BuildInChat = ({
   // a fix after it tells its own.
   const story = !earlier && !fix ? buildStory(state) : null;
   const telling = !!story && isBuilding(state);
+  // A provider it waits for, asked here as it's needed (DASH-21 frame 6).
+  const needs =
+    current && state
+      ? needsTold(
+          state,
+          waitingFor(state)
+            .map(normalizeType)
+            .filter((t) => t && !(actions.have && actions.have.has(t))),
+        )
+      : [];
   // It couldn't finish: said in full, with its choices (DASH-21 frame 3).
   // Reopened after Dash closed, it's still told — what needs the build
   // running becomes Carry on building.
@@ -506,6 +520,9 @@ export const BuildInChat = ({
           onLog={actions.open ? () => actions.open("buildlog") : null}
         />
       ) : null}
+      {needs.length ? (
+        <BuildNeedsYou told={needs} onConnected={actions.onConnected} />
+      ) : null}
       {state ? (
         <>
           {/* While it's told, the step line only when it links to the check
@@ -551,7 +568,7 @@ export const BuildInChat = ({
           {told ? (
             <StopCard told={told} chat={chat} build={build} actions={actions} />
           ) : null}
-          {told || (telling && chat.reply === GENERIC_BUILDING) ? null : (
+          {told || (telling && !(chat.off && chat.off.length)) ? null : (
             <ChatMessage
               role="reply"
               label={leadName}
@@ -1421,38 +1438,48 @@ export const PreviewOutput = ({ state, pb, wire = null }) => {
 };
 
 /**
- * Needs you, during a build (frames 3, 33): a provider the build waits for —
- * Connect (or Reconnect); what needs it carries on once it's there.
+ * A provider the build waits for, asked in the chat as it's needed (DASH-21
+ * frame 6): what needs it, that the rest keeps building, Connect right
+ * there — or Later, and what needs it waits.
  */
-export const BuildNeedsYou = ({ types = [], onConnected }) => {
-  const { muted, strong } = useConfigTokens();
+export const BuildNeedsYou = ({ told = [], onConnected }) => {
   const statusTokens = useStatusTokens();
   const [connecting, setConnecting] = useState(null);
-  if (!types.length) return null;
+  const [later, setLater] = useState([]);
+  const shown = told.filter((n) => !later.includes(n.type));
+  if (!shown.length) return null;
   return (
     <>
-      {types.map((t) => (
-        <div
-          key={t}
-          className={`dr-chat-card flex flex-col gap-2 rounded-xl border px-4 py-3 ${statusTokens.warning.accentBorder}`}
-          data-testid="workspace-build-needs"
-        >
-          <span className={`text-xs ${muted}`}>Builder · Dash team</span>
-          <span className={`text-sm font-semibold ${strong}`}>
-            Needs you: connect {providerLabel(t)}
-          </span>
-          <span className={`text-sm ${muted}`}>
-            What uses it waits for it. The rest keeps building.
-          </span>
-          <div>
-            <Button2
-              size="sm"
-              title="Connect"
-              onClick={() => setConnecting(t)}
-            />
+      {shown.map((n) => {
+        const list = n.what.length ? n.what.join(", ") : "What needs it";
+        const what = list.charAt(0).toUpperCase() + list.slice(1);
+        return (
+          <div
+            key={n.type}
+            className={`flex flex-col gap-2 rounded-xl border px-4 py-3 text-sm ${statusTokens.warning.bg} ${statusTokens.warning.border} ${statusTokens.warning.text}`}
+            data-testid="workspace-build-needs"
+          >
+            <span
+              className={`font-semibold ${statusTokens.warning.strongText}`}
+            >
+              {`${what} ${n.what.length > 1 ? "need" : "needs"} ${n.label} before ${n.what.length > 1 ? "they" : "it"} can work.`}
+            </span>
+            <span>
+              Connect it here — everything else keeps building meanwhile.
+            </span>
+            <div className="flex flex-row flex-wrap items-center gap-2">
+              <Button
+                title={`Connect ${n.label}`}
+                onClick={() => setConnecting(n.type)}
+              />
+              <Button2
+                title={`Later — ${n.what.length > 1 ? "they wait" : "it waits"}`}
+                onClick={() => setLater((l) => [...l, n.type])}
+              />
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {connecting ? (
         <ConnectDialog
           item={{

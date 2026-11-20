@@ -496,7 +496,7 @@ function stopToldNow(chat, state, edit) {
   // Who has to connect what, for what's left (another piece).
   const waiting = waitingFor(state).map(providerLabel);
   const waitLine = waiting.length
-    ? `What needs ${andList(waiting)} waits for it — connect it on the right.`
+    ? `What needs ${andList(waiting)} waits for it — connect it below.`
     : "";
   const anyDone = stepsOf(state).some(
     (x) => x.status === "done" && x.role !== "you" && x.kind !== "check",
@@ -604,6 +604,36 @@ function stopToldNow(chat, state, edit) {
       },
     ],
   };
+}
+
+/**
+ * A provider the build waits for, asked in the chat (DASH-21 frame 6): for
+ * each type, its name and what waits for it ("Inbox Summary").
+ */
+export function needsTold(state, types = []) {
+  const steps = stepsOf(state);
+  return (types || []).map((t) => {
+    const what = [
+      ...new Set(
+        steps
+          .filter(
+            (x) =>
+              x.status === "needs-provider" &&
+              (x.waitingFor || []).some(
+                (w) => String(w).toLowerCase() === String(t).toLowerCase(),
+              ),
+          )
+          .map((x) =>
+            String(x.label || "").replace(
+              /^(Build|Check|Install|Save|Place|Run|Make|Set up|Connect) /,
+              "",
+            ),
+          )
+          .filter(Boolean),
+      ),
+    ];
+    return { type: t, label: providerLabel(t), what };
+  });
 }
 
 /**
@@ -1337,7 +1367,7 @@ function chatFor(
       },
       card: null,
       reply: waiting.length
-        ? `Building now. One thing needs you — connect ${andList(waiting)}, on the right. Everything else carries on.`
+        ? `Building now. One thing needs you — connect ${andList(waiting)}, below. Everything else carries on.`
         : "Building now — I'll tell you when it's done.",
       choices: null,
     };
@@ -1442,7 +1472,7 @@ function chatFor(
           ? `${label} didn't work — ${firstLine(first.error) || "it didn't finish"}. Everything else that could be done is done.`
           : "Part of it didn't finish. Everything else that could be done is done.",
         waiting.length
-          ? ` What needs ${andList(waiting)} waits for it (on the right).`
+          ? ` What needs ${andList(waiting)} waits for it — connect it below.`
           : "",
         ask,
       ].join(""),
@@ -1482,7 +1512,7 @@ function chatFor(
     ? ` ${andList(off)} ${off.length === 1 ? "is" : "are"} left off.`
     : "";
   const waitNote = waiting.length
-    ? ` What needs ${andList(waiting)} runs once it's connected — on the right.`
+    ? ` What needs ${andList(waiting)} runs once it's connected — connect it below.`
     : "";
   if (kind === "theme") {
     const made = state && state.madeTheme;

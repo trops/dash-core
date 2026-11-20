@@ -10,16 +10,10 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
-import { normalizeType } from "../Create/planChecklist";
 import { readableRequest } from "./handoffSteps";
 import { OutputCard, PlanOutput } from "./PlanViews";
 import { BotTestOutput } from "./BotTestOutput";
-import {
-  BuildLogOutput,
-  BuildNeedsYou,
-  CheckReportOutput,
-  PreviewOutput,
-} from "./BuildViews";
+import { BuildLogOutput, CheckReportOutput, PreviewOutput } from "./BuildViews";
 import {
   activityText,
   buildLogHead,
@@ -29,7 +23,6 @@ import {
   buildStatus,
   liveActivityOf,
   logTime,
-  waitingFor,
 } from "./workspaceBuild";
 import { planTarget } from "../../utils/teamPlan";
 import {
@@ -211,12 +204,6 @@ export const WorkspaceSide = ({
   const approvalBots = contact
     ? [{ id: contact.botId, name: contact.name }, ...members]
     : [];
-  // What the build waits for that still isn't connected (Needs you).
-  const needs = buildState
-    ? waitingFor(buildState)
-        .map(normalizeType)
-        .filter((t) => t && !(wp && wp.have && wp.have.has(t)))
-    : [];
   const status = buildState ? buildStatus(buildState, leftOff) : null;
   // A new widget waiting for your look (frame 31).
   const previewStep =
@@ -243,7 +230,7 @@ export const WorkspaceSide = ({
     (checkedAny ? 1 : 0) +
     (builtDashboard ? 1 : 0) +
     answered.length;
-  const needsYou = needs.length > 0 || !!previewStep;
+  const needsYou = !!previewStep;
   useEffect(() => {
     if (onSummary) onSummary({ count: outputCount, needsYou });
   }, [onSummary, outputCount, needsYou]);
@@ -456,13 +443,6 @@ export const WorkspaceSide = ({
         </div>
       ) : null}
 
-      <BuildNeedsYou
-        types={needs}
-        onConnected={() => {
-          if (wp && wp.refreshProviders)
-            Promise.resolve(wp.refreshProviders()).catch(() => {});
-        }}
-      />
       <DashTeamApprovals compact bots={approvalBots} />
 
       {previewStep && previewStep.kind === "testbot" ? (

@@ -1339,6 +1339,12 @@ export const LeadWorkspace = ({
       : null,
     appThemeKey: themeKey || null,
     open: setSideOpen,
+    // What's connected, and a provider just connected (DASH-21 frame 6).
+    have: wp.have,
+    onConnected: () => {
+      if (wp.refreshProviders)
+        Promise.resolve(wp.refreshProviders()).catch(() => {});
+    },
     changePlan: () => {
       setPlanChange(true);
       if (askCtl.current && askCtl.current.focusReply) {

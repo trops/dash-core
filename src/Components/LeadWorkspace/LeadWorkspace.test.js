@@ -1995,7 +1995,7 @@ describe("release 3b: building in the conversation", () => {
     expect(onOpenDashboard).toHaveBeenCalledWith("12");
   });
 
-  test("a provider it waits for: Needs you on the right; connected, it carries on", async () => {
+  test("a provider it waits for: asked in the chat, with Connect or Later (DASH-21 frame 6)", async () => {
     await buildIt();
     const waiting = {
       ...RUNNING,
@@ -2013,11 +2013,25 @@ describe("release 3b: building in the conversation", () => {
       ],
     };
     push(waiting);
-    const needs = screen.getByTestId("workspace-build-needs");
-    expect(needs).toHaveTextContent("Needs you: connect");
+    // Asked in the chat as it's needed (DASH-21 frame 6), not on the right.
     expect(
-      within(needs).getByRole("button", { name: "Connect" }),
+      within(screen.getByTestId("workspace-side")).queryByTestId(
+        "workspace-build-needs",
+      ),
+    ).toBeNull();
+    const c = chat();
+    const needs = within(c).getByTestId("workspace-build-needs");
+    expect(needs).toHaveTextContent(
+      "The Lights-off bot needs Home Assistant before it can work.",
+    );
+    expect(
+      within(needs).getByRole("button", { name: "Connect Home Assistant" }),
     ).toBeInTheDocument();
+    // Later: it waits, and the chat stops asking.
+    fireEvent.click(
+      within(needs).getByRole("button", { name: "Later — it waits" }),
+    );
+    expect(within(c).queryByTestId("workspace-build-needs")).toBeNull();
     expect(window.mainApi.bots.resumePlanBuild).not.toHaveBeenCalled();
   });
 
