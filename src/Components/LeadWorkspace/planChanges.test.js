@@ -3,7 +3,12 @@
  * the user has, as what changes — its grid now and after, placed where the
  * build places it, and a row per change.
  */
-import { changesLine, planChanges, widgetLabel } from "./planChanges";
+import {
+  changesLine,
+  planChanges,
+  widgetChangeDetail,
+  widgetLabel,
+} from "./planChanges";
 import { planLine, seedConversation, yesLabel } from "./workspacePlan";
 import { stepFromCall } from "./handoffSteps";
 
@@ -243,5 +248,44 @@ describe("review fixes (release 3c)", () => {
   test("a dashboard with no grid has no cells to draw", () => {
     const c = planChanges({ id: 7, layout: [] }, PLAN);
     expect(c.now).toEqual([]);
+  });
+});
+
+describe("a widget change read in full (DASH-21 frame 1)", () => {
+  const plan = (piece, extra = {}) => ({
+    summary: "Fix the player list",
+    widgetChange: { component: "a.b.C", mode: "update" },
+    pieces: [{ kind: "widget", name: "Player", source: "update", ...piece }],
+    ...extra,
+  });
+  test("the plan's own words: adds, notes, keeps", () => {
+    const d = widgetChangeDetail(
+      plan({
+        adds: " A refresh button. ",
+        notes: "Change refresh().",
+        keeps: ["The queue", "", 3],
+      }),
+    );
+    expect(d.changes).toBe("A refresh button.");
+    expect(d.how).toBe("Change refresh().");
+    expect(d.keeps).toEqual(["The queue"]);
+    expect(d.next).toMatch(/until you say the preview looks good/);
+  });
+  test("no adds: the summary says what changes", () => {
+    expect(widgetChangeDetail(plan({ keeps: ["x"] })).changes).toBe(
+      "Fix the player list",
+    );
+  });
+  test("a settings change, more than one piece, or no change: none", () => {
+    expect(
+      widgetChangeDetail(plan({ source: "settings", adds: "a" })),
+    ).toBeNull();
+    expect(
+      widgetChangeDetail({
+        widgetChange: {},
+        pieces: [{ kind: "widget", adds: "a" }, { kind: "bot" }],
+      }),
+    ).toBeNull();
+    expect(widgetChangeDetail({ summary: "x", pieces: [] })).toBeNull();
   });
 });

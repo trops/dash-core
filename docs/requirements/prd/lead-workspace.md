@@ -450,3 +450,35 @@ The conversation card touched the Recents column and the Outputs column. The Nee
 - **The right column holds only the outputs (DASH-21 frame 4, approved 2026-11-19; built in this PR):** "Outputs" lists Plan, Build log, Check report, Preview, the dashboard and bots' answers — one row each with its kind over the title and a status line, so a narrow column never squeezes it; opening one shows only that one (← Outputs). Gone: the team list, who works on it and its models, providers, and the plan's questions (PlanNext) — those are asked in the chat under the last message when no plan card carries them. Nothing opens on the right by itself (the preview and a bot's test included). The Check report shows only once the Checker has looked (`checkRan`: running, done or failed — a check skipped because its build failed was never checked). A plan opened on the right shows each part's name and badge on one line and what it is under them at full width. Approvals, connects, Before it builds and a bot's test card stay on the right until the rest of DASH-21 moves them into the chat.
 - A failed step says why in one line; the Builder's own answer is folded under "What the Builder said", as plain text from a whole line (`answerTail`), never cut mid-word or in Markdown.
 - Not done: the mockup's "Writing HaCalendar.js — the part that picks which events to show" (it would need the Builder to say what it means to do); the log shows its latest action instead.
+
+### The conversation tells what's happening (DASH-21 frames 1–3, approved 2026-11-19, canvas "Plan and build in the conversation")
+
+- **The plan, in full, in the chat, with Yes under it (frame 1).**
+  - A change to a widget the user has reads as the plan's own words (`widgetChangeDetail` in planChanges.js; `WidgetChangeDetail` in PlanViews.js):
+    - **What changes** (`piece.adds`, or the summary);
+    - **How the Builder will do it** (`piece.notes`, exactly what the Builder is asked);
+    - **Stays the same · N things** (`piece.keeps`);
+    - **What happens next**.
+  - The lead's line above it says this is exactly what the Builder will be asked to do.
+  - The old row "What it does — the Builder changes it" is gone.
+  - A settings-only change, or a plan with more than one piece, keeps its rows.
+- **The build told in the chat as it goes (frame 2).** `buildStory(state)` (workspaceBuild.js), shown by `BuildStory` in BuildInChat:
+  - the steps up front ("Building it now, in 4 steps: the Builder writes it, the Checker checks it, you look at a preview and I save it");
+  - with their times, each draft sent back and exactly why ("The Builder's 1st draft was sent back: … It's trying again — 2nd try."), and each step done;
+  - while it runs, "Step k of n · Builder is writing the draft · 1m 20s" with "Build log ›".
+  - The bare "Building now — I'll tell you when it's done." line is gone.
+  - Tries are counted without a total ("2nd try"), because how many are allowed depends on the plan.
+- **When it can't finish (frame 3).** `stopTold` (workspaceBuild.js), shown by `StopCard` in place of the reply and its buttons. The card says:
+  - what happened ("The Builder can't do this as planned." / "The Builder couldn't make this change in 3 tries." / "Camera strip didn't work.");
+  - why, in the Builder's terms;
+  - the closest that works, when there is one;
+  - what's unchanged ("Your widget is unchanged — nothing was installed.");
+  - **What you can do**: only the choices that are really there, each one explained, each with its button (Try again, Let the Builder fix it, Build it that way, Change the plan, Keep the widget as it was / Leave it out / Stop here).
+- **Change the plan** puts the reply box to the Planner. The new plan shows in the chat with its own Yes before anything builds.
+- **Reopened after Dash closed:** a build that couldn't finish is still told the same way. The choices that need the build running become **Carry on building**, explained.
+- **Seen live:**
+  - frame 1 on the user's real Music Assistant plan (8/8 checks);
+  - frame 3 on the user's real stopped Latest Notes build (6/6), which is where the reopened case was found and fixed;
+  - frame 2 by the user in a real widget change.
+- **Still to do in DASH-21:** approvals, connects, Before it builds and a bot's test card still sit on the right. They move into the chat next.
+

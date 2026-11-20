@@ -58,6 +58,7 @@ import { useWidgetTarget } from "./useWidgetTarget";
 import { useRegistryAuthGate } from "../../hooks/useRegistryAuthGate";
 import { useWorkspacePlan } from "./useWorkspacePlan";
 import { PlanCard, PlanChoices, PlanNext, PlanOutput } from "./PlanViews";
+import { widgetChangeDetail } from "./planChanges";
 import { BuildInChat, BuildWalk, PastBuild, PastFix } from "./BuildViews";
 import { usePlanBuild } from "./usePlanBuild";
 import {
@@ -2541,6 +2542,18 @@ export const LeadWorkspace = ({
             className={`dr-chat-card self-start w-full max-w-2xl rounded-xl border p-4 ${hairline}`}
             data-testid="chat-plan"
           >
+            {/* What the user is about to agree to, said plainly (DASH-21
+                frame 1) — once it's built, the plan is only a record. */}
+            {!wp.build ? (
+              <span
+                className={`block mb-3 text-sm ${strong}`}
+                data-testid="chat-plan-intro"
+              >
+                {widgetChangeDetail(wp.plan)
+                  ? "Here's the plan. This is exactly what the Builder will be asked to do — read it, then say yes or tell me what to change."
+                  : "Here's the plan — read it, then say yes or tell me what to change."}
+              </span>
+            ) : null}
             <PlanOutput
               wp={wp}
               onReplan={planActions.onAnswer}

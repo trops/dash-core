@@ -423,3 +423,32 @@ export function widgetChanges(plan) {
     ],
   };
 }
+
+/**
+ * A change to a widget the user has, read in full (DASH-21 frame 1): what
+ * changes, how the Builder is asked to do it, what stays the same and what
+ * happens next — the plan's own words (piece.adds, notes, keeps), so what
+ * the user says yes to is exactly what the Builder is asked. Null for a
+ * settings change, a plan that isn't one widget, or one with nothing to say.
+ */
+export function widgetChangeDetail(plan) {
+  const w = plan && plan.widgetChange;
+  if (!w) return null;
+  const pieces = ((plan && plan.pieces) || []).filter(Boolean);
+  const one =
+    pieces.length === 1 && pieces[0].kind === "widget" ? pieces[0] : null;
+  if (!one || one.source === "settings") return null;
+  const text = (v) => (typeof v === "string" ? v.trim() : "");
+  const changes = text(one.adds) || text(plan.summary);
+  const how = text(one.notes);
+  const keeps = (Array.isArray(one.keeps) ? one.keeps : [])
+    .map(text)
+    .filter(Boolean);
+  if (!changes && !how && !keeps.length) return null;
+  return {
+    changes,
+    how,
+    keeps,
+    next: "The Builder writes the change, the Checker checks it, then you see a preview. Nothing changes on your dashboard until you say the preview looks good. If something you asked for can't be done, the Builder says so instead of leaving it out.",
+  };
+}
