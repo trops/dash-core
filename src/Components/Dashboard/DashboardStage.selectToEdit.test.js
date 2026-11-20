@@ -85,8 +85,8 @@ describe("DashboardStage — select to edit", () => {
     expect(botEditor.slice(0, 1500)).not.toMatch(/bots\.save\(/);
   });
 
-  test("the bots row shows only while editing", () => {
-    expect(stage).toMatch(/\{isEditingDashboard && \(\s*<EditBotsRow/);
+  test("no bots row under the grid while editing: bots are on the Bots tab", () => {
+    expect(stage).not.toMatch(/<EditBotsRow/);
   });
 });
 
