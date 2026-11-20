@@ -519,9 +519,12 @@ export const ProfilesSection = ({ onReloadContents = null }) => {
               <Button3 title="Cancel" onClick={() => setNameForm(null)} />
             </div>
           ) : (
-            <div className="flex flex-row items-center gap-2 min-w-0">
-              <SubHeading3 title={selected.name} padding={false} />
-              {isActive ? <Tag3 text="Active" /> : null}
+            // The name, then where it's saved on one line under it.
+            <div className="flex flex-col gap-1 min-w-0">
+              <div className="flex flex-row items-center gap-2 min-w-0">
+                <SubHeading3 title={selected.name} padding={false} />
+                {isActive ? <Tag3 text="Active" /> : null}
+              </div>
               {selected.account ? (
                 <span
                   className={`text-xs ${muted}`}
