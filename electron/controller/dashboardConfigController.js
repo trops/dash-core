@@ -1617,9 +1617,16 @@ async function getDashboardPublishPlan(
           : null;
       const isLocalOnlyScope =
         !!w.scope && LOCAL_ONLY_SCOPES.has(String(w.scope).replace(/^@/, ""));
+      // Changed here since it was last published or installed (DASH-22):
+      // { changed: true|false|null, basedOn: the version it came from }.
+      const since = require("../registry/widgetPublished").changedSince(
+        w.packageDir,
+      );
       return {
         ...w,
         publishScope,
+        changed: since.changed,
+        basedOn: since.basedOn,
         registry: key ? resolvedByKey.get(key) || null : null,
         // True when this widget cannot be installed as-is under its
         // local scope — the dashboard publish MUST republish it under
@@ -2033,6 +2040,26 @@ async function prepareDashboardForPublish(
     // — every dashboard dependency lives under widgets/ on the
     // publisher's machine, scanner pipeline (slice 13a/b) keeps each
     // package.json's permissions block fresh.
+    // Widgets the user didn't publish again (unchanged, or the registry's
+    // newer one kept): the version each one uses (DASH-22). Keyed
+    // "scope/name", as the publish dialog has them.
+    if (options.widgetVersions && typeof options.widgetVersions === "object") {
+      const wanted = new Map(
+        Object.entries(options.widgetVersions).map(([k, v]) => [
+          String(k).replace(/^@/, ""),
+          v,
+        ]),
+      );
+      dashboardConfig.widgets = (dashboardConfig.widgets || []).map((w) => {
+        const id =
+          w && w.scope && w.packageName
+            ? `${String(w.scope).replace(/^@/, "")}/${w.packageName}`
+            : String((w && w.package) || "").replace(/^@/, "");
+        const v = wanted.get(id);
+        return v ? { ...w, version: v } : w;
+      });
+    }
+
     const widgetPermissions = [];
     const installedWidgets = widgetRegistry
       ? widgetRegistry.getWidgets() || []

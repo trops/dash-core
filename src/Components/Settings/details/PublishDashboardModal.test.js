@@ -451,3 +451,35 @@ describe("which version a widget goes up as (DASH-22)", () => {
     expect(bump(plan("1.0.10", "1.0.9"))).toBe("none");
   });
 });
+
+describe("unpublished changes decide the version (DASH-22)", () => {
+  const row = (extra) => ({
+    callerScope: "trops",
+    widgets: [
+      {
+        scope: "trops",
+        packageName: "player",
+        publishScope: "trops",
+        packageVersion: "2.0.0",
+        registry: { exists: true, ownedByMe: true, latestVersion: "3.0.0" },
+        ...extra,
+      },
+    ],
+  });
+  const sel = (p) => seedSelections(p, "public")["trops/player"];
+  test("changed, with a newer one from elsewhere: asks, mine by default, above it", () => {
+    const s = sel(row({ changed: true, basedOn: "2.0.0" }));
+    expect(s.versionPlan).toMatchObject({ case: "conflict", version: "3.0.1" });
+    expect(s.choice).toBe("mine");
+  });
+  test("unchanged since it was published: skipped", () => {
+    const s = sel(
+      row({
+        changed: false,
+        basedOn: "3.0.0",
+        packageVersion: "3.0.0",
+      }),
+    );
+    expect(s.versionPlan).toMatchObject({ case: "unchanged", version: null });
+  });
+});

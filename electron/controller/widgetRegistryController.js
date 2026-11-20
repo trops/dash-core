@@ -995,6 +995,9 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       }
     }
 
+    // What was published, as it is now: later changes show as unpublished.
+    require("../registry/widgetPublished").writeRecord(widget.path, newVersion);
+
     return {
       success: true,
       manifest,
