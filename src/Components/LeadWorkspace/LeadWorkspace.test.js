@@ -679,6 +679,83 @@ describe("a plan in the conversation (release 3a)", () => {
     return node;
   };
 
+  test("a change to a widget, in full in the chat: what changes, how, what stays, what happens next — Yes under it (DASH-21 frame 1)", async () => {
+    const CHANGE = {
+      summary: "Make the player list fill the widget",
+      widgetChange: {
+        component: "trops.ma.Player",
+        displayName: "Music Assistant Player",
+        package: "@trops/ma",
+        mode: "update",
+        workspaceId: 7,
+      },
+      pieces: [
+        {
+          kind: "widget",
+          name: "Music Assistant Player",
+          source: "update",
+          package: "@trops/ma",
+          adds: "The player list fills the rest of the widget, with a scrollbar when it's long.",
+          notes:
+            "Only the layout changes: a full-height column; the list takes the space left.",
+          keeps: ["Default player setting", "The queue"],
+        },
+      ],
+      beforeBuilding: [],
+      checks: ["The list reaches the bottom of the widget"],
+      estimate: { build: "a few minutes" },
+    };
+    const talk = [
+      { who: "you", text: "Make the list fill the space" },
+      { ...conversation[1], plan: CHANGE },
+      conversation[2],
+    ];
+    render(
+      <LeadWorkspace request={{ key: "role:dashlead" }} onClose={jest.fn()} />,
+    );
+    askStarter();
+    act(() => {
+      mockAskProps.onStarted("q_new");
+      mockAskProps.onMessagesChange(talk);
+    });
+    let node = null;
+    act(() => {
+      node = mockAskProps.renderAfter(talk[1], 1, api);
+    });
+    const inChat = within(render(node).container).getByTestId("chat-plan");
+    expect(within(inChat).getByTestId("chat-plan-intro")).toHaveTextContent(
+      "This is exactly what the Builder will be asked to do",
+    );
+    expect(within(inChat).getByTestId("plan-detail-changes")).toHaveTextContent(
+      "What changesThe player list fills the rest of the widget",
+    );
+    expect(within(inChat).getByTestId("plan-detail-how")).toHaveTextContent(
+      "How the Builder will do itOnly the layout changes",
+    );
+    const keeps = within(inChat).getByTestId("plan-detail-keeps");
+    expect(keeps).toHaveTextContent("Stays the same · 2 things");
+    expect(keeps).toHaveTextContent("Default player setting");
+    expect(keeps).toHaveTextContent("The queue");
+    expect(within(inChat).getByTestId("plan-detail-next")).toHaveTextContent(
+      "Nothing changes on your dashboard until you say the preview looks good",
+    );
+    // The row that only pointed at what it does is gone; the sections say it.
+    expect(inChat).not.toHaveTextContent(
+      "What it does — the Builder changes it",
+    );
+    // Yes is right under it: the lead's next words carry the choices.
+    let next = null;
+    act(() => {
+      next = mockAskProps.renderAfter(talk[2], 2, api);
+    });
+    const choices = within(render(next).container).getByTestId(
+      "chat-plan-next",
+    );
+    expect(
+      within(choices).getByRole("button", { name: "Yes, change it" }),
+    ).toBeInTheDocument();
+  });
+
   test("the whole plan shows in the chat; Before it builds names who asks", async () => {
     await openWithPlan();
     const side = screen.getByTestId("workspace-side");
@@ -1796,12 +1873,15 @@ describe("release 3b: building in the conversation", () => {
     push(RUNNING);
     const c = chat();
     expect(c).toHaveTextContent("Yes, build it");
-    expect(within(c).getByTestId("workspace-build-step")).toHaveTextContent(
-      "Builder is building 2 widgets",
+    // Told as it goes (DASH-21 frame 2): the steps up front, then the one
+    // it's on — not just "I'll tell you when it's done".
+    expect(within(c).getByTestId("workspace-build-intro")).toHaveTextContent(
+      "Building it now, in",
     );
-    expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
-      "Building now",
+    expect(within(c).getByTestId("workspace-build-now")).toHaveTextContent(
+      "Builder is writing the draft",
     );
+    expect(within(c).queryByTestId("workspace-build-reply")).toBeNull();
     // The reply box says what's going on, and its Stop stops the build.
     expect(mockAskProps.working.text).toBe(
       "The team is working · the Builder is building 2 widgets",
@@ -1845,9 +1925,18 @@ describe("release 3b: building in the conversation", () => {
     await buildIt(PLAN, { onOpenDashboard });
     push(FAILED);
     let c = chat();
-    expect(within(c).getByTestId("workspace-build-reply")).toHaveTextContent(
-      "Camera strip didn't work — cameras timed out after 30s.",
+    // What happened, why, what's kept, what you can do (DASH-21 frame 3).
+    const stopped = within(c).getByTestId("workspace-build-stopped");
+    expect(stopped).toHaveTextContent("Camera strip didn't work.");
+    expect(stopped).toHaveTextContent("Cameras timed out after 30s.");
+    expect(stopped).toHaveTextContent(
+      "Everything else that could be done is done",
     );
+    expect(
+      within(stopped)
+        .getAllByTestId("workspace-build-stopped-option")
+        .map((o) => o.textContent.split(" — ")[0]),
+    ).toEqual(["Let the Builder fix it", "Change the plan", "Leave it out"]);
     fireEvent.click(
       within(c).getByRole("button", { name: "Let the Builder fix it" }),
     );

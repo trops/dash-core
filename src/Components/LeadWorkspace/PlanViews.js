@@ -48,7 +48,7 @@ import {
   yesLabel,
 } from "./workspacePlan";
 import { planTarget } from "../../utils/teamPlan";
-import { planChanges, widgetChanges } from "./planChanges";
+import { planChanges, widgetChangeDetail, widgetChanges } from "./planChanges";
 import { useDashboard } from "./useDashboard";
 import { ThemePreview } from "../AppPages/ThemePreview";
 import { ThemeModel } from "../../Models/ThemeModel";
@@ -933,6 +933,75 @@ export const BeforeItBuilds = ({ wp, readOnly = false }) => {
  * A plan for a dashboard the user has (release 3c, frame 30) shows what
  * changes: the dashboard now and after, and a row per change.
  */
+/**
+ * A change to a widget, read in full (DASH-21 frame 1): the plan's own
+ * words — what changes, how the Builder is asked to do it, what stays the
+ * same, and (before it's built) what happens next.
+ */
+const WidgetChangeDetail = ({ detail, built = false }) => {
+  const { muted, strong } = useConfigTokens();
+  const statusTokens = useStatusTokens();
+  const part = (title, body, testId) => (
+    <div className="flex flex-col gap-1" data-testid={testId}>
+      <span className={`text-sm font-semibold ${strong}`}>{title}</span>
+      {body}
+    </div>
+  );
+  const words = (t) => (
+    <span className={`text-sm whitespace-pre-wrap break-words ${strong}`}>
+      {t}
+    </span>
+  );
+  return (
+    <div className="flex flex-col gap-4" data-testid="workspace-plan-detail">
+      {detail.changes
+        ? part("What changes", words(detail.changes), "plan-detail-changes")
+        : null}
+      {detail.how
+        ? part(
+            "How the Builder will do it",
+            words(detail.how),
+            "plan-detail-how",
+          )
+        : null}
+      {detail.keeps.length
+        ? part(
+            <>
+              Stays the same{" "}
+              <span className={`font-normal ${muted}`}>
+                · {detail.keeps.length}{" "}
+                {detail.keeps.length === 1 ? "thing" : "things"}
+              </span>
+            </>,
+            <ul className="flex flex-col gap-1">
+              {detail.keeps.map((k, i) => (
+                <li
+                  key={i}
+                  className={`flex flex-row items-start gap-2 text-sm ${strong}`}
+                >
+                  <FontAwesomeIcon
+                    icon="check"
+                    className={`h-3 w-3 mt-1 flex-shrink-0 ${statusTokens.success.icon}`}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 break-words">{k}</span>
+                </li>
+              ))}
+            </ul>,
+            "plan-detail-keeps",
+          )
+        : null}
+      {!built && detail.next
+        ? part(
+            "What happens next",
+            <span className={`text-sm ${muted}`}>{detail.next}</span>,
+            "plan-detail-next",
+          )
+        : null}
+    </div>
+  );
+};
+
 export const PlanOutput = ({
   wp,
   plan: earlier = null,
@@ -1031,15 +1100,19 @@ export const PlanOutput = ({
   ];
   // A change to one widget (release 6c, frame 40): what changes on it.
   const wc = widgetChanges(plan);
+  // Read in full (DASH-21 frame 1): what changes, how, what stays, next.
+  const detail = wc && wc.fits ? widgetChangeDetail(plan) : null;
   // A change: what's added, what stays, then what to connect.
   const rows = wc
     ? [
-        ...wc.rows.map((r) =>
-          r.mark === "!"
-            ? { ...r, warn: true }
-            : r.mark === "~"
-              ? { ...r, change: true }
-              : r,
+        // The sections below say what it does; the row only pointed there.
+        ...(detail ? wc.rows.filter((r) => r.mark !== "~") : wc.rows).map(
+          (r) =>
+            r.mark === "!"
+              ? { ...r, warn: true }
+              : r.mark === "~"
+                ? { ...r, change: true }
+                : r,
         ),
         ...planned.filter((r) => r.warn),
       ]
@@ -1192,6 +1265,9 @@ export const PlanOutput = ({
           piece={themeChange(plan)}
           was={changing ? changing.raw : null}
         />
+      ) : null}
+      {detail ? (
+        <WidgetChangeDetail detail={detail} built={!!buildLine} />
       ) : null}
       {!wc && !changeOnly ? (
         <PlanReadsFrom

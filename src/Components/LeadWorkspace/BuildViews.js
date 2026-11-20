@@ -28,7 +28,10 @@ import {
   buildLogHead,
   buildLogSteps,
   buildPlanLine,
+  buildStory,
+  stopTold,
   isBuilding,
+  logDuration,
   checkLine,
   checkRows,
   heldRows,
@@ -251,6 +254,147 @@ const EndOfLine = ({ chat, build, actions }) => {
 };
 
 /**
+ * The build, told in the chat as it goes (DASH-21 frame 2): the lead's
+ * line with the steps up front, each try sent back and why and each step
+ * done — with their times — and, while it runs, the step it's on, for how
+ * long, and the Build log a click away.
+ */
+/**
+ * When it can't finish (DASH-21 frame 3): what happened, why, that nothing
+ * changed, and what the user can do — each choice explained, its button
+ * right there.
+ */
+const StopCard = ({ told, chat, build, actions }) => {
+  const { muted } = useConfigTokens();
+  const statusTokens = useStatusTokens();
+  const step = chat.failed;
+  const run = {
+    retry: () => actions.retry(step),
+    fix: () => actions.fix(step),
+    closest: () => actions.fix(step),
+    plan: actions.changePlan || null,
+    leave: () => actions.leaveOff(build.buildId, pieceKey(step)),
+    carry: actions.carryOn || null,
+  };
+  const offered = told.options.filter(
+    (o) =>
+      (o.key === "plan" ? !!actions.changePlan : true) &&
+      (o.key === "carry" ? !!actions.carryOn : true) &&
+      (o.key !== "leave" || !!actions.leaveOff),
+  );
+  return (
+    <div
+      className={`flex flex-col gap-3 rounded-xl border p-4 text-sm ${statusTokens.error.bg} ${statusTokens.error.border} ${statusTokens.error.text}`}
+      data-testid="workspace-build-stopped"
+    >
+      <span className={`font-semibold ${statusTokens.error.strongText}`}>
+        {told.title}
+      </span>
+      {told.reason ? <span>{told.reason}</span> : null}
+      {told.closest ? <span>{told.closest}</span> : null}
+      {/* What didn't match what the user chose; a bare reason is said above. */}
+      {(chat.off || []).some((o) => o && o.chose) ? (
+        <OffRows off={chat.off.filter((o) => o && o.chose)} />
+      ) : null}
+      <span className="font-semibold">{told.unchanged}</span>
+      {told.waiting ? <span>{told.waiting}</span> : null}
+      <div className="flex flex-col gap-1">
+        <span className="font-semibold">What you can do</span>
+        <ul className="flex flex-col gap-1">
+          {offered.map((o) => (
+            <li key={o.key} data-testid="workspace-build-stopped-option">
+              <span className="font-semibold">{o.label}</span> — {o.explain}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div
+        className="flex flex-row flex-wrap items-center gap-2"
+        data-testid="workspace-build-choices"
+      >
+        {offered.map((o, i) =>
+          i === 0 ? (
+            <Button key={o.key} title={o.label} onClick={run[o.key]} />
+          ) : (
+            <Button2 key={o.key} title={o.label} onClick={run[o.key]} />
+          ),
+        )}
+      </div>
+      {step && step.detail ? (
+        <span className={`text-xs ${muted}`}>
+          The Builder&apos;s own words are in the Build log.
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
+// The plain "building" line (buildChat): the story says more.
+const GENERIC_BUILDING = "Building now — I'll tell you when it's done.";
+
+const BuildStory = ({ story, leadName, live, onLog }) => {
+  const { muted, strong, hairline } = useConfigTokens();
+  const statusTokens = useStatusTokens();
+  const [tick, setTick] = useState(Date.now());
+  const running = live && story.now;
+  // One timer while it runs — not a new one each time the chat redraws.
+  const ticking = !!running;
+  useEffect(() => {
+    if (!ticking) return undefined;
+    const id = setInterval(() => setTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [ticking]);
+  const since = running && story.now.since ? Date.parse(story.now.since) : NaN;
+  return (
+    <div className="flex flex-col gap-2" data-testid="workspace-build-story">
+      <ChatMessage role="reply" label={leadName} testId="workspace-build-intro">
+        <span className="whitespace-pre-wrap">{story.intro}</span>
+      </ChatMessage>
+      {story.events.map((e, i) => (
+        <div
+          key={i}
+          className="flex flex-row items-start gap-3 text-sm"
+          data-testid="workspace-build-event"
+          data-tone={e.tone}
+        >
+          <span
+            className={`flex-shrink-0 w-10 pt-2 font-mono text-xs ${muted}`}
+          >
+            {e.time}
+          </span>
+          <span
+            className={`min-w-0 rounded-xl border px-3 py-2 ${
+              e.tone === "warn"
+                ? `${statusTokens.warning.bg} ${statusTokens.warning.border} ${statusTokens.warning.text}`
+                : `${hairline} ${strong}`
+            }`}
+          >
+            {e.text}
+          </span>
+        </div>
+      ))}
+      {running ? (
+        <div
+          className={`flex flex-row flex-wrap items-center gap-2 text-sm ${strong}`}
+          data-testid="workspace-build-now"
+        >
+          <FontAwesomeIcon icon="spinner" className="h-3 w-3 animate-spin" />
+          <span>{story.now.text}</span>
+          {Number.isNaN(since) ? null : (
+            <span className={muted}>· {logDuration(tick - since)}</span>
+          )}
+          {onLog ? (
+            <span className="ml-auto">
+              <TextLink title="Build log ›" onClick={onLog} />
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+/**
  * The build in the chat, after the message it started from: "Yes, build
  * it", the build's step line, its card, the lead's words, and — the latest
  * build of the conversation's plan — the reply choices.
@@ -300,6 +444,23 @@ export const BuildInChat = ({
     state,
   );
   const card = chat.card;
+  // The build told as it goes (DASH-21 frame 2) — its first round only:
+  // a fix after it tells its own.
+  const story = !earlier && !fix ? buildStory(state) : null;
+  const telling = !!story && isBuilding(state);
+  // It couldn't finish: said in full, with its choices (DASH-21 frame 3).
+  // Reopened after Dash closed, it's still told — what needs the build
+  // running becomes Carry on building.
+  const told =
+    current && state
+      ? stopTold(
+          restored
+            ? chatOf(build, state, { actions, cell, change, restored: false })
+            : chat,
+          state,
+          { edit: !!change, restored },
+        )
+      : null;
   // A fix came after it: what was built, as it was then — the rest is
   // under the fix.
   if (earlier) {
@@ -337,13 +498,28 @@ export const BuildInChat = ({
   return (
     <div className="flex flex-col gap-3" data-testid="workspace-build">
       {fix ? null : <ChatMessage role="you">{yes}</ChatMessage>}
+      {story ? (
+        <BuildStory
+          story={story}
+          leadName={leadName}
+          live={current}
+          onLog={actions.open ? () => actions.open("buildlog") : null}
+        />
+      ) : null}
       {state ? (
         <>
-          <BuildStepLine
-            step={chat.step}
-            onLink={actions.open ? () => actions.open("check") : null}
-          />
-          {(chat.lines || []).map((l, i) => (
+          {/* While it's told, the step line only when it links to the check
+              (what didn't match is being fixed). */}
+          {told || (telling && !(chat.step && chat.step.link)) ? null : (
+            <BuildStepLine
+              step={chat.step}
+              onLink={actions.open ? () => actions.open("check") : null}
+            />
+          )}
+          {(told || (telling && !(chat.step && chat.step.link))
+            ? []
+            : chat.lines || []
+          ).map((l, i) => (
             <BuildStepLine
               key={i}
               step={l}
@@ -370,25 +546,32 @@ export const BuildInChat = ({
               />
             </div>
           ) : null}
-          <ChatMessage
-            role="reply"
-            label={leadName}
-            testId="workspace-build-reply"
-            footer={
-              (chat.off && chat.off.length) ||
-              (current && chat.choices === "endofline") ? (
-                <div className="flex flex-col gap-3">
-                  <OffRows off={chat.off || []} />
-                  {current && chat.choices === "endofline" ? (
-                    <EndOfLine chat={chat} build={build} actions={actions} />
-                  ) : null}
-                </div>
-              ) : null
-            }
-          >
-            <span className="whitespace-pre-wrap">{chat.reply}</span>
-          </ChatMessage>
-          {current ? (
+          {/* While it's told as it goes, "I'll tell you when it's done" says
+              nothing more — anything else (a provider to connect) stays. */}
+          {told ? (
+            <StopCard told={told} chat={chat} build={build} actions={actions} />
+          ) : null}
+          {told || (telling && chat.reply === GENERIC_BUILDING) ? null : (
+            <ChatMessage
+              role="reply"
+              label={leadName}
+              testId="workspace-build-reply"
+              footer={
+                (chat.off && chat.off.length) ||
+                (current && chat.choices === "endofline") ? (
+                  <div className="flex flex-col gap-3">
+                    <OffRows off={chat.off || []} />
+                    {current && chat.choices === "endofline" ? (
+                      <EndOfLine chat={chat} build={build} actions={actions} />
+                    ) : null}
+                  </div>
+                ) : null
+              }
+            >
+              <span className="whitespace-pre-wrap">{chat.reply}</span>
+            </ChatMessage>
+          )}
+          {current && !told ? (
             <BuildChoices
               chat={chat}
               state={state}

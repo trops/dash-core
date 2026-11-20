@@ -346,6 +346,266 @@ const youWait = (s) =>
 const youAfter = (s) =>
   s.kind === "testbot" ? "after you test it" : "after you say it looks good";
 
+// What each step is, said in the chat's opening line (DASH-21 frame 2).
+const STEP_WORDS = {
+  build: "the Builder writes it",
+  check: "the Checker checks it",
+  checkbot: "the Checker checks the bot",
+  preview: "you look at a preview",
+  testbot: "you test it",
+  save: "I save it",
+  install: "I install it",
+  place: "I put it on the dashboard",
+  settings: "I set it up",
+};
+// A sentence: capitalised, ending in a full stop.
+const sentence = (t) => {
+  const x = String(t || "").trim();
+  if (!x) return "";
+  const up = `${x.charAt(0).toUpperCase()}${x.slice(1)}`;
+  return /[.!?]$/.test(up) ? up : `${up}.`;
+};
+
+/**
+ * The build, told in the chat as it goes (DASH-21 frame 2): the steps up
+ * front, then — with their times — each try sent back and exactly why, and
+ * each step done; while it runs, the step it's on and since when. The Build
+ * log keeps the detail (what each role did, tool by tool).
+ *
+ * @returns {{ intro: string, events: [{ at, time, text, tone }],
+ *   now: { text, since } | null }} — tone "warn" (sent back) or "done";
+ *   null for no build yet.
+ */
+export function buildStory(state) {
+  const steps = stepsOf(state);
+  if (!steps.length) return null;
+  const n = steps.length;
+  const pieces = new Set(steps.map((x) => x.piece).filter((p) => p != null));
+  const words = steps.map((x) => STEP_WORDS[x.kind] || null);
+  const intro =
+    pieces.size <= 1 && n <= 6 && words.every(Boolean)
+      ? `Building it now, in ${n} ${n === 1 ? "step" : "steps"}: ${andList([
+          ...new Set(words),
+        ])}. I'll tell you as each one goes.`
+      : `Building it now, in ${n} steps — the Build log on the right lists them. I'll tell you as each one goes.`;
+  const events = [];
+  steps.forEach((x) => {
+    (x.tries || []).forEach((t, i) => {
+      const why = sentence(whyOf(t));
+      events.push({
+        at: t.finishedAt || t.startedAt || "",
+        tone: "warn",
+        text:
+          x.role === "builder"
+            ? `The Builder's ${ordinal(i + 1)} draft was sent back${
+                why ? `: ${why}` : "."
+              } It's trying again — ${ordinal(i + 2)} try.`
+            : `${x.label} didn't work${why ? `: ${why}` : "."} Trying again.`,
+      });
+    });
+    if (x.status !== "done" || x.role === "you") return;
+    if (x.kind === "preview" || x.kind === "testbot") return;
+    const tries = (x.tries || []).length;
+    events.push({
+      at: x.finishedAt || "",
+      tone: "done",
+      text:
+        x.kind === "build"
+          ? tries
+            ? `The ${ordinal(tries + 1)} draft is in.`
+            : "The Builder finished the draft."
+          : x.kind === "check" || x.kind === "checkbot"
+            ? `The Checker checked ${x.kind === "checkbot" ? "the bot" : "it"} — it passed.`
+            : `${x.label} — done.`,
+    });
+  });
+  events.sort((a, b) => Date.parse(a.at || 0) - Date.parse(b.at || 0));
+  events.forEach((e) => {
+    e.time = logTime(e.at);
+  });
+  const k = steps.findIndex((x) => x.status === "running");
+  const running = k >= 0 ? steps[k] : null;
+  const who = running ? WHO[running.role] || "" : "";
+  return {
+    intro,
+    events,
+    now:
+      running && isBuilding(state)
+        ? {
+            text: `Step ${k + 1} of ${n} · ${
+              who
+                ? `${who} is ${NOW_WORDS[running.kind] || "working on it"}`
+                : running.label
+            }`,
+            since: running.startedAt || null,
+          }
+        : null,
+  };
+}
+
+/**
+ * When the build can't finish (DASH-21 frame 3): what happened, why — in
+ * the Builder's own terms — that nothing changed, and only the choices that
+ * are really there, each one explained. From buildChat's answer for a
+ * failed step (choices "failed") or the end of the line ("endofline").
+ *
+ * @param {object} chat  buildChat's result
+ * @param {{ edit?: boolean }} [opts]  a change to a widget the user has
+ * @returns {{ title, reason, unchanged, options: [{ key, label, explain }] }
+ *   | null}  key: retry | fix | closest | plan | leave | carry —
+ *   restored (Dash closed since): what needs the build running (try again,
+ *   the Builder's fix, the closest) is Carry on building instead.
+ */
+export function stopTold(chat, state, { edit = false, restored = false } = {}) {
+  const told = stopToldNow(chat, state, edit);
+  if (!told || !restored) return told;
+  const RUNS = new Set(["retry", "fix", "closest"]);
+  const kept = told.options.filter((o) => !RUNS.has(o.key));
+  return {
+    ...told,
+    options:
+      kept.length === told.options.length
+        ? kept
+        : [
+            {
+              key: "carry",
+              label: "Carry on building",
+              explain: told.closest
+                ? "Dash closed since it stopped — this picks the build up again, so it can be built the closest way."
+                : "Dash closed since it stopped — this picks the build up again, so it can be tried again or fixed.",
+            },
+            ...kept,
+          ],
+  };
+}
+
+function stopToldNow(chat, state, edit) {
+  if (!chat || (chat.choices !== "failed" && chat.choices !== "endofline"))
+    return null;
+  const step = chat.failed || null;
+  // The Builder's tries are kept on its piece's build step, whichever step
+  // ran out (usually the check after its last draft).
+  const buildStep = step
+    ? stepsOf(state).find(
+        (x) => x.kind === "build" && x.piece === step.piece,
+      ) || step
+    : null;
+  const tries = buildStep ? (buildStep.tries || []).length + 1 : 1;
+  // What didn't match what the user chose is listed under the reason.
+  const listed = (chat.off || []).some((o) => o && o.chose);
+  // Who has to connect what, for what's left (another piece).
+  const waiting = waitingFor(state).map(providerLabel);
+  const waitLine = waiting.length
+    ? `What needs ${andList(waiting)} waits for it — connect it on the right.`
+    : "";
+  const anyDone = stepsOf(state).some(
+    (x) => x.status === "done" && x.role !== "you" && x.kind !== "check",
+  );
+  const unchanged = edit
+    ? "Your widget is unchanged — nothing was installed."
+    : anyDone && chat.choices === "failed"
+      ? "Everything else that could be done is done — this part wasn't installed."
+      : "Nothing was installed.";
+  const planOption = {
+    key: "plan",
+    label: "Change the plan",
+    explain:
+      "Tell the Planner what to change — you'll see the new plan here before anything builds.",
+  };
+  if (chat.choices === "endofline") {
+    // The Builder's "can't" ("show a time for each note…"), or a
+    // sentence of its own — never a list, which is shown below instead.
+    const what =
+      step && step.endOfLine && !listed
+        ? firstLine(step.endOfLine.what).replace(/^[-•*]\s*/, "")
+        : "";
+    const cantDo = /^(it )?can't /i.test(what) || /^[a-z]/.test(what);
+    return {
+      title:
+        step && step.kind === "build"
+          ? "The Builder can't do this as planned."
+          : "It can't be done the way you chose.",
+      reason: !what
+        ? ""
+        : cantDo
+          ? sentence(`It can't ${what.replace(/^(it )?can't /i, "")}`)
+          : sentence(what),
+      unchanged,
+      waiting: waitLine,
+      closest: chat.closest
+        ? sentence(`The closest that works: ${chat.closest}`)
+        : "",
+      options: [
+        ...(chat.closest
+          ? [
+              {
+                key: "closest",
+                label: "Build it that way",
+                explain: "The Builder builds the closest that works, above.",
+              },
+            ]
+          : []),
+        planOption,
+        {
+          key: "leave",
+          label: "Stop here",
+          explain:
+            "Leave it as it is — your answers stay in this conversation.",
+        },
+      ],
+    };
+  }
+  const usedUp = !!(step && step.fixesUsedUp);
+  // Why it stopped: the failed step's own words — unless they're the
+  // list of what didn't match, shown below.
+  const reason = listed
+    ? ""
+    : sentence((step && whyOf(step)) || "it didn't finish");
+  const label = step ? nameOf(nameOf(step.label, "Build"), "Check") : "";
+  return {
+    title:
+      usedUp && step && step.piece != null && tries > 1
+        ? `The Builder couldn't make this ${edit ? "change" : "work"} in ${tries} tries.`
+        : step
+          ? `${label} didn't work.`
+          : "Part of it didn't finish.",
+    reason,
+    unchanged,
+    waiting: waitLine,
+    options: [
+      ...(step && step.canRetry
+        ? [
+            {
+              key: "retry",
+              label: "Try again",
+              explain:
+                "Run that step again — for a problem another try can get past.",
+            },
+          ]
+        : []),
+      ...(step && step.canFix
+        ? [
+            {
+              key: "fix",
+              label: "Let the Builder fix it",
+              explain: `The Builder reads what went wrong and fixes its draft, then it's checked again${
+                step.fixesLeft === 1 ? " — its last try" : ""
+              }.`,
+            },
+          ]
+        : []),
+      planOption,
+      {
+        key: "leave",
+        label: chat.leave || "Leave it out",
+        explain: edit
+          ? "Stop here — your widget stays as it was."
+          : "Carry on without it — what's built is kept.",
+      },
+    ],
+  };
+}
+
 /**
  * The log's rows. Each: { id, label, state, who, side, note, now,
  * activity: [{ time, text, tone }] (earlier tries first, tone "warn"),

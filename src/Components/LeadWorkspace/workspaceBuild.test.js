@@ -15,8 +15,10 @@ import {
   buildOptions,
   buildPlanLine,
   buildStatus,
+  buildStory,
   checkLine,
   checkRan,
+  stopTold,
   checkRows,
   isLeftOff,
   pieceKey,
@@ -914,5 +916,262 @@ describe("the Check report only once the Checker looked", () => {
     expect(checkLine(st("running"))).toBe("Checking…");
     expect(checkRan(st("failed"))).toBe(true);
     expect(checkLine(st("done"))).toBe("1 new widget checked");
+  });
+});
+
+describe("the build told in the chat (DASH-21 frame 2)", () => {
+  const at = (m, sec = 0) => new Date(2026, 10, 19, 8, m, sec).toISOString();
+  const steps = (build, check, extra = {}) => ({
+    status: "running",
+    steps: [
+      {
+        id: "build:0",
+        kind: "build",
+        piece: 0,
+        role: "builder",
+        label: "Build Player",
+        ...build,
+      },
+      {
+        id: "check:0",
+        kind: "check",
+        piece: 0,
+        role: "checker",
+        label: "Check Player",
+        ...check,
+      },
+      {
+        id: "preview:0",
+        kind: "preview",
+        piece: 0,
+        role: "you",
+        label: "Preview Player",
+        status: "waiting",
+      },
+      {
+        id: "save:0",
+        kind: "save",
+        piece: 0,
+        label: "Save Player",
+        status: "waiting",
+      },
+    ],
+    ...extra,
+  });
+  test("the steps up front, in words", () => {
+    const story = buildStory(
+      steps({ status: "running", startedAt: at(13) }, { status: "waiting" }),
+    );
+    expect(story.intro).toBe(
+      "Building it now, in 4 steps: the Builder writes it, the Checker checks it, you look at a preview and I save it. I'll tell you as each one goes.",
+    );
+    expect(story.events).toEqual([]);
+    expect(story.now).toEqual({
+      text: "Step 1 of 4 · Builder is writing the draft",
+      since: at(13),
+    });
+  });
+  test("a try sent back says why, with its time; the next draft in; the step it's on now", () => {
+    const story = buildStory(
+      steps(
+        {
+          status: "done",
+          startedAt: at(13),
+          finishedAt: at(16),
+          tries: [
+            {
+              startedAt: at(13),
+              finishedAt: at(14),
+              by: "checker",
+              error: "the list still leaves a gap at the bottom",
+            },
+          ],
+        },
+        { status: "running", startedAt: at(16) },
+      ),
+    );
+    expect(story.events.map((e) => [e.time, e.tone, e.text])).toEqual([
+      [
+        "08:14",
+        "warn",
+        "The Builder's 1st draft was sent back: The list still leaves a gap at the bottom. It's trying again — 2nd try.",
+      ],
+      ["08:16", "done", "The 2nd draft is in."],
+    ]);
+    expect(story.now.text).toBe("Step 2 of 4 · Checker is checking the draft");
+  });
+  test("done: the check passed; nothing running", () => {
+    const story = buildStory({
+      ...steps(
+        { status: "done", finishedAt: at(14) },
+        { status: "done", finishedAt: at(15) },
+      ),
+      status: "waiting-for-you",
+    });
+    expect(story.events.map((e) => e.text)).toEqual([
+      "The Builder finished the draft.",
+      "The Checker checked it — it passed.",
+    ]);
+    expect(story.now).toBeNull();
+  });
+  test("no steps yet: nothing to tell", () => {
+    expect(buildStory(null)).toBeNull();
+  });
+});
+
+describe("when it can't finish, told in full (DASH-21 frame 3)", () => {
+  const build = (extra) => ({
+    id: "build:0",
+    kind: "build",
+    piece: 0,
+    role: "builder",
+    label: "Build Latest Notes",
+    status: "failed",
+    ...extra,
+  });
+  const state = (step) => ({ status: "finished-with-problems", steps: [step] });
+  test("the Builder can't do what's planned: why, unchanged, change the plan or stop", () => {
+    const step = build({
+      endOfLine: {
+        what: "show a time for each note in the left column — Home Assistant to-do items have no created or updated time",
+        closest: null,
+      },
+    });
+    const t = stopTold(
+      { choices: "endofline", failed: step, closest: null },
+      state(step),
+      { edit: false },
+    );
+    expect(t.title).toBe("The Builder can't do this as planned.");
+    expect(t.reason).toBe(
+      "It can't show a time for each note in the left column — Home Assistant to-do items have no created or updated time.",
+    );
+    expect(t.unchanged).toBe("Nothing was installed.");
+    expect(t.options.map((o) => o.label)).toEqual([
+      "Change the plan",
+      "Stop here",
+    ]);
+    expect(t.options[0].explain).toMatch(
+      /new plan here before anything builds/,
+    );
+  });
+  test("tries used up on a change: how many, why it stopped, the widget unchanged", () => {
+    const step = build({
+      fixesUsedUp: true,
+      error: "the draft didn't pass",
+      tries: [
+        { error: "the list still leaves a gap" },
+        { error: "still a gap under the player list" },
+      ],
+    });
+    const t = stopTold(
+      { choices: "failed", failed: step, leave: "Keep the widget as it was" },
+      state(step),
+      { edit: true },
+    );
+    expect(t.title).toBe("The Builder couldn't make this change in 3 tries.");
+    // The failed step's own reason — not the try before it.
+    expect(t.reason).toBe("The draft didn't pass.");
+    expect(t.unchanged).toBe(
+      "Your widget is unchanged — nothing was installed.",
+    );
+    expect(t.options.map((o) => o.label)).toEqual([
+      "Change the plan",
+      "Keep the widget as it was",
+    ]);
+  });
+  test("only what's really there: Try again and the Builder's fix when offered", () => {
+    const step = build({
+      canRetry: true,
+      canFix: true,
+      fixesLeft: 1,
+      error: "timed out",
+    });
+    const t = stopTold({ choices: "failed", failed: step }, state(step));
+    expect(t.options.map((o) => o.key)).toEqual([
+      "retry",
+      "fix",
+      "plan",
+      "leave",
+    ]);
+    expect(t.options[1].explain).toMatch(/its last try/);
+  });
+  test("a check that ran out of tries: counted from the Builder's drafts, the check's own reason", () => {
+    const draft = build({
+      status: "done",
+      tries: [{ error: "a gap" }, { error: "still a gap" }],
+    });
+    const check = {
+      id: "check:0",
+      kind: "check",
+      piece: 0,
+      role: "checker",
+      label: "Check Latest Notes",
+      status: "failed",
+      fixesUsedUp: true,
+      error: "the list still ends above the bottom",
+    };
+    const t = stopTold(
+      { choices: "failed", failed: check, leave: "Keep the widget as it was" },
+      {
+        status: "finished-with-problems",
+        steps: [draft, check],
+        waitingFor: [],
+      },
+      { edit: true },
+    );
+    expect(t.title).toBe("The Builder couldn't make this change in 3 tries.");
+    expect(t.reason).toBe("The list still ends above the bottom.");
+  });
+
+  test("a dead end from what didn't match: no garbled reason — the list says it", () => {
+    const step = build({
+      endOfLine: {
+        what: "- Lights reads only — the user chose: switch",
+        closest: null,
+      },
+    });
+    const t = stopTold(
+      {
+        choices: "endofline",
+        failed: step,
+        off: [{ main: "Lights reads only", chose: "switch" }],
+      },
+      state(step),
+    );
+    expect(t.reason).toBe("");
+    // A sentence that isn't a "can't" stays a sentence.
+    const own = build({
+      endOfLine: { what: "Live video isn't offered by the API", closest: null },
+    });
+    expect(
+      stopTold({ choices: "endofline", failed: own }, state(own)).reason,
+    ).toBe("Live video isn't offered by the API.");
+  });
+
+  test("reopened after Dash closed: still told; what needs the build running is Carry on building", () => {
+    const step = build({
+      canRetry: true,
+      canFix: true,
+      fixesLeft: 2,
+      error: "timed out",
+    });
+    const t = stopTold({ choices: "failed", failed: step }, state(step), {
+      restored: true,
+    });
+    expect(t.title).toBe("Latest Notes didn't work.");
+    expect(t.options.map((o) => o.key)).toEqual(["carry", "plan", "leave"]);
+    // A dead end has nothing to carry on: the same choices.
+    const end = build({ endOfLine: { what: "show a time", closest: null } });
+    expect(
+      stopTold({ choices: "endofline", failed: end }, state(end), {
+        restored: true,
+      }).options.map((o) => o.key),
+    ).toEqual(["plan", "leave"]);
+  });
+
+  test("still building, or done: nothing to tell", () => {
+    expect(stopTold({ choices: "preview" }, state(build()))).toBeNull();
+    expect(stopTold(null, null)).toBeNull();
   });
 });
