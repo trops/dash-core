@@ -1627,6 +1627,7 @@ async function getDashboardPublishPlan(
         publishScope,
         changed: since.changed,
         basedOn: since.basedOn,
+        basedScope: since.basedScope,
         registry: key ? resolvedByKey.get(key) || null : null,
         // True when this widget cannot be installed as-is under its
         // local scope — the dashboard publish MUST republish it under

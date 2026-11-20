@@ -22,13 +22,18 @@ describe("changed since it was last published", () => {
     assert.deepEqual(changedSince(makePackage()), {
       changed: null,
       basedOn: null,
+      basedScope: null,
     });
   });
 
   it("published, then untouched: unchanged", () => {
     const dir = makePackage();
     writeRecord(dir, "1.0.0");
-    assert.deepEqual(changedSince(dir), { changed: false, basedOn: "1.0.0" });
+    assert.deepEqual(changedSince(dir), {
+      changed: false,
+      basedOn: "1.0.0",
+      basedScope: null,
+    });
   });
 
   it("what Dash writes itself, and builds, don't count", () => {
@@ -47,7 +52,40 @@ describe("changed since it was last published", () => {
       path.join(dir, "widgets", "Hello.js"),
       "export default 2;",
     );
-    assert.deepEqual(changedSince(dir), { changed: true, basedOn: "1.0.0" });
+    assert.equal(changedSince(dir).changed, true);
+  });
+
+  it("a hand edit to package.json counts; the version and scanned fields don't", () => {
+    const dir = makePackage();
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "@a/b", version: "1.0.0", description: "x" }),
+    );
+    writeRecord(dir, "1.0.0", "@a");
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({
+        name: "@a/b",
+        version: "1.0.1",
+        description: "x",
+        dependencies: { lodash: "4" },
+        dash: { permissions: { mcp: {} } },
+      }),
+    );
+    assert.deepEqual(changedSince(dir), {
+      changed: false,
+      basedOn: "1.0.0",
+      basedScope: "a",
+    });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({
+        name: "@a/b",
+        version: "1.0.1",
+        description: "new words",
+      }),
+    );
+    assert.equal(changedSince(dir).changed, true);
   });
 
   it("the record is a dot file, so it's never zipped into a publish", () => {

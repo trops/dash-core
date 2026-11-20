@@ -676,12 +676,12 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
       getPackageInfo,
       publishVersion,
     } = require("../registry/registryPackages");
-    const registryInfo = options.version
-      ? null
-      : await getPackageInfo(
-          `@${resolvedScope}/${parsedName.name || pkgJson.name}`,
-        ).catch(() => null);
-    if (options.keepIfPublished && !options.version) {
+    // Asked even with a version given: one already taken (a retry in the
+    // same dialog) goes up as the next free one instead of failing.
+    const registryInfo = await getPackageInfo(
+      `@${resolvedScope}/${parsedName.name || pkgJson.name}`,
+    ).catch(() => null);
+    if (options.keepIfPublished) {
       const was = pkgJson.version || "1.0.0";
       const kept = publishVersion(
         resolveNextVersion(was, options),
@@ -798,12 +798,9 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
     let newVersion = resolveNextVersion(previousVersion, options);
     // The registry keeps each version once (DASH-22): one it already has
     // goes up as the next free one (a kept one was skipped above).
-    let versionTaken = null;
-    if (!options.version) {
-      const chosen = publishVersion(newVersion, registryInfo);
-      versionTaken = chosen.taken || null;
-      newVersion = chosen.version;
-    }
+    const chosen = publishVersion(newVersion, registryInfo);
+    const versionTaken = chosen.taken || null;
+    newVersion = chosen.version;
     if (newVersion !== previousVersion) {
       pkgJson.version = newVersion;
       // Persist the bump to BOTH metadata files when present — NOT one or the
@@ -996,7 +993,11 @@ async function prepareWidgetForPublish(appId, packageId, options = {}) {
     }
 
     // What was published, as it is now: later changes show as unpublished.
-    require("../registry/widgetPublished").writeRecord(widget.path, newVersion);
+    require("../registry/widgetPublished").writeRecord(
+      widget.path,
+      newVersion,
+      resolvedScope,
+    );
 
     return {
       success: true,

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from "react";
 import { AllowRemixOption, allowRemixOption } from "./AllowRemixOption";
 import {
   newerVersion,
+  nextAbove,
   versionLine,
   widgetVersionPlan,
 } from "./publishVersions";
@@ -128,12 +129,23 @@ export function seedSelections(plan, dashboardVisibility) {
           : "patch",
       // Which version it goes up as, told by whether this copy changed
       // since it was last published or installed (publishVersions.js).
-      versionPlan: widgetVersionPlan({
-        mine: w.packageVersion || w.localVersion,
-        latest: reg?.exists ? reg.latestVersion || null : null,
-        changed: w.changed === undefined ? null : w.changed,
-        basedOn: w.basedOn || null,
-      }),
+      // Registry state unknown (its lookup failed): no plan — the publish
+      // asks the registry itself, as before.
+      versionPlan: reg
+        ? widgetVersionPlan({
+            mine: w.packageVersion || w.localVersion,
+            latest: reg.exists ? reg.latestVersion || null : null,
+            changed: w.changed === undefined ? null : w.changed,
+            basedOn: w.basedOn || null,
+            sameAccount:
+              !w.basedScope ||
+              !w.publishScope ||
+              String(w.basedScope).replace(/^@/, "") ===
+                String(w.publishScope).replace(/^@/, ""),
+          })
+        : null,
+      // Its visibility now: a change to it means publishing.
+      visibilityWas: reg?.visibility || null,
       // A newer one in the registry: publish mine above it, or keep theirs.
       choice: "mine",
       // Per-widget visibility inherits dashboard visibility by default
@@ -552,7 +564,23 @@ export const PublishDashboardModal = ({
         const step = steps[i];
         updateStep(i, { status: "running" });
 
-        const vp = step.kind === "widget" ? step.selection.versionPlan : null;
+        let vp = step.kind === "widget" ? step.selection.versionPlan : null;
+        // Unchanged, but new defaults or a new visibility were chosen here:
+        // those go up as the next version.
+        if (
+          vp &&
+          vp.case === "unchanged" &&
+          ((defaultsOverrides[step.packageId] &&
+            Object.keys(defaultsOverrides[step.packageId]).length) ||
+            (step.selection.visibilityWas &&
+              step.selection.visibility !== step.selection.visibilityWas))
+        ) {
+          vp = {
+            ...vp,
+            case: "changed",
+            version: nextAbove(vp.basedOn, vp.latest),
+          };
+        }
         // Unchanged, or the registry's newer one kept: not published again;
         // the dashboard uses the version that's there (DASH-22).
         if (
@@ -613,8 +641,28 @@ export const PublishDashboardModal = ({
             return;
           }
           const v = res.newVersion || res.manifest?.version;
-          // The dashboard points at the version that just went up.
-          if (v) widgetVersions[step.key] = v;
+          // The dashboard points at the version that just went up — and a
+          // retry here knows it's published now.
+          if (v) {
+            widgetVersions[step.key] = v;
+            const key = step.key;
+            setDepSelections((cur) =>
+              cur[key]
+                ? {
+                    ...cur,
+                    [key]: {
+                      ...cur[key],
+                      versionPlan: {
+                        case: "unchanged",
+                        version: null,
+                        latest: v,
+                        basedOn: v,
+                      },
+                    },
+                  }
+                : cur,
+            );
+          }
           updateStep(i, {
             status: "complete",
             message: res.skipped

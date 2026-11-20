@@ -66,4 +66,24 @@ describe("which version a widget goes up as (DASH-22)", () => {
       widgetVersionPlan({ mine: "2.0.0", latest: "3.0.0", changed: null }),
     ).toMatchObject({ case: "conflict", version: "3.0.1" });
   });
+
+  test("unchanged only when it can be trusted: another account, or a version the registry no longer has, go up", () => {
+    expect(
+      widgetVersionPlan({
+        mine: "1.0.0",
+        latest: "1.0.0",
+        changed: false,
+        basedOn: "1.0.0",
+        sameAccount: false,
+      }),
+    ).toMatchObject({ case: "changed", version: "1.0.1" });
+    expect(
+      widgetVersionPlan({
+        mine: "1.0.5",
+        latest: "1.0.3",
+        changed: false,
+        basedOn: "1.0.5",
+      }),
+    ).toMatchObject({ case: "changed", version: "1.0.6" });
+  });
 });

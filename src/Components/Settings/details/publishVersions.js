@@ -44,12 +44,19 @@ export function nextAbove(a, b) {
  *   basedOn: string|null }} w — mine: this copy's version; latest: the
  *   registry's newest (null: not there); changed: since last published or
  *   installed (null: can't tell, so treated as changed); basedOn: the
- *   version this copy came from.
+ *   version this copy came from; sameAccount: that was published to the
+ *   account publishing now.
  * @returns {{ case: "new"|"unchanged"|"changed"|"conflict", version:
  *   string|null, latest: string|null, basedOn: string }} — version: what
  *   goes up (the "mine" choice for a conflict), null when it's skipped.
  */
-export function widgetVersionPlan({ mine, latest, changed, basedOn }) {
+export function widgetVersionPlan({
+  mine,
+  latest,
+  changed,
+  basedOn,
+  sameAccount = true,
+}) {
   const base = basedOn || mine || "1.0.0";
   if (!latest) {
     return {
@@ -59,7 +66,9 @@ export function widgetVersionPlan({ mine, latest, changed, basedOn }) {
       basedOn: base,
     };
   }
-  if (changed === false) {
+  // Unchanged only when what it came from is this account's, and not newer
+  // than the registry has (a version since deleted, say): else it goes up.
+  if (changed === false && sameAccount && !newerVersion(base, latest)) {
     return { case: "unchanged", version: null, latest, basedOn: base };
   }
   return {

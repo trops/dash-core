@@ -1655,6 +1655,7 @@ class WidgetRegistry {
         require("./registry/widgetPublished").writeRecord(
           widgetPath,
           (record && record.version) || (config && config.version) || null,
+          (String(widgetName).match(/^@([^/]+)\//) || [])[1] || null,
         );
       }
 
