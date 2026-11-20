@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useContext } from "react";
 import { AllowRemixOption, allowRemixOption } from "./AllowRemixOption";
 import {
+  newerVersion,
+  nextAbove,
+  versionLine,
+  widgetVersionPlan,
+} from "./publishVersions";
+import {
   ThemeContext,
   FontAwesomeIcon,
   Modal,
@@ -10,6 +16,7 @@ import {
   Button3,
   Tag3,
   Checkbox,
+  SegmentedControl,
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
@@ -80,21 +87,6 @@ function collectComponentConfigs() {
   return componentConfigs;
 }
 
-// Whether version a is newer than b ("1.0.10" > "1.0.9").
-function newerVersion(a, b) {
-  const p = (v) =>
-    String(v || "")
-      .split(/[.-]/)
-      .slice(0, 3)
-      .map((n) => Number(n) || 0);
-  const x = p(a);
-  const y = p(b);
-  for (let i = 0; i < 3; i++) {
-    if (x[i] !== y[i]) return x[i] > y[i];
-  }
-  return false;
-}
-
 // Build default per-dependency selections. Owned dependencies default
 // to "include + patch bump" unless the local version is newer than what's
 // in the registry (then "include + use local"). Third-party refs get a
@@ -135,6 +127,27 @@ export function seedSelections(plan, dashboardVisibility) {
         newerVersion(w.packageVersion || w.localVersion, reg.latestVersion)
           ? "none"
           : "patch",
+      // Which version it goes up as, told by whether this copy changed
+      // since it was last published or installed (publishVersions.js).
+      // Registry state unknown (its lookup failed): no plan — the publish
+      // asks the registry itself, as before.
+      versionPlan: reg
+        ? widgetVersionPlan({
+            mine: w.packageVersion || w.localVersion,
+            latest: reg.exists ? reg.latestVersion || null : null,
+            changed: w.changed === undefined ? null : w.changed,
+            basedOn: w.basedOn || null,
+            sameAccount:
+              !w.basedScope ||
+              !w.publishScope ||
+              String(w.basedScope).replace(/^@/, "") ===
+                String(w.publishScope).replace(/^@/, ""),
+          })
+        : null,
+      // Its visibility now: a change to it means publishing.
+      visibilityWas: reg?.visibility || null,
+      // A newer one in the registry: publish mine above it, or keep theirs.
+      choice: "mine",
       // Per-widget visibility inherits dashboard visibility by default
       visibility: reg?.visibility || dashboardVisibility || "public",
     };
@@ -544,17 +557,55 @@ export const PublishDashboardModal = ({
       });
     };
 
+    // A widget not published again: the version the dashboard uses.
+    const widgetVersions = {};
     try {
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
         updateStep(i, { status: "running" });
 
+        let vp = step.kind === "widget" ? step.selection.versionPlan : null;
+        // Unchanged, but new defaults or a new visibility were chosen here:
+        // those go up as the next version.
+        if (
+          vp &&
+          vp.case === "unchanged" &&
+          ((defaultsOverrides[step.packageId] &&
+            Object.keys(defaultsOverrides[step.packageId]).length) ||
+            (step.selection.visibilityWas &&
+              step.selection.visibility !== step.selection.visibilityWas))
+        ) {
+          vp = {
+            ...vp,
+            case: "changed",
+            version: nextAbove(vp.basedOn, vp.latest),
+          };
+        }
+        // Unchanged, or the registry's newer one kept: not published again;
+        // the dashboard uses the version that's there (DASH-22).
+        if (
+          vp &&
+          (vp.case === "unchanged" ||
+            (vp.case === "conflict" && step.selection.choice === "theirs"))
+        ) {
+          widgetVersions[step.key] =
+            vp.case === "unchanged" ? vp.basedOn : vp.latest;
+          updateStep(i, {
+            status: "complete",
+            message: versionLine(vp, step.selection.choice),
+          });
+          continue;
+        }
         if (step.kind === "widget") {
           const bump = step.selection.bump;
           const options = {
-            // Kept at its version: one the registry already has isn't sent
-            // again — the dashboard uses what's there (DASH-22).
-            ...(bump && bump !== "none" ? { bump } : { keepIfPublished: true }),
+            // The version it goes up as — above everything published
+            // (publishVersions.js); without a plan, as before.
+            ...(vp
+              ? { version: vp.version }
+              : bump && bump !== "none"
+                ? { bump }
+                : { keepIfPublished: true }),
             visibility: step.selection.visibility,
             // Plumb the publisher's display name through to the widget
             // publish call so the manifest — and the rewritten dash.json
@@ -590,6 +641,28 @@ export const PublishDashboardModal = ({
             return;
           }
           const v = res.newVersion || res.manifest?.version;
+          // The dashboard points at the version that just went up — and a
+          // retry here knows it's published now.
+          if (v) {
+            widgetVersions[step.key] = v;
+            const key = step.key;
+            setDepSelections((cur) =>
+              cur[key]
+                ? {
+                    ...cur,
+                    [key]: {
+                      ...cur[key],
+                      versionPlan: {
+                        case: "unchanged",
+                        version: null,
+                        latest: v,
+                        basedOn: v,
+                      },
+                    },
+                  }
+                : cur,
+            );
+          }
           updateStep(i, {
             status: "complete",
             message: res.skipped
@@ -630,6 +703,8 @@ export const PublishDashboardModal = ({
             visibility,
             ...allowRemixOption(allowRemix),
             componentConfigs: collectComponentConfigs(),
+            // Widgets not published again: the version each one uses.
+            ...(Object.keys(widgetVersions).length ? { widgetVersions } : {}),
             // Thread the bump through. "none" means keep the current
             // version (caller should pass nothing). Any other value
             // goes to resolveNextVersion backend-side.
@@ -1522,6 +1597,43 @@ function DependencyTable({ plan, selections, onChange }) {
                   )}
                 </div>
 
+                {/* Which version it goes up as, and why (DASH-22): unchanged,
+                    changed, or a newer one in the registry to choose about. */}
+                {kind === "widget" &&
+                sel.owned &&
+                sel.include &&
+                sel.versionPlan ? (
+                  <div
+                    className="mt-2 flex flex-col gap-2 text-xs"
+                    data-testid="publish-version-plan"
+                    data-case={sel.versionPlan.case}
+                  >
+                    {sel.versionPlan.case === "conflict" ? (
+                      <span className="font-semibold">
+                        {`The registry has a newer version than yours: yours started from ${sel.versionPlan.basedOn}, and ${sel.versionPlan.latest} was published from somewhere else. Dash can't combine them.`}
+                      </span>
+                    ) : null}
+                    {sel.versionPlan.case === "conflict" ? (
+                      <SegmentedControl
+                        ariaLabel="Which version"
+                        value={sel.choice || "mine"}
+                        onChange={(v) => onChange(key, { choice: v })}
+                        options={[
+                          {
+                            value: "mine",
+                            label: `Publish mine as ${sel.versionPlan.version}`,
+                          },
+                          {
+                            value: "theirs",
+                            label: `Keep ${sel.versionPlan.latest}`,
+                          },
+                        ]}
+                      />
+                    ) : null}
+                    <span>{versionLine(sel.versionPlan, sel.choice)}</span>
+                  </div>
+                ) : null}
+
                 {/* Bundled widgets (only for widget packages) */}
                 {kind === "widget" && widgetNames && widgetNames.length > 0 && (
                   <div className="text-[11px] opacity-60 mt-1">
@@ -1534,22 +1646,24 @@ function DependencyTable({ plan, selections, onChange }) {
                 {/* Edit controls (owned only) */}
                 {sel.owned && sel.include && (
                   <div className="mt-2 flex items-center gap-3 flex-wrap">
-                    <label className="text-xs opacity-60 flex items-center gap-2">
-                      Bump
-                      <select
-                        value={sel.bump}
-                        onChange={(e) =>
-                          onChange(key, { bump: e.target.value })
-                        }
-                        className="text-xs bg-gray-800 border border-white/10 rounded px-2 py-1"
-                      >
-                        {BUMP_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    {kind === "widget" && sel.versionPlan ? null : (
+                      <label className="text-xs opacity-60 flex items-center gap-2">
+                        Bump
+                        <select
+                          value={sel.bump}
+                          onChange={(e) =>
+                            onChange(key, { bump: e.target.value })
+                          }
+                          className="text-xs bg-gray-800 border border-white/10 rounded px-2 py-1"
+                        >
+                          {BUMP_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <label className="text-xs opacity-60 flex items-center gap-2">
                       Visibility
                       <select

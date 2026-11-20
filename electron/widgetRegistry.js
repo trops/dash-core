@@ -1649,6 +1649,15 @@ class WidgetRegistry {
         widgetPath,
         false,
       );
+      // Installed from the registry: this is that version, unchanged — so
+      // Publish can tell later whether it was changed here (DASH-22).
+      if (fromRegistry) {
+        require("./registry/widgetPublished").writeRecord(
+          widgetPath,
+          (record && record.version) || (config && config.version) || null,
+          (String(widgetName).match(/^@([^/]+)\//) || [])[1] || null,
+        );
+      }
 
       if (autoRegister) {
         await this.loadWidgetComponents(widgetName, widgetPath);
