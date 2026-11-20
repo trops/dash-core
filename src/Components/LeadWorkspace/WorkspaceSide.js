@@ -9,7 +9,6 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { DashTeamApprovals } from "../Bots/DashTeamApprovals";
 import { readableRequest } from "./handoffSteps";
 import { OutputCard, PlanOutput } from "./PlanViews";
 import { BotTestOutput } from "./BotTestOutput";
@@ -160,7 +159,6 @@ export const WorkspaceSide = ({
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   const statusTokens = useStatusTokens();
-  const members = (contact && contact.members) || [];
   const runs = useRuns(
     contact && contact.kind === "bot" ? contact.botId : null,
   );
@@ -201,9 +199,6 @@ export const WorkspaceSide = ({
     (s) => s.status !== "asking" && s.answer && !s.plan && !s.nothing,
   );
   const isBot = contact && contact.kind === "bot";
-  const approvalBots = contact
-    ? [{ id: contact.botId, name: contact.name }, ...members]
-    : [];
   const status = buildState ? buildStatus(buildState, leftOff) : null;
   // A new widget waiting for your look (frame 31).
   const previewStep =
@@ -442,8 +437,6 @@ export const WorkspaceSide = ({
           </div>
         </div>
       ) : null}
-
-      <DashTeamApprovals compact bots={approvalBots} />
 
       {previewStep && previewStep.kind === "testbot" ? (
         <OutputCard
