@@ -191,6 +191,39 @@ export function withStopped(messages, prefix) {
   return hit ? next : messages;
 }
 
+/**
+ * A lead asked from outside the app (an MCP task or question), as its
+ * conversation: what was asked, the lead's hand-offs (its saved calls and
+ * results, made into steps the way the live stream is — plan and all) and
+ * its answer. Steps left asking once the run ended are stopped.
+ *
+ * @param {{ from?, status?, events?, answer?, error? }} bg  the run, as kept
+ * @param {string} asked  what was asked
+ * @param {string} leadName
+ */
+export function backgroundMessages(bg, asked, leadName = "") {
+  const b = bg || {};
+  let messages = [
+    { who: "you", text: String(asked || ""), via: b.from || "mcp" },
+  ];
+  for (const event of Array.isArray(b.events) ? b.events : []) {
+    const step = stepFromCall(event);
+    messages = step ? [...messages, step] : withResult(messages, event);
+  }
+  const ended = !!b.status && b.status !== "running";
+  if (ended) messages = withStopped(messages);
+  const answer = String(b.answer || "").trim();
+  if (answer) {
+    messages = [...messages, { who: "lead", by: leadName, text: answer }];
+  } else if (ended && b.error) {
+    messages = [
+      ...messages,
+      { who: "lead", by: leadName, text: `I couldn't finish this: ${b.error}` },
+    ];
+  }
+  return messages;
+}
+
 function firstLine(text) {
   const line = String(text || "")
     .split("\n")

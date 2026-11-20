@@ -55,6 +55,29 @@ function titleFor(entry) {
  *   built     a question's build (lead workspace, release 3b): its status,
  *             as above, or null
  */
+/**
+ * The plan in a kept run (an MCP task): the last hand-off answer holding one,
+ * as { plan, madeAt } — like a workspace plan — or null.
+ */
+function keptPlan(bg, at) {
+  const { extractPlan } = require("./teamPlan");
+  const results = (bg.events || []).filter(
+    (e) => e && e.type === "tool_result" && !e.isError,
+  );
+  for (let i = results.length - 1; i >= 0; i--) {
+    let plan = null;
+    try {
+      plan = extractPlan(String(results[i].output || ""));
+    } catch (_e) {
+      plan = null;
+    }
+    if (plan && Array.isArray(plan.pieces) && plan.pieces.length) {
+      return { plan, madeAt: at || null };
+    }
+  }
+  return null;
+}
+
 /** A plan's name: its layout's, the dashboard it changes, its one piece's, or its summary. */
 function planNameOf(plan) {
   const pieces = Array.isArray(plan && plan.pieces) ? plan.pieces : [];
@@ -147,10 +170,17 @@ function summarize(entry) {
   if (out.kind === "question") {
     const messages = (entry.conversation && entry.conversation.messages) || [];
     const last = messages[messages.length - 1];
+    // A lead run kept from outside the app (an MCP task), not opened yet:
+    // its answer and plan come from the run as kept.
+    const bg =
+      !messages.length && entry.conversation && entry.conversation.background;
     // Messages are { who: "you" | "planner" | "lead" | "role" | "note", text }.
-    out.status =
-      last &&
-      (last.who === "planner" || last.who === "lead" || last.who === "role")
+    out.status = bg
+      ? bg.answer
+        ? "answered"
+        : "asked"
+      : last &&
+          (last.who === "planner" || last.who === "lead" || last.who === "role")
         ? "answered"
         : "asked";
     // Asked of a team lead (5e-2a) or a Dash team role: its name, for the row.
@@ -164,7 +194,9 @@ function summarize(entry) {
         ? `lead:${to.botId}`
         : `role:${(to && to.role) || "planner"}`;
     // A conversation with a plan in it (release 3a): Recents tag it "Plan".
-    const wp = entry.conversation && entry.conversation.workspacePlan;
+    const wp =
+      (entry.conversation && entry.conversation.workspacePlan) ||
+      (bg ? keptPlan(bg, entry.updatedAt) : null);
     out.planned = !!(wp && wp.plan);
     // For the notifications panel (release 4): the plan's name, and when it
     // came in.
@@ -365,6 +397,19 @@ class CreateRecent {
     const blob = this._read();
     const marked = [];
     for (const e of Object.values(blob.entries)) {
+      // A lead run kept from outside the app, cut off by the restart.
+      const bg = e.conversation && e.conversation.background;
+      if (bg && bg.status === "running") {
+        e.conversation = {
+          ...e.conversation,
+          background: {
+            ...bg,
+            status: "interrupted",
+            error: bg.error || "Dash closed before the team finished.",
+          },
+        };
+        marked.push(e.id);
+      }
       const st = e.build && e.build.state;
       if (!st || !BUSY.has(st.status)) continue;
       e.build.state = {
@@ -374,7 +419,7 @@ class CreateRecent {
           s.status === "running" ? { ...s, status: "waiting" } : s,
         ),
       };
-      marked.push(e.id);
+      if (!marked.includes(e.id)) marked.push(e.id);
     }
     if (marked.length) this._write(blob);
     return marked;

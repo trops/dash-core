@@ -693,3 +693,48 @@ describe("CreateRecent — a removed build isn't waiting for anything", () => {
     assert.equal(r.list()[0].waitingTest, undefined);
   });
 });
+
+describe("a lead run kept from outside the app (an MCP task)", () => {
+  const { summarize, CreateRecent } = require("./createRecent");
+  const bg = (extra) => ({
+    id: "plan_x",
+    kind: "question",
+    prompt: "Make more bots",
+    updatedAt: "2026-11-20T09:00:00Z",
+    conversation: {
+      recipient: { botId: "lead_w", leadName: "Woodworking Projects Lead" },
+      background: {
+        status: "completed",
+        answer: "The plan is ready.",
+        events: [
+          { type: "tool_call", id: "t1", name: "team_ask_dash_team" },
+          {
+            type: "tool_result",
+            id: "t1",
+            output:
+              '<plan>{"summary":"Two bots","pieces":[{"kind":"bot","name":"Lumber","source":"new"}]}</plan>',
+          },
+        ],
+        ...extra,
+      },
+    },
+  });
+  it("Recent and Needs you see its answer and its plan before it's opened", () => {
+    const out = summarize(bg());
+    assert.equal(out.status, "answered");
+    assert.equal(out.planned, true);
+    assert.equal(out.with, "lead:lead_w");
+    assert.equal(summarize(bg({ answer: "" })).status, "asked");
+  });
+  it("a restart cuts it off: interrupted, not answering forever", () => {
+    let blob = { entries: { plan_x: bg({ status: "running", answer: "" }) } };
+    const r = new CreateRecent({
+      persistence: { read: () => blob, write: (b) => (blob = b) },
+    });
+    assert.deepEqual(r.markInterrupted(), ["plan_x"]);
+    assert.equal(
+      blob.entries.plan_x.conversation.background.status,
+      "interrupted",
+    );
+  });
+});
