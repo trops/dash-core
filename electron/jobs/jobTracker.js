@@ -26,6 +26,8 @@ const SETTLE_MS = 2000;
 const MAX_STEPS = 100;
 const MAX_TITLE = 200;
 const MAX_SUMMARY = 600;
+// What was asked, kept so the job can be run again.
+const MAX_REQUEST = 4000;
 
 const ACTIVE = new Set(["queued", "running", "checking"]);
 const WAITING = new Set(["queued", "needs-you"]);
@@ -166,6 +168,7 @@ function createJobTracker({
     leadId = null,
     leadName = "",
     title = "",
+    request = "",
     startedBy = { kind: "you" },
     conversationId = null,
   } = {}) {
@@ -176,6 +179,7 @@ function createJobTracker({
       leadId: leadId || null,
       leadName: leadName || "",
       title: clip(title, MAX_TITLE) || "A job",
+      request: String(request || title || "").slice(0, MAX_REQUEST),
       startedBy: { kind: "you", ...startedBy },
       conversationId: conversationId || null,
       status: "running",

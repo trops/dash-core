@@ -83,6 +83,7 @@ const JOBS = [
   },
   {
     id: "job_c",
+    request: "Write today's brief from my inbox.",
     workspaceId: "2",
     leadId: "lead2",
     leadName: "Brief Lead",
@@ -125,6 +126,10 @@ function withApi(jobs = JOBS) {
         return { ok: true };
       }),
       resumeBot: jest.fn(async (id) => calls.resume.push(id)),
+      askLead: jest.fn(async (id, q) => {
+        calls.asked = [id, q];
+        return { status: "completed" };
+      }),
       onJobsChanged: jest.fn(() => "1"),
       removeListener: jest.fn(),
     },
@@ -278,5 +283,40 @@ describe("useJobs", () => {
     await waitFor(() =>
       expect(window.mainApi.bots.listJobs).toHaveBeenCalledTimes(2),
     );
+  });
+});
+
+describe("Search and Run again", () => {
+  it("search finds jobs by what was asked or a bot in them", async () => {
+    withApi();
+    render(<JobsPage workspaces={WORKSPACES} />);
+    await screen.findAllByTestId("job-row");
+    fireEvent.change(screen.getByPlaceholderText("Search jobs…"), {
+      target: { value: "inbox reader" },
+    });
+    const rows = await screen.findAllByTestId("job-row");
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByText("Daily brief")).toBeInTheDocument();
+  });
+
+  it("a failed job runs again: its lead is asked the same thing", async () => {
+    const calls = withApi();
+    render(<JobsPage workspaces={WORKSPACES} />);
+    fireEvent.click(await screen.findByText("Daily brief"));
+    fireEvent.click(await screen.findByRole("button", { name: "Run again" }));
+    await waitFor(() =>
+      expect(calls.asked).toEqual([
+        "lead2",
+        "Write today's brief from my inbox.",
+      ]),
+    );
+    expect(screen.getByText(/starting on it again/)).toBeInTheDocument();
+  });
+
+  it("a running job can't be run again", async () => {
+    withApi();
+    render(<JobsPage workspaces={WORKSPACES} />);
+    await screen.findByTestId("job-detail");
+    expect(screen.queryByRole("button", { name: "Run again" })).toBeNull();
   });
 });

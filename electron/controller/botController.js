@@ -2301,7 +2301,8 @@ const botController = {
       );
     }
     if (limit > 0) list = list.slice(0, limit);
-    return list.map((j) => ({
+    // What was asked is left out too (getJob has it).
+    return list.map(({ request, ...j }) => ({
       ...j,
       steps: (j.steps || []).map(({ summary, ...st }) =>
         st.status === "needs-you" ? { ...st, summary } : st,
@@ -2322,6 +2323,7 @@ const botController = {
       leadId: task.leadId,
       leadName: lead.name || task.teamName || "",
       title: task.task,
+      request: task.task,
       startedBy: {
         kind: "task",
         label: task.from || "MCP",
@@ -4094,6 +4096,7 @@ const botController = {
         leadId: bot.id,
         leadName: bot.name,
         title: String(opts.jobTitle || opts.prompt || "").split("\n")[0],
+        request: String(opts.jobTitle || opts.prompt || ""),
         startedBy: jobStartedBy(opts),
         conversationId: opts.conversationId || null,
       }).id;
