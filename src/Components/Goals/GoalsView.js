@@ -1,10 +1,20 @@
 import React, { useEffect, useState } from "react";
-import { Button3, SegmentedControl } from "@trops/dash-react";
+import { SegmentedControl } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useGoal, useGoals } from "../../hooks/useGoals";
 import { GoalRow } from "./GoalRow";
 import { GoalDetail } from "./GoalDetail";
 import { goalBucket, goalCounts, shownGoals } from "./goalText";
+import { useJobs } from "../../hooks/useJobs";
+import { JobDetail, JobRow } from "../Jobs/JobsPage";
+
+// A job's status as the tab's filters see it.
+const jobBucket = (j) =>
+  j.status === "needs-you"
+    ? "needs-you"
+    : j.status === "running"
+      ? "working"
+      : "done";
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -14,9 +24,10 @@ const FILTERS = [
 ];
 
 /**
- * GoalsView — a dashboard's Goals tab (goals-ledger PRD, frames 1, 2 and 4):
- * everything its bots are working on, one row per goal. Selecting a goal
- * opens it beside the list.
+ * GoalsView — a dashboard's Jobs tab (goals-ledger PRD, DASH-31): its jobs
+ * through its team lead, each a chain of bots, and checked runs that aren't
+ * part of one (a bot with checks on a schedule). Selecting one opens it
+ * beside the list.
  */
 export const GoalsView = ({
   workspace,
@@ -28,7 +39,13 @@ export const GoalsView = ({
   const workspaceId = workspace ? workspace.id : null;
   // Not jobs that followed a flow (flows are gone, DASH-13).
   const { goals: allGoals, loading } = useGoals(workspaceId);
-  const goals = shownGoals(allGoals);
+  const { jobs, loading: jobsLoading } = useJobs(workspaceId, { limit: 300 });
+  // A checks job that's a stage of one of these shows there instead.
+  const inJobs = new Set(
+    jobs.flatMap((j) => (j.steps || []).map((st) => st.goalId).filter(Boolean)),
+  );
+  const goals = shownGoals(allGoals).filter((g) => !inJobs.has(g.id));
+  const [jobId, setJobId] = useState(null);
   const [filter, setFilter] = useState("all");
   // A job opened from elsewhere ({ goalId, seq }: a lead's check card).
   const [selectedId, setSelectedId] = useState(
@@ -44,12 +61,35 @@ export const GoalsView = ({
   }, [openGoal && openGoal.seq, openGoal && openGoal.goalId]);
   const { goal: opened } = useGoal(selectedId);
   const counts = goalCounts(goals);
+  for (const j of jobs) {
+    const b = jobBucket(j);
+    counts[b] = (counts[b] || 0) + 1;
+  }
+  counts.all = (counts.all || 0) + jobs.length;
   const shown =
     filter === "all" ? goals : goals.filter((g) => goalBucket(g) === filter);
+  const shownJobs =
+    filter === "all" ? jobs : jobs.filter((j) => jobBucket(j) === filter);
   // Open only while it's in the list shown (a filter can hide it).
-  const selected = selectedId && shown.some((g) => g.id === selectedId);
+  const selectedJob = jobId ? shownJobs.find((j) => j.id === jobId) : null;
+  // A checks job opened from elsewhere (See checks) shows even when it's
+  // listed as a stage of its job rather than a row of its own.
+  const selected =
+    !selectedJob &&
+    selectedId &&
+    (shown.some((g) => g.id === selectedId) ||
+      (filter === "all" && inJobs.has(selectedId)));
+  const pick = (kind, id) => {
+    if (kind === "job") {
+      setJobId((cur) => (cur === id ? null : id));
+      setSelectedId(null);
+    } else {
+      setSelectedId((cur) => (cur === id ? null : id));
+      setJobId(null);
+    }
+  };
 
-  if (!loading && !goals.length) {
+  if (!loading && !jobsLoading && !goals.length && !jobs.length) {
     return (
       <div
         data-testid="goals-view"
@@ -58,26 +98,12 @@ export const GoalsView = ({
         <div
           className={`flex flex-col gap-1.5 p-4 rounded-lg border border-dashed ${hairline}`}
         >
-          <span className="text-sm font-semibold">No jobs right now</span>
+          <span className="text-sm font-semibold">No jobs yet</span>
           <span className={`text-sm ${muted}`}>
-            A job is one run of a bot that has checks, followed until its work
-            passes them and is handed on. Bots without checks don't make jobs.
+            When you ask this dashboard's team lead for something — here or as a
+            task over MCP — its job shows here: each bot that works on it, until
+            it's done.
           </span>
-          {workspace ? (
-            <div className="pt-1">
-              <Button3
-                title="Add checks to a bot"
-                size="sm"
-                onClick={() =>
-                  window.dispatchEvent(
-                    new CustomEvent("dash:open-bots-view", {
-                      detail: { workspaceId: workspace.id },
-                    }),
-                  )
-                }
-              />
-            </div>
-          ) : null}
         </div>
       </div>
     );
@@ -90,8 +116,8 @@ export const GoalsView = ({
     >
       <div className="flex-shrink-0 flex flex-row flex-wrap items-center gap-3">
         <span className={`text-sm flex-1 min-w-0 ${muted}`}>
-          Everything this dashboard's bots are working on. Each job keeps its
-          tasks, runs and proof together.
+          Everything this dashboard's bots are working on: each job its team
+          lead started, bot by bot, and checked runs on their own.
         </span>
         <SegmentedControl
           ariaLabel="Show"
@@ -109,24 +135,46 @@ export const GoalsView = ({
           role="list"
           aria-label="Jobs"
           className={`min-h-0 overflow-y-auto flex flex-col gap-2 ${
-            selected ? "w-96 flex-shrink-0" : "flex-1"
+            selected || selectedJob ? "w-96 flex-shrink-0" : "flex-1"
           }`}
         >
+          {shownJobs.map((j) => (
+            <JobRow
+              key={j.id}
+              job={j}
+              now={now}
+              active={j.id === jobId}
+              onClick={() => pick("job", j.id)}
+            />
+          ))}
+          {shown.length && shownJobs.length ? (
+            <span
+              className={`text-xs font-semibold uppercase tracking-wider px-1 pt-2 ${muted}`}
+            >
+              Checked runs
+            </span>
+          ) : null}
           {shown.map((g) => (
             <GoalRow
               key={g.id}
               goal={g}
               now={now}
               active={g.id === selectedId}
-              onClick={() =>
-                setSelectedId((cur) => (cur === g.id ? null : g.id))
-              }
+              onClick={() => pick("goal", g.id)}
             />
           ))}
-          {!shown.length && !loading ? (
+          {!shown.length && !shownJobs.length && !loading ? (
             <span className={`text-sm px-2 py-1 ${muted}`}>No jobs here.</span>
           ) : null}
         </div>
+        {selectedJob ? (
+          <div
+            data-testid="job-detail-pane"
+            className={`flex-1 min-w-0 min-h-0 overflow-y-auto pl-4 border-l ${hairline}`}
+          >
+            <JobDetail key={selectedJob.id} job={selectedJob} />
+          </div>
+        ) : null}
         {selected ? (
           <div
             data-testid="goal-detail-pane"

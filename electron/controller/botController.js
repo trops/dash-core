@@ -300,6 +300,9 @@ const MAX_SAMPLE_BYTES = 512 * 1024;
 
 // ---- Jobs (DASH-28, DASH-31): who or what started a step ------------------
 
+// "Delete finished jobs after 90 days", when the user turns it on.
+const OLD_JOB_DAYS = 90;
+
 /** "bot:local/designer[b1].completed" → "Completed". */
 function eventWord(eventType) {
   const last =
@@ -692,6 +695,14 @@ const botController = {
         }),
     });
     this._jobs.interruptLeftovers();
+    // Only if the user asked: finished jobs older than 90 days, now and
+    // once a day.
+    this._clearOldJobs();
+    if (this._clearJobsTimer) clearInterval(this._clearJobsTimer);
+    this._clearJobsTimer = setInterval(() => this._clearOldJobs(), 86400000);
+    if (typeof this._clearJobsTimer.unref === "function") {
+      this._clearJobsTimer.unref();
+    }
 
     this._runner = new BotRunner({
       engines,
@@ -1078,6 +1089,7 @@ const botController = {
           summary: paused
             ? `${bot.name} is paused, so it hasn't started. Turn it on and it starts.`
             : `${bot.name} is over its budget, so it hasn't started.`,
+          waiting: paused ? "paused" : "budget",
         });
       }
     }
@@ -2274,9 +2286,27 @@ const botController = {
 
   // ---- Jobs (DASH-28, DASH-31) --------------------------------------------
 
-  /** Jobs, newest change first — one dashboard's with workspaceId. */
-  listJobs({ workspaceId = null } = {}) {
-    return this._jobs ? this._jobs.list({ workspaceId }) : [];
+  /**
+   * Jobs, newest change first — one dashboard's with workspaceId; `open`:
+   * only those still going (the nav's count); `limit`: at most that many.
+   * Steps come without what each bot said (getJob has it), except a step
+   * waiting on the user, so a long history stays light.
+   */
+  listJobs({ workspaceId = null, open = false, limit = null } = {}) {
+    if (!this._jobs) return [];
+    let list = this._jobs.list({ workspaceId });
+    if (open) {
+      list = list.filter(
+        (j) => j.status === "running" || j.status === "needs-you",
+      );
+    }
+    if (limit > 0) list = list.slice(0, limit);
+    return list.map((j) => ({
+      ...j,
+      steps: (j.steps || []).map(({ summary, ...st }) =>
+        st.status === "needs-you" ? { ...st, summary } : st,
+      ),
+    }));
   },
 
   getJob(jobId) {
@@ -2325,6 +2355,20 @@ const botController = {
     const job = this._jobs.get(jobId);
     const ws = bot && bot.workspaceId != null ? String(bot.workspaceId) : null;
     return job && job.workspaceId === ws ? jobId : null;
+  },
+
+  /**
+   * When the user turned on "Delete finished jobs after 90 days": those
+   * that ended longer ago go. Never otherwise (DASH-31).
+   */
+  _clearOldJobs() {
+    if (!this._jobs || !this._store.getSettings().clearOldJobs) return 0;
+    const cutoff = new Date(Date.now() - OLD_JOB_DAYS * 86400000).toISOString();
+    const n = this._jobs.clearEndedBefore(cutoff);
+    if (n) {
+      this._broadcast(BOT_JOBS_CHANGED, { jobId: null, status: "cleared" });
+    }
+    return n;
   },
 
   /** Resolves with the job once its whole chain has finished. */
@@ -2397,10 +2441,20 @@ const botController = {
   },
 
   setBotSettings(patch) {
-    const { autoLeads, dashTeam, background, startAtLogin, keepAwake, ai } =
-      patch || {};
+    const {
+      autoLeads,
+      dashTeam,
+      background,
+      startAtLogin,
+      keepAwake,
+      ai,
+      clearOldJobs,
+    } = patch || {};
     const next = {};
     if (autoLeads !== undefined) next.autoLeads = !!autoLeads;
+    // Delete finished jobs after 90 days — off unless the user turns it on
+    // (DASH-31): jobs are their history, on their computer.
+    if (clearOldJobs !== undefined) next.clearOldJobs = !!clearOldJobs;
     if (background !== undefined) next.background = !!background;
     if (startAtLogin !== undefined) next.startAtLogin = !!startAtLogin;
     if (keepAwake !== undefined) next.keepAwake = !!keepAwake;
@@ -2415,6 +2469,7 @@ const botController = {
       next.ai = mergeAiSettings(this._store.getSettings().ai, ai);
     }
     const saved = this._store.setSettings(next);
+    if (next.clearOldJobs) this._clearOldJobs();
     // A model change shows wherever the team is listed (which model ran it).
     if ((ai !== undefined || dashTeam !== undefined) && this._notifyListChanged)
       this._notifyListChanged();

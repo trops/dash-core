@@ -223,17 +223,12 @@ test("Delete job asks first, then removes it", async () => {
   await waitFor(() => expect(rows()).toHaveLength(2));
 });
 
-test("a dashboard with no jobs says how they get here", async () => {
+test("a dashboard with no jobs says how they get here (DASH-31)", async () => {
   render(<GoalsView workspace={{ id: 99 }} />);
-  expect(await screen.findByText("No jobs right now")).toBeInTheDocument();
+  expect(await screen.findByText("No jobs yet")).toBeInTheDocument();
   expect(
-    screen.getByText(/A job is one run of a bot that has checks/),
+    screen.getByText(/When you ask this dashboard's team lead for something/),
   ).toBeInTheDocument();
   // No flows any more (DASH-13).
   expect(screen.queryByText(/flow/i)).toBeNull();
-  const seen = jest.fn();
-  window.addEventListener("dash:open-bots-view", seen);
-  fireEvent.click(screen.getByRole("button", { name: "Add checks to a bot" }));
-  window.removeEventListener("dash:open-bots-view", seen);
-  expect(seen.mock.calls[0][0].detail).toEqual({ workspaceId: 99 });
 });

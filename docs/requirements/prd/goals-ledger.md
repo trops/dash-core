@@ -84,7 +84,7 @@ Bots hand work to each other through events and loose results. Nothing records w
 
 ## Jobs: one chain of work through a lead (DASH-28, DASH-31)
 
-**Status:** Part 1 (tracking, MCP) implemented 2026-11-21; part 2 (Jobs page, the strip in a lead's conversation) next. Mockup: claude.ai artifact Rkz38aQKw6La19LVpoaZtw (approved 2026-11-21).
+**Status:** Implemented 2026-11-21 — part 1 (tracking, MCP; core 0.1.945, app v0.0.1125) and part 2 (the Jobs page, the strip, the opt-in clear). Mockup: claude.ai artifact Rkz38aQKw6La19LVpoaZtw (approved 2026-11-21).
 
 **Problem.** A job used to exist only for a bot with checks. A bot without checks handed its answer straight to the next bot, and nothing showed that the chain ran or finished. `give_task` was "done" when the lead answered, while bots it had set off were still working.
 
@@ -97,7 +97,14 @@ Bots hand work to each other through events and loose results. Nothing records w
 - [x] AC5: `give_task` makes its job before the lead starts, and the task stays `running` until the job ends; `get_task_status` lists the steps and what's still going. A job that fails fails the task, naming the bot. A lead that never started stops its job.
 - [x] AC6: A lead asking a bot that a hand-on in the same job already started waits for that run's answer instead of hearing "busy".
 - [x] AC7: Jobs are kept on the user's computer until the user deletes them; nothing is deleted on its own. After a restart, what was still going is stopped and says Dash closed.
-- [ ] AC8 (part 2): A Jobs page in the left nav, across every dashboard, with how many are running; filters; a job's timeline; the strip under a lead's answer while its job runs; the dashboard's Jobs tab showing its jobs. An opt-in setting to clear old jobs.
+- [x] AC8 (part 2): A Jobs page in the left nav, across every dashboard, with how many are running (amber when one needs you); status and dashboard filters; a job's timeline with Turn on, See checks, Open conversation, Stop job and Delete. The strip under a lead's answer follows its job and opens it. A dashboard's Jobs tab shows its jobs and the checked runs that aren't part of one. Settings › General › Jobs: "Delete finished jobs after 90 days", off unless turned on.
+
+**Implementation notes (part 2).**
+- `src/Components/Jobs/` (jobText; JobsPage with JobRow and JobDetail; JobStrip) and `src/hooks/useJobs.js` (useJobs with open, limit and skip; useJobCounts; useJob).
+- The `jobs` nav item in appPages, its count colour through DashSidebar's `pageTone`; DashboardStage's counts and the `dash:open-page {page: "jobs", jobId}` link (it closes the lead's conversation).
+- GoalsView lists the dashboard's jobs and hides checks jobs that are a stage of one (See checks still opens them).
+- GeneralSection's Jobs group; backend `listJobs` light rows, the `clearOldJobs` setting, `jobTracker.clearEndedBefore`, a step's `waiting` (paused or budget).
+- Checked live: asked a lead in its conversation; the strip ran to Done; See the job opened it on the Jobs page; the dashboard's Jobs tab listed it.
 
 **Implementation notes (part 1).**
 - `electron/jobs/jobStore.js` (one sealed file per job under `userData/jobs`), `jobTracker.js` (start, steps, settle, wait for the end, restart cleanup).
@@ -112,3 +119,4 @@ Bots hand work to each other through events and loose results. Nothing records w
 |---|---|
 | 2026-11-16 | Created for DASH-2 (phase 1). |
 | 2026-11-21 | Jobs as chains through a lead (DASH-28, DASH-31), part 1. |
+| 2026-11-21 | Part 2: the Jobs page, the strip, the opt-in clear (DASH-31). |

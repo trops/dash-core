@@ -208,6 +208,23 @@ export const GeneralSection = ({ onOpenSection = null }) => {
         </SettingsGroup>
       ) : null}
 
+      {botSettings ? (
+        // Jobs are the user's history: kept unless they choose (DASH-31).
+        <SettingsGroup title="Jobs">
+          <SettingRow
+            label="Delete finished jobs after 90 days"
+            description="Off: every job stays in Jobs until you delete it. On: jobs that finished more than 90 days ago are deleted, once a day."
+            testId="general-section-clear-old-jobs-row"
+          >
+            <Switch
+              checked={botSettings.clearOldJobs === true}
+              onChange={(value) => changeBotSetting("clearOldJobs", value)}
+              ariaLabel="Delete finished jobs after 90 days"
+            />
+          </SettingRow>
+        </SettingsGroup>
+      ) : null}
+
       <SettingsGroup title="Data directory">
         <SettingRow
           label="Application data"

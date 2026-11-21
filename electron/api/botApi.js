@@ -373,9 +373,12 @@ const botApi = {
   listMcpTasks: (workspaceId = null, limit = 20) =>
     ipcRenderer.invoke(BOTS_LIST_MCP_TASKS, { workspaceId, limit }),
   // ---- Jobs: each chain of work through a team lead (DASH-28, DASH-31) ----
-  /** Jobs, newest change first; one dashboard's with workspaceId. */
-  listJobs: (workspaceId = null) =>
-    ipcRenderer.invoke(BOTS_LIST_JOBS, { workspaceId }),
+  /**
+   * Jobs, newest change first; one dashboard's with workspaceId. Options:
+   * `open` — only those still going; `limit` — at most that many.
+   */
+  listJobs: (workspaceId = null, { open = false, limit = null } = {}) =>
+    ipcRenderer.invoke(BOTS_LIST_JOBS, { workspaceId, open, limit }),
   /** One job with its steps, or null. */
   getJob: (jobId) => ipcRenderer.invoke(BOTS_GET_JOB, { jobId }),
   /** Stop every bot still running in the job. */

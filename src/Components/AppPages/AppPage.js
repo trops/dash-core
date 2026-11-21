@@ -8,6 +8,7 @@ import { WidgetsPage } from "./WidgetsPage";
 import { ThemesPage } from "./ThemesPage";
 import { ProvidersSection } from "../Settings/sections/ProvidersSection";
 import { IssuesPage } from "../Issues/IssuesPage";
+import { JobsPage } from "../Jobs/JobsPage";
 
 // New Dashboard, New Widget and New Bot open a new Dash Lead conversation
 // about making one (lead-workspace release 6c, frame 41); the other pages
@@ -50,6 +51,8 @@ export const AppPage = ({
   widgetLink = null,
   // Issues deep link { issueId, nonce } (a widget's problems chip).
   issueLink = null,
+  // Jobs deep link { jobId, nonce } (a lead's strip, DASH-31).
+  jobLink = null,
   workspaces = [],
   menuItems = [],
   dashApi = null,
@@ -144,6 +147,8 @@ export const AppPage = ({
         {...createProps}
       />
     );
+  } else if (section === "jobs") {
+    body = <JobsPage workspaces={workspaces} jobLink={jobLink} />;
   } else if (section === "issues") {
     body = (
       <IssuesPage
