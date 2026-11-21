@@ -183,6 +183,10 @@ function buildTeamManifest({
         model: bot.model || null,
         engine: bot.engine || null,
         approvalPolicy: bot.approvalPolicy || "ask",
+        // Only when it has fewer than all of them (DASH-27).
+        ...(["none", "read-only"].includes(bot.builtinTools)
+          ? { builtinTools: bot.builtinTools }
+          : {}),
         schedules: (bot.schedules || [])
           .filter((s) => s && typeof s.cron === "string")
           .map((s) => ({ cron: s.cron, prompt: s.prompt || "" })),
@@ -441,6 +445,9 @@ function validateTeamManifest(input) {
           model: e.model || null,
           engine: e.engine || null,
           approvalPolicy: e.approvalPolicy || "ask",
+          ...(["none", "read-only"].includes(e.builtinTools)
+            ? { builtinTools: e.builtinTools }
+            : {}),
           schedules: schedules.map((s) => ({
             cron: s && s.cron,
             prompt: (s && s.prompt) || "",
@@ -666,6 +673,10 @@ function planTeamInstall(
           model: provider ? e.model : null,
           engine: e.engine,
           approvalPolicy: IMPORT_APPROVAL_POLICY,
+          // Fewer built-ins as the file says; never more (DASH-27).
+          ...(["none", "read-only"].includes(e.builtinTools)
+            ? { builtinTools: e.builtinTools }
+            : {}),
           workspaceId,
           mcpServers,
           toolSelections,

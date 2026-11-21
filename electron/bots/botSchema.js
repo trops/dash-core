@@ -19,6 +19,8 @@ const SCHEMA_VERSION = 1;
 // "ask": ask before tools that aren't read-only; "ask-every": ask before
 // every tool; "allow": never ask.
 const APPROVAL_POLICIES = new Set(["ask", "ask-every", "allow"]);
+// What a bot may do on the computer itself (DASH-27). Left out → "all".
+const BUILTIN_TOOLS = new Set(["none", "read-only", "all"]);
 const WHILE_PAUSED = new Set(["queue", "drop"]);
 // A trigger's "Then ask it to" note (TEAM-014).
 const MAX_NOTE = 2000;
@@ -129,6 +131,13 @@ function validateBotDefinition(def) {
     errors.push(
       `approvalPolicy must be one of ${[...APPROVAL_POLICIES].join(", ")}`,
     );
+  }
+  if (
+    def.builtinTools !== undefined &&
+    def.builtinTools !== null &&
+    !BUILTIN_TOOLS.has(def.builtinTools)
+  ) {
+    errors.push(`builtinTools must be one of ${[...BUILTIN_TOOLS].join(", ")}`);
   }
   if (!WHILE_PAUSED.has(def.whilePaused)) {
     errors.push(`whilePaused must be one of ${[...WHILE_PAUSED].join(", ")}`);

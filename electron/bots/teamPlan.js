@@ -709,6 +709,15 @@ function validatePlan(plan, context = {}) {
           `${at}.runLimits should be { steps, minutes } with positive numbers — the defaults are kept.`,
         );
       }
+      // Its built-in tools (DASH-27).
+      if (
+        p.builtinTools !== undefined &&
+        !["none", "read-only", "all"].includes(p.builtinTools)
+      ) {
+        warnings.push(
+          `${at}.builtinTools should be "none", "read-only" or "all" — it's left as "all".`,
+        );
+      }
       // Made-up preview data (5d): never blocks building — the preview
       // only shows short text lines.
       if (

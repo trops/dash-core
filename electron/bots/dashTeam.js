@@ -39,12 +39,20 @@ const PLAN_FORMAT_BEFORE_DASH26 =
 // A bot's approval policy and run limits in the plan (DASH-26). The plan
 // format above is kept as it was, so older Planner bots' copies of it can
 // still be taken out of their instructions (history).
-const PLAN_FORMAT = PLAN_FORMAT_BEFORE_DASH26.replace(
+const PLAN_FORMAT_DASH26 = PLAN_FORMAT_BEFORE_DASH26.replace(
   '"showResults": boolean,',
   '"showResults": boolean, "approvalPolicy": "ask" | "ask-every" | "allow", "runLimits": {"steps": number, "minutes": number},',
 );
-const BOT_SETTINGS =
+const BOT_SETTINGS_DASH26 =
   'When the user says how a new bot may act or how long a run may take, set its approvalPolicy ("allow": uses its tools without asking when it runs on its own — what its lead asks it still asks first; "ask": asks before anything that changes things; "ask-every": asks before every tool) and runLimits (steps, minutes); they are saved on the bot as planned. New bots are saved paused until the user turns them on: say so in the summary.';
+// A bot's built-in tools in the plan (DASH-27), and "allow" now covering what
+// its lead asks, except tools that delete or send (DASH-29).
+const PLAN_FORMAT = PLAN_FORMAT_DASH26.replace(
+  '"runLimits": {"steps": number, "minutes": number},',
+  '"runLimits": {"steps": number, "minutes": number}, "builtinTools": "none" | "read-only" | "all",',
+);
+const BOT_SETTINGS =
+  'When the user says how a new bot may act or how long a run may take, set its approvalPolicy ("allow": uses its tools without asking; when its lead asks it, tools that delete or send, file changes, shell commands and web fetches still ask first; "ask": asks before anything that changes things; "ask-every": asks before every tool) and runLimits (steps, minutes); they are saved on the bot as planned. builtinTools is what it may do on the computer itself: "none" (only its providers\' tools — the choice for a bot that only works through its providers), "read-only" (read and search files) or "all" (also write files and run shell commands); say "none" unless its job needs files. New bots are saved paused until the user turns them on: say so in the summary.';
 
 // Plans that change a dashboard the user already has (create-entry 5e-2b).
 // As it was before the Create window was retired (lead-workspace release 6c).
@@ -352,6 +360,27 @@ const ROLES = [
         NEW_THEMES,
         CHANGE_A_WIDGET,
         SHOW_A_BOT,
+        BOT_PLACEMENT,
+        SHARED_RULES,
+      ].join("\n\n"),
+      // Before a bot's built-in tools were in the plan (DASH-27, DASH-29).
+      [
+        PLANNER_INTRO,
+        PLANNER_TASK,
+        PLANNER_QUESTIONS,
+        PROVIDER_CHOICE,
+        OPEN_CHOICES,
+        TYPED_DEFAULTS,
+        REUSED_PROVIDERS,
+        WIDGET_SPEC,
+        PLANNER_ONLY_ROLE,
+        PLAN_FORMAT_DASH26,
+        LAYOUT_RULES,
+        EXISTING_DASHBOARDS,
+        NEW_THEMES,
+        CHANGE_A_WIDGET,
+        SHOW_A_BOT,
+        BOT_SETTINGS_DASH26,
         BOT_PLACEMENT,
         SHARED_RULES,
       ].join("\n\n"),

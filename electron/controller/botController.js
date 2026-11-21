@@ -285,6 +285,7 @@ const {
   builtinAllowed,
   forgetBuiltinGrant,
   forgetFolders,
+  changeProviderGrant,
   alwaysAllowedRows,
   webFetchTarget,
 } = require("../bots/rememberGrant");
@@ -3337,6 +3338,9 @@ const botController = {
             serverName: req.serverName,
             toolName: req.toolName,
             args: req.input,
+            // "Anywhere in the provider's files" instead of this folder
+            // (DASH-30).
+            ...(decision.scope === "provider" ? { scope: "provider" } : {}),
           },
           { isWriteTool, pathArgKeys: PATH_ARG_KEYS, dirname: path.dirname },
         );
@@ -3470,6 +3474,31 @@ const botController = {
           botId,
           tool: row.tool,
           provider: row.kind === "builtin" ? null : row.provider,
+        });
+      }
+    }
+    return this.listAlwaysAllowed(botId);
+  },
+
+  /**
+   * Widen or narrow what a provider's remembered tools cover, or allow all
+   * of them ahead of time (DASH-30, DASH-29): `action` is "anywhere",
+   * "folders" or "all-tools" (changeProviderGrant). Only on a provider the
+   * bot uses. Returns the new list.
+   */
+  changeAlwaysAllowed(botId, { provider, action } = {}) {
+    const bot = this._store && this._store.get(botId);
+    const uses =
+      bot && Array.isArray(bot.mcpServers) && bot.mcpServers.includes(provider);
+    if (uses) {
+      const current = grantStore.getGrant(botId);
+      const next = changeProviderGrant(current, provider, action);
+      if (next !== current && grantStore.setGrant(botId, next) === true) {
+        this._logAudit({
+          type: "grant-saved",
+          botId,
+          tool: action === "all-tools" ? "*" : null,
+          provider,
         });
       }
     }
@@ -3782,6 +3811,9 @@ const botController = {
       continueSession: !!opts.continueSession,
       // A plan build's own team runs: no prompts (the plan was the consent).
       approvalPolicy: opts.approvalPolicy || undefined,
+      // A run its team lead started: tools that delete or send still ask
+      // (DASH-29).
+      ...(opts.leadRequest ? { leadRequest: true } : {}),
       // A hand-off while the user is still planning: answers only — none
       // of the tools that change things (no approvals to wait on).
       ...(opts.adviseOnly ? { adviseOnly: true } : {}),

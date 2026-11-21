@@ -85,6 +85,10 @@ function publishedBot(bot) {
     publishes: b.publishes || [],
     // How it's wired and when it asks — part of what a package carries.
     approvalPolicy: b.approvalPolicy || null,
+    // Only when set, so bots without it keep the fingerprint they had.
+    ...(["none", "read-only"].includes(b.builtinTools)
+      ? { builtinTools: b.builtinTools }
+      : {}),
     subscriptions: b.subscriptions || [],
   };
 }

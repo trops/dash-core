@@ -53,4 +53,21 @@ describe("approvalPreview", () => {
     expect(approvalPreview({ toolName: "x", input: {} })).toBeNull();
     expect(approvalPreview(null)).toBeNull();
   });
+
+  it("a provider tool given only a path says it's a file or a folder (DASH-30)", () => {
+    expect(
+      approvalPreview({
+        toolName: "save_model",
+        input: { path: "Walnut U Desk/Walnut U Desk.shz" },
+      }),
+    ).toEqual({
+      label: "File",
+      text: "Walnut U Desk/Walnut U Desk.shz",
+      note: null,
+    });
+    expect(
+      approvalPreview({ toolName: "list_dir", input: { path: "Projects" } })
+        .label,
+    ).toBe("Folder");
+  });
 });

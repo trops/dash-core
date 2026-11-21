@@ -265,3 +265,55 @@ describe('createRequestPermission — "allow" policy (every engine)', () => {
     assert.equal(d.allow, false);
   });
 });
+
+describe("createRequestPermission — a run its lead started (DASH-29)", () => {
+  const risky = (name) => /delete|send/.test(name);
+
+  it('"allow" runs what neither deletes nor sends without a prompt', async () => {
+    const { requestPermission, approvals, audit } = setup({
+      approvalPolicy: "allow",
+      leadRequest: true,
+      deletesOrSends: risky,
+    });
+    const d = await requestPermission("mcp__github__create_issue", {});
+    assert.equal(d.allow, true);
+    assert.equal(approvals.length, 0);
+    assert.equal(audit[0].outcome, "policy-allow");
+  });
+
+  it("a tool that deletes or sends asks", async () => {
+    const { requestPermission, approvals, resolveApproval } = setup({
+      approvalPolicy: "allow",
+      leadRequest: true,
+      deletesOrSends: risky,
+    });
+    const pending = requestPermission("mcp__github__delete_repo", {});
+    await new Promise((r) => setImmediate(r));
+    assert.equal(approvals.length, 1);
+    assert.equal(approvals[0].toolName, "mcp__github__delete_repo");
+    resolveApproval({ allow: false, reason: "no" });
+    assert.equal((await pending).allow, false);
+  });
+
+  it("…unless the user chose to always allow it", async () => {
+    const { requestPermission, approvals } = setup({
+      approvalPolicy: "allow",
+      leadRequest: true,
+      deletesOrSends: risky,
+      allowedTools: ["mcp__github__delete_repo"],
+    });
+    const d = await requestPermission("mcp__github__delete_repo", {});
+    assert.equal(d.allow, true);
+    assert.equal(approvals.length, 0);
+  });
+
+  it("the bot's own run isn't held back", async () => {
+    const { requestPermission, approvals } = setup({
+      approvalPolicy: "allow",
+      deletesOrSends: risky,
+    });
+    const d = await requestPermission("mcp__github__delete_repo", {});
+    assert.equal(d.allow, true);
+    assert.equal(approvals.length, 0);
+  });
+});

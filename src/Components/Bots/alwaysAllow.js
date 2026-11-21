@@ -34,6 +34,41 @@ export function webFetchTarget(request) {
   }
 }
 
+// The path arguments the gate checks (electron/mcp/permissionGate.js).
+const PATH_ARG_KEYS = ["path", "uri", "filepath", "file", "directory"];
+const LISTING_TOOL = /(list|director|tree|search)/i;
+
+/**
+ * A provider tool's path, and the folder Always allow would remember for
+ * it (as electron/bots/rememberGrant.js does) — or null when the call has
+ * no path (DASH-30). A file at the top of the provider's files is
+ * remembered as that file.
+ */
+export function pathTarget(request) {
+  const r = request || {};
+  if (!r.serverName || !r.input || typeof r.input !== "object") return null;
+  const key = PATH_ARG_KEYS.find(
+    (k) => typeof r.input[k] === "string" && r.input[k],
+  );
+  if (!key) return null;
+  const value = r.input[key];
+  if (key === "directory" || LISTING_TOOL.test(String(r.toolName || ""))) {
+    return { key, value, folder: value, isFile: false };
+  }
+  const clean = value.replace(/\\/g, "/").replace(/\/+$/, "");
+  const cut = clean.lastIndexOf("/");
+  const parent = cut > 0 ? clean.slice(0, cut) : "";
+  // At the top ("notes.md", "./notes.md", "C:\notes.md"): only the file.
+  return parent && parent !== "." && !/^[A-Za-z]:$/.test(parent)
+    ? { key, value, folder: parent, isFile: false }
+    : { key, value, folder: value, isFile: true };
+}
+
+/** "Sawhorse's files". */
+export function providerFiles(serverName) {
+  return `${serverName}'s files`;
+}
+
 /** Can this ask be answered with Always allow? */
 export function canAlwaysAllow(request) {
   const r = request || {};
@@ -129,6 +164,17 @@ export function pageReach(url) {
   return `${pageText(url)} — and any page on this site it redirects to`;
 }
 
+// ", anywhere in Sawhorse's files" / " in Walnut U Desk" — for a provider
+// tool with a path; "" otherwise. Folders are kept per provider, so
+// anywhere covers each of its tools the bot always uses there.
+function pathWhere(request, scope) {
+  const p = pathTarget(request);
+  if (!p) return "";
+  if (scope === "provider")
+    return `, anywhere in ${providerFiles(request.serverName)} (its other always-allowed ${request.serverName} tools too)`;
+  return p.isFile ? ` on ${p.folder} only` : ` in ${p.folder}`;
+}
+
 /** What Always allow means, under the buttons. */
 export function alwaysAllowLine(request, scope = "site") {
   const r = request || {};
@@ -141,7 +187,8 @@ export function alwaysAllowLine(request, scope = "site") {
     return `Always allow: this bot ${what} without asking, every run. You can take it back in its settings.`;
   }
   const on = r.serverName ? ` on ${r.serverName}` : "";
-  return `Always allow: this bot uses ${toolWords(r.toolName)}${on} without asking, every run. You can take it back in its settings.`;
+  const where = pathWhere(r, scope);
+  return `Always allow: this bot uses ${toolWords(r.toolName)}${on} without asking${where}, every run. You can take it back in its settings.`;
 }
 
 /** The card after Always allow: what was saved. */
@@ -155,7 +202,8 @@ export function savedText(request, botName, scope = "site") {
       : `${who} reads pages on ${pageText(web.site)} without asking, from now on. Other sites still ask.`;
   }
   const on = r.serverName ? ` on ${r.serverName}` : "";
-  return `${who} uses ${toolWords(r.toolName)}${on} without asking, from now on. It still asks before anything else you haven't allowed.`;
+  const where = pathWhere(r, scope);
+  return `${who} uses ${toolWords(r.toolName)}${on} without asking${where}, from now on. It still asks before anything else you haven't allowed.`;
 }
 
 /** One row of a bot's "Runs without asking": its name and what it covers. */
@@ -169,11 +217,21 @@ export function grantRowText(row) {
         : `Pages on ${pageText(g.site)}`,
     };
   }
+  const folders = [...new Set(g.folders || [])];
   return {
-    name: `${toolWords(g.tool)} · ${g.provider}`,
-    scope:
-      g.folders && g.folders.length
-        ? `In ${g.folders.join(", ")}`
+    name:
+      g.tool === "*"
+        ? `All its tools · ${g.provider}`
+        : `${toolWords(g.tool)} · ${g.provider}`,
+    scope: isAnywhere(g)
+      ? `Anywhere in ${providerFiles(g.provider)}`
+      : folders.length
+        ? `In ${folders.join(", ")}`
         : "Every run, without asking",
   };
+}
+
+/** Does a provider row cover anywhere in its files (DASH-30)? */
+export function isAnywhere(row) {
+  return !!(row && (row.folders || []).includes("."));
 }

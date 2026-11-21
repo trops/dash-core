@@ -675,13 +675,21 @@ export function planSubLine(
  */
 // How a planned new bot acts, as the plan says (DASH-26).
 const POLICY_WORDS = {
-  // Its lead's requests still ask (DASH-29).
-  allow: "uses its tools without asking when it runs on its own",
+  // What its lead asks still asks before deleting or sending (DASH-29).
+  allow:
+    "uses its tools without asking, except deleting or sending when its lead asks",
   ask: "asks before it changes anything",
   "ask-every": "asks before every tool",
 };
+// Its built-in tools, as the plan says (DASH-27).
+const BUILTIN_WORDS = {
+  none: "no built-in tools",
+  "read-only": "reads files, can't change them",
+  all: "can use files and shell commands",
+};
 function newBotLine(p) {
   const parts = [];
+  if (BUILTIN_WORDS[p.builtinTools]) parts.push(BUILTIN_WORDS[p.builtinTools]);
   if (POLICY_WORDS[p.approvalPolicy])
     parts.push(POLICY_WORDS[p.approvalPolicy]);
   const lim = p.runLimits || {};

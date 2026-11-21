@@ -4,8 +4,9 @@
  * answer. Pure: botController injects the runner.
  *
  * Safety: the lead only passes requests on, and its words can be steered by
- * team data (email text, other bots' answers), so a bot run this way always
- * asks the user before anything that changes things (approvalPolicy "ask";
+ * team data (email text, other bots' answers). A bot run this way keeps its
+ * own approval policy, within its providers' tools, but tools that delete or
+ * send still ask the user first, even under "allow" (leadRequest, DASH-29;
  * tools the user chose to always allow stay allowed). A lead asked a
  * question from outside Dash (via "mcp") can't run its bots at all; a task
  * given via MCP and confirmed with the user's passphrase can (TEAM-016).
@@ -67,10 +68,9 @@ async function askTeamBot({
       prompt: `${request}\n\n(Asked by ${lead.name}, the team lead, for the user — answer for them.)`,
       trigger: "ask",
       via: `lead:${lead.id}`,
-      // Asks before anything that changes things, whatever the bot's own
-      // setting — the request came through the lead, not straight from
-      // the user.
-      approvalPolicy: "ask",
+      // The bot's own policy, but tools that delete or send still ask — the
+      // request came through the lead, not straight from the user.
+      leadRequest: true,
       ...(conversationId ? { conversationId: String(conversationId) } : {}),
       // The lead's goal (goals ledger): the bot's run is recorded under it.
       ...(goal && goal.goalId ? { goal: { goalId: String(goal.goalId) } } : {}),

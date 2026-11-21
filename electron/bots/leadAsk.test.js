@@ -41,8 +41,10 @@ describe("askTeamBot", () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0].trigger, "ask");
     assert.equal(calls[0].via, "lead:lead_7");
-    // Whatever the bot's own setting: the request came through the lead.
-    assert.equal(calls[0].approvalPolicy, "ask");
+    // The bot's own policy, marked as the lead's request so tools that
+    // delete or send still ask (DASH-29).
+    assert.equal(calls[0].approvalPolicy, undefined);
+    assert.equal(calls[0].leadRequest, true);
     assert.match(calls[0].prompt, /^Anything urgent since 9:00\?/);
     assert.match(calls[0].prompt, /Asked by Kitchen Sink Lead, the team lead/);
     // The controller is told, so stopping the lead stops this run.
@@ -73,12 +75,12 @@ describe("askTeamBot", () => {
     assert.equal(counted, false);
   });
 
-  it("a task given via MCP and confirmed with the passphrase can (TEAM-016), still asking before changes", async () => {
+  it("a task given via MCP and confirmed with the passphrase can (TEAM-016), still asking before deleting or sending", async () => {
     const { args, calls } = setup({ leadVia: "mcp-task:ha-bridge" });
     const res = await askTeamBot(args);
     assert.equal(res.status, "completed");
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].approvalPolicy, "ask");
+    assert.equal(calls[0].leadRequest, true);
   });
 
   it("the controller's run entry: an MCP-started lead is refused; the conversation goes on the bot's run (release 5)", async () => {

@@ -215,6 +215,33 @@ describe("BotRunner.run — happy path", () => {
     assert.equal(engine.lastCtx.builtinTools, undefined);
   });
 
+  it("a bot's own built-in tools setting (DASH-27); a lead's run stays without", async () => {
+    for (const [setting, expected] of [
+      ["none", "none"],
+      ["read-only", "read-only"],
+      ["all", undefined],
+    ]) {
+      const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+      const { runner } = makeRunner(engine, { bot: { builtinTools: setting } });
+      await runner.run("bot_1", { prompt: "go" });
+      assert.equal(engine.lastCtx.builtinTools, expected, setting);
+    }
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine, {
+      bot: { role: "lead", builtinTools: "all" },
+    });
+    await runner.run("bot_1", { prompt: "go" });
+    assert.equal(engine.lastCtx.builtinTools, "none");
+  });
+
+  it("a run its lead started keeps the bot's policy and says so (DASH-29)", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine, { bot: { approvalPolicy: "allow" } });
+    await runner.run("bot_1", { prompt: "go", leadRequest: true });
+    assert.equal(engine.lastCtx.approvalPolicy, "allow");
+    assert.equal(engine.lastCtx.leadRequest, true);
+  });
+
   it("passes the bot id (and workspace) to callTool so per-bot tool limits can be enforced", async () => {
     const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
     const seen = [];

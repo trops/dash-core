@@ -27,6 +27,9 @@ const BUILTIN = {
   Grep: { label: "Searches files for", key: "pattern" },
 };
 
+// A provider tool's path arguments (as the permission gate reads them).
+const PATH_KEYS = ["path", "uri", "filepath", "file", "directory"];
+
 /**
  * @param {{ toolName?: string, input?: object }} request
  * @returns {{ label: string, text: string, note: string|null }|null}
@@ -53,6 +56,19 @@ export function approvalPreview(request) {
     ([, v]) => v !== undefined && v !== null && v !== "",
   );
   if (!entries.length) return null;
+  // Only a path: say what it is, as Always allow's choice is about it
+  // (DASH-30).
+  if (entries.length === 1 && PATH_KEYS.includes(entries[0][0])) {
+    const [key, v] = entries[0];
+    const folder =
+      key === "directory" ||
+      /(list|director|tree|search)/i.test(String(r.toolName || ""));
+    return {
+      label: folder ? "Folder" : "File",
+      text: clip(text(v), 2000),
+      note: null,
+    };
+  }
   const lines = entries
     .slice(0, MAX_LINES)
     .map(([k, v]) => `${k}: ${clip(text(v), MAX_VALUE)}`);

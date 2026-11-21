@@ -208,6 +208,32 @@ describe("a bot's checks job", () => {
     assert.equal(more.task.stepId, WORK_STEP);
     const after = await drive(goal, (t) => t.status === "ready");
     assert.equal(after.status, "ready");
+    // Not a lead's request: nothing marks the runs.
+    assert.ok(botRuns.every((r) => !r.opts.leadRequest));
+  });
+
+  it("work a team lead asked for: every step's run is marked as the lead's request (DASH-29)", async () => {
+    writerBehaviour = "misses";
+    const r = goals.createGoal({
+      workspaceId: "ws1",
+      title: "Brief writer: today's brief",
+      body: "Write today's brief.",
+      source: { kind: "lead", ref: "lead_7" },
+      createdBy: { botId: WRITER.id, botName: WRITER.name },
+      flow,
+      startAfter: {
+        stepId: WORK_STEP,
+        botId: WRITER.id,
+        botName: WRITER.name,
+        summary: "Did the work",
+        output: workOutput(MISSES),
+      },
+    });
+    assert.ok(r.goal, r.error);
+    await drive(r.goal, (t) => t.status === "needs-you");
+    const writer = botRuns.filter((x) => x.botId === "bot_writer");
+    assert.ok(writer.length >= 1);
+    assert.ok(writer.every((x) => x.opts.leadRequest === true));
   });
 
   it("a paused bot is waited for, not failed", async () => {

@@ -30,6 +30,8 @@ import {
   canAlwaysAllow,
   pageReach,
   pageText,
+  pathTarget,
+  providerFiles,
   savedText,
   webFetchTarget,
 } from "../alwaysAllow";
@@ -358,7 +360,9 @@ export const BotNotificationsPanel = ({
       const res = await contacts.approve(item.approvalId, {
         allow: true,
         remember: true,
-        ...(webFetchTarget(item.request) ? { scope } : {}),
+        ...(webFetchTarget(item.request) || pathTarget(item.request)
+          ? { scope }
+          : {}),
       });
       if (res && res.remembered) announceChange(item.botId);
       const bot = bots.find((b) => String(b.id) === String(item.botId));
@@ -617,6 +621,55 @@ export const BotNotificationsPanel = ({
                             <span className={strong}>Only this page</span>
                             <span className={`text-xs ${muted}`}>
                               {pageReach(webFetchTarget(n.request).url)}
+                            </span>
+                          </span>
+                        ),
+                      },
+                    ]}
+                  />
+                </div>
+              ) : null}
+              {n.kind === "approval" && pathTarget(n.request) ? (
+                <div className="flex flex-col gap-1">
+                  <span
+                    className={`text-xs font-semibold uppercase tracking-wider ${muted}`}
+                  >
+                    Always allow covers
+                  </span>
+                  <RadioGroup
+                    name={`reach-${n.id}`}
+                    value={reach[n.id] === "provider" ? "provider" : "site"}
+                    onChange={(v) => setReach((r) => ({ ...r, [n.id]: v }))}
+                    options={[
+                      {
+                        value: "site",
+                        label: (
+                          <span className="flex flex-col">
+                            <span className={strong}>
+                              {pathTarget(n.request).isFile
+                                ? `Only ${pathTarget(n.request).folder}`
+                                : `Only in ${pathTarget(n.request).folder}`}
+                            </span>
+                            <span className={`text-xs ${muted}`}>
+                              {pathTarget(n.request).isFile
+                                ? "It asks again for any other file."
+                                : "It asks again for a file in any other folder."}
+                            </span>
+                          </span>
+                        ),
+                      },
+                      {
+                        value: "provider",
+                        label: (
+                          <span className="flex flex-col">
+                            <span className={strong}>
+                              Anywhere in {providerFiles(n.request.serverName)}
+                            </span>
+                            <span className={`text-xs ${muted}`}>
+                              Any folder, new ones included, for each{" "}
+                              {n.request.serverName} tool this bot always uses.
+                              What {n.request.serverName} can reach is set in
+                              its own settings.
                             </span>
                           </span>
                         ),

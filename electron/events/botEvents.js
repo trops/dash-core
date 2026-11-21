@@ -46,6 +46,8 @@ const BOTS_REVOKE_GRANT = "bots-revoke-grant";
 // Everything a bot may do without asking, and Ask again for one of them.
 const BOTS_LIST_ALWAYS_ALLOWED = "bots-list-always-allowed";
 const BOTS_FORGET_ALWAYS_ALLOWED = "bots-forget-always-allowed";
+// Widen, narrow or allow all of a provider's tools (DASH-30, DASH-29).
+const BOTS_CHANGE_ALWAYS_ALLOWED = "bots-change-always-allowed";
 // Team leads (bot-teams TEAM-002 / TEAM-003).
 const BOTS_ENSURE_LEAD = "bots-ensure-lead";
 const BOTS_SET_LEAD_ENABLED = "bots-set-lead-enabled";
@@ -164,6 +166,7 @@ module.exports = {
   BOTS_REVOKE_GRANT,
   BOTS_LIST_ALWAYS_ALLOWED,
   BOTS_FORGET_ALWAYS_ALLOWED,
+  BOTS_CHANGE_ALWAYS_ALLOWED,
   BOTS_ENSURE_LEAD,
   BOTS_SET_LEAD_ENABLED,
   BOTS_GET_TEAM_SETTINGS,

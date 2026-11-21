@@ -8,7 +8,8 @@
  * (gateBotToolCall). A remembered approval is scoped to this bot + this
  * provider + this tool, plus — when the tool call carries a path argument —
  * the folder of that path (write folder for write tools, read folder
- * otherwise). Nothing broader.
+ * otherwise) — or, when the user chose it, anywhere in the provider's files
+ * (scope "provider", DASH-30).
  *
  * Pure (NFR-006): the gate's path rules (isWriteTool, path arg keys) and
  * `dirname` are injected so this matches the real gate exactly.
@@ -26,8 +27,21 @@ function folderForPathArg(key, value, toolName, dirname) {
   if (key === "directory" || LISTING_TOOL.test(String(toolName || ""))) {
     return value;
   }
-  return dirname(value);
+  // A file at the top of the provider's folder ("notes.md"): its parent is
+  // "." — everything — so only the file itself is remembered (DASH-30).
+  // The same for a drive's or disk's top ("C:\x.txt", "\x.txt", "/x.txt").
+  const parent = dirname(value);
+  return parent === "." || parent === "" || /^([A-Za-z]:)?[\\/]?$/.test(parent)
+    ? value
+    : parent;
 }
+
+// The root "." — anywhere in a provider's files (withinServerRoots treats
+// it as everything; the provider still keeps to its own folder). DASH-30.
+const ANYWHERE = ".";
+// Every tool the bot may use on a provider (the provider's and the bot's
+// tool lists still decide which those are).
+const ALL_TOOLS = "*";
 
 const clone = (perms) =>
   perms && typeof perms === "object" ? JSON.parse(JSON.stringify(perms)) : {};
@@ -37,12 +51,12 @@ const addUnique = (list, value) =>
 
 /**
  * @param {object|null} perms  the bot's current grant (or null)
- * @param {{ serverName: string, toolName: string, args?: object }} call
+ * @param {{ serverName: string, toolName: string, args?: object, scope?: "provider" }} call
  * @param {{ isWriteTool: Function, pathArgKeys: string[], dirname: Function }} helpers
  * @returns {object} the new grant (input is not mutated)
  */
 function rememberToolGrant(perms, call, helpers) {
-  const { serverName, toolName, args } = call;
+  const { serverName, toolName, args, scope } = call;
   const next = clone(perms);
   next.grantOrigin = next.grantOrigin || "manual";
   next.servers = next.servers || {};
@@ -60,7 +74,10 @@ function rememberToolGrant(perms, call, helpers) {
     for (const key of helpers.pathArgKeys) {
       const v = args[key];
       if (typeof v !== "string" || !v) continue;
-      const folder = folderForPathArg(key, v, toolName, helpers.dirname);
+      const folder =
+        scope === "provider"
+          ? ANYWHERE
+          : folderForPathArg(key, v, toolName, helpers.dirname);
       if (isWrite) server.writePaths = addUnique(server.writePaths, folder);
       else server.readPaths = addUnique(server.readPaths, folder);
     }
@@ -172,6 +189,39 @@ function forgetFolders(perms, serverName, folders = []) {
   return next;
 }
 
+/**
+ * Change what a provider's remembered tools cover, from the bot's settings
+ * (DASH-30, DASH-29):
+ *   "anywhere"  — its remembered tools, anywhere in the provider's files
+ *   "folders"   — back to only the folders it was allowed in
+ *   "all-tools" — every tool the bot may use there, anywhere in its files
+ * Returns the grant unchanged when there's nothing to change.
+ */
+function changeProviderGrant(perms, serverName, action) {
+  const server = perms && perms.servers && perms.servers[serverName];
+  if (action === "all-tools") {
+    const next = clone(perms);
+    next.grantOrigin = next.grantOrigin || "manual";
+    next.servers = next.servers || {};
+    const s = next.servers[serverName] || { tools: [] };
+    s.tools = addUnique(s.tools || [], ALL_TOOLS);
+    s.readPaths = addUnique(s.readPaths || [], ANYWHERE);
+    s.writePaths = addUnique(s.writePaths || [], ANYWHERE);
+    next.servers[serverName] = s;
+    return next;
+  }
+  if (!server) return perms;
+  if (action === "anywhere") {
+    const next = clone(perms);
+    const s = next.servers[serverName];
+    s.readPaths = addUnique(s.readPaths || [], ANYWHERE);
+    s.writePaths = addUnique(s.writePaths || [], ANYWHERE);
+    return next;
+  }
+  if (action === "folders") return forgetFolders(perms, serverName, [ANYWHERE]);
+  return perms;
+}
+
 /** Revoke one remembered site (its origin) or page. */
 function forgetBuiltinGrant(perms, toolName, { site, page }) {
   const web = perms && perms.domains && perms.domains.webFetch;
@@ -221,5 +271,8 @@ module.exports = {
   builtinAllowed,
   forgetBuiltinGrant,
   forgetFolders,
+  changeProviderGrant,
   alwaysAllowedRows,
+  ANYWHERE,
+  ALL_TOOLS,
 };
