@@ -8,7 +8,8 @@
  *
  *   1. paused        → deny (pause enforced at the gate; US-014)
  *   2. server not in the bot's configured mcpServers → deny WITHOUT prompting
- *   2b. "allow" policy → allow (Allow without prompting)
+ *   2b. "allow" policy → allow (Allow without prompting) — on a run its lead
+ *       started, not for a tool that deletes or sends (DASH-29)
  *   3. tool in allowedTools → allow (auto)
  *   4. base grant covers it  → allow
  *   5. read-only tool (MCP readOnlyHint) under "ask" → allow; "ask-every"
@@ -31,6 +32,8 @@
  *   internalServers?: string[],
  *   approvalPolicy?: "ask" | "ask-every" | "allow",
  *   isReadOnly?: (toolName: string) => boolean,
+ *   leadRequest?: boolean,
+ *   deletesOrSends?: (toolName: string) => boolean,
  *   resolveServer: (toolName: string) => (string | null),
  *   createApproval: (request: object) => { id: string, promise: Promise<any> },
  *   gate?: (req: object) => { allow: boolean, reason?: string },
@@ -53,6 +56,8 @@ function createRequestPermission(ctx) {
     workspaceId,
     approvalPolicy = "ask",
     isReadOnly = () => false,
+    leadRequest = false,
+    deletesOrSends = () => false,
   } = ctx || {};
 
   if (!botId) throw new Error("PermissionGate: ctx.botId is required");
@@ -120,8 +125,13 @@ function createRequestPermission(ctx) {
     }
 
     // 2b. "Allow without prompting": every tool on the bot's own providers
-    //     runs without a prompt (pause and unconfigured servers still apply).
-    if (approvalPolicy === "allow") {
+    //     runs without a prompt (pause and unconfigured servers still apply)
+    //     — except, on a run its lead started, a tool that deletes or sends
+    //     (DASH-29): that goes on to the checks below.
+    if (
+      approvalPolicy === "allow" &&
+      !(leadRequest && deletesOrSends(toolName))
+    ) {
       return record(
         toolName,
         { allow: true },

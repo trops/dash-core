@@ -291,6 +291,22 @@ describe("planTeamInstall", () => {
     assert.deepEqual(inboxDef.subscriptions, []);
   });
 
+  it("a bot with fewer built-in tools keeps them through export and install (DASH-27)", () => {
+    const limited = buildTeamManifest({
+      name: "Daily Brief",
+      bots: [lead, { ...agenda, builtinTools: "none" }, inbox, writer],
+      providers,
+    }).manifest;
+    const checked = validateTeamManifest(limited);
+    assert.ok(checked.manifest, JSON.stringify(checked.errors));
+    const plan = planTeamInstall(checked.manifest, {
+      workspaceId: "ws2",
+      providers,
+    });
+    assert.equal(plan.members[0].definition.builtinTools, "none");
+    assert.equal(plan.members[1].definition.builtinTools, undefined);
+  });
+
   it("uses the only provider of a type, with its tool choices", () => {
     const plan = planTeamInstall(manifest, { workspaceId: "ws2", providers });
     const a = plan.members[0];

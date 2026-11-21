@@ -154,6 +154,11 @@ const DEFAULT_BUILTINS = [
   "NotebookEdit",
 ];
 
+// Built-ins an "allow" bot still runs without asking on a run its team lead
+// started (DASH-29): the ones that change nothing and send nothing. Writing
+// files, shell commands and web fetches ask, as tools that delete or send do.
+const LEAD_RUN_FREE_BUILTINS = [...READ_ONLY_BUILTINS, "TodoWrite"];
+
 function _allowedBuiltins(ctx) {
   if (ctx.builtinTools === "none") return [];
   if (ctx.builtinTools === "read-only") return READ_ONLY_BUILTINS;
@@ -201,7 +206,9 @@ function _makeCanUseTool(ctx) {
           message: `${linked.tool} isn't allowed for this bot on ${linked.connector.provider}.`,
         };
       }
-      if (ctx.approvalPolicy === "allow") {
+      // On a run its lead started, the gate decides (it still asks before
+      // tools that delete or send, DASH-29).
+      if (ctx.approvalPolicy === "allow" && !ctx.leadRequest) {
         return { behavior: "allow", updatedInput: input };
       }
       if (typeof ctx.requestPermission !== "function") {
@@ -244,9 +251,14 @@ function _makeCanUseTool(ctx) {
         return { behavior: "allow", updatedInput: input };
       }
     }
-    // Trusted bot → run tools without prompting.
+    // Trusted bot → run tools without prompting. On a run its lead started
+    // (DASH-29), provider tools go to the gate, and only built-ins that
+    // change and send nothing skip asking.
     if (ctx.approvalPolicy === "allow") {
-      return { behavior: "allow", updatedInput: input };
+      if (!ctx.leadRequest) return { behavior: "allow", updatedInput: input };
+      if (!bridged && LEAD_RUN_FREE_BUILTINS.includes(toolName)) {
+        return { behavior: "allow", updatedInput: input };
+      }
     }
     // Bridged Dash provider tools go through the SAME Dash permission gate as
     // the tool-loop engine — grants, remembered approvals ("Always allow"),

@@ -339,10 +339,11 @@ test("a new bot in the plan says how it acts, its limits, and that it starts pau
         source: "new",
         approvalPolicy: "allow",
         runLimits: { steps: 60, minutes: 20 },
+        builtinTools: "none",
       },
     ],
   });
   expect(row.sub).toMatch(
-    /uses its tools without asking when it runs on its own · up to 60 steps, 20 min a run · starts paused — you turn it on$/,
+    /no built-in tools · uses its tools without asking, except deleting or sending when its lead asks · up to 60 steps, 20 min a run · starts paused — you turn it on$/,
   );
 });

@@ -26,6 +26,7 @@
 "use strict";
 
 const { createRequestPermission } = require("./PermissionGate");
+const { deletesOrSends } = require("./riskyTools");
 const { truncateText } = require("./botEvents");
 const { appendAnswerText } = require("./answerText");
 const { answerShape } = require("./answerShape");
@@ -294,6 +295,10 @@ class BotRunner {
     // A run may override the bot's approval policy — the Dash team's runs
     // inside an approved plan build (the plan was the consent, CRE-003 AC3).
     const approvalPolicy = opts.approvalPolicy || bot.approvalPolicy;
+    // A run its team lead started (DASH-29): the bot's own policy, but tools
+    // that delete or send still ask — the lead passes on text from email,
+    // Slack and other bots.
+    const leadRequest = !!opts.leadRequest;
     const startedAt = this._now();
     // Approval decisions made during this run, for the run record (Bots view
     // › Activity). Names only — never the tool's input.
@@ -447,6 +452,9 @@ class BotRunner {
           .map((t) => t.name),
       );
       for (const name of readOnlyTools) readOnly.add(name);
+      const toolsByName = new Map(
+        (tools || []).filter((t) => t && t.name).map((t) => [t.name, t]),
+      );
       const requestPermission = this._makeRequestPermission({
         botId,
         workspaceId: bot.workspaceId,
@@ -456,7 +464,9 @@ class BotRunner {
         resolveServer,
         createApproval,
         approvalPolicy,
+        leadRequest,
         isReadOnly: (toolName) => readOnly.has(toolName),
+        deletesOrSends: (toolName) => deletesOrSends(toolName, toolsByName),
         // Read-only tools that ran without asking show in the run's
         // approvals too, so the user can see what ran.
         audit: (entry) => {
@@ -571,6 +581,7 @@ class BotRunner {
         // Shell commands it may run without asking, and never (phase 5).
         commands: bot.commands || null,
         approvalPolicy,
+        leadRequest,
         createApproval,
       };
       if (connectors.length) {
@@ -582,8 +593,11 @@ class BotRunner {
       // the run profile says which.
       // A run asked only to answer from its prompt (noTools — the Dash
       // Lead routing a task via MCP, TEAM-016) gets none either.
+      // Any other bot: its own setting (DASH-27); left out → all of them.
       if (bot.role === "lead" || opts.noTools) ctx.builtinTools = "none";
       else if (profile.builtinTools) ctx.builtinTools = profile.builtinTools;
+      else if (bot.builtinTools === "none" || bot.builtinTools === "read-only")
+        ctx.builtinTools = bot.builtinTools;
 
       // The time limit: stop the run (and any retry) when it's up.
       const runMinutes =

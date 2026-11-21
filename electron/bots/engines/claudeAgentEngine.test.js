@@ -698,6 +698,56 @@ describe("claudeAgentEngine — read-only built-ins (CRE-011)", () => {
   });
 });
 
+describe("claudeAgentEngine — a run its lead started (DASH-29)", () => {
+  function leadCtx(seen) {
+    return ctx({
+      leadRequest: true,
+      requestPermission: async (name) => {
+        seen.push(name);
+        return { allow: !/delete/.test(name) };
+      },
+      createApproval: () => {
+        seen.push("asked");
+        return { promise: Promise.resolve({ allow: false }) };
+      },
+    });
+  }
+
+  it('"allow": provider tools go to the gate, which holds back delete and send', async () => {
+    const seen = [];
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(leadCtx(seen)));
+    const save = await captured.options.canUseTool(
+      "mcp__bot-mcp__save_model",
+      {},
+    );
+    assert.equal(save.behavior, "allow");
+    const del = await captured.options.canUseTool(
+      "mcp__bot-mcp__delete_model",
+      {},
+    );
+    assert.equal(del.behavior, "deny");
+    assert.deepEqual(seen, ["save_model", "delete_model"]);
+  });
+
+  it("built-ins that only read run; writing and shell commands ask", async () => {
+    const seen = [];
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(leadCtx(seen)));
+    const read = await captured.options.canUseTool("Read", { file_path: "/x" });
+    assert.equal(read.behavior, "allow");
+    const write = await captured.options.canUseTool("Write", {
+      file_path: "/x",
+    });
+    assert.equal(write.behavior, "deny");
+    const bash = await captured.options.canUseTool("Bash", {
+      command: "touch notes.txt",
+    });
+    assert.equal(bash.behavior, "deny");
+    assert.deepEqual(seen, ["asked", "asked"]);
+  });
+});
+
 describe("claudeAgentEngine — a turn that ends on an API error (US-023)", () => {
   it("is an error event with its status, not an answer", async () => {
     stubQuery([

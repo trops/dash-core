@@ -119,10 +119,14 @@ describe("userPartOf", () => {
       };
       assert.equal(userPartOf(bot), "", version.slice(0, 60));
     }
-    // The plan format with a bot's policy and limits is only the current
-    // one's: the versions before it are kept as they were.
-    assert.match(planner.instructions, /"approvalPolicy"/);
-    assert.ok(planner.history.every((h) => !/approvalPolicy/.test(h)));
+    // Each plan format is kept as it was: a bot's policy and limits only
+    // from DASH-26's version, its built-in tools only in the current one
+    // (DASH-27).
+    assert.match(planner.instructions, /"builtinTools"/);
+    assert.ok(planner.history.every((h) => !/builtinTools/.test(h)));
+    const withPolicy = planner.history.filter((h) => /approvalPolicy/.test(h));
+    assert.equal(withPolicy.length, 1);
+    assert.equal(withPolicy[0], planner.history[planner.history.length - 1]);
   });
   it("new leads and roles hold only the user's words", () => {
     const def = leadDefinition({ workspaceId: "ws1", dashboardName: "Home" });

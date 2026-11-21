@@ -316,6 +316,18 @@ describe("bot builds — the bot as saved", () => {
     assert.equal(odd.approvalPolicy, "ask");
     assert.equal(odd.runLimits, undefined);
   });
+  it("the built-in tools it was planned with (DASH-27)", () => {
+    const def = planBotDefinition(
+      { ...piece, builtinTools: "none" },
+      { dashboardId: "7", sources },
+    );
+    assert.equal(def.builtinTools, "none");
+    const odd = planBotDefinition(
+      { ...piece, builtinTools: "everything" },
+      { dashboardId: "7", sources },
+    );
+    assert.equal(odd.builtinTools, undefined);
+  });
 });
 
 describe("botController — bot builds (Phase 2c-1)", () => {

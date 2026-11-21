@@ -166,6 +166,11 @@ function createFlowRunner(deps) {
           via: `flow:${goal.flow.id || ""}`,
           goal: { goalId: goal.id, taskId: task.id },
           ...(step.limits ? { limits: step.limits } : {}),
+          // Work a team lead asked for: every step's run still asks before
+          // tools that delete or send, as the first run did (DASH-29).
+          ...(goal.source && goal.source.kind === "lead"
+            ? { leadRequest: true }
+            : {}),
         }),
       );
     } catch (e) {

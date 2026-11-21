@@ -226,3 +226,72 @@ describe("Always allow — saving, Undo, Ask again", () => {
     assert.ok(g.servers.Files.readPaths.includes("/notes"));
   });
 });
+
+describe("Always allow — anywhere in a provider's files (DASH-30)", () => {
+  it("the answer's choice: this folder, or anywhere in the provider's files", () => {
+    const ctl = fake({
+      a1: {
+        botId: "wb20",
+        serverName: "Sawhorse",
+        toolName: "save_model",
+        input: { path: "Walnut U Desk/Walnut U Desk.shz" },
+      },
+      a2: {
+        botId: "wb21",
+        serverName: "Sawhorse",
+        toolName: "save_model",
+        input: { path: "Walnut U Desk/Walnut U Desk.shz" },
+      },
+    });
+    approve(ctl, "a1", { allow: true, remember: true });
+    approve(ctl, "a2", { allow: true, remember: true, scope: "provider" });
+    const one = grantStore.getGrant("wb20").servers.Sawhorse;
+    const all = grantStore.getGrant("wb21").servers.Sawhorse;
+    assert.deepEqual([...one.readPaths, ...one.writePaths], ["Walnut U Desk"]);
+    assert.deepEqual([...all.readPaths, ...all.writePaths], ["."]);
+  });
+
+  it("a file at the top of the provider's files covers only that file", () => {
+    const ctl = fake({
+      a1: {
+        botId: "wb22",
+        serverName: "Notes",
+        toolName: "read_note",
+        input: { path: "notes.md" },
+      },
+    });
+    approve(ctl, "a1", { allow: true, remember: true });
+    assert.deepEqual(grantStore.getGrant("wb22").servers.Notes.readPaths, [
+      "notes.md",
+    ]);
+  });
+
+  it("from its settings: widen, narrow back, or allow all its tools — only on a provider it uses", () => {
+    const ctl = {
+      ...fake({
+        a1: {
+          botId: "wb23",
+          serverName: "Sawhorse",
+          toolName: "read_model",
+          input: { path: "Spool Shelf/Spool Shelf.shz" },
+        },
+      }),
+      _store: { get: () => ({ id: "wb23", mcpServers: ["Sawhorse"] }) },
+    };
+    approve(ctl, "a1", { allow: true, remember: true });
+    const change = (c) =>
+      botController.changeAlwaysAllowed.call(ctl, "wb23", c);
+    let list = change({ provider: "Sawhorse", action: "anywhere" });
+    assert.deepEqual(list[0].folders.sort(), [".", ".", "Spool Shelf"].sort());
+    list = change({ provider: "Sawhorse", action: "folders" });
+    assert.deepEqual(list[0].folders, ["Spool Shelf"]);
+    list = change({ provider: "Sawhorse", action: "all-tools" });
+    assert.deepEqual(
+      list.map((r) => r.tool),
+      ["read_model", "*"],
+    );
+    // A provider the bot doesn't use: nothing changes.
+    change({ provider: "Gmail", action: "all-tools" });
+    assert.equal(grantStore.getGrant("wb23").servers.Gmail, undefined);
+  });
+});

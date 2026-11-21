@@ -1084,6 +1084,7 @@ function planBotDefinition(piece, { dashboardId, sources, team }) {
  * values — anything else keeps the bot's defaults.
  */
 const PLAN_POLICIES = new Set(["ask", "ask-every", "allow"]);
+const PLAN_BUILTINS = new Set(["none", "read-only", "all"]);
 function planBotSettings(piece) {
   const out = {};
   if (piece && PLAN_POLICIES.has(piece.approvalPolicy)) {
@@ -1097,6 +1098,10 @@ function planBotSettings(piece) {
       if (Number.isFinite(n) && n > 0) runLimits[k] = Math.round(n);
     }
     if (Object.keys(runLimits).length) out.runLimits = runLimits;
+  }
+  // Its built-in tools (DASH-27).
+  if (piece && PLAN_BUILTINS.has(piece.builtinTools)) {
+    out.builtinTools = piece.builtinTools;
   }
   return out;
 }
@@ -1348,6 +1353,7 @@ function pieceSignature(p) {
       !!p.showResults,
       p.approvalPolicy || null,
       p.runLimits || null,
+      p.builtinTools || null,
     ]);
   }
   return BUILT.has(p.source)

@@ -12,7 +12,66 @@ import {
   hostText,
   pageText,
   pageReach,
+  pathTarget,
+  isAnywhere,
 } from "./alwaysAllow";
+
+describe("a provider tool with a path (DASH-30)", () => {
+  const save = {
+    serverName: "Sawhorse",
+    toolName: "save_model",
+    input: { path: "Walnut U Desk/Walnut U Desk.shz" },
+  };
+  test("the folder Always allow would remember", () => {
+    expect(pathTarget(save)).toEqual({
+      key: "path",
+      value: "Walnut U Desk/Walnut U Desk.shz",
+      folder: "Walnut U Desk",
+      isFile: false,
+    });
+    // A file at the top: only that file.
+    expect(pathTarget({ ...save, input: { path: "notes.md" } })).toMatchObject({
+      folder: "notes.md",
+      isFile: true,
+    });
+    expect(pathTarget({ ...save, input: {} })).toBeNull();
+    expect(pathTarget({ toolName: "Read", input: { path: "x" } })).toBeNull();
+  });
+  test("the line and the saved card say where", () => {
+    expect(alwaysAllowLine(save)).toBe(
+      "Always allow: this bot uses Save model on Sawhorse without asking in Walnut U Desk, every run. You can take it back in its settings.",
+    );
+    expect(alwaysAllowLine(save, "provider")).toBe(
+      "Always allow: this bot uses Save model on Sawhorse without asking, anywhere in Sawhorse's files (its other always-allowed Sawhorse tools too), every run. You can take it back in its settings.",
+    );
+    expect(savedText(save, "Designer", "provider")).toMatch(
+      /^Designer uses Save model on Sawhorse without asking, anywhere in Sawhorse's files \(its other always-allowed Sawhorse tools too\), from now on\./,
+    );
+    // "./notes.md" and a drive's top: only that file.
+    expect(
+      pathTarget({ ...save, input: { path: "./notes.md" } }),
+    ).toMatchObject({ isFile: true });
+    expect(
+      pathTarget({ ...save, input: { path: "C:\\notes.md" } }),
+    ).toMatchObject({ isFile: true });
+  });
+  test("rows: anywhere, and all its tools", () => {
+    const row = {
+      kind: "tool",
+      provider: "Sawhorse",
+      tool: "save_model",
+      folders: ["Spool Shelf", ".", "."],
+    };
+    expect(isAnywhere(row)).toBe(true);
+    expect(grantRowText(row).scope).toBe("Anywhere in Sawhorse's files");
+    expect(grantRowText({ ...row, tool: "*" }).name).toBe(
+      "All its tools · Sawhorse",
+    );
+    expect(
+      grantRowText({ ...row, folders: ["Spool Shelf", "Spool Shelf"] }).scope,
+    ).toBe("In Spool Shelf");
+  });
+});
 
 const fetchAsk = {
   botId: "b1",

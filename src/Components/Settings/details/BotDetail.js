@@ -143,7 +143,21 @@ const APPROVAL_HINTS = {
   ask: "Read-only tools run without asking; anything that sends, changes or deletes asks first, unless you chose Always allow.",
   "ask-every":
     "Asks before every tool, reads included, unless you chose Always allow.",
-  allow: "Runs every tool without asking.",
+  allow:
+    "Runs every tool without asking. When its team lead asks it, these still ask first: tools that delete or send (unless you chose Always allow), and file changes, shell commands and web fetches.",
+};
+
+// What a bot may do on the computer itself (DASH-27).
+const BUILTIN_OPTIONS = [
+  { value: "none", label: "None" },
+  { value: "read-only", label: "Read files" },
+  { value: "all", label: "All" },
+];
+const BUILTIN_HINTS = {
+  none: "Uses only its providers' tools: no files, no shell commands, no web fetches.",
+  "read-only":
+    "Can read and search files (Read, Glob, Grep). It can't write files or run shell commands.",
+  all: "Can read, write and edit files, run shell commands and fetch web pages, as its approval policy allows.",
 };
 
 const APPROVAL_OPTIONS = [
@@ -300,6 +314,12 @@ export const BotDetail = ({
     from?.approvalPolicy || "ask",
   );
   const approvalHint = APPROVAL_HINTS[approvalPolicy] || null;
+  // Left out on a bot → all of them (DASH-27).
+  const [builtinTools, setBuiltinTools] = useState(
+    from?.builtinTools === "none" || from?.builtinTools === "read-only"
+      ? from.builtinTools
+      : "all",
+  );
   // Folders it works in, and its shell commands (flows PRD, phase 5).
   const [projects, setProjects] = useState(
     Array.isArray(from?.projects) ? from.projects : [],
@@ -436,6 +456,7 @@ export const BotDetail = ({
     costLimit,
     minutesLimit,
     approvalPolicy,
+    builtinTools,
     whilePaused,
     selectedServers,
     toolSelections,
@@ -842,6 +863,10 @@ export const BotDetail = ({
         ].filter(([, v]) => v !== undefined),
       ),
       approvalPolicy,
+      // Leads and Dash team roles have theirs set by Dash.
+      ...(hasBuiltin
+        ? {}
+        : { builtinTools: builtinTools === "all" ? null : builtinTools }),
       workspaceId: team || null,
       mcpServers: selectedServers,
       projects: projects.filter(Boolean),
@@ -1267,6 +1292,23 @@ export const BotDetail = ({
               {approvalHint ? (
                 <span className="text-xs opacity-50">{approvalHint}</span>
               ) : null}
+              {!hasBuiltin ? (
+                <div
+                  className="flex flex-col gap-2"
+                  data-testid="bot-builtin-tools"
+                >
+                  <span className="text-sm font-medium">Built-in tools</span>
+                  <SegmentedControl
+                    ariaLabel="Built-in tools"
+                    options={BUILTIN_OPTIONS}
+                    value={builtinTools}
+                    onChange={setBuiltinTools}
+                  />
+                  <span className="text-xs opacity-50">
+                    {BUILTIN_HINTS[builtinTools]}
+                  </span>
+                </div>
+              ) : null}
               {!isTeamRole ? (
                 <div
                   className="flex flex-col gap-2"
@@ -1314,7 +1356,8 @@ export const BotDetail = ({
                   </div>
                 </div>
               ) : null}
-              {!isTeamRole ? (
+              {/* Shell commands only matter with all its built-ins. */}
+              {!isTeamRole && builtinTools === "all" ? (
                 <div className="flex flex-col gap-2" data-testid="bot-commands">
                   <span className="text-sm font-medium">Shell commands</span>
                   <span className="text-xs opacity-50">
@@ -1346,7 +1389,10 @@ export const BotDetail = ({
                 </div>
               ) : null}
               {!isCreating && bot && bot.id ? (
-                <AlwaysAllowedList botId={bot.id} />
+                <AlwaysAllowedList
+                  botId={bot.id}
+                  providers={isTeamRole ? [] : bot.mcpServers || []}
+                />
               ) : null}
               {/* A saved bot's monthly limit and spending (US-019 AC2). */}
               {showBudget && !isCreating && bot && bot.id && !isTeamRole ? (

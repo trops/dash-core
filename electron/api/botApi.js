@@ -38,6 +38,7 @@ const {
   BOTS_REVOKE_GRANT,
   BOTS_LIST_ALWAYS_ALLOWED,
   BOTS_FORGET_ALWAYS_ALLOWED,
+  BOTS_CHANGE_ALWAYS_ALLOWED,
   BOTS_ENSURE_LEAD,
   BOTS_BUILTIN_INSTRUCTIONS,
   BOTS_DISMISS_LAYERS_NOTICE,
@@ -254,6 +255,12 @@ const botApi = {
   /** Ask again for one row; resolves to the new list. */
   forgetAlwaysAllowed: (botId, row) =>
     ipcRenderer.invoke(BOTS_FORGET_ALWAYS_ALLOWED, { botId, row }),
+  /**
+   * A provider's remembered tools: "anywhere" in its files, back to their
+   * "folders", or "all-tools" ahead of time. Resolves to the new list.
+   */
+  changeAlwaysAllowed: (botId, provider, action) =>
+    ipcRenderer.invoke(BOTS_CHANGE_ALWAYS_ALLOWED, { botId, provider, action }),
 
   // ---- Team leads (bot-teams TEAM-002 / TEAM-003) ----
   /** Make sure a dashboard has its idle lead. → { lead, created, reason? } */
