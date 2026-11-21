@@ -5,6 +5,7 @@ import {
   EmptyState,
   FilterMenu,
   FontAwesomeIcon,
+  SearchInput,
   SegmentedControl,
   StatusBadge,
   useStatusTokens,
@@ -16,7 +17,9 @@ import { openRunConversation } from "../Bots/runConversation";
 import {
   JOB_STATUS,
   STEP_STATUS,
+  canRunAgain,
   filterJobs,
+  searchJobs,
   groupByDashboard,
   jobCounts,
   startedByText,
@@ -266,7 +269,26 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
               if (api && api.stopJob) api.stopJob(job.id);
             }}
           />
-        ) : confirmDelete ? (
+        ) : null}
+        {canRunAgain(job) && !confirmDelete ? (
+          <Button
+            title="Run again"
+            size="sm"
+            onClick={async () => {
+              const api = botsApi();
+              if (!api || !api.askLead) return;
+              setNote(
+                `${job.leadName || "Its team lead"} is starting on it again — it shows as a new job.`,
+              );
+              try {
+                await api.askLead(job.leadId, job.request);
+              } catch (e) {
+                setNote("It couldn't be started again.");
+              }
+            }}
+          />
+        ) : null}
+        {going ? null : confirmDelete ? (
           <>
             <span className={`text-sm ${strong}`}>Delete this job?</span>
             <Button
@@ -325,6 +347,7 @@ export const JobsPage = ({
   const { muted } = useConfigTokens();
   const [filter, setFilter] = useState("all");
   const [dashboards, setDashboards] = useState([]);
+  const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(
     (jobLink && jobLink.jobId) || null,
   );
@@ -349,7 +372,7 @@ export const JobsPage = ({
       ? all.filter((j) => dashboards.includes(String(j.workspaceId)))
       : all;
   const counts = jobCounts(onDashboards);
-  const jobs = filterJobs(onDashboards, filter);
+  const jobs = searchJobs(filterJobs(onDashboards, filter), query);
   const groups = groupByDashboard(jobs, workspaces);
   // A job linked from elsewhere that isn't among those read: read it alone.
   const listed = jobs.find((j) => j.id === selectedId) || null;
@@ -391,7 +414,13 @@ export const JobsPage = ({
         value={filter}
         onChange={setFilter}
       />
-      <span className="flex-1" />
+      <div className="flex-1 min-w-48 max-w-sm">
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search jobs…"
+        />
+      </div>
       {workspaceId == null && dashboardOptions.length ? (
         <FilterMenu
           label="Dashboard"

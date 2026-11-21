@@ -126,6 +126,29 @@ export function groupByDashboard(jobs, dashboards = []) {
   return groups;
 }
 
+/** Jobs whose title, lead or bots match what's typed. */
+export function searchJobs(jobs, query) {
+  const q = String(query || "")
+    .trim()
+    .toLowerCase();
+  if (!q) return jobs || [];
+  return (jobs || []).filter((j) =>
+    [j.title, j.leadName, ...(j.steps || []).map((s) => s.botName)]
+      .filter(Boolean)
+      .some((t) => String(t).toLowerCase().includes(q)),
+  );
+}
+
+/** Can it be run again: it ended without finishing, and we know what was asked. */
+export function canRunAgain(job) {
+  return (
+    !!job &&
+    (job.status === "failed" || job.status === "stopped") &&
+    !!job.leadId &&
+    !!String(job.request || "").trim()
+  );
+}
+
 /** The step a "Needs you" job waits on, and what turns it on. */
 export function waitingStep(job) {
   return (

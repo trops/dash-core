@@ -287,6 +287,9 @@ describe("jobs for the screens (DASH-31)", () => {
     );
     assert.equal(open[0].steps[0].summary, undefined);
     assert.equal(open[0].steps[1].summary, "Drafter is paused.");
+    // What was asked stays out of list rows (getJob has it, for Run again).
+    assert.equal(open[0].request, undefined);
+    assert.equal(ctl._jobs.get(a.id).request, "a");
     assert.equal(listJobs({ limit: 1 }).length, 1);
   });
 
