@@ -36,6 +36,8 @@ const { EventDispatcher } = require("../bots/EventDispatcher");
 const { normalizeMcpResult } = require("../bots/mcpResult");
 const BotEventPublisher = require("../bots/BotEventPublisher");
 const { createCheckJobs } = require("../bots/checkJobs");
+const { createJobStore } = require("../jobs/jobStore");
+const { createJobTracker } = require("../jobs/jobTracker");
 const { PausedQueue, drainBot } = require("../bots/pausedQueue");
 const {
   stopBotRun,
@@ -296,6 +298,59 @@ const TEST_ID_RE = /^test-[a-z0-9]{6,40}$/;
 // The most a sample sent with a save may be (an answer is cut at 32 KB).
 const MAX_SAMPLE_BYTES = 512 * 1024;
 
+// ---- Jobs (DASH-28, DASH-31): who or what started a step ------------------
+
+/** "bot:local/designer[b1].completed" → "Completed". */
+function eventWord(eventType) {
+  const last =
+    String(eventType || "")
+      .split(".")
+      .pop() || "";
+  return last ? last.charAt(0).toUpperCase() + last.slice(1) : "";
+}
+
+/** Who started a lead's job: a task over MCP, or the user in Dash. */
+function jobStartedBy(opts = {}) {
+  const m = /^mcp-task(?::(.*))?$/.exec(String(opts.via || ""));
+  if (m) return { kind: "task", label: m[1] || "MCP" };
+  if (/^mcp/.test(String(opts.via || ""))) return { kind: "mcp", label: "MCP" };
+  return { kind: "you" };
+}
+
+/** A hand-on: which bot's event started it. */
+function handOnWhy(store, event, bot) {
+  const from = event && event.originBotId ? store.get(event.originBotId) : null;
+  const sub = ((bot && bot.subscriptions) || []).find(
+    (s) => s && s.eventType === (event && event.eventType),
+  );
+  return {
+    kind: "handon",
+    by: (from && from.name) || null,
+    label: (sub && sub.label) || eventWord(event && event.eventType),
+  };
+}
+
+/** Why a run is a step in its job. */
+function jobWhy(store, bot, opts = {}) {
+  if (isLead(bot)) return { ...jobStartedBy(opts) };
+  const lead = /^lead:(.+)$/.exec(String(opts.via || ""));
+  if (lead) {
+    const l = store.get(lead[1]);
+    return { kind: "asked", by: (l && l.name) || null };
+  }
+  if (opts.trigger === "event" && opts.source) {
+    const from = opts.source.originBotId
+      ? store.get(opts.source.originBotId)
+      : null;
+    return {
+      kind: "handon",
+      by: (from && from.name) || null,
+      label: opts.source.label || eventWord(opts.source.eventType),
+    };
+  }
+  return { kind: opts.trigger || "run" };
+}
+
 /** A test's sample, as test() made it, small enough to keep. */
 function isSample(sample) {
   if (!sample || typeof sample !== "object" || Array.isArray(sample)) {
@@ -349,6 +404,7 @@ const {
   BOT_OPEN_REQUEST,
   BOT_PLAN_BUILD_PROGRESS,
   BOT_MCP_TASKS_CHANGED,
+  BOT_JOBS_CHANGED,
   CREATE_RECENT_CHANGED,
 } = require("../events/botEvents");
 const { LLM_MODEL_LIST_CHANGED } = require("../events/llmEvents");
@@ -599,15 +655,43 @@ const botController = {
       goals: () => goalController.store(),
       getBot: (id) => this._store.get(id),
       publisher: this._events,
-      patchRun: (id, startedAt, patch) =>
-        this._store.patchRun(id, startedAt, patch),
+      patchRun: (id, startedAt, patch) => {
+        const r = this._store.patchRun(id, startedAt, patch);
+        // The job's step follows its checks (DASH-31).
+        if (patch && patch.checks && patch.checks.goalId && this._jobs) {
+          this._jobs.checksMoved(patch.checks.goalId, patch.checks.state);
+        }
+        return r;
+      },
       getRuns: (id) => this._store.getRuns(id),
-      notify: (botId, info) =>
+      notify: (botId, info) => {
         this._broadcast(BOT_STREAM, {
           botId,
           event: { type: "checked", ...info },
+        });
+        // Checks waiting on the user show on the job (DASH-31).
+        if (info && info.goalId && this._jobs) {
+          this._jobs.checksMoved(info.goalId, info.state);
+        }
+      },
+    });
+
+    // Jobs (DASH-28, DASH-31): each chain of work through a team lead —
+    // the lead's run, the bots it asks, their checks and hand-ons — kept on
+    // this computer until the user deletes them.
+    this._jobs = createJobTracker({
+      store: createJobStore({
+        root: path.join(path.dirname(this._botsRoot), "jobs"),
+        box: host.secretBox || null,
+      }),
+      onChange: (job) =>
+        this._broadcast(BOT_JOBS_CHANGED, {
+          jobId: job.id,
+          workspaceId: job.workspaceId,
+          status: job.status,
         }),
     });
+    this._jobs.interruptLeftovers();
 
     this._runner = new BotRunner({
       engines,
@@ -925,7 +1009,19 @@ const botController = {
         this._holdEvent(bot, event);
         continue;
       }
-      if (!this._dispatcher.shouldDispatch(bot.id)) continue;
+      if (!this._dispatcher.shouldDispatch(bot.id)) {
+        // In a job, the hand-on that didn't start is said (DASH-31).
+        const jobId = this._handOnJob(event, bot);
+        if (jobId) {
+          this._jobs.skipStep(jobId, {
+            botId: bot.id,
+            botName: bot.name,
+            why: handOnWhy(this._store, event, bot),
+            summary: `${bot.name} ran moments ago, so this hand-on was skipped.`,
+          });
+        }
+        continue;
+      }
       this._dispatcher.note(bot.id);
       this._runEvent(bot, event);
     }
@@ -961,6 +1057,30 @@ const botController = {
    */
   _holdEvent(bot, event) {
     const source = sourceFromEvent(bot, event);
+    // In a job (DASH-31): the hand-on waits for the user, or is skipped.
+    const jobId = this._handOnJob(event, bot);
+    if (jobId) {
+      const why = handOnWhy(this._store, event, bot);
+      const paused = this._pause.isPaused(bot.id);
+      const held = paused ? "is paused" : "is over its budget";
+      if (bot.whilePaused === "drop") {
+        this._jobs.skipStep(event.jobId, {
+          botId: bot.id,
+          botName: bot.name,
+          why,
+          summary: `${bot.name} ${held} and skips events meanwhile, so it didn't run.`,
+        });
+      } else {
+        this._jobs.waitStep(event.jobId, {
+          botId: bot.id,
+          botName: bot.name,
+          why,
+          summary: paused
+            ? `${bot.name} is paused, so it hasn't started. Turn it on and it starts.`
+            : `${bot.name} is over its budget, so it hasn't started.`,
+        });
+      }
+    }
     if (bot.whilePaused === "drop") {
       const now = new Date().toISOString();
       this._store.appendRun(bot.id, {
@@ -1004,7 +1124,14 @@ const botController = {
         isHeld: (id) => this._isHeld(id),
         runOne: (item) => this._runQueued(botId, item),
       })
-        .then(() => this._notifyListChanged())
+        .then(() => {
+          const name = (this._store.get(botId) || {}).name || "The bot";
+          this._jobs.releaseWaiting(
+            botId,
+            `${name} ran a newer event instead of this one.`,
+          );
+          this._notifyListChanged();
+        })
         .catch(() => {});
       this._notifyListChanged();
     }
@@ -1394,6 +1521,13 @@ const botController = {
     // silently re-created the next time the dashboard opens (TEAM-002).
     if (isLead(bot) && bot.workspaceId) {
       this._store.setTeamSettings(bot.workspaceId, { leadEnabled: false });
+    }
+    // Hand-ons in jobs that were waiting for it won't run (DASH-31).
+    if (this._jobs) {
+      this._jobs.releaseWaiting(
+        botId,
+        "Its bot was deleted, so it didn't run.",
+      );
     }
     // Its private memory (bots with no dashboard) goes with it; team and
     // global memory are shared and stay.
@@ -2138,6 +2272,107 @@ const botController = {
     return notes;
   },
 
+  // ---- Jobs (DASH-28, DASH-31) --------------------------------------------
+
+  /** Jobs, newest change first — one dashboard's with workspaceId. */
+  listJobs({ workspaceId = null } = {}) {
+    return this._jobs ? this._jobs.list({ workspaceId }) : [];
+  },
+
+  getJob(jobId) {
+    return this._jobs ? this._jobs.get(String(jobId || "")) : null;
+  },
+
+  /** A task given via MCP: its job, made before the lead starts on it. */
+  startTaskJob(task) {
+    if (!this._jobs || !task) return null;
+    const lead = this._store.get(task.leadId) || {};
+    return this._jobs.startJob({
+      workspaceId: lead.workspaceId,
+      leadId: task.leadId,
+      leadName: lead.name || task.teamName || "",
+      title: task.task,
+      startedBy: {
+        kind: "task",
+        label: task.from || "MCP",
+        taskId: task.id,
+      },
+    }).id;
+  },
+
+  /** The lead never started on the job (busy, paused…): it stops, said why. */
+  abandonJob(jobId, summary) {
+    const job = this.getJob(jobId);
+    if (!job) return null;
+    // Its lead's run already has a step (it ran, or was skipped).
+    if (job.steps.some((s) => s.botId === job.leadId)) return null;
+    return this._jobs.skipStep(job.id, {
+      botId: job.leadId,
+      botName: job.leadName,
+      why: job.startedBy,
+      summary,
+    });
+  },
+
+  /**
+   * The job a hand-on joins: its event's, while that job is still open and
+   * on the bot's own dashboard — never one that has ended, or another
+   * dashboard's (DASH-31).
+   */
+  _handOnJob(event, bot) {
+    const jobId = event && event.jobId;
+    if (!jobId || !this._jobs || !this._jobs.isOpen(jobId)) return null;
+    const job = this._jobs.get(jobId);
+    const ws = bot && bot.workspaceId != null ? String(bot.workspaceId) : null;
+    return job && job.workspaceId === ws ? jobId : null;
+  },
+
+  /** Resolves with the job once its whole chain has finished. */
+  waitForJob(jobId) {
+    return this._jobs ? this._jobs.waitForEnd(jobId) : Promise.resolve(null);
+  },
+
+  /** Stop every bot still running in the job. */
+  stopJob(jobId) {
+    const job = this.getJob(jobId);
+    if (!job) return { ok: false };
+    for (const s of job.steps) {
+      if (s.status === "running") this.stop(s.botId);
+      // Its checks: their job closes, so no more retries.
+      if (s.status === "checking" && s.goalId) {
+        try {
+          goalController.close(s.goalId);
+        } catch (_e) {
+          // The step still stops below.
+        }
+        this._jobs.checksMoved(s.goalId, "stopped");
+      }
+    }
+    this._jobs.stopWaiting(job.id);
+    return { ok: true };
+  },
+
+  /** Delete a job — only ever because the user asked. Not while it runs. */
+  deleteJob(jobId) {
+    const job = this.getJob(jobId);
+    if (!job) return { ok: false };
+    const going = job.steps.some((s) =>
+      ["queued", "running", "checking"].includes(s.status),
+    );
+    if (job.status === "running" || going) {
+      return { ok: false, error: "Stop the job before deleting it." };
+    }
+    const ok = this._jobs.remove(job.id);
+    if (ok) {
+      this._broadcast(BOT_JOBS_CHANGED, {
+        jobId: job.id,
+        workspaceId: job.workspaceId,
+        status: "deleted",
+      });
+    }
+    return { ok };
+  },
+
   /** "Unlock now" after 5 wrong passphrases. */
   unlockMcpTasks() {
     this._mcpTasks.unlock();
@@ -2202,6 +2437,8 @@ const botController = {
       // What to show as asked (an MCP task without the app's notes), and who.
       shown = null,
       from = null,
+      // A task's job, made before the lead starts (DASH-28).
+      jobId = null,
     } = {},
   ) {
     const bot = this._store.get(botId);
@@ -2228,6 +2465,9 @@ const botController = {
         // asks record it on their runs.
         conversationId: conversationId || (kept && kept.id) || null,
         ...(kept ? { onEvent: kept.onEvent } : {}),
+        ...(jobId ? { jobId } : {}),
+        // The job is named for what was asked, not the app's notes.
+        ...(shown ? { jobTitle: shown } : {}),
       });
     // Asked in the app, it's the user's run: a paused lead still answers.
     // Asked over MCP ("mcp", "mcp-task…"), pause holds.
@@ -3775,6 +4015,58 @@ const botController = {
         : rootCause());
     const goal = cause.goal || { goalId: null, taskId: null };
     cause.goal = goal;
+    // The job (DASH-28, DASH-31): a team lead's own run starts one; every
+    // run in its chain joins it — a bot it asks, a hand-on, a check's
+    // retry. Its id rides the cause, so the run's events carry it on.
+    const bot = this._store.get(botId) || {};
+    const willStart = !this._runner.listActive().includes(botId);
+    let jobId =
+      opts.jobId ||
+      (cause.jobId ? this._handOnJob(cause, bot) : null) ||
+      (goal.goalId ? this._jobs.jobForGoal(goal.goalId) : null) ||
+      null;
+    if (
+      !jobId &&
+      willStart &&
+      isLead(bot) &&
+      !isDashTeam(bot) &&
+      !opts.noTools &&
+      opts.trigger !== "schedule" &&
+      opts.trigger !== "catch-up"
+    ) {
+      jobId = this._jobs.startJob({
+        workspaceId: bot.workspaceId,
+        leadId: bot.id,
+        leadName: bot.name,
+        title: String(opts.jobTitle || opts.prompt || "").split("\n")[0],
+        startedBy: jobStartedBy(opts),
+        conversationId: opts.conversationId || null,
+      }).id;
+    }
+    if (jobId) cause.jobId = jobId;
+    // A check's retry or review is part of its step's checks, not a step.
+    let jobStep = null;
+    if (jobId && willStart && opts.trigger !== "flow") {
+      jobStep = this._jobs.startStep(jobId, {
+        botId,
+        botName: bot.name,
+        why: jobWhy(this._store, bot, opts),
+        conversationId: opts.conversationId || null,
+      });
+    } else if (jobId && !willStart && opts.trigger === "event") {
+      this._jobs.skipStep(jobId, {
+        botId,
+        botName: bot.name,
+        why: jobWhy(this._store, bot, opts),
+        summary: `${bot.name} was busy with another run, so this hand-on didn't start.`,
+      });
+    }
+    let jobStepEnded = false;
+    const endJobStep = (record, checking = null) => {
+      if (!jobStep || jobStepEnded) return;
+      jobStepEnded = true;
+      this._jobs.endStep(jobId, { botId, record, checking });
+    };
     // A bot with checks holds the results it sends until they pass
     // (bot-checks PRD).
     if (!alreadyRunning) {
@@ -3790,6 +4082,7 @@ const botController = {
       viaEntry = {
         via: opts.via || null,
         conversationId: opts.conversationId || null,
+        jobId,
       };
       this._runVia.set(botId, viaEntry);
       // The run's goal, so a goal deleted mid-run is forgotten by it.
@@ -3844,6 +4137,14 @@ const botController = {
     // already updated here. Broadcast on start and again on completion so the
     // tray/powerSaveBlocker can react (US-018).
     this._broadcastRunActive();
+    // The run in progress, so a lead asking a bot that a hand-on in the same
+    // job already started waits for that run (DASH-28).
+    let activeEntry = null;
+    if (willStart) {
+      if (!this._runsInProgress) this._runsInProgress = new Map();
+      activeEntry = { jobId, promise: Promise.resolve(p) };
+      this._runsInProgress.set(botId, activeEntry);
+    }
     Promise.resolve(p)
       .then((record) => {
         // A bot with checks: its work is held as a job until they pass
@@ -3860,13 +4161,26 @@ const botController = {
         if (!alreadyRunning && !held) {
           this._events.endRun(this._store.get(botId), record);
         }
+        endJobStep(
+          record,
+          held && record && record.checks && record.checks.goalId
+            ? { goalId: record.checks.goalId }
+            : null,
+        );
         // A failed run notifies (US-018 AC5).
         this._sendNotice(failureNotice(this._store.get(botId), record));
         // What went wrong goes in Issues; a clean run resolves the bot's.
         this._recordRunIssues(this._store.get(botId), record);
       })
-      .catch(() => {})
+      .catch((e) => {
+        endJobStep({ status: "failed", error: (e && e.message) || null });
+      })
       .finally(() => {
+        // A run that ended without a record still ends its step.
+        endJobStep({ status: "stopped" });
+        if (activeEntry && this._runsInProgress.get(botId) === activeEntry) {
+          this._runsInProgress.delete(botId);
+        }
         if (viaEntry && this._runVia.get(botId) === viaEntry) {
           this._runVia.delete(botId);
         }
@@ -6369,6 +6683,9 @@ const botController = {
     if (!this._leadAsked) this._leadAsked = new Map();
     const info = leadRunInfo(this._runVia ? this._runVia.get(lead.id) : null);
     const leadGoal = this._runGoals ? this._runGoals.get(lead.id) : null;
+    // The lead's job: the bot it asks joins it (DASH-28).
+    const leadEntry = this._runVia ? this._runVia.get(lead.id) : null;
+    const jobId = (leadEntry && leadEntry.jobId) || null;
     const result = await askTeamBot({
       lead,
       member,
@@ -6380,10 +6697,17 @@ const botController = {
       goal: leadGoal && leadGoal.goalId ? leadGoal : null,
       takeHandoff: () => this._handoffs.take(lead.id, runKey),
       // For the user's own request, the bot's run is theirs too.
-      run: (opts) =>
-        this._inUserRun(lead.id)
-          ? this._asUserRun(member.id, () => this._run(member.id, opts))
-          : this._run(member.id, opts),
+      run: (opts) => {
+        // Already running in this job (a hand-on started it): the lead
+        // waits for that run's answer instead of hearing "busy" (DASH-28).
+        const going =
+          this._runsInProgress && this._runsInProgress.get(member.id);
+        if (jobId && going && going.jobId === jobId) return going.promise;
+        const withJob = jobId ? { ...opts, jobId } : opts;
+        return this._inUserRun(lead.id)
+          ? this._asUserRun(member.id, () => this._run(member.id, withJob))
+          : this._run(member.id, withJob);
+      },
       // Stopping the lead stops the bots it's waiting on (stop()).
       track: (p) => {
         const asked = this._leadAsked.get(lead.id) || new Set();

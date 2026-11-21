@@ -106,7 +106,7 @@ const TEAM_TOOLS = [
   {
     name: "get_task_status",
     description:
-      "How a task from give_task is going: waiting for the passphrase, running, done (with the team's summary), failed (with why), or expired.",
+      "How a task from give_task is going: waiting for the passphrase, running, done (with the team's summary), failed (with why), or expired. A task is running until every bot it set going has finished — the lead, the bots it asked and the ones they handed on to; steps lists each, with its status.",
     inputSchema: {
       type: "object",
       properties: {
@@ -156,6 +156,64 @@ const taskView = (t) => ({
   ...(t.error ? { error: t.error } : {}),
   ...(t.endedAt ? { endedAt: t.endedAt } : {}),
 });
+
+/** Why a step in a job started, in a few words. */
+function stepWhy(why) {
+  const w = why || {};
+  if (w.kind === "task") return `Task${w.label ? ` from ${w.label}` : ""}`;
+  if (w.kind === "you") return "Asked in Dash";
+  if (w.kind === "asked") return `Asked by ${w.by || "the team lead"}`;
+  if (w.kind === "handon") {
+    return `Started by ${w.by || "a bot"}${w.label ? ` › ${w.label}` : ""}`;
+  }
+  return w.kind || "";
+}
+
+/** A job's steps as the agent sees them (DASH-28): bot, status, why. */
+const stepsView = (job) =>
+  ((job && job.steps) || []).map((st) => ({
+    bot: st.botName,
+    status: st.status,
+    startedBy: stepWhy(st.why),
+    ...(st.summary
+      ? {
+          summary:
+            st.summary.length > LIST_CHARS
+              ? `${st.summary.slice(0, LIST_CHARS)}…`
+              : st.summary,
+        }
+      : {}),
+    ...(st.startedAt ? { startedAt: st.startedAt } : {}),
+    ...(st.endedAt ? { endedAt: st.endedAt } : {}),
+  }));
+
+/** Running: which bots are still going, or waiting on the user. */
+function stillGoing(job) {
+  const steps = (job && job.steps) || [];
+  const going = steps
+    .filter((st) => ["queued", "running", "checking"].includes(st.status))
+    .map((st) => st.botName);
+  const waiting = steps
+    .filter((st) => st.status === "needs-you")
+    .map((st) => st.summary || `${st.botName} is waiting on the user.`);
+  return [going.length ? `Still going: ${going.join(", ")}.` : "", ...waiting]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** After the lead's answer: what the bots it set off said (hand-ons). */
+function afterLead(job) {
+  return ((job && job.steps) || [])
+    .filter(
+      (st) =>
+        st.why &&
+        st.why.kind === "handon" &&
+        st.status === "done" &&
+        st.summary,
+    )
+    .map((st) => `${st.botName}: ${st.summary}`)
+    .join(" ");
+}
 
 const STATUS_MESSAGE = {
   waiting: (t) =>
@@ -230,7 +288,10 @@ function makeTeamToolHandlers({
   // (allowed — the user confirmed it), and the task follows the run.
   const startTask = (task) => {
     const tasks = bots.tasks();
-    tasks.running(task.id);
+    // Its job follows the whole chain — the lead, the bots it asks and
+    // their hand-ons — so the task is done only when all of it is (DASH-28).
+    const jobId = bots.startTaskJob ? bots.startTaskJob(task) : null;
+    tasks.running(task.id, { jobId });
     const via = `mcp-task${task.from ? `:${task.from}` : ""}`;
     // Notes left by an earlier run don't belong to this task.
     const takeNotes = () =>
@@ -243,10 +304,17 @@ function makeTeamToolHandlers({
           // Kept as a conversation: the task as it was given, and by whom.
           shown: task.task,
           from: task.from || "mcp",
+          ...(jobId ? { jobId } : {}),
         }),
       )
       .then((result) => {
         if (result && result.skipped) {
+          if (jobId && bots.abandonJob) {
+            bots.abandonJob(
+              jobId,
+              `The team lead didn't start${result.reason ? `: ${result.reason}` : ""}.`,
+            );
+          }
           return tasks.failed(
             task.id,
             result.reason && result.reason !== "a run is already in progress"
@@ -257,6 +325,13 @@ function makeTeamToolHandlers({
         // Only a finished run is done: one stopped in Dash, or cut off when
         // Dash closed, has at most part of an answer. Each keeps its run.
         const ran = { runAt: (result && result.startedAt) || null };
+        const ok = result && result.status === "completed" && !result.error;
+        if (!ok && jobId && bots.abandonJob) {
+          bots.abandonJob(
+            jobId,
+            (result && result.error) || "The team lead didn't finish.",
+          );
+        }
         if (result && result.status === "stopped") {
           return tasks.failed(task.id, "It was stopped in Dash.", ran);
         }
@@ -275,15 +350,39 @@ function makeTeamToolHandlers({
           );
         }
         const notes = takeNotes();
-        return tasks.done(task.id, {
+        const lead = {
           summary: withoutHandoff(result.output) || "",
           runAt: result.startedAt || null,
           needsYou: notes.length ? notes.join(" ") : null,
+        };
+        if (!jobId || !bots.waitForJob) return tasks.done(task.id, lead);
+        // The lead has answered; the task ends when its job does.
+        return Promise.resolve(bots.waitForJob(jobId)).then((job) => {
+          if (!job || job.status === "done") {
+            const more = afterLead(job);
+            return tasks.done(task.id, {
+              ...lead,
+              summary: more ? `${lead.summary} ${more}`.trim() : lead.summary,
+            });
+          }
+          const bad = job.steps.find(
+            (st) => st.status === "failed" || st.status === "stopped",
+          );
+          return tasks.failed(
+            task.id,
+            bad
+              ? `${bad.botName} ${bad.status === "failed" ? "failed" : "was stopped"}${bad.summary ? `: ${bad.summary}` : "."}`
+              : `The job ${job.status}.`,
+            { runAt: lead.runAt },
+          );
         });
       })
-      .catch((err) =>
-        tasks.failed(task.id, (err && err.message) || String(err)),
-      );
+      .catch((err) => {
+        if (jobId && bots.abandonJob) {
+          bots.abandonJob(jobId, (err && err.message) || String(err));
+        }
+        return tasks.failed(task.id, (err && err.message) || String(err));
+      });
   };
 
   /** Passphrase checks out → start; otherwise say what to do next. */
@@ -529,9 +628,12 @@ function makeTeamToolHandlers({
       if (!task) {
         return json({ message: "No task with that taskId." }, true);
       }
+      const job = task.jobId && bots.getJob ? bots.getJob(task.jobId) : null;
+      const going = task.status === "running" && job ? stillGoing(job) : "";
       return json({
         ...taskView(task),
-        message: STATUS_MESSAGE[task.status](task),
+        ...(job ? { jobId: job.id, steps: stepsView(job) } : {}),
+        message: `${STATUS_MESSAGE[task.status](task)}${going ? ` ${going}` : ""}`,
       });
     },
 
@@ -692,6 +794,11 @@ function registerTeamTools() {
       routeTask: (task, teams, opts) =>
         botController.routeMcpTask(task, teams, opts),
       takeTaskNotes: (leadId) => botController.takeTaskNotes(leadId),
+      // Jobs (DASH-28): the task follows its whole chain.
+      startTaskJob: (task) => botController.startTaskJob(task),
+      waitForJob: (jobId) => botController.waitForJob(jobId),
+      getJob: (jobId) => botController.getJob(jobId),
+      abandonJob: (jobId, why) => botController.abandonJob(jobId, why),
     },
   });
 

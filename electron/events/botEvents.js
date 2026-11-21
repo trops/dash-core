@@ -66,6 +66,11 @@ const BOTS_LIST_DASH_TEAM = "bots-list-dash-team";
 // Tasks via MCP (bot-teams TEAM-016): a team's tasks, the Dash Lead's
 // routing log, which teams take tasks, and the task passphrase.
 const BOTS_LIST_MCP_TASKS = "bots-list-mcp-tasks";
+// Jobs: each chain of work through a team lead (DASH-28, DASH-31).
+const BOTS_LIST_JOBS = "bots-list-jobs";
+const BOTS_GET_JOB = "bots-get-job";
+const BOTS_STOP_JOB = "bots-stop-job";
+const BOTS_DELETE_JOB = "bots-delete-job";
 const BOTS_LIST_MCP_ROUTES = "bots-list-mcp-routes";
 const BOTS_LIST_MCP_TASK_TEAMS = "bots-list-mcp-task-teams";
 const BOTS_SET_TAKES_MCP_TASKS = "bots-set-takes-mcp-tasks";
@@ -133,6 +138,7 @@ const BOT_OPEN_REQUEST = "bot-open-request"; // {}
 const BOT_PLAN_BUILD_PROGRESS = "bot-plan-build-progress"; // { buildId, state }
 // Tasks via MCP, the routing log, the passphrase or the lock changed.
 const BOT_MCP_TASKS_CHANGED = "bot-mcp-tasks-changed"; // {}
+const BOT_JOBS_CHANGED = "bot-jobs-changed"; // { jobId, workspaceId, status }
 
 module.exports = {
   BOTS_LIST,
@@ -179,6 +185,10 @@ module.exports = {
   BOTS_LIST_LEADS,
   BOTS_LIST_DASH_TEAM,
   BOTS_LIST_MCP_TASKS,
+  BOTS_LIST_JOBS,
+  BOTS_GET_JOB,
+  BOTS_STOP_JOB,
+  BOTS_DELETE_JOB,
   BOTS_LIST_MCP_ROUTES,
   BOTS_LIST_MCP_TASK_TEAMS,
   BOTS_SET_TAKES_MCP_TASKS,
@@ -225,4 +235,5 @@ module.exports = {
   BOT_OPEN_REQUEST,
   BOT_PLAN_BUILD_PROGRESS,
   BOT_MCP_TASKS_CHANGED,
+  BOT_JOBS_CHANGED,
 };
