@@ -140,7 +140,7 @@ describe("botController — delete clears private memory", () => {
   it("forgets the deleted bot's private memory", () => {
     assert.match(
       ctrl,
-      /delete\(botId\) \{[\s\S]{0,1200}this\._memory\.forgetBot\(botId\)[\s\S]{0,200}return this\._store\.delete\(botId\);/,
+      /delete\(botId\) \{[\s\S]{0,1600}this\._memory\.forgetBot\(botId\)[\s\S]{0,200}return this\._store\.delete\(botId\);/,
     );
   });
 });
@@ -149,7 +149,7 @@ describe("botController — asking a lead from the Assistant (TEAM-004)", () => 
   it("askLead takes `via` and _run forwards it to the runner", () => {
     assert.match(
       ctrl,
-      /askLead\(\s*botId,\s*question,\s*\{\s*continueConversation = false,\s*via = null,\s*conversationId = null,[\s\S]{0,200}\} = \{\},\s*\)/,
+      /askLead\(\s*botId,\s*question,\s*\{\s*continueConversation = false,\s*via = null,\s*conversationId = null,[\s\S]{0,400}\} = \{\},\s*\)/,
     );
     assert.match(ctrl, /continueSession: !!continueConversation,\s*via,/);
     // And the asking conversation (lead-workspace release 5) — or the one

@@ -8,6 +8,7 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs");
 const { makeTeamToolHandlers } = require("./teamTools");
 const { createMcpTasks } = require("../bots/mcpTasks");
 
@@ -68,6 +69,11 @@ function setup(over = {}) {
       asksTaskPassphrase: (id) => asks.has(String(id)),
       tasks: () => tasks,
       takeTaskNotes: over.takeTaskNotes,
+      // Jobs (DASH-28): left out, a task follows only the lead's run.
+      startTaskJob: over.startTaskJob,
+      waitForJob: over.waitForJob,
+      getJob: over.getJob,
+      abandonJob: over.abandonJob,
       routeTask: async (task, teams, opts) => {
         routed.push({ task, teams: teams.map((x) => x.name) });
         if (opts && opts.from) routed.from = opts.from;
@@ -279,6 +285,119 @@ describe("give_task", () => {
     // The lead isn't told the user confirmed it with a passphrase.
     assert.doesNotMatch(calls[0].q, /passphrase/);
     assert.equal(tasks.get(r.taskId).needsPassphrase, false);
+  });
+
+  it("runs until its whole job is done — hand-ons included — and lists the steps (DASH-28)", async () => {
+    let finish;
+    const ended = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const job = {
+      id: "job_1",
+      status: "running",
+      steps: [
+        {
+          botName: "Room Design Lead",
+          status: "done",
+          why: { kind: "task", label: "slack" },
+          summary: "Asked the Designer.",
+        },
+        {
+          botName: "Designer",
+          status: "done",
+          why: { kind: "asked", by: "Room Design Lead" },
+          summary: "3 looks.",
+        },
+        {
+          botName: "Drafter",
+          status: "running",
+          why: { kind: "handon", by: "Designer", label: "Completed" },
+        },
+      ],
+    };
+    const { handlers, calls, tasks } = setup({
+      asks: [],
+      taskWaitMs: 20,
+      startTaskJob: () => "job_1",
+      getJob: () => job,
+      waitForJob: () => ended,
+    });
+    const r = body(
+      await handlers.give_task({
+        task: "Design the guest bedroom",
+        team: "7",
+        from: "slack",
+      }),
+    );
+    assert.equal(r.status, "running");
+    assert.equal(calls[0].opts.jobId, "job_1");
+    assert.equal(tasks.get(r.taskId).jobId, "job_1");
+    const s = body(await handlers.get_task_status({ taskId: r.taskId }));
+    assert.equal(s.status, "running");
+    assert.equal(s.jobId, "job_1");
+    assert.deepEqual(
+      s.steps.map((x) => [x.bot, x.status, x.startedBy]),
+      [
+        ["Room Design Lead", "done", "Task from slack"],
+        ["Designer", "done", "Asked by Room Design Lead"],
+        ["Drafter", "running", "Started by Designer › Completed"],
+      ],
+    );
+    assert.match(s.message, /Still going: Drafter\./);
+    // The Drafter finishes: now the task is done, with what it said.
+    job.status = "done";
+    job.steps[2] = {
+      ...job.steps[2],
+      status: "done",
+      summary: "Drawn: 3 sheets.",
+    };
+    finish(job);
+    await new Promise((res) => setImmediate(res));
+    const after = tasks.get(r.taskId);
+    assert.equal(after.status, "done");
+    assert.match(after.summary, /Drafter: Drawn: 3 sheets\./);
+  });
+
+  it("a job that fails fails the task, naming the bot (DASH-28)", async () => {
+    const job = {
+      id: "job_2",
+      status: "failed",
+      steps: [
+        { botName: "Room Design Lead", status: "done" },
+        {
+          botName: "Drafter",
+          status: "failed",
+          summary: "The PDF couldn't be written.",
+        },
+      ],
+    };
+    const { handlers, tasks } = setup({
+      asks: [],
+      startTaskJob: () => "job_2",
+      getJob: () => job,
+      waitForJob: async () => job,
+    });
+    const r = body(await handlers.give_task({ task: "Draw it", team: "7" }));
+    assert.equal(r.status, "failed");
+    assert.match(
+      tasks.get(r.taskId).error,
+      /^Drafter failed: The PDF couldn't be written\./,
+    );
+  });
+
+  it("the lead never started: its job is stopped too (DASH-28)", async () => {
+    const abandoned = [];
+    const { handlers } = setup({
+      asks: [],
+      startTaskJob: () => "job_3",
+      abandonJob: (id, why) => abandoned.push([id, why]),
+      askLead: async () => ({ skipped: true, reason: "this bot is paused" }),
+    });
+    const r = body(await handlers.give_task({ task: "Draw it", team: "7" }));
+    assert.equal(r.status, "failed");
+    assert.deepEqual(abandoned, [
+      ["job_3", "The team lead didn't start: this bot is paused."],
+    ]);
   });
 
   it("routed to a team that doesn't ask: says which, and starts", async () => {
@@ -548,5 +667,20 @@ describe("list_tasks and list_teams", () => {
         ["Inbox", false],
       ],
     );
+  });
+});
+
+describe("the real MCP adapter (DASH-28)", () => {
+  it("hands the task tools the job functions", () => {
+    const src = fs.readFileSync(require.resolve("./teamTools"), "utf8");
+    for (const name of ["startTaskJob", "waitForJob", "getJob", "abandonJob"]) {
+      assert.match(
+        src,
+        new RegExp(
+          name + ": \\([^)]*\\) =>\\s*botController\\." + name + "\\(",
+        ),
+        name,
+      );
+    }
   });
 });

@@ -239,8 +239,13 @@ function createMcpTasks({
       return { wrong: true, triesLeft: MAX_WRONG - wrong };
     },
 
-    running(id) {
-      return update(id, { status: "running", confirmedAt: iso(now()) });
+    /** `jobId`: the job that follows the whole chain (DASH-28). */
+    running(id, { jobId = null } = {}) {
+      return update(id, {
+        status: "running",
+        confirmedAt: iso(now()),
+        ...(jobId ? { jobId } : {}),
+      });
     },
 
     /**

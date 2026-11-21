@@ -65,6 +65,10 @@ const {
   BOTS_ASK_LEAD,
   BOTS_LIST_LEADS,
   BOTS_LIST_MCP_TASKS,
+  BOTS_LIST_JOBS,
+  BOTS_GET_JOB,
+  BOTS_STOP_JOB,
+  BOTS_DELETE_JOB,
   BOTS_LIST_MCP_ROUTES,
   BOTS_LIST_MCP_TASK_TEAMS,
   BOTS_SET_TAKES_MCP_TASKS,
@@ -97,6 +101,7 @@ const {
   BOT_OPEN_REQUEST,
   BOT_PLAN_BUILD_PROGRESS,
   BOT_MCP_TASKS_CHANGED,
+  BOT_JOBS_CHANGED,
 } = require("../events/botEvents");
 
 let _nextListenerId = 0;
@@ -367,6 +372,16 @@ const botApi = {
   /** A team's tasks via MCP, newest first (all teams without one). */
   listMcpTasks: (workspaceId = null, limit = 20) =>
     ipcRenderer.invoke(BOTS_LIST_MCP_TASKS, { workspaceId, limit }),
+  // ---- Jobs: each chain of work through a team lead (DASH-28, DASH-31) ----
+  /** Jobs, newest change first; one dashboard's with workspaceId. */
+  listJobs: (workspaceId = null) =>
+    ipcRenderer.invoke(BOTS_LIST_JOBS, { workspaceId }),
+  /** One job with its steps, or null. */
+  getJob: (jobId) => ipcRenderer.invoke(BOTS_GET_JOB, { jobId }),
+  /** Stop every bot still running in the job. */
+  stopJob: (jobId) => ipcRenderer.invoke(BOTS_STOP_JOB, { jobId }),
+  /** Delete a finished job (only the user deletes jobs). */
+  deleteJob: (jobId) => ipcRenderer.invoke(BOTS_DELETE_JOB, { jobId }),
   /** The Dash Lead's routing log, newest first. */
   listMcpRoutes: (limit = 20) =>
     ipcRenderer.invoke(BOTS_LIST_MCP_ROUTES, { limit }),
@@ -409,6 +424,8 @@ const botApi = {
   /** Tasks via MCP, the routing log, the passphrase or the lock changed. */
   onMcpTasksChanged: (callback) =>
     _addListener(BOT_MCP_TASKS_CHANGED, callback),
+  /** A job started, moved on or ended: { jobId, workspaceId, status }. */
+  onJobsChanged: (callback) => _addListener(BOT_JOBS_CHANGED, callback),
   /** Recent changed (a save, a build's progress, a removal). */
   onCreateRecent: (callback) => _addListener(CREATE_RECENT_CHANGED, callback),
 

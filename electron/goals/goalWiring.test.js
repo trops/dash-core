@@ -83,7 +83,8 @@ describe("botController", () => {
     assert.match(bots, /flowController\.useBots\(flowBotHooks\(this\)\);/);
     assert.match(
       bots,
-      /cause\.goal = goal;[\s\S]{0,200}?if \(!alreadyRunning\) \{\s*this\._events\.startRun\(botId, cause, \{/,
+      // (The run's job is worked out in between, DASH-28.)
+      /cause\.goal = goal;[\s\S]{0,3000}?if \(!alreadyRunning\) \{\s*this\._events\.startRun\(botId, cause, \{/,
     );
     assert.match(bots, /planId: String\(opts\.planId\) \} : \{\}\),\s*goal,/);
   });

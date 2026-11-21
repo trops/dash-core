@@ -129,6 +129,8 @@ function causeFromEvent(event) {
   if (event && event.goalId) {
     cause.goal = { goalId: event.goalId, taskId: event.taskId || null };
   }
+  // The job it's part of (DASH-28): a hand-on joins it.
+  if (event && event.jobId) cause.jobId = event.jobId;
   return cause;
 }
 
@@ -176,6 +178,8 @@ function buildBotEventMessage(bot, event, payload, cause = rootCause()) {
     msg.content.goalId = goal.goalId;
     msg.content.taskId = goal.taskId || null;
   }
+  // The job the run is part of, so the bots it starts join it (DASH-28).
+  if (cause.jobId) msg.jobId = cause.jobId;
   return msg;
 }
 

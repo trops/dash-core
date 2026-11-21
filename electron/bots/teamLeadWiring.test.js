@@ -136,14 +136,14 @@ describe("botController — a lead asks its bots (team_ask_bot)", () => {
     // bot still answers — userRunPaused.test.js).
     assert.match(
       ctrl,
-      /run: \(opts\) =>\s*this\._inUserRun\(lead\.id\)\s*\? this\._asUserRun\(member\.id, \(\) => this\._run\(member\.id, opts\)\)\s*: this\._run\(member\.id, opts\)/,
+      /run: \(opts\) => \{[\s\S]{0,600}return this\._inUserRun\(lead\.id\)\s*\? this\._asUserRun\(member\.id, \(\) => this\._run\(member\.id, withJob\)\)\s*: this\._run\(member\.id, withJob\);/,
     );
     // Who started the lead's own run (an outside caller can't run its
     // bots) and its conversation — read from the run entry by leadRunInfo
     // (leadAsk.test.js), never the entry object itself.
     assert.match(
       ctrl,
-      /const info = leadRunInfo\(this\._runVia \? this\._runVia\.get\(lead\.id\) : null\);\s*const leadGoal = [^\n]*\n\s*const result = await askTeamBot\(\{\s*lead,\s*member,\s*request,[\s\S]{0,200}\.\.\.info,/,
+      /const info = leadRunInfo\(this\._runVia \? this\._runVia\.get\(lead\.id\) : null\);\s*const leadGoal = [^\n]*\n[\s\S]{0,300}const result = await askTeamBot\(\{\s*lead,\s*member,\s*request,[\s\S]{0,200}\.\.\.info,/,
     );
     // The lead's goal goes with the request (goals ledger).
     assert.match(
