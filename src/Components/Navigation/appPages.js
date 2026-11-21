@@ -40,6 +40,14 @@ export const APP_PAGES = [
     settingsSections: ["widgets"],
   },
   {
+    key: "jobs",
+    label: "Jobs",
+    icon: "list-check",
+    description:
+      "Everything your bots are doing and have done, on every dashboard.",
+    settingsSections: [],
+  },
+  {
     key: "issues",
     label: "Issues",
     icon: "triangle-exclamation",

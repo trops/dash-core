@@ -70,6 +70,8 @@ export const DashSidebar = ({
   // A folder's name: the Dashboards page on that folder (NAV-017).
   onOpenFolder = null,
   pageAttention = {},
+  // A page's count in another colour: { jobs: "info" | "warning" }.
+  pageTone = {},
 }) => {
   const { themeVariant, changeThemeVariant, currentTheme } =
     useContext(ThemeContext);
@@ -77,7 +79,11 @@ export const DashSidebar = ({
   // waiting (approvals, setup) in the warning colour.
   const statusTokens = useStatusTokens();
   const toneOf = (key) =>
-    key === "issues" ? statusTokens.error : statusTokens.warning;
+    pageTone[key] && statusTokens[pageTone[key]]
+      ? statusTokens[pageTone[key]]
+      : key === "issues"
+        ? statusTokens.error
+        : statusTokens.warning;
 
   const [openFolders, toggleFolder] = useOpenFolders();
   const folders = navFolders(workspaces, menuItems);

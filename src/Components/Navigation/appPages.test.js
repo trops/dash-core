@@ -9,12 +9,13 @@ import {
 } from "./appPages";
 
 describe("appPages (app-navigation NAV-001/002)", () => {
-  it("lists the Manage pages in sidebar order (Issues after Widgets)", () => {
+  it("lists the Manage pages in sidebar order (Jobs, then Issues, after Widgets)", () => {
     expect(APP_PAGES.map((p) => p.key)).toEqual([
       "dashboards",
       "bots",
       "providers",
       "widgets",
+      "jobs",
       "issues",
       "themes",
     ]);

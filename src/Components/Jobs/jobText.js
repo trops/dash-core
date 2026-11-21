@@ -1,0 +1,134 @@
+/**
+ * jobText.js — a job in words (DASH-31): a chain of work through a team
+ * lead, as electron/jobs/jobTracker.js keeps it. Pure.
+ */
+
+export const JOB_STATUS = {
+  running: "Running",
+  "needs-you": "Needs you",
+  done: "Done",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+
+export const STEP_STATUS = {
+  queued: "Waiting to start",
+  running: "Running",
+  checking: "Being checked",
+  "needs-you": "Needs you",
+  done: "Done",
+  failed: "Failed",
+  stopped: "Stopped",
+  skipped: "Didn't run",
+};
+
+/** The status roles a job's dot and pill use (dash-react status tokens). */
+export function statusTone(status) {
+  if (status === "done") return "success";
+  if (status === "failed") return "error";
+  if (status === "needs-you") return "warning";
+  if (status === "running" || status === "checking") return "info";
+  return null; // queued, stopped, skipped: muted
+}
+
+/** Who started the job: "Task from slack", "You, in Woodworking Lead". */
+export function startedByText(job) {
+  const by = (job && job.startedBy) || {};
+  const lead = (job && job.leadName) || "its team lead";
+  if (by.kind === "task") return `Task from ${by.label || "MCP"}`;
+  if (by.kind === "mcp") return `Asked over MCP, in ${lead}`;
+  return `You, in ${lead}`;
+}
+
+/** Why a step started, in a few words. */
+export function whyText(why) {
+  const w = why || {};
+  if (w.kind === "task")
+    return `Got the task${w.label ? ` from ${w.label}` : ""}`;
+  if (w.kind === "mcp") return "Asked over MCP";
+  if (w.kind === "you") return "You asked";
+  if (w.kind === "asked") return `Asked by ${w.by || "its team lead"}`;
+  if (w.kind === "handon") {
+    return `Started by ${w.by || "a bot"}${w.label ? ` › ${w.label}` : ""}`;
+  }
+  return "";
+}
+
+/** "9:41", or "Tue 16:20" before today, or "Nov 3" before this week. */
+export function whenText(iso, now = Date.now()) {
+  const t = Date.parse(iso || "");
+  if (!Number.isFinite(t)) return "";
+  const d = new Date(t);
+  const today = new Date(now);
+  const hm = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (d.toDateString() === today.toDateString()) return hm;
+  if (now - t < 6 * 24 * 3600 * 1000) {
+    return `${d.toLocaleDateString([], { weekday: "short" })} ${hm}`;
+  }
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+/** "1 min", "2 h", "3 days": how long it ran (or has been running). */
+export function tookText(job, now = Date.now()) {
+  const a = Date.parse((job && job.createdAt) || "");
+  const b = job && job.endedAt ? Date.parse(job.endedAt) : now;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return "";
+  const s = Math.max(0, Math.round((b - a) / 1000));
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.round(s / 60)} min`;
+  if (s < 86400) return `${Math.round(s / 3600)} h`;
+  return `${Math.round(s / 86400)} days`;
+}
+
+/** How many are running and how many need you. */
+export function jobCounts(jobs) {
+  const out = { running: 0, needsYou: 0, failed: 0, done: 0, all: 0 };
+  for (const j of jobs || []) {
+    out.all += 1;
+    if (j.status === "running") out.running += 1;
+    else if (j.status === "needs-you") out.needsYou += 1;
+    else if (j.status === "failed") out.failed += 1;
+    else if (j.status === "done") out.done += 1;
+  }
+  return out;
+}
+
+/** A filter of the Jobs list: all, running, needs-you, failed, done. */
+export function filterJobs(jobs, filter) {
+  if (!filter || filter === "all") return jobs || [];
+  return (jobs || []).filter((j) =>
+    filter === "failed"
+      ? j.status === "failed" || j.status === "stopped"
+      : j.status === filter,
+  );
+}
+
+/** Jobs grouped by dashboard, in order of their newest job. */
+export function groupByDashboard(jobs, dashboards = []) {
+  const name = (id) => {
+    const d = (dashboards || []).find((w) => String(w.id) === String(id));
+    return d ? d.name : id == null ? "On no dashboard" : "A deleted dashboard";
+  };
+  const groups = [];
+  const at = new Map();
+  for (const j of jobs || []) {
+    const key = j.workspaceId == null ? "" : String(j.workspaceId);
+    if (!at.has(key)) {
+      at.set(key, groups.length);
+      groups.push({
+        workspaceId: j.workspaceId,
+        name: name(j.workspaceId),
+        jobs: [],
+      });
+    }
+    groups[at.get(key)].jobs.push(j);
+  }
+  return groups;
+}
+
+/** The step a "Needs you" job waits on, and what turns it on. */
+export function waitingStep(job) {
+  return (
+    ((job && job.steps) || []).find((s) => s.status === "needs-you") || null
+  );
+}

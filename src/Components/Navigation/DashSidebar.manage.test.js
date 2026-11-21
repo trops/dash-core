@@ -140,6 +140,7 @@ describe("DashSidebar — Manage group", () => {
       "Bots",
       "Providers",
       "Widgets",
+      "Jobs",
       "Issues",
       "Themes",
     ]);

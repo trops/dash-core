@@ -253,3 +253,66 @@ describe("jobs in the real _run", () => {
     assert.equal(ctl._jobs.list().length, 0);
   });
 });
+
+describe("jobs for the screens (DASH-31)", () => {
+  it("the list is light: open only, a limit, and no step summaries but a waiting one's", () => {
+    const ctl = fakeCtl();
+    const a = ctl._jobs.startJob({
+      workspaceId: "ws1",
+      leadId: "lead",
+      title: "a",
+    });
+    ctl._jobs.startStep(a.id, { botId: "des", botName: "Designer" });
+    ctl._jobs.endStep(a.id, {
+      botId: "des",
+      record: { status: "completed", output: "Long answer" },
+    });
+    ctl._jobs.waitStep(a.id, {
+      botId: "dra",
+      botName: "Drafter",
+      summary: "Drafter is paused.",
+    });
+    const b = ctl._jobs.startJob({
+      workspaceId: "ws1",
+      leadId: "lead",
+      title: "b",
+    });
+    ctl._jobs.skipStep(b.id, { botId: "lead", botName: "Lead", summary: "x" });
+    settle();
+    const listJobs = botController.listJobs.bind(ctl);
+    const open = listJobs({ open: true });
+    assert.deepEqual(
+      open.map((j) => j.id),
+      [a.id],
+    );
+    assert.equal(open[0].steps[0].summary, undefined);
+    assert.equal(open[0].steps[1].summary, "Drafter is paused.");
+    assert.equal(listJobs({ limit: 1 }).length, 1);
+  });
+
+  it("old finished jobs go only when the user turned that on", () => {
+    const ctl = fakeCtl();
+    const job = ctl._jobs.startJob({
+      workspaceId: "ws1",
+      leadId: "lead",
+      title: "old",
+    });
+    ctl._jobs.skipStep(job.id, {
+      botId: "lead",
+      botName: "Lead",
+      summary: "x",
+    });
+    settle();
+    // Pretend it ended long ago.
+    const j = ctl._jobs.get(job.id);
+    j.endedAt = "2025-01-01T00:00:00.000Z";
+    let setting = false;
+    ctl._store.getSettings = () => ({ clearOldJobs: setting });
+    const clear = botController._clearOldJobs.bind(ctl);
+    assert.equal(clear(), 0);
+    assert.ok(ctl._jobs.get(job.id));
+    setting = true;
+    assert.equal(clear(), 1);
+    assert.equal(ctl._jobs.get(job.id), null);
+  });
+});

@@ -66,6 +66,7 @@ import {
   PlanOutput,
 } from "./PlanViews";
 import { widgetChangeDetail } from "./planChanges";
+import { JobStrip } from "../Jobs/JobStrip";
 import { BuildInChat, BuildWalk, PastBuild, PastFix } from "./BuildViews";
 import { usePlanBuild } from "./usePlanBuild";
 import {
@@ -2623,7 +2624,24 @@ export const LeadWorkspace = ({
   const nextInChat =
     !!next && !wizardOn && !reuseOn && !pickCard && next !== "build";
   const renderAfter = (m, i, api) => {
-    const out = renderAfterMessage(m, i, api);
+    const before = renderAfterMessage(m, i, api);
+    // The job the conversation set going, under its latest answer (DASH-31).
+    const out =
+      conversationId && i === messages.length - 1 ? (
+        <>
+          {before}
+          <JobStrip
+            conversationId={conversationId}
+            workspaceId={
+              contact && contact.recipient
+                ? contact.recipient.dashboardId
+                : null
+            }
+          />
+        </>
+      ) : (
+        before
+      );
     // Shown under the plan already: its card has the choices.
     const underPlan = !!wp.plan && !wp.build && choicesAt !== -1 && !api.busy;
     if (!nextInChat || underPlan || i !== messages.length - 1) return out;

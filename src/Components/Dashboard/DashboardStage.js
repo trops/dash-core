@@ -94,6 +94,8 @@ import { LeadWorkspace } from "../LeadWorkspace/LeadWorkspace";
 import { usePendingApprovalCount } from "../Bots/usePendingApprovalCount";
 import { useProvidersNeedingSetup } from "../AppPages/useProviderStatus";
 import { useIssueCounts } from "../../hooks/useIssues";
+import { useJobCounts, useJobs } from "../../hooks/useJobs";
+import { jobCounts } from "../Jobs/jobText";
 import { ProviderSetupHost } from "../Provider/ProviderSetupHost";
 import { AppPage } from "../AppPages/AppPage";
 import {
@@ -308,6 +310,7 @@ const DashboardStageInner = ({
   const [widgetLink, setWidgetLink] = useState(null);
   // Issues page deep link { issueId, nonce } (a widget's problems chip).
   const [issueLink, setIssueLink] = useState(null);
+  const [jobLink, setJobLink] = useState(null);
   // The widget panel's "apply what's typed" — Save calls it first.
   const panelFlushRef = useRef(null);
   // The widget panel's settings check: Save waits while one fails.
@@ -321,6 +324,9 @@ const DashboardStageInner = ({
   const providersNeedingSetup = useProvidersNeedingSetup();
   // Open issues anywhere — the Issues item's count (issues PRD).
   const issueCounts = useIssueCounts();
+  // Jobs running or waiting on you, on every dashboard — the Jobs item's
+  // count (DASH-31).
+  const jobCountsNow = useJobCounts();
 
   /**
    * @param {Boolean} previewMode this is a toggle telling the dash we are editing
@@ -351,10 +357,24 @@ const DashboardStageInner = ({
   teamRefreshRef.current = team.refresh;
   // Its goals ledger: how many wait for the user, on the Goals switch.
   const { goals: dashboardGoals } = useGoals(workspaceSelected?.id ?? null);
-  const goalCount = goalCounts(shownGoals(dashboardGoals));
-  const goalsAttention = goalCount["needs-you"];
+  // And its jobs through its lead (DASH-31) still going. A checks job that
+  // is a stage of one is counted with its job, not twice.
+  const { jobs: dashboardJobs } = useJobs(workspaceSelected?.id ?? null, {
+    open: true,
+    skip: workspaceSelected?.id == null,
+  });
+  const goalsInJobs = new Set(
+    dashboardJobs.flatMap((j) =>
+      (j.steps || []).map((st) => st.goalId).filter(Boolean),
+    ),
+  );
+  const goalCount = goalCounts(
+    shownGoals(dashboardGoals).filter((g) => !goalsInJobs.has(g.id)),
+  );
+  const dashboardJobCount = jobCounts(dashboardJobs);
+  const goalsAttention = goalCount["needs-you"] + dashboardJobCount.needsYou;
   // Jobs being worked on: a plain count on "Jobs" when none needs you.
-  const goalsWorking = goalCount.working;
+  const goalsWorking = goalCount.working + dashboardJobCount.running;
 
   // Dashboard | Bots, per dashboard. The Bots view is a viewing mode: it
   // shows in preview and in popouts, never in edit mode. A popout opened from
@@ -875,7 +895,13 @@ const DashboardStageInner = ({
       handleOpenPageGuarded("issues", {
         issueLink: d.issueId ? { issueId: d.issueId, nonce: Date.now() } : null,
       });
-    else if (d.page) handleOpenPageGuarded(d.page);
+    else if (d.page === "jobs") {
+      // From a lead's conversation: it closes, so the page shows.
+      setWorkspaceRequest(null);
+      handleOpenPageGuarded("jobs", {
+        jobLink: d.jobId ? { jobId: d.jobId, nonce: Date.now() } : null,
+      });
+    } else if (d.page) handleOpenPageGuarded(d.page);
   };
   useEffect(() => {
     const onPage = (e) => openPageRef.current((e && e.detail) || {});
@@ -1658,6 +1684,7 @@ const DashboardStageInner = ({
     if (opts.providerLink) setProviderLink(opts.providerLink);
     if (opts.widgetLink) setWidgetLink(opts.widgetLink);
     if (opts.issueLink) setIssueLink(opts.issueLink);
+    if (opts.jobLink) setJobLink(opts.jobLink);
   }
 
   function handleOpenPageGuarded(key, opts = {}) {
@@ -3324,6 +3351,10 @@ const DashboardStageInner = ({
                   bots: pendingApprovals,
                   providers: providersNeedingSetup,
                   issues: issueCounts.total,
+                  jobs: jobCountsNow.running + jobCountsNow.needsYou,
+                }}
+                pageTone={{
+                  jobs: jobCountsNow.needsYou ? "warning" : "info",
                 }}
               />
             )}
@@ -3540,6 +3571,7 @@ const DashboardStageInner = ({
                   providerLink={providerLink}
                   widgetLink={widgetLink}
                   issueLink={issueLink}
+                  jobLink={jobLink}
                   workspaces={workspaceConfig}
                   menuItems={menuItems}
                   dashApi={dashApi}

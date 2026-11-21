@@ -46,6 +46,7 @@ describe("DashCommandPalette — Go to", () => {
       "Bots",
       "Providers",
       "Widgets",
+      "Jobs",
       "Issues",
       "Themes",
     ]);

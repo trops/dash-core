@@ -219,6 +219,7 @@ function createJobTracker({
     );
     if (step) {
       step.status = "running";
+      step.waiting = null;
       step.runAt = runAt || null;
       step.startedAt = iso();
       step.summary = "";
@@ -238,7 +239,7 @@ function createJobTracker({
   }
 
   /** A hand-on that can't start yet: waiting on the user (a paused bot). */
-  function waitStep(jobId, { botId, botName, why, summary }) {
+  function waitStep(jobId, { botId, botName, why, summary, waiting = null }) {
     const job = jobOf(jobId);
     if (!job) return null;
     unsettle(job.id);
@@ -248,6 +249,8 @@ function createJobTracker({
     if (!step) return null;
     step.status = "needs-you";
     step.summary = clip(summary || "", MAX_SUMMARY);
+    // What it waits on: "paused" (Turn on) or "budget".
+    step.waiting = waiting || null;
     commit(job);
     return step;
   }
@@ -437,6 +440,18 @@ function createJobTracker({
     return store.remove(jobId);
   }
 
+  /** Delete finished jobs that ended before `cutoff` (ISO); how many went. */
+  function clearEndedBefore(cutoff) {
+    let n = 0;
+    for (const job of store.list()) {
+      if (!FINAL.has(job.status) || settling.has(job.id)) continue;
+      if (job.endedAt && job.endedAt < cutoff) {
+        if (remove(job.id)) n += 1;
+      }
+    }
+    return n;
+  }
+
   function list({ workspaceId } = {}) {
     const all = store.list();
     return workspaceId == null
@@ -453,6 +468,7 @@ function createJobTracker({
     checksMoved,
     jobForGoal,
     isOpen,
+    clearEndedBefore,
     releaseWaiting,
     stopWaiting,
     waitForEnd,
