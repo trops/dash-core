@@ -1,47 +1,64 @@
 name: Publish Package
 
 on:
-    push:
-        branches:
-            - "master"
+  push:
+    branches:
+      - "master"
 
 jobs:
-    publish-npm:
-        runs-on: ubuntu-latest
-        permissions:
-            contents: read
-            id-token: write
-        steps:
-            - uses: actions/checkout@v5
-            - uses: actions/setup-node@v5
-              with:
-                  node-version: 22.22.1
-                  registry-url: https://registry.npmjs.org/
-            - run: npm ci
-            # Secret is injected into dist/mcp/servers/google-drive.js by
-            # scripts/inject-secrets.js, which the build:electron step
-            # runs. Without this env var the published package contains
-            # the literal placeholder "__GDRIVE_CLIENT_SECRET__" and the
-            # Google OAuth flow returns invalid_client at runtime.
-            - run: npm run build
-              env:
-                  GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
-            # `prepublishOnly` re-runs `npm run build`, so the secret
-            # has to be available here too — otherwise the rebuild
-            # wipes the injected placeholder and publishes the literal
-            # "__GDRIVE_CLIENT_SECRET__" string instead of the secret.
-            #
-            # Auth: a Trusted Publisher (OIDC) is configured for this
-            # package on npm AND a legacy `NPM_TOKEN` is wired in env.
-            # The npm CLI in Node 22.22.1 (npm 10.9.4) doesn't know how
-            # to use OIDC for the PUT itself — it only signs provenance
-            # via OIDC and then uses NODE_AUTH_TOKEN for the publish
-            # auth. So the token path is what's load-bearing here until
-            # we can move to Node ≥24 / npm ≥11.5.1, at which point the
-            # token line can come out. Removing the token now (with
-            # npm 10.x) produces an E404 on PUT — see commit history
-            # for the prior CLI-upgrade attempt that broke other things.
-            - run: npm publish --provenance --access public
-              env:
-                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-                  GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+  publish-npm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Optional (DASH-48): only whether the token is set, not the token.
+      HAS_DASH_BOT_TOKEN: ${{ secrets.DASH_BOT_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.1
+          registry-url: https://registry.npmjs.org/
+      - run: npm ci
+      # Secret is injected into dist/mcp/servers/google-drive.js by
+      # scripts/inject-secrets.js, which the build:electron step
+      # runs. Without this env var the published package contains
+      # the literal placeholder "__GDRIVE_CLIENT_SECRET__" and the
+      # Google OAuth flow returns invalid_client at runtime.
+      - run: npm run build
+        env:
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+      # `prepublishOnly` re-runs `npm run build`, so the secret
+      # has to be available here too — otherwise the rebuild
+      # wipes the injected placeholder and publishes the literal
+      # "__GDRIVE_CLIENT_SECRET__" string instead of the secret.
+      #
+      # Auth: a Trusted Publisher (OIDC) is configured for this
+      # package on npm AND a legacy `NPM_TOKEN` is wired in env.
+      # The npm CLI in Node 22.22.1 (npm 10.9.4) doesn't know how
+      # to use OIDC for the PUT itself — it only signs provenance
+      # via OIDC and then uses NODE_AUTH_TOKEN for the publish
+      # auth. So the token path is what's load-bearing here until
+      # we can move to Node ≥24 / npm ≥11.5.1, at which point the
+      # token line can come out. Removing the token now (with
+      # npm 10.x) produces an E404 on PUT — see commit history
+      # for the prior CLI-upgrade attempt that broke other things.
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+      # DASH-48: tell dash-electron a new version is out, so its
+      # bump-deps workflow opens a "take @trops/dash-core X" PR now
+      # instead of on its next 15-minute check. Needs DASH_BOT_TOKEN
+      # (fine-grained, Actions + Contents on trops/dash-electron);
+      # skipped without it.
+      - name: Tell dash-electron
+        if: ${{ env.HAS_DASH_BOT_TOKEN == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.DASH_BOT_TOKEN }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          gh api repos/trops/dash-electron/dispatches \
+              -f event_type=dash-core-published \
+              -f "client_payload[version]=$VERSION"
