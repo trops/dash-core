@@ -145,6 +145,38 @@ test("bots, and a bot that's gone", () => {
   );
 });
 
+test("approvals answered over MCP say so, and who; in Dash reads as before (DASH-32)", () => {
+  const ask = { ...bot, tool: "undo", provider: "Sawhorse" };
+  expect(
+    auditSentence({
+      type: "approval-allowed",
+      ...ask,
+      via: "mcp",
+      answeredBy: "chat-listener",
+    }),
+  ).toBe("Allowed Writer to use undo on Sawhorse over MCP (by chat-listener)");
+  expect(
+    auditSentence({
+      type: "approval-denied",
+      ...ask,
+      reason: "denied by user",
+      via: "mcp",
+    }),
+  ).toBe("Denied Writer the use of undo on Sawhorse over MCP");
+  expect(auditSentence({ type: "approval-allowed", ...ask, via: "dash" })).toBe(
+    "Allowed Writer to use undo on Sawhorse",
+  );
+  expect(
+    auditSentence({
+      type: "run-stopped",
+      ...bot,
+      reason: "Approval for Undo on Sawhorse wasn't answered within 4 h",
+    }),
+  ).toBe(
+    "Stopped Writer's run — Approval for Undo on Sawhorse wasn't answered within 4 h",
+  );
+});
+
 test("kind labels and when", () => {
   expect(auditKindLabel("auto")).toBe("Ran without asking");
   expect(auditKindLabel("nope")).toBe("");

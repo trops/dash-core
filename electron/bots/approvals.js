@@ -107,9 +107,12 @@ class ApprovalRegistry {
     return this._settle(id, { allow: true, ...decision });
   }
 
-  /** Settle an approval as denied. No-op for unknown/already-settled ids. */
-  deny(id, reason = "denied by user") {
-    return this._settle(id, { allow: false, reason });
+  /**
+   * Settle an approval as denied. No-op for unknown/already-settled ids.
+   * `extra`: who answered and how (DASH-32: via, answeredBy), for the log.
+   */
+  deny(id, reason = "denied by user", extra = {}) {
+    return this._settle(id, { ...extra, allow: false, reason });
   }
 
   _settle(id, result) {

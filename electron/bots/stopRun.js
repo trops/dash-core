@@ -13,11 +13,15 @@
 /**
  * @param {{ runner: { abort(botId: string): boolean },
  *           approvals?: { list(): object[], deny(id: string, reason: string): boolean } | null,
- *           botId: string, reason?: "quit" }} deps
+ *           botId: string, reason?: "quit" | "fail", message?: string }} deps
+ *   "fail" + message: the run fails with that error (DASH-32).
  * @returns {{ stopped: boolean, clearedApprovals: number }}
  */
-function stopBotRun({ runner, approvals, botId, reason }) {
-  const stopped = !!runner.abort(botId, reason);
+function stopBotRun({ runner, approvals, botId, reason, message }) {
+  const stopped =
+    reason === "fail"
+      ? !!runner.abort(botId, reason, message)
+      : !!runner.abort(botId, reason);
   let clearedApprovals = 0;
   if (approvals && typeof approvals.list === "function") {
     for (const a of approvals.list()) {

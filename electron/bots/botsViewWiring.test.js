@@ -295,7 +295,7 @@ describe("botController — saved audit log (US-003 AC5, US-014 AC9, US-019 AC6)
     );
     assert.match(
       ctrl,
-      /type: "approval-allowed",\s+\.\.\.about,\s+always: !!decision\.remember,/,
+      /type: "approval-allowed",\s+\.\.\.about,\s+always: !!d\.remember,/,
     );
     assert.match(ctrl, /type: "approval-denied",/);
   });

@@ -207,6 +207,54 @@ describe("McpTaskSettings", () => {
     expect(takes).toHaveAttribute("aria-checked", "false");
     expect(screen.getByText("Couldn't save.")).toBeTruthy();
   });
+
+  it("Wait for approvals up to: the team's hours, 1 · 4 · 12 · 24 h, saved on a pick (DASH-32)", async () => {
+    const { api } = install({ takes: true });
+    api.getApprovalWaitHours = jest.fn().mockResolvedValue(12);
+    api.setApprovalWaitHours = jest.fn().mockResolvedValue({ hours: 1 });
+    render(<McpTaskSettings workspaceId="7" />);
+    const row = await screen.findByTestId("mcp-approval-wait");
+    expect(row).toHaveTextContent("Wait for approvals up to");
+    expect(row).toHaveTextContent(
+      "A job started over MCP fails if a tool approval isn't answered by then.",
+    );
+    expect(api.getApprovalWaitHours).toHaveBeenCalledWith("7");
+    for (const label of ["1 h", "4 h", "12 h", "24 h"]) {
+      expect(screen.getByRole("button", { name: label })).toBeTruthy();
+    }
+    await screen.findByRole("button", { name: "12 h", pressed: true });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "1 h" })),
+    );
+    expect(api.setApprovalWaitHours).toHaveBeenCalledWith("7", 1);
+    expect(
+      screen.getByRole("button", { name: "1 h", pressed: true }),
+    ).toBeTruthy();
+  });
+
+  it("Wait for approvals up to: hidden while the team takes no tasks; a failed save goes back", async () => {
+    const { api } = install({ takes: false });
+    api.getApprovalWaitHours = jest.fn().mockResolvedValue(4);
+    const { unmount } = render(<McpTaskSettings workspaceId="7" />);
+    await screen.findByRole("switch", { name: "Takes tasks via MCP" });
+    expect(screen.queryByTestId("mcp-approval-wait")).toBeNull();
+    unmount();
+
+    install({ takes: true });
+    window.mainApi.bots.getApprovalWaitHours = jest.fn().mockResolvedValue(4);
+    window.mainApi.bots.setApprovalWaitHours = jest
+      .fn()
+      .mockRejectedValue(new Error("Couldn't save."));
+    render(<McpTaskSettings workspaceId="7" />);
+    await screen.findByTestId("mcp-approval-wait");
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "24 h" })),
+    );
+    expect(
+      screen.getByRole("button", { name: "4 h", pressed: true }),
+    ).toBeTruthy();
+    expect(screen.getByText("Couldn't save.")).toBeTruthy();
+  });
 });
 
 describe("LeadActivity", () => {

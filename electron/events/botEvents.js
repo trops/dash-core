@@ -75,6 +75,9 @@ const BOTS_LIST_MCP_ROUTES = "bots-list-mcp-routes";
 const BOTS_LIST_MCP_TASK_TEAMS = "bots-list-mcp-task-teams";
 const BOTS_SET_TAKES_MCP_TASKS = "bots-set-takes-mcp-tasks";
 const BOTS_SET_ASKS_TASK_PASSPHRASE = "bots-set-asks-task-passphrase";
+// The team's "Wait for approvals up to" (DASH-32).
+const BOTS_GET_APPROVAL_WAIT_HOURS = "bots-get-approval-wait-hours";
+const BOTS_SET_APPROVAL_WAIT_HOURS = "bots-set-approval-wait-hours";
 const BOTS_TASK_PASSPHRASE_STATE = "bots-task-passphrase-state";
 const BOTS_TASK_PASSPHRASE_REVEAL = "bots-task-passphrase-reveal";
 const BOTS_TASK_PASSPHRASE_SET = "bots-task-passphrase-set";
@@ -198,6 +201,8 @@ module.exports = {
   BOTS_LIST_MCP_TASK_TEAMS,
   BOTS_SET_TAKES_MCP_TASKS,
   BOTS_SET_ASKS_TASK_PASSPHRASE,
+  BOTS_GET_APPROVAL_WAIT_HOURS,
+  BOTS_SET_APPROVAL_WAIT_HOURS,
   BOTS_TASK_PASSPHRASE_STATE,
   BOTS_TASK_PASSPHRASE_REVEAL,
   BOTS_TASK_PASSPHRASE_SET,

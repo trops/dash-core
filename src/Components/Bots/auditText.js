@@ -23,9 +23,12 @@ const toolOn = (e) =>
 // Reasons that just mean "the user said no" — no need to repeat them.
 const PLAIN_DENIALS = new Set(["approval denied", "denied by user"]);
 const possessive = (name) => (name.endsWith("s") ? `${name}'` : `${name}'s`);
-// A bot made or changed by an app connected over MCP (DASH-37).
-const overMcp = (e) =>
-  e.via === "mcp" ? ` over MCP${e.from ? ` (by ${e.from})` : ""}` : "";
+// A bot made or changed by an app connected over MCP (DASH-37), or an
+// approval answered over MCP (DASH-32, answeredBy).
+const overMcp = (e) => {
+  const by = e.from || e.answeredBy;
+  return e.via === "mcp" ? ` over MCP${by ? ` (by ${by})` : ""}` : "";
+};
 
 const BUDGET_OWNER = {
   workspace: "its dashboard's",
@@ -65,11 +68,11 @@ function sentence(entry) {
     case "approval-allowed":
       return e.always
         ? `Always allowed ${botOf(e)} to use ${toolOn(e)}`
-        : `Allowed ${botOf(e)} to use ${toolOn(e)}`;
+        : `Allowed ${botOf(e)} to use ${toolOn(e)}${overMcp(e)}`;
     case "approval-denied":
       return e.reason && !PLAIN_DENIALS.has(e.reason)
-        ? `Didn't let ${botOf(e)} use ${toolOn(e)} — ${e.reason}`
-        : `Denied ${botOf(e)} the use of ${toolOn(e)}`;
+        ? `Didn't let ${botOf(e)} use ${toolOn(e)}${overMcp(e)} — ${e.reason}`
+        : `Denied ${botOf(e)} the use of ${toolOn(e)}${overMcp(e)}`;
     case "ran-granted":
       return `${botOf(e)} used ${toolOn(e)} without asking — it's always allowed`;
     case "ran-policy":
@@ -95,7 +98,9 @@ function sentence(entry) {
     case "resume-all":
       return "Turned all bots back on";
     case "run-stopped":
-      return `Stopped ${possessive(botOf(e))} run`;
+      return e.reason
+        ? `Stopped ${possessive(botOf(e))} run — ${e.reason}`
+        : `Stopped ${possessive(botOf(e))} run`;
     case "runs-interrupted": {
       const n = Number(e.count) || 0;
       const names = (e.botNames || []).filter(Boolean);

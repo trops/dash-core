@@ -18,6 +18,7 @@ const { Cron } = require("croner");
 const { createElectronHost } = require("../bots/host");
 const BotStore = require("../bots/BotStore");
 const ApprovalRegistry = require("../bots/approvals");
+const remoteApprovals = require("../bots/remoteApprovals");
 const engines = require("../bots/engines");
 const BotRunner = require("../bots/BotRunner");
 const BotScheduler = require("../bots/BotScheduler");
@@ -293,6 +294,17 @@ const {
 } = require("../bots/rememberGrant");
 // How many recent "Always allow" answers can still be undone.
 const UNDO_KEPT = 50;
+
+/**
+ * Keep how an approval was settled (the last 200), so a later answer over
+ * MCP hears who answered first and how (DASH-32). The first record wins.
+ */
+function recordAnswer(ctl, approvalId, decision) {
+  if (!ctl._answerLog) ctl._answerLog = remoteApprovals.createAnswerLog();
+  const answer = remoteApprovals.answerOf(decision, Date.now());
+  ctl._answerLog.record(approvalId, answer);
+  return ctl._answerLog.get(approvalId) || answer;
+}
 // A test's id, picked by the form (bot-test-run): never a saved bot's.
 const TEST_ID_RE = /^test-[a-z0-9]{6,40}$/;
 // The most a sample sent with a save may be (an answer is cut at 32 KB).
@@ -520,37 +532,7 @@ const botController = {
       this._broadcast(BOT_APPROVALS_CHANGED, { approvals: list }),
     );
     const approvalsForRunner = {
-      create: (request) => {
-        const res = approvals.create(request);
-        this._broadcast(BOT_APPROVAL_PENDING, { id: res.id, request });
-        // Every engine's approvals (built-in tools too) are logged here:
-        // the ask, then however it was answered (Allow, Deny, Stop, timeout).
-        const about = {
-          botId: request && request.botId,
-          tool: (request && request.toolName) || null,
-          provider: (request && request.serverName) || null,
-          runStartedAt: (request && request.runStartedAt) || null,
-        };
-        this._logAudit({ type: "approval-asked", ...about });
-        Promise.resolve(res && res.promise)
-          .then((decision) => {
-            this._logAudit(
-              decision && decision.allow
-                ? {
-                    type: "approval-allowed",
-                    ...about,
-                    always: !!decision.remember,
-                  }
-                : {
-                    type: "approval-denied",
-                    ...about,
-                    reason: (decision && decision.reason) || null,
-                  },
-            );
-          })
-          .catch(() => {});
-        return res;
-      },
+      create: (request) => this._createApproval(request),
     };
 
     // Tasks given to teams via MCP (TEAM-016). One that was running when
@@ -3682,6 +3664,219 @@ const botController = {
     return waitUntilIdle({ runner: this._runner, timeoutMs });
   },
 
+  // ---- Approvals answered over MCP (DASH-32) ------------------------------
+
+  /**
+   * A bot's tool approval: queued for the user, broadcast, and logged — the
+   * ask, then however it was answered (Allow, Deny, Stop, timeout). Every
+   * engine's approvals (built-in tools too) come through here.
+   *
+   * One in a job started over MCP waits only as long as its team's "Wait
+   * for approvals up to" (4 h unless changed); then the bot's run stops,
+   * failed, saying which approval wasn't answered — so the job and its task
+   * end failed instead of hanging. Approvals in Dash's own conversations
+   * keep the 24 h auto-deny.
+   */
+  _createApproval(request) {
+    const req = request || {};
+    const job = this._jobOfBot(req.botId);
+    const overMcp = remoteApprovals.startedOverMcp(job);
+    const hours = overMcp ? this.approvalWaitHours(job.workspaceId) : null;
+    const res = overMcp
+      ? this._approvals.create(request, {
+          timeoutMs: hours * remoteApprovals.HOUR_MS,
+        })
+      : this._approvals.create(request);
+    this._broadcast(BOT_APPROVAL_PENDING, { id: res.id, request });
+    const about = {
+      botId: req.botId,
+      tool: req.toolName || null,
+      provider: req.serverName || null,
+      runStartedAt: req.runStartedAt || null,
+    };
+    this._logAudit({ type: "approval-asked", ...about });
+    Promise.resolve(res && res.promise)
+      .then((decision) => {
+        const d = decision || {};
+        const answer = recordAnswer(this, res.id, d);
+        // Who answered: the user in Dash, or an app over MCP (its name).
+        const by =
+          answer.via === "mcp" || answer.via === "dash"
+            ? {
+                via: answer.via,
+                ...(answer.answeredBy ? { answeredBy: answer.answeredBy } : {}),
+              }
+            : {};
+        this._logAudit(
+          d.allow
+            ? {
+                type: "approval-allowed",
+                ...about,
+                always: !!d.remember,
+                ...by,
+              }
+            : {
+                type: "approval-denied",
+                ...about,
+                reason: d.reason || null,
+                ...by,
+              },
+        );
+        if (d.timedOut && overMcp) {
+          this._failRun(
+            req.botId,
+            remoteApprovals.timeoutMessage({
+              toolName: req.toolName,
+              provider: req.serverName,
+              hours,
+            }),
+          );
+        }
+      })
+      .catch(() => {});
+    return res;
+  },
+
+  /** Stop a bot's run as failed, with `message` as its error (DASH-32). */
+  _failRun(botId, message) {
+    const { stopped } = stopBotRun({
+      runner: this._runner,
+      approvals: this._approvals,
+      botId,
+      reason: "fail",
+      message,
+    });
+    if (stopped)
+      this._logAudit({ type: "run-stopped", botId, reason: message });
+    return { stopped };
+  },
+
+  /**
+   * The job a bot's run in progress belongs to: the one it has a running
+   * step in, or null (a run outside any job).
+   */
+  _jobOfBot(botId) {
+    if (!botId || !this._jobs) return null;
+    const via = this._runVia && this._runVia.get(botId);
+    const job = via && via.jobId ? this._jobs.get(via.jobId) : null;
+    return job && remoteApprovals.jobForBot([job], botId) ? job : null;
+  },
+
+  /** The team's "Wait for approvals up to", in hours (4 unless changed). */
+  approvalWaitHours(workspaceId) {
+    let saved = null;
+    try {
+      saved = (this._store.getTeamSettings(workspaceId) || {})
+        .approvalWaitHours;
+    } catch (_e) {
+      saved = null;
+    }
+    return remoteApprovals.waitHoursOf(saved);
+  },
+
+  setApprovalWaitHours(workspaceId, hours) {
+    const n = Number(hours);
+    if (!remoteApprovals.WAIT_HOURS.includes(n)) {
+      return { error: "Choose 1, 4, 12 or 24 hours." };
+    }
+    this._store.setTeamSettings(workspaceId, { approvalWaitHours: n });
+    return { hours: n };
+  },
+
+  /**
+   * What a job waits on (get_task_status): each pending approval of a bot
+   * running in it, and each paused bot a hand-on waits for.
+   */
+  jobApprovals(jobId) {
+    const job = this.getJob(jobId);
+    if (!job) return [];
+    const asks = this._approvals
+      .list()
+      .filter((a) => {
+        const j = this._jobOfBot(a && a.request && a.request.botId);
+        return j && j.id === job.id;
+      })
+      .map((a) =>
+        remoteApprovals.approvalEntry(a, {
+          job,
+          botName: this._botName(a.request.botId),
+        }),
+      );
+    return [...asks, ...remoteApprovals.pausedEntries(job)];
+  },
+
+  /**
+   * May this approval be answered over MCP? { ok, approval, job } or
+   * { error, message } — unknown_approval, already_answered (who and how),
+   * not_remote (a built-in tool, or work started in Dash).
+   */
+  checkRemoteApproval(approvalId) {
+    const id = String(approvalId || "");
+    const pending = id ? this._approvals.get(id) : null;
+    if (!pending) {
+      const answer = this._answerLog ? this._answerLog.get(id) : null;
+      if (answer) {
+        return {
+          error: "already_answered",
+          message: remoteApprovals.alreadyAnsweredText(answer),
+          answeredVia: answer.via,
+          ...(answer.answeredBy ? { answeredBy: answer.answeredBy } : {}),
+          answeredAt: answer.at,
+          allowed: answer.allow,
+        };
+      }
+      return {
+        error: "unknown_approval",
+        message:
+          "No approval with that approvalId is waiting. get_task_status lists the ones that are.",
+      };
+    }
+    const req = pending.request || {};
+    const job = this._jobOfBot(req.botId);
+    if (!remoteApprovals.isRemoteApproval(req, job)) {
+      const builtin =
+        !req.serverName || remoteApprovals.BUILTIN_TOOLS.has(req.toolName);
+      return {
+        error: "not_remote",
+        message: builtin
+          ? "This is a built-in tool (not a provider's), so it can only be answered in Dash."
+          : "This approval isn't for a task given over MCP (it's work started in Dash, or a question asked with ask_team_lead), so it can only be answered in Dash.",
+      };
+    }
+    return { ok: true, approval: pending, job };
+  },
+
+  /**
+   * Answer an approval over MCP: exactly Allow once or Deny, as on the
+   * Needs you card — never Always allow. The caller has checked the
+   * user's task passphrase. Whichever answer comes first wins; a later
+   * one is told who answered.
+   */
+  answerApproval(approvalId, { allow = false, answeredBy = null } = {}) {
+    const check = this.checkRemoteApproval(approvalId);
+    if (check.error) return check;
+    const id = check.approval.id;
+    // Only here is an answer "mcp": approve() (Dash's IPC) is always "dash".
+    const meta = {
+      via: "mcp",
+      ...(answeredBy ? { answeredBy: String(answeredBy).slice(0, 100) } : {}),
+    };
+    // Allow once only: never a saved grant.
+    const ok = allow
+      ? this._approvals.resolve(id, { allow: true, remember: false, ...meta })
+      : this._approvals.deny(id, undefined, meta);
+    if (ok) recordAnswer(this, id, { ...meta, allow: !!allow });
+    if (!ok) return this.checkRemoteApproval(approvalId);
+    return {
+      ok: true,
+      allowed: !!allow,
+      approval: remoteApprovals.approvalEntry(check.approval, {
+        job: check.job,
+        botName: this._botName(check.approval.request.botId),
+      }),
+    };
+  },
+
   /**
    * Resolve a pending approval. `decision.remember` ("Always allow") also
    * saves a durable grant, so later runs go ahead without asking: for a
@@ -3696,8 +3891,16 @@ const botController = {
    */
   approve(approvalId, decision = {}) {
     if (decision.undo) return { ok: this._undoAlwaysAllow(approvalId) };
+    // Answered in Dash (DASH-32): always "dash", whatever the renderer
+    // sends — only answerApproval answers over MCP. Kept so a later answer
+    // can say who got there first, and in the log.
+    const { via: _via, answeredBy: _by, ...given } = decision;
+    decision = given;
+    const via = "dash";
     if (!decision.allow) {
-      return { ok: this._approvals.deny(approvalId, decision.reason) };
+      const ok = this._approvals.deny(approvalId, decision.reason, { via });
+      if (ok) recordAnswer(this, approvalId, { via, allow: false });
+      return { ok };
     }
     let remembered = false;
     const asked = this._approvals.get(approvalId);
@@ -3762,13 +3965,13 @@ const botController = {
       }
     }
     // The run's record says "always allowed" only when it was saved.
-    return {
-      ok: this._approvals.resolve(approvalId, {
-        ...decision,
-        remember: remembered,
-      }),
-      remembered,
-    };
+    const ok = this._approvals.resolve(approvalId, {
+      ...decision,
+      remember: remembered,
+      via,
+    });
+    if (ok) recordAnswer(this, approvalId, { allow: true, via });
+    return { ok, remembered };
   },
 
   _rememberUndo(approvalId, entry) {

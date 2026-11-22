@@ -128,11 +128,55 @@ const SettingRow = ({
   </div>
 );
 
+// "Wait for approvals up to" (DASH-32), in hours.
+const WAIT_OPTIONS = [1, 4, 12, 24].map((h) => ({
+  value: String(h),
+  label: `${h} h`,
+}));
+const DEFAULT_WAIT = "4";
+
+/** The team's "Wait for approvals up to", as an option value ("4"). */
+function useApprovalWait(workspaceId) {
+  const current = useCurrent(workspaceId);
+  const [hours, setHours] = useState(DEFAULT_WAIT);
+  useEffect(() => {
+    setHours(DEFAULT_WAIT);
+    const api = botsApi();
+    if (!api || !api.getApprovalWaitHours) return;
+    if (workspaceId === null || workspaceId === undefined) return;
+    Promise.resolve(api.getApprovalWaitHours(workspaceId))
+      .then((h) => {
+        if (current.current !== workspaceId) return;
+        const v = String(h);
+        if (WAIT_OPTIONS.some((o) => o.value === v)) setHours(v);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
+  return [hours, setHours];
+}
+
 export const McpTaskSettings = ({ workspaceId, onOpenMcpSettings = null }) => {
   const { muted, hairline } = useConfigTokens();
   const [settings, setSettings] = useTaskSettings(workspaceId);
+  const [waitHours, setWaitHours] = useApprovalWait(workspaceId);
   const [passphraseSet, setPassphraseSet] = useState(true);
   const [error, setError] = useState(null);
+
+  const changeWait = async (next) => {
+    const api = botsApi();
+    if (!api || !api.setApprovalWaitHours) return;
+    const was = waitHours;
+    setError(null);
+    setWaitHours(next);
+    try {
+      const res = await api.setApprovalWaitHours(workspaceId, Number(next));
+      if (res && res.error) throw new Error(res.error);
+    } catch (err) {
+      setWaitHours(was);
+      setError((err && err.message) || "Couldn't change it. Try again.");
+    }
+  };
 
   const loadPhrase = useCallback(() => {
     const api = botsApi();
@@ -188,6 +232,29 @@ export const McpTaskSettings = ({ workspaceId, onOpenMcpSettings = null }) => {
           hairline={hairline}
           muted={muted}
         />
+      ) : null}
+      {settings.takes ? (
+        <div
+          className={`flex flex-row flex-wrap items-center gap-4 px-4 py-3 border-t ${hairline}`}
+          data-testid="mcp-approval-wait"
+        >
+          <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+            <span className="text-sm font-semibold">
+              Wait for approvals up to
+            </span>
+            <span className={`text-xs ${muted}`}>
+              A job started over MCP fails if a tool approval isn&apos;t
+              answered by then.
+            </span>
+          </span>
+          <SegmentedControl
+            ariaLabel="Wait for approvals up to"
+            size="sm"
+            value={waitHours}
+            onChange={changeWait}
+            options={WAIT_OPTIONS}
+          />
+        </div>
       ) : null}
       {settings.takes && settings.asks && !passphraseSet ? (
         <div
