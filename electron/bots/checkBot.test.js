@@ -233,7 +233,9 @@ function fakeController(over = {}) {
     _botCheckContext: (existing) => ({ ...ctx(), existing }),
     ...over,
   };
+  self._prepareSave = botController._prepareSave.bind(self);
   self.save = botController.save.bind(self);
+  self.checkSave = botController.checkSave.bind(self);
   return self;
 }
 
@@ -244,6 +246,15 @@ describe("save() — checked before anything is written; new bots start paused",
       () => c.save(bot({ schedules: [{ cron: "every morning" }] })),
       /Digest wasn't saved[\s\S]*isn't a valid schedule/,
     );
+    assert.deepEqual(c.writes, []);
+  });
+
+  it("checkSave() runs the same check and writes nothing (DASH-37)", () => {
+    const c = fakeController();
+    const r = c.checkSave(bot({ schedules: [{ cron: "every morning" }] }));
+    assert.equal(r.isNew, true);
+    assert.match(r.errors.join("\n"), /isn't a valid schedule/);
+    assert.deepEqual(c.checkSave(bot()).errors, []);
     assert.deepEqual(c.writes, []);
   });
 

@@ -1355,46 +1355,9 @@ const botController = {
    *   written onto the bot itself.
    */
   save(definition, opts = {}) {
-    // What a test of the form returned (bot-test-run): kept apart from the
-    // definition, so it never goes into a profile or a package.
-    let sample = null;
-    if (
-      definition &&
-      typeof definition === "object" &&
-      "sample" in definition
-    ) {
-      const { sample: s, ...rest } = definition;
-      sample = s;
-      definition = rest;
-    }
-    const existing =
-      definition && definition.id ? this._store.get(definition.id) : null;
-    // The Dash team's identity is fixed: a form can't turn a team bot into a
-    // dashboard bot, and a new bot can't claim to be on the Dash team.
-    if (isDashTeam(existing)) {
-      definition = {
-        ...definition,
-        system: existing.system,
-        role: existing.role,
-        workspaceId: null,
-        // Dash hands it work; nothing else starts it.
-        schedules: [],
-        subscriptions: [],
-      };
-    } else if (definition && isDashTeam(definition)) {
-      const { system: _s, ...rest } = definition;
-      definition = rest;
-    }
-    const isNew = !(
-      definition &&
-      definition.id &&
-      this._store.get(definition.id)
-    );
-    // One check for every save, before anything is written (consolidation
-    // Phase 1d): the whole bot it makes — a partial save merged onto it.
-    const current = isNew ? null : this._store.get(definition.id);
-    const whole = isNew ? definition : { ...current, ...definition };
-    const { errors } = checkBot(whole, this._botCheckContext(current));
+    const prepared = this._prepareSave(definition);
+    const { sample, isNew, whole, errors } = prepared;
+    definition = prepared.definition;
     if (errors.length) {
       throw new Error(
         `${(whole && whole.name) || "The bot"} wasn't saved:\n${errors
@@ -1444,8 +1407,13 @@ const botController = {
       this._pause.pauseBot(saved.id);
     }
     if (this._inActiveProfile(saved)) this._scheduler.register(saved);
+    // `opts.audit`: more about how it was made (over MCP, by whom — DASH-37).
     if (isNew && saved)
-      this._logAudit({ type: "bot-created", botId: saved.id });
+      this._logAudit({
+        type: "bot-created",
+        botId: saved.id,
+        ...(opts.audit || {}),
+      });
     if (saved && isSample(sample)) {
       try {
         this._store.setSample(saved.id, sample);
@@ -1454,6 +1422,64 @@ const botController = {
       }
     }
     return saved;
+  },
+
+  /**
+   * Would this save? The same check save() runs, without storing anything
+   * (DASH-37: a bot made over MCP is checked before the user is asked).
+   * @returns {{ errors: string[], warnings: string[], isNew: boolean }}
+   */
+  checkSave(definition) {
+    const { errors, warnings, isNew } = this._prepareSave(definition);
+    return { errors, warnings, isNew };
+  },
+
+  /** What a save would store: the definition as saved, the whole bot, and its check. */
+  _prepareSave(definition) {
+    // What a test of the form returned (bot-test-run): kept apart from the
+    // definition, so it never goes into a profile or a package.
+    let sample = null;
+    if (
+      definition &&
+      typeof definition === "object" &&
+      "sample" in definition
+    ) {
+      const { sample: s, ...rest } = definition;
+      sample = s;
+      definition = rest;
+    }
+    const existing =
+      definition && definition.id ? this._store.get(definition.id) : null;
+    // The Dash team's identity is fixed: a form can't turn a team bot into a
+    // dashboard bot, and a new bot can't claim to be on the Dash team.
+    if (isDashTeam(existing)) {
+      definition = {
+        ...definition,
+        system: existing.system,
+        role: existing.role,
+        workspaceId: null,
+        // Dash hands it work; nothing else starts it.
+        schedules: [],
+        subscriptions: [],
+      };
+    } else if (definition && isDashTeam(definition)) {
+      const { system: _s, ...rest } = definition;
+      definition = rest;
+    }
+    const isNew = !(
+      definition &&
+      definition.id &&
+      this._store.get(definition.id)
+    );
+    // One check for every save, before anything is written (consolidation
+    // Phase 1d): the whole bot it makes — a partial save merged onto it.
+    const current = isNew ? null : this._store.get(definition.id);
+    const whole = isNew ? definition : { ...current, ...definition };
+    const { errors, warnings } = checkBot(
+      whole,
+      this._botCheckContext(current),
+    );
+    return { definition, sample, isNew, whole, errors, warnings };
   },
 
   /** What checkBot checks a save against: the user's real setup. */
@@ -2161,6 +2187,65 @@ const botController = {
   /** The task store (mcpTasks.js), for the MCP tools. */
   mcpTasks() {
     return this._mcpTasks;
+  },
+
+  // ---- Bots made or changed via MCP (DASH-37) ----------------------------
+
+  /** May MCP clients list, create and change this team's bots? Off unless turned on. */
+  takesMcpBots(workspaceId) {
+    return this._store.getTeamSettings(workspaceId).takesMcpBots === true;
+  },
+
+  setTakesMcpBots(workspaceId, on) {
+    this._store.setTeamSettings(workspaceId, { takesMcpBots: !!on });
+    return this.getMcpBotSettings();
+  },
+
+  /** Is the task passphrase asked for before a bot is made or changed? On unless turned off. */
+  asksBotPassphrase() {
+    return this._store.getSettings().mcpBotsAskPassphrase !== false;
+  },
+
+  setAsksBotPassphrase(on) {
+    this._store.setSettings({ mcpBotsAskPassphrase: !!on });
+    return this.getMcpBotSettings();
+  },
+
+  /** Settings › MCP Server › Tools › Bots: { asksPassphrase, teams: [ids] }. */
+  getMcpBotSettings() {
+    const all = this._store.listTeamSettings();
+    return {
+      asksPassphrase: this.asksBotPassphrase(),
+      teams: Object.keys(all).filter((id) => all[id].takesMcpBots === true),
+    };
+  },
+
+  /**
+   * What the host does after a bot is saved outside its own save handler
+   * (dash-electron: syncBackgroundMode, so the tray and background mode
+   * follow a bot made over MCP).
+   */
+  setAfterSave(fn) {
+    this._afterSaveHook = typeof fn === "function" ? fn : null;
+  },
+
+  afterSave() {
+    if (!this._afterSaveHook) return;
+    try {
+      this._afterSaveHook();
+    } catch (err) {
+      console.error("[botController] after-save hook failed:", err);
+    }
+  },
+
+  /** A notice for the user (OS notification); nothing waits on it. */
+  sendNotice(notice) {
+    this._sendNotice(notice);
+  },
+
+  /** An audit log entry from outside the controller (the MCP bot tools). */
+  logAudit(entry) {
+    this._logAudit(entry);
   },
 
   /**

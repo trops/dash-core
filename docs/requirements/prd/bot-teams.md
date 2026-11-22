@@ -1071,6 +1071,42 @@ Acceptance criteria:
 
 Decisions: the user's part goes after the built-in part so the prompt prefix stays the same from run to run (prompt caching); the built-in text can't be turned off by text — capability switches would come later if wanted.
 
+## Bot tools over MCP (DASH-37, 2026-11-21)
+
+**Status:** Implemented in dash-core (dash-electron still wires the IPC handlers and the after-save hook).
+
+**Why:** the point of MCP is acting from outside Dash. An app connected to Dash's MCP server (a voice assistant, Claude Code) should be able to see the user's bots and make or change one, approved outside Dash too.
+
+**As a user**, I want an app I connected to Dash to list, create and change my bots, only on the teams I choose, and only after I've seen what it will do and given my task passphrase.
+
+Acceptance criteria:
+
+- [x] **Settings › MCP Server › Tools** lists every tool the server offers, in groups (Bots; Teams and tasks; Dashboards; Widgets and layout; Providers; Themes and guides; anything else in Other), each with its own switch, "N of M on" per group and in the header. Bots come first with a "New · off by default" badge; the other groups open with **Choose** (`McpToolsSection.js`).
+- [x] A tool that's off isn't offered to clients (it isn't registered on the request's McpServer), and its handler refuses if called anyway: "<tool> is turned off in Dash (Settings › MCP Server › Tools)." Existing tools default on; `list_bots`, `create_bot`, `update_bot` default off. `confirm_bot` has no switch: it's on while `create_bot` or `update_bot` is (`electron/mcp/toolSwitches.js`; saved as `mcpDashServer.tools: { [name]: boolean }`, read on every request).
+- [x] Bots group settings: **Ask for the task passphrase to create or change a bot** (on by default; the same passphrase, lock and tries as `give_task`) and **Which teams** (per dashboard, `takesMcpBots` in the team settings). Only chosen teams' bots are listed, made or changed. Dash team bots never are.
+- [x] `list_bots` returns, per bot: id, name, team, role, paused, model and provider, built-in tools, approvals, providers (tools — null for all — which tools run without asking — `runWithoutAsking` — and in which folders), commands, run limits, folders it works in, schedules, triggers, while paused, results and instructions.
+- [x] `create_bot` / `update_bot` map their fields to a bot definition the way the bot form's `formDefinition()` does, then run the same check as a save (`botController.checkSave`, a dry run of `save()`): a bot that wouldn't save returns every reason and nothing waits. Leads and Dash team bots can't be created; a lead can be changed but never its role, team or built-in tools. Update changes only the fields given and only what differs.
+- [x] Passphrase on: the request waits 10 minutes (in memory) with a plain summary — team, model, built-in tools and approvals in words, each provider's exact tools (naming those that delete or send), folders, commands with the always-blocked note, run limits, how it starts, on or paused; for a change, only what changes, old → new, and "This gives it more access (…)" when it widens. `confirm_bot(requestId, passphrase)` verifies through `mcpTasks.verify`. No passphrase set or tasks locked: it says so and nothing waits. Passphrase off: it saves at once.
+- [x] Saving: `botController.save`, then what runs without asking: only the tools a provider names in `runWithoutAsking` (each one of its tools; `"*"` refused), with its `readFolders` / `writeFolders` as the folders those tools may touch (rememberGrant's shape). Folders alone save nothing, empty folder lists are ignored, `runWithoutAsking: []` or taking the provider off the bot removes its entry. The summary says per provider "runs without asking: <tools> — in folders … (and any call that names no file)" and flags more access. Then a new bot is turned on unless `startPaused`. Audit: `bot-created` / `bot-changed` with `via: "mcp"`, `from`, and the changed fields ("Changed Writer over MCP (by voice): builtinTools"). A notification "<Bot> was created by <from>" / "was changed by <from>". `botController.afterSave()` runs the host's hook (`setAfterSave`).
+
+Implementation notes:
+
+- `electron/mcp/botTools.js` follows `teamTools.js`: `BOT_TOOLS`, `makeBotToolHandlers({ getWorkspaces, bots, isOn, now })` testable without Electron, `registerBotTools()` in `electron/index.js` next to `registerTeamTools()`.
+- Triggers are only `{ bot, event: "completed" | "failed" }` (another non-lead bot on its own team, as a lead's draft makes one) or `{ widget, event }` (a widget on its own team's dashboard, by id or unique title, as the trigger picker makes one). Raw `eventType`s are refused, and the label is always Dash's. A widget's event name can't be checked against what it sends in the main process (as for plan builds). `list_bots` shows each trigger's shorthand as `as`.
+- Summaries list every field that's saved (instructions in full, schedule prompts uncut, while paused, results, commands — noting they only apply with built-in tools "all"). `publishes` keep only name, label and description. At most 50 requests wait at once; expired ones are dropped whenever the list is looked at.
+- New bots over MCP use `builtinTools: "none"` and `approvalPolicy: "ask"` unless given (the form's default is "all"). Run limits merge on update; 0 removes one.
+- `providers` replaces the whole list.
+- Folders over MCP must be full, plain paths (`~/` is the home folder): ".", relative paths, ".." segments, a trailing "/" and "/" itself are refused — the gate would read them as anywhere. The summary says folders are checked on a call's path/file argument and a call that names no file runs anywhere.
+- A tool whose input schema names files in an argument the gate doesn't hold to folders (anything like path/file/dir/source/destination/uri that isn't one of `PATH_ARG_KEYS`, e.g. read_multiple_files' `paths`, move_file's `source`) can't run without asking.
+- A tool whose inputs Dash can't see (provider not connected, a Claude connector, a provider Dash can't list) can't run without asking either — it fails closed.
+- A folder that's a link is refused (give the real folder), and so is the home folder or the disk itself.
+- A bot that other bots start on can't be moved to another team until those triggers are removed (the reason names them).
+- Moving a bot to another team drops its triggers that aren't on the new team (the summary lists them); new `subscriptions` in the same call are resolved on the new team.
+- Summaries keep each one-line value on one line; instructions and schedule prompts are set in under a bar ("    | …"), so given text can't pass for Dash's own lines. A lead's "allow" reads "runs every tool without asking".
+- IPC: `mcp-dash-server:list-tools`, `mcp-dash-server:set-tool-on`, `bots-mcp-bot-settings`, `bots-set-asks-bot-passphrase`, `bots-set-takes-mcp-bots` (handlers in dash-electron).
+
+Decisions (the user's): bot tools are approved outside Dash; new bot tools off by default; existing tools unchanged until turned off; the task passphrase is the same as for tasks; only chosen teams; Dash team bots never; new bots start on so they can take MCP tasks.
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams

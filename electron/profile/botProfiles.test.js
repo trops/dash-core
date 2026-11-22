@@ -96,6 +96,7 @@ function fakeController(appId) {
   };
   for (const name of [
     "save",
+    "_prepareSave",
     "delete",
     "list",
     "_activeBots",

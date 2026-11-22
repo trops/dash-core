@@ -78,6 +78,9 @@ const {
   BOTS_TASK_PASSPHRASE_SET,
   BOTS_TASK_PASSPHRASE_REMOVE,
   BOTS_UNLOCK_MCP_TASKS,
+  BOTS_MCP_BOT_SETTINGS,
+  BOTS_SET_ASKS_BOT_PASSPHRASE,
+  BOTS_SET_TAKES_MCP_BOTS,
   BOTS_GET_RUNS,
   BOTS_GET_LATEST_RESULT,
   BOTS_LIST_RECENT_RUNS,
@@ -406,6 +409,14 @@ const botApi = {
   removeTaskPassphrase: () => ipcRenderer.invoke(BOTS_TASK_PASSPHRASE_REMOVE),
   /** "Unlock now" after 5 wrong passphrases. */
   unlockMcpTasks: () => ipcRenderer.invoke(BOTS_UNLOCK_MCP_TASKS),
+  /** Bots via MCP (DASH-37): { asksPassphrase, teams: [workspaceId] }. */
+  getMcpBotSettings: () => ipcRenderer.invoke(BOTS_MCP_BOT_SETTINGS),
+  /** "Ask for the task passphrase to create or change a bot". */
+  setAsksBotPassphrase: (on) =>
+    ipcRenderer.invoke(BOTS_SET_ASKS_BOT_PASSPHRASE, { on }),
+  /** A team in "Which teams": MCP clients may list, create and change its bots. */
+  setTakesMcpBots: (workspaceId, on) =>
+    ipcRenderer.invoke(BOTS_SET_TAKES_MCP_BOTS, { workspaceId, on }),
 
   /** Subscribe to streamed run events: { botId, event }. */
   onStream: (callback) => _addListener(BOT_STREAM, callback),

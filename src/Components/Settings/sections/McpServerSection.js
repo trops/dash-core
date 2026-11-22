@@ -8,6 +8,7 @@ import {
 } from "@trops/dash-react";
 import { useMcpDashServer } from "../../../hooks/useMcpDashServer";
 import { TaskPassphraseSection } from "./TaskPassphraseSection";
+import { McpToolsSection } from "./McpToolsSection";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 import { mcpClientSetup } from "./mcpClientSetup";
 
@@ -197,6 +198,9 @@ export const McpServerSection = ({ workspaces = [] }) => {
 
       {/* Tasks via MCP: the phrase an agent gives before a team starts. */}
       <TaskPassphraseSection workspaces={workspaces} />
+
+      {/* Which tools clients are offered, the bot tools first (DASH-37). */}
+      <McpToolsSection workspaces={workspaces} />
 
       {/* Status */}
       <div className="flex flex-col space-y-3">

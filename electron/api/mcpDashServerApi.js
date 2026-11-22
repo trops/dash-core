@@ -10,6 +10,8 @@ const {
   MCP_DASH_SERVER_STOP,
   MCP_DASH_SERVER_STATUS,
   MCP_DASH_SERVER_GET_TOKEN,
+  MCP_DASH_SERVER_LIST_TOOLS,
+  MCP_DASH_SERVER_SET_TOOL_ON,
 } = require("../events");
 
 const mcpDashServerApi = {
@@ -37,6 +39,20 @@ const mcpDashServerApi = {
    * @returns {Promise<string>}
    */
   getToken: () => ipcRenderer.invoke(MCP_DASH_SERVER_GET_TOKEN, {}),
+
+  /**
+   * Every tool the server offers, with its switch (DASH-37).
+   * @returns {Promise<Array<{ name, description, group, groupLabel, on, defaultOff }>>}
+   */
+  listTools: () => ipcRenderer.invoke(MCP_DASH_SERVER_LIST_TOOLS, {}),
+
+  /**
+   * Turn one tool on or off; resolves to the new list.
+   * @param {string} name
+   * @param {boolean} on
+   */
+  setToolOn: (name, on) =>
+    ipcRenderer.invoke(MCP_DASH_SERVER_SET_TOOL_ON, { name, on }),
 
   /**
    * Subscribe to state-change notifications fired after any mutating

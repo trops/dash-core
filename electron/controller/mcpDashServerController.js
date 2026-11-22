@@ -162,26 +162,54 @@ function registerPrompt(promptDef) {
 
 const z = require("zod");
 const { jsonSchemaToZod } = require("../mcp/jsonSchemaToZod");
+const {
+  isToolOn,
+  offMessage,
+  listToolSwitches,
+  withSwitch,
+} = require("../mcp/toolSwitches");
+
+/** The user's tool switches (Settings › MCP Server › Tools), read fresh. */
+function readToolSwitches() {
+  try {
+    return getMcpServerSettings(activeWin).tools || {};
+  } catch (_e) {
+    // Unreadable settings: the defaults (the bot tools stay off).
+    return {};
+  }
+}
 
 /**
  * Apply all registered tools, resources, and prompts to the McpServer instance.
+ * A tool that's turned off isn't offered (DASH-37).
  */
 function applyRegistrations(server) {
+  const switches = readToolSwitches();
   for (const tool of registeredTools) {
+    if (!isToolOn(tool.name, registeredTools, switches)) continue;
     const zodSchema = jsonSchemaToZod(tool.inputSchema);
+    // Turned off since this request's server was made, or called anyway:
+    // it refuses.
+    const guarded = async (...args) =>
+      isToolOn(tool.name, registeredTools, readToolSwitches())
+        ? tool.handler(...args)
+        : {
+            content: [{ type: "text", text: offMessage(tool.name) }],
+            isError: true,
+          };
     // Wrap mutating tool handlers so a successful invocation broadcasts
     // "dash-mcp:state-changed" to all renderer windows. Read-only tools
     // (list_, get_, search_) are passed through unwrapped.
     const mutating = isMutatingTool(tool.name);
     const handler = mutating
       ? async (...args) => {
-          const result = await tool.handler(...args);
+          const result = await guarded(...args);
           if (result && !result.isError) {
             broadcastStateChanged(tool.name, result);
           }
           return result;
         }
-      : tool.handler;
+      : guarded;
     // server.tool() expects a raw Zod shape (e.g. { name: z.string() }),
     // NOT a z.object() wrapper. Extract .shape from the Zod object.
     server.tool(tool.name, tool.description, zodSchema.shape || {}, handler);
@@ -529,11 +557,37 @@ const mcpDashServerController = {
     return { success: false, message: "Server not enabled" };
   },
 
+  /**
+   * Settings › MCP Server › Tools: every tool with its switch, in groups
+   * (DASH-37): [{ name, description, group, groupLabel, on, defaultOff }].
+   */
+  listTools: (win) =>
+    listToolSwitches(registeredTools, getMcpServerSettings(win).tools || {}),
+
+  /** Turn one tool on or off; returns the new list. */
+  setToolOn: (win, name, on) => {
+    const serverSettings = getMcpServerSettings(win);
+    const next = withSwitch(
+      registeredTools,
+      serverSettings.tools || {},
+      String(name || ""),
+      on,
+    );
+    if (!next) throw new Error(`No MCP tool named "${name}".`);
+    saveMcpServerSettings(win, { ...serverSettings, tools: next });
+    return mcpDashServerController.listTools(win);
+  },
+
+  /** Is a tool on right now? (A handler's own check — defence in depth.) */
+  isToolOn: (name) => isToolOn(name, registeredTools, readToolSwitches()),
+
   // Expose registration functions for other controllers
   registerTool,
   registerResource,
   registerPrompt,
   getServerContext,
+  // For tests: what a request's server is given.
+  _applyRegistrations: applyRegistrations,
 };
 
 module.exports = mcpDashServerController;
