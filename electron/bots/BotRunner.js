@@ -594,6 +594,9 @@ class BotRunner {
         workingDir: opts.workingDir || profile.workingDir,
         // Shell commands it may run without asking, and never (phase 5).
         commands: bot.commands || null,
+        // Its folders (DASH-47): where its built-in tools may read, change
+        // and run commands. None → no fence.
+        projects: Array.isArray(bot.projects) ? bot.projects.slice() : [],
         approvalPolicy,
         leadRequest,
         createApproval,

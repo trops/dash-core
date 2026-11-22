@@ -1022,3 +1022,168 @@ describe("claudeAgentEngine — Settings › AI (style, limits, cache)", () => {
     assert.equal(err.usage.inputTokens, 5);
   });
 });
+
+describe("claudeAgentEngine — a bot's folders (DASH-47)", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const { tempDir } = require("../../testUtils/tempDir");
+
+  let repo;
+  let sandbox;
+  function fencedCtx(seen, over = {}) {
+    repo = repo || tempDir("engine-fence-repo-");
+    sandbox = sandbox || tempDir("engine-fence-sandbox-");
+    return ctx({
+      workingDir: sandbox,
+      projects: [repo],
+      leadRequest: true,
+      commands: { allowed: ["cat", "git status"], blocked: ["rm"] },
+      requestPermission: async (name) => {
+        seen.push(name);
+        return { allow: true };
+      },
+      createApproval: () => {
+        seen.push("asked");
+        return { promise: Promise.resolve({ allow: false }) };
+      },
+      ...over,
+    });
+  }
+  async function hook(c) {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(c));
+    return captured.options.canUseTool;
+  }
+
+  it("gives Claude Code its folders as extra directories", async () => {
+    await hook(fencedCtx([]));
+    assert.deepEqual(captured.options.additionalDirectories, [repo]);
+  });
+
+  it('"allow", started by its lead: works in its folders without asking', async () => {
+    const seen = [];
+    const can = await hook(fencedCtx(seen));
+    const file = path.join(repo, "src", "a.js");
+    for (const [tool, input] of [
+      ["Read", { file_path: file }],
+      ["Grep", { pattern: "x", path: repo }],
+      ["Write", { file_path: file, content: "x" }],
+      ["Edit", { file_path: file, old_string: "x", new_string: "y" }],
+      ["Bash", { command: `cd ${repo} && git switch -c fix/x && npm run ci` }],
+      ["Bash", { command: `cd ${repo} && ./scripts/ci.sh --pr -m "x"` }],
+    ]) {
+      const r = await can(tool, input);
+      assert.equal(r.behavior, "allow", `${tool} ${JSON.stringify(input)}`);
+    }
+    assert.deepEqual(seen, []);
+  });
+
+  it('"allow": refuses anything outside its folders without asking', async () => {
+    const seen = [];
+    const can = await hook(fencedCtx(seen));
+    for (const [tool, input] of [
+      ["Read", { file_path: "~/.ssh/config" }],
+      ["Write", { file_path: "/tmp/x" }],
+      ["Edit", { file_path: path.join(repo, "..", "elsewhere.js") }],
+      ["Bash", { command: "cat ~/.ssh/config" }],
+      ["Bash", { command: `cd ${repo} && cd .. && ls` }],
+    ]) {
+      const r = await can(tool, input);
+      assert.equal(r.behavior, "deny", `${tool} ${JSON.stringify(input)}`);
+      assert.match(r.message, /outside this bot's folders/);
+    }
+    assert.deepEqual(seen, []);
+  });
+
+  it('"allow", started by its lead: still asks before commands that send, and refuses blocked ones', async () => {
+    const seen = [];
+    const can = await hook(fencedCtx(seen));
+    const send = await can("Bash", { command: `cd ${repo} && git push` });
+    assert.equal(send.behavior, "deny"); // asked, and the stub said no
+    const curl = await can("Bash", { command: "curl https://example.com" });
+    assert.equal(curl.behavior, "deny");
+    const rm = await can("Bash", { command: `cd ${repo} && rm x` });
+    assert.equal(rm.behavior, "deny");
+    assert.match(rm.message, /blocked list/);
+    const web = await can("WebFetch", { url: "https://example.com" });
+    assert.equal(web.behavior, "deny");
+    assert.deepEqual(seen, ["asked", "asked", "asked"]);
+  });
+
+  it('"allow", started directly: runs commands inside, refuses ones outside', async () => {
+    const seen = [];
+    const can = await hook(fencedCtx(seen, { leadRequest: false }));
+    const ok = await can("Bash", {
+      command: `cd ${repo} && git merge --ff-only main`,
+    });
+    assert.equal(ok.behavior, "allow");
+    const out = await can("Bash", { command: "sed -i s/a/b/ /etc/hosts" });
+    assert.equal(out.behavior, "deny");
+    assert.deepEqual(seen, []);
+  });
+
+  it('"ask": reads inside never ask; reads outside are refused; writes ask', async () => {
+    const seen = [];
+    const can = await hook(fencedCtx(seen, { approvalPolicy: "ask" }));
+    const read = await can("Read", { file_path: path.join(repo, "a.js") });
+    assert.equal(read.behavior, "allow");
+    const glob = await can("Glob", { pattern: "**/*.js" });
+    assert.equal(glob.behavior, "allow");
+    const outside = await can("Read", { file_path: "/etc/hosts" });
+    assert.equal(outside.behavior, "deny");
+    const write = await can("Write", { file_path: path.join(repo, "a.js") });
+    assert.equal(write.behavior, "deny"); // asked, and the stub said no
+    assert.deepEqual(seen, ["asked"]);
+  });
+
+  it('"ask": an allowed command that names a path outside asks', async () => {
+    const seen = [];
+    const can = await hook(fencedCtx(seen, { approvalPolicy: "ask" }));
+    const inside = await can("Bash", { command: `cat ${repo}/a.js` });
+    assert.equal(inside.behavior, "allow");
+    const outside = await can("Bash", { command: "cat /etc/hosts" });
+    assert.equal(outside.behavior, "deny");
+    assert.deepEqual(seen, ["asked"]);
+  });
+
+  it('"ask-every": reads inside still ask', async () => {
+    const seen = [];
+    const can = await hook(fencedCtx(seen, { approvalPolicy: "ask-every" }));
+    await can("Read", { file_path: path.join(repo, "a.js") });
+    assert.deepEqual(seen, ["asked"]);
+  });
+
+  it("a read-only bot with folders reads inside them without asking", async () => {
+    const seen = [];
+    const can = await hook(
+      fencedCtx(seen, { approvalPolicy: "ask", builtinTools: "read-only" }),
+    );
+    const grep = await can("Grep", { pattern: "x", path: repo });
+    assert.equal(grep.behavior, "allow");
+    const out = await can("Grep", { pattern: "x", path: "/etc" });
+    assert.equal(out.behavior, "deny");
+    assert.deepEqual(seen, []);
+  });
+
+  it("a bot without folders works as before (no fence)", async () => {
+    const seen = [];
+    const can = await hook(fencedCtx(seen, { projects: [] }));
+    assert.equal(captured.options.additionalDirectories, undefined);
+    const read = await can("Read", { file_path: "/etc/hosts" });
+    assert.equal(read.behavior, "allow"); // lead run: reads are free
+    const write = await can("Write", { file_path: "/tmp/x" });
+    assert.equal(write.behavior, "deny"); // asked, as DASH-29
+    assert.deepEqual(seen, ["asked"]);
+  });
+
+  it("the fence follows symlinks out of a folder", async () => {
+    const seen = [];
+    const can = await hook(fencedCtx(seen));
+    const other = tempDir("engine-fence-other-");
+    fs.symlinkSync(other, path.join(repo, "link-out"));
+    const r = await can("Write", {
+      file_path: path.join(repo, "link-out", "x.js"),
+    });
+    assert.equal(r.behavior, "deny");
+  });
+});
