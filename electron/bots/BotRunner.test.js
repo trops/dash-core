@@ -271,6 +271,22 @@ describe("BotRunner.run — happy path", () => {
     assert.equal(engine.lastCtx.leadRequest, true);
   });
 
+  it("passes the bot's folders to the engine for its fence (DASH-47)", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine, {
+      bot: { projects: ["/Users/x/dev/repo-a", "/Users/x/dev/repo-b"] },
+    });
+    await runner.run("bot_1", { prompt: "go" });
+    assert.deepEqual(engine.lastCtx.projects, [
+      "/Users/x/dev/repo-a",
+      "/Users/x/dev/repo-b",
+    ]);
+    const plain = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner: r2 } = makeRunner(plain);
+    await r2.run("bot_1", { prompt: "go" });
+    assert.deepEqual(plain.lastCtx.projects, []);
+  });
+
   it("passes the bot id (and workspace) to callTool so per-bot tool limits can be enforced", async () => {
     const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
     const seen = [];

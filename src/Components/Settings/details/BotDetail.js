@@ -1318,9 +1318,19 @@ export const BotDetail = ({
                     Folders it works in
                   </span>
                   <span className="text-xs opacity-50">
-                    It works in these folders where they are. Its checks'
-                    commands run in the first one.
+                    Its built-in tools can only read, change and run commands in
+                    these folders, where they are. Inside them, reading never
+                    asks. Its checks' commands run in the first one.
                   </span>
+                  {!hasBuiltin &&
+                  builtinTools !== "none" &&
+                  projects.length === 0 ? (
+                    <AlertBanner
+                      variant="warning"
+                      size="compact"
+                      message="No folders yet: its built-in tools aren't limited to any folder, and reading files asks every time. Add the folders it works in."
+                    />
+                  ) : null}
                   {projects.map((f, i) => (
                     <div key={f} className="flex flex-row items-center gap-2">
                       <span className="text-sm font-mono flex-1 min-w-0 truncate">

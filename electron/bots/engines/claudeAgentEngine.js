@@ -37,6 +37,13 @@ const { BOT_MCP_SERVER, buildBotMcpServer } = require("./agentToolBridge");
 const { imagePlaceholder } = require("../toolImages");
 const { commandDecision } = require("../../checks/commandRules");
 const {
+  FILE_TOOL_FIELDS,
+  makeFence,
+  fileToolOutside,
+  bashOutside,
+  bashSends,
+} = require("./folderFence");
+const {
   connectorForTool,
   connectorDisallowList,
   connectorNeedsSubscriptionMessage,
@@ -159,6 +166,10 @@ const DEFAULT_BUILTINS = [
 // files, shell commands and web fetches ask, as tools that delete or send do.
 const LEAD_RUN_FREE_BUILTINS = [...READ_ONLY_BUILTINS, "TodoWrite"];
 
+// Built-ins that change files. Inside a bot's folders (DASH-47) an "allow"
+// bot runs these without asking on a run its lead started too.
+const FILE_CHANGE_BUILTINS = ["Write", "Edit", "NotebookEdit"];
+
 function _allowedBuiltins(ctx) {
   if (ctx.builtinTools === "none") return [];
   if (ctx.builtinTools === "read-only") return READ_ONLY_BUILTINS;
@@ -167,6 +178,11 @@ function _allowedBuiltins(ctx) {
 
 /** Build the SDK canUseTool hook from the run context. */
 function _makeCanUseTool(ctx) {
+  // A bot's folders (DASH-47): null when it has none — no fence, as before.
+  const fence = makeFence(ctx);
+  const outsideMessage = (what) =>
+    `Not allowed: ${what} is outside this bot's folders (${fence.label}). ` +
+    "Work only in those folders, or stop and say what you need from the user.";
   return async function canUseTool(toolName, input) {
     if (ctx.signal && ctx.signal.aborted) {
       return { behavior: "deny", message: "run aborted" };
@@ -233,10 +249,26 @@ function _makeCanUseTool(ctx) {
         message: `${toolName} isn't available to bots.`,
       };
     }
+    // A bot's folders (DASH-47): a file tool outside them is refused, never
+    // asked, whatever the policy. Reading inside them never asks (unless the
+    // bot asks before every tool).
+    if (fence && !bridged && FILE_TOOL_FIELDS[toolName]) {
+      const outside = fileToolOutside(fence, toolName, input);
+      if (outside) {
+        return { behavior: "deny", message: outsideMessage(outside) };
+      }
+      if (
+        READ_ONLY_BUILTINS.includes(toolName) &&
+        ctx.approvalPolicy !== "ask-every"
+      ) {
+        return { behavior: "allow", updatedInput: input };
+      }
+    }
     // Shell commands (flows PRD, phase 5; G6): the always-blocked ones and
     // the bot's own blocked list are refused at once — even under "allow" —
     // so an unattended run gets an answer instead of waiting; its allowed
     // list runs without asking; anything else asks as before.
+    let commandOutside = null;
     if (
       !bridged &&
       toolName === "Bash" &&
@@ -250,16 +282,41 @@ function _makeCanUseTool(ctx) {
           message: `Not run: ${d.reason}. Do it another way, or stop and say what you need from the user.`,
         };
       }
-      if (d.decision === "allowed") {
+      // A command that reaches outside the bot's folders: refused under
+      // "allow" (nobody is there to ask), asked otherwise — even when it's
+      // on the allowed list ("cat" is; "cat ~/.ssh/config" isn't).
+      commandOutside = bashOutside(fence, input.command);
+      if (commandOutside && ctx.approvalPolicy === "allow") {
+        return {
+          behavior: "deny",
+          message: outsideMessage(commandOutside),
+        };
+      }
+      if (d.decision === "allowed" && !commandOutside) {
         return { behavior: "allow", updatedInput: input };
       }
     }
     // Trusted bot → run tools without prompting. On a run its lead started
     // (DASH-29), provider tools go to the gate, and only built-ins that
-    // change and send nothing skip asking.
+    // change and send nothing skip asking — or, for a bot with folders
+    // (DASH-47), file changes and commands inside them that send nothing.
     if (ctx.approvalPolicy === "allow") {
       if (!ctx.leadRequest) return { behavior: "allow", updatedInput: input };
       if (!bridged && LEAD_RUN_FREE_BUILTINS.includes(toolName)) {
+        return { behavior: "allow", updatedInput: input };
+      }
+      if (fence && !bridged && FILE_CHANGE_BUILTINS.includes(toolName)) {
+        return { behavior: "allow", updatedInput: input };
+      }
+      if (
+        fence &&
+        !bridged &&
+        toolName === "Bash" &&
+        input &&
+        typeof input.command === "string" &&
+        !commandOutside &&
+        !bashSends(input.command)
+      ) {
         return { behavior: "allow", updatedInput: input };
       }
     }
@@ -373,6 +430,10 @@ async function _runAgent(ctx, stream) {
   if (ctx.maxCostUsd) options.maxBudgetUsd = ctx.maxCostUsd;
   if (ctx.effort) options.effort = ctx.effort;
   if (ctx.workingDir) options.cwd = ctx.workingDir;
+  // A bot's folders (DASH-47) are where it works: Claude Code treats them as
+  // its own, beside the run's working folder. canUseTool fences the rest.
+  const fenceDirs = (makeFence(ctx) || { projects: [] }).projects;
+  if (fenceDirs.length) options.additionalDirectories = fenceDirs.slice();
   if (ctx.session && ctx.session.id) options.resume = ctx.session.id;
 
   // Bridge the bot's configured MCP tools into the SDK as an in-process MCP
