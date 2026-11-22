@@ -482,9 +482,13 @@ export function isPlainYes(text) {
     .toLowerCase()
     .replace(/[.!\s]+$/, "")
     .replace(/\s+/g, " ");
-  return /^(?:(?:yes|yep|yeah)(?:,? please)?(?:[,\s—-]+(?:go ahead|do it|build it|make it|save it))?(?:,? please)?|(?:ok|okay|sure)[,\s—-]+(?:go ahead|do it|build it|make it|save it)(?:,? please)?|(?:please )?(?:go ahead|do it|build it|make it|save it)(?:,? please)?)$/.test(
-    t,
-  );
+  // "build it", and for a plan of several: "build them", "build it all",
+  // "make them all" (DASH-36).
+  const act =
+    "(?:go ahead|do it|save it|(?:build|make) (?:it|them|them all|it all|all of them))";
+  return new RegExp(
+    `^(?:(?:yes|yep|yeah)(?:,? please)?(?:[,\\s—-]+${act})?(?:,? please)?|(?:ok|okay|sure)[,\\s—-]+${act}(?:,? please)?|(?:please )?${act}(?:,? please)?)$`,
+  ).test(t);
 }
 
 // What the Planner is told with every request the app sends it: it sees
@@ -550,6 +554,23 @@ export function startOverRequest(asked) {
   return `Plan this from the start, as a new request — forget any earlier plan. The user's request: "${String(asked || "").trim()}"`;
 }
 
+/**
+ * The latest step with a plan brought one that couldn't be read (DASH-36):
+ * no newer step brought a whole one.
+ */
+export function planWasLost(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const m = list[i];
+    if (!m || m.who !== "step") continue;
+    if (m.plan) return false;
+    if (m.planLost) return true;
+    // The app asked the Planner again and it answered: that's the latest.
+    if (m.direct && m.status !== "asking") return false;
+  }
+  return false;
+}
+
 /** The last message is the app's own hand-off to the Planner, answered without a plan. */
 function directWithoutPlan(list) {
   const last = list[list.length - 1];
@@ -570,6 +591,7 @@ function directWithoutPlan(list) {
  *   "answering" the lead is answering; the plan may change
  *   "sent"      sent to the retired Create window
  *   "nothing"   the Planner answered the app without a new plan
+ *   "lost"      its plan came through incomplete: ask again (DASH-36)
  *   "question"  the Planner has questions
  *   "gaps"      the plan check found gaps
  *   "ready"     Yes, make it
@@ -586,11 +608,19 @@ export function planNext({
   build = null,
 }) {
   const list = Array.isArray(messages) ? messages : [];
+  const last = list[list.length - 1];
+  const asking =
+    !!last && last.who === "step" && last.direct && last.status === "asking";
+  // The latest plan came through incomplete (DASH-36): said so, with a way
+  // on — never a card for a plan that isn't there.
+  if (planWasLost(list) && !build) {
+    if (asking) return "waiting";
+    if (busy || stillAnswering(list)) return "answering";
+    return "lost";
+  }
   if (!plan) return directWithoutPlan(list) ? "nothing" : null;
   if (build) return "build";
-  const last = list[list.length - 1];
-  if (last && last.who === "step" && last.direct && last.status === "asking")
-    return "waiting";
+  if (asking) return "waiting";
   if (busy || stillAnswering(list)) return "answering";
   if (sent) return "sent";
   if (directWithoutPlan(list)) return "nothing";
@@ -607,6 +637,7 @@ export function nextNeedsYou(next) {
     next === "question" ||
     next === "ready" ||
     next === "nothing" ||
+    next === "lost" ||
     next === "gaps" ||
     next === "empty"
   );

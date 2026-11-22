@@ -27,6 +27,14 @@ const bots = [
 ];
 
 describe("lead lookup", () => {
+  // DASH-36: a lead never claims a build, and says when no plan came.
+  it("never says a build started; says plainly when a plan didn't come (DASH-36)", () => {
+    const text = leadInstructions("Kitchen Sink");
+    assert.match(text, /Never say a build has started or is starting/);
+    assert.match(text, /came through incomplete, say so plainly/);
+    assert.doesNotMatch(LEAD_ACTION_HISTORY[0], /Never say a build/);
+  });
+
   it("isLead / leadOf find a dashboard's lead (ids as strings)", () => {
     assert.equal(isLead(bots[0]), true);
     assert.equal(isLead(bots[1]), false);

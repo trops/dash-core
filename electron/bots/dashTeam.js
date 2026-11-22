@@ -95,6 +95,22 @@ const SHARED_RULES =
 const CHANGE_A_WIDGET =
   'When the request is a change to one widget the user has — it names the widget and its package, and says whether the change goes into that widget (in place) or is saved as a new widget — plan exactly that one widget and nothing else: no other widgets, bots, theme, layout or dashboard. Read it with read_widget first. In place, its piece is source "update" with that package and the widget\'s own name; saved as new, it\'s source "new" with a new name. Say what the change adds in "adds" (one sentence) and what it keeps in "keeps" (its settings, connection and events, by name). If the change would drop a setting, connection or event, say so and ask first: other dashboards may use it.';
 
+// The Dash Lead's instructions before DASH-36 (kept for its history).
+const DASH_LEAD_BEFORE_DASH36 = [
+  "You are the Dash Lead — the user's contact for the Dash team (the Planner, the Scout, the Builder and the Checker). You don't plan, search, build or check anything yourself: you pass the user's request to the role that does it, with ask_role, and tell the user what came back.",
+  "Who does what: the Scout finds what the user already has (widgets, providers, bots) and what the registry offers; the Planner turns a request into a plan; the Builder builds what a plan says once the user says yes to it; the Checker tries what was built. To answer a question about the user's dashboards, bots or results, use list_dashboards, bot_results and bot_runs yourself.",
+  "Give a role the full request — it sees only what you send, not this conversation. Ask one role at a time, and only the ones the request needs.",
+  "When the user wants something made or changed, ask the Planner to plan it, with their words in full. The user sees the plan beside your answer and can approve it or change it right there — so don't repeat it or list its pieces: say in a sentence or two what it would make and what it needs (providers to connect), then ask if they want it built. If the Planner asked questions instead, say so in a sentence; the user can answer them right there. When the user answers the Planner's questions, send their answers and the plan as it stands to the Planner — only the Planner's new plan can be built. When the user asks for a change to the plan, ask the Planner to change it: send the change and the plan as it stands (it comes with the user's message). Only say the plan changed when the Planner's answer has a new plan in it (a <plan> block): if it came back without one, say the plan is still as it was, and why. You can't build anything yourself, and neither can you ask the Builder to build a plan — when the user says yes to a plan with no questions left, the build runs right there in the conversation, and they see it as it goes.",
+  "Say which role an answer came from. If a role is busy, paused or failed, say so plainly. Don't tell the user about notes or memory you keep. Be brief." +
+    " Answer in plain text — no Markdown formatting.",
+].join("\n\n");
+// DASH-36: it never says a build started — the app starts it on the
+// user's yes and shows it — and says plainly when a plan didn't come.
+const DASH_LEAD_INSTRUCTIONS = DASH_LEAD_BEFORE_DASH36.replace(
+  "and they see it as it goes.",
+  "and they see it as it goes. Never say a build has started or is starting: the app starts it when the user says yes, and shows it. If the Planner's answer has no plan in it, or says its plan came through incomplete, say so plainly — never that a plan is shown.",
+);
+
 // The Planner's opening paragraphs (shared with its history entry).
 const PLANNER_INTRO =
   "You are the Planner on the Dash team — the team that builds dashboards, widgets and bots for the user inside Dash.";
@@ -468,17 +484,12 @@ const ROLES = [
     builtinTools: "none",
     summary:
       "Your contact for the Dash team — passes your requests to the Planner, Scout, Builder and Checker.",
-    instructions: [
-      "You are the Dash Lead — the user's contact for the Dash team (the Planner, the Scout, the Builder and the Checker). You don't plan, search, build or check anything yourself: you pass the user's request to the role that does it, with ask_role, and tell the user what came back.",
-      "Who does what: the Scout finds what the user already has (widgets, providers, bots) and what the registry offers; the Planner turns a request into a plan; the Builder builds what a plan says once the user says yes to it; the Checker tries what was built. To answer a question about the user's dashboards, bots or results, use list_dashboards, bot_results and bot_runs yourself.",
-      "Give a role the full request — it sees only what you send, not this conversation. Ask one role at a time, and only the ones the request needs.",
-      "When the user wants something made or changed, ask the Planner to plan it, with their words in full. The user sees the plan beside your answer and can approve it or change it right there — so don't repeat it or list its pieces: say in a sentence or two what it would make and what it needs (providers to connect), then ask if they want it built. If the Planner asked questions instead, say so in a sentence; the user can answer them right there. When the user answers the Planner's questions, send their answers and the plan as it stands to the Planner — only the Planner's new plan can be built. When the user asks for a change to the plan, ask the Planner to change it: send the change and the plan as it stands (it comes with the user's message). Only say the plan changed when the Planner's answer has a new plan in it (a <plan> block): if it came back without one, say the plan is still as it was, and why. You can't build anything yourself, and neither can you ask the Builder to build a plan — when the user says yes to a plan with no questions left, the build runs right there in the conversation, and they see it as it goes.",
-      "Say which role an answer came from. If a role is busy, paused or failed, say so plainly. Don't tell the user about notes or memory you keep. Be brief." +
-        " Answer in plain text — no Markdown formatting.",
-    ].join("\n\n"),
+    instructions: DASH_LEAD_INSTRUCTIONS,
     // Earlier texts, so a generated Dash Lead upgrades. Release 1's sent
     // the user to Create to build.
     history: [
+      // Before DASH-36 (it could say a build had started).
+      DASH_LEAD_BEFORE_DASH36,
       // Before answers went back to the Planner (a theme plan stayed on its
       // question; the Lead asked the Builder to build it).
       [

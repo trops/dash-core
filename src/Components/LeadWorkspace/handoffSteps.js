@@ -7,7 +7,12 @@
  * team_ask_dash_team) is a step too, marked `dashTeam`. Pure.
  */
 
-import { extractPlan } from "../../utils/teamPlan";
+import { extractPlan, planLost } from "../../utils/teamPlan";
+
+// The app's note to the lead when a plan couldn't be read (botController
+// _askRole, DASH-36): for the lead, not shown in the step.
+const LOST_NOTE =
+  /\n*\(The [^()\n]{1,80}'s plan came through incomplete[^()]*\)\s*$/;
 import { hasPlan } from "../Create/askThread";
 
 const ROLE_NAMES = {
@@ -132,24 +137,33 @@ export function withResult(messages, event) {
     const marked = event.isError
       ? null
       : JOB_MARKER.exec(String(event.output == null ? "" : event.output));
-    const full = answerText(event.output);
+    const full = answerText(event.output).replace(LOST_NOTE, "");
     // The Planner's answer carries its plan (release 3a): kept on the step,
     // and its words shown without the JSON.
     const plan = event.isError ? null : extractPlan(full);
     const planned = hasPlan(plan);
+    // A plan in it that can't be read (DASH-36): the step says so, and the
+    // plan's card offers to ask again — never a plan that isn't there.
+    const lost = !event.isError && !planned && planLost(full);
     const answer = planned
       ? full.replace(/<plan>[\s\S]*?<\/plan>/gi, "").trim() ||
         plan.summary ||
         ""
-      : full;
+      : lost
+        ? full
+            .replace(/^…\[truncated\]/, "")
+            .replace(/<plan>[\s\S]*$|^[\s\S]*<\/plan>/i, "")
+            .trim()
+        : full;
     return {
       ...m,
       status: event.isError ? "failed" : "done",
       answer,
       result: firstLine(answer),
       ...(planned ? { plan } : {}),
+      ...(lost ? { planLost: true } : {}),
       ...(marked ? { jobId: marked[1] } : {}),
-      ...(!planned && didNothing(answer) ? { nothing: true } : {}),
+      ...(!planned && !lost && didNothing(answer) ? { nothing: true } : {}),
     };
   });
   return hit ? next : messages;

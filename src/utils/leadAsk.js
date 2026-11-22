@@ -92,7 +92,8 @@ export async function askTeamLead(
     }
     return {
       status: record.status,
-      output: record.output || text,
+      // The whole answer: the stored one keeps its last 8 KB (DASH-36).
+      output: record.wholeAnswer || record.output || text,
       model: record.model || null,
       usage: record.usage || null,
       cost: record.cost || null,

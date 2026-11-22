@@ -201,6 +201,35 @@ describe("BotRunner.run — happy path", () => {
     assert.ok(record.output.endsWith("END"));
   });
 
+  // DASH-36: a plan for several bots is longer than 8 KB and can't be read
+  // without its start — the run handed back carries it whole; the stored
+  // run keeps its last 8 KB.
+  it("hands back the whole answer, and stores only its last 8 KB", async () => {
+    const long = "<plan>" + "a".repeat(20000) + "</plan>END";
+    const engine = mockEngine([
+      { type: "text", text: long },
+      { type: "done", stopReason: "end_turn" },
+    ]);
+    const { runner, runs } = makeRunner(engine);
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.equal(record.wholeAnswer, long);
+    assert.ok(record.output.length < 8300);
+    const stored = runs.at(-1).run;
+    assert.equal(stored.wholeAnswer, undefined);
+    assert.ok(stored.output.endsWith("END"));
+  });
+
+  it("a short answer has no separate whole answer", async () => {
+    const engine = mockEngine([
+      { type: "text", text: "Done." },
+      { type: "done", stopReason: "end_turn" },
+    ]);
+    const { runner } = makeRunner(engine);
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.equal(record.output, "Done.");
+    assert.equal(record.wholeAnswer, undefined);
+  });
+
   it("a team lead runs with no built-in engine tools", async () => {
     const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
     const { runner } = makeRunner(engine, { bot: { role: "lead" } });

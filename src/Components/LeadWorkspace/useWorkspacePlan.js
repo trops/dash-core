@@ -14,6 +14,7 @@ import {
   isSettingsChange,
   latestPlanStep,
   planForCell,
+  planWasLost,
   planForWidget,
   widgetBuildPlan,
 } from "./workspacePlan";
@@ -436,14 +437,19 @@ export function useWorkspacePlan({
       edits: note ? [...cur.edits, note] : cur.edits,
     }));
 
+  // The latest plan came through incomplete (DASH-36): there's no plan to
+  // build or answer now — the one before is an earlier plan, its Yes and
+  // its build gone from the chat, and it isn't sent as the plan.
+  const lost = planWasLost(messages);
   return {
-    step,
-    plan,
+    step: lost ? null : step,
+    plan: lost ? null : plan,
+    lost,
     checks: state.checks,
     edits: state.edits,
     sent: state.sent,
     checklist,
-    check,
+    check: lost ? null : check,
     open,
     have,
     // Provider names the user picked in this conversation.
@@ -452,7 +458,7 @@ export function useWorkspacePlan({
     // A widget the user already has, into a cell: the piece with their
     // choices, and as the Planner proposed it.
     reuse:
-      reuseAt >= 0
+      !lost && reuseAt >= 0
         ? {
             index: reuseAt,
             piece: plan.pieces[reuseAt],
@@ -465,7 +471,7 @@ export function useWorkspacePlan({
     // provider question first (its plan isn't one yet), else the app's
     // (the wizard's widget, from providers.json).
     pick,
-    waitingForPick: !!(pick && !pick.done),
+    waitingForPick: !lost && !!(pick && !pick.done),
     pickStepId: state.pickStepId || null,
     notePicked: (names, stepId = null) =>
       setState((cur) => ({
@@ -531,9 +537,10 @@ export function useWorkspacePlan({
     // This plan's latest build (release 3b), or null — built again after a
     // Remove, the newest; and the last build of any plan (a changed plan's
     // build reuses what it made).
-    build:
-      [...state.builds].reverse().find((b) => b.stepId === state.stepId) ||
-      null,
+    build: lost
+      ? null
+      : [...state.builds].reverse().find((b) => b.stepId === state.stepId) ||
+        null,
     lastBuild: state.builds[state.builds.length - 1] || null,
     // A build started: saved at once, so a reopened conversation finds it
     // even if the window closes. `checks`: what was done before it built;

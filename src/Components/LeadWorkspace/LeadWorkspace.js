@@ -143,6 +143,7 @@ import { StepTailContext } from "./HandoffStep";
 import { ModelInfoContext, stepRun } from "./ModelInfo";
 import { dirtyDashboardId } from "./dirtyDashboard";
 import { planTarget } from "../../utils/teamPlan";
+import { planWithDashTeam } from "../../utils/openCreate";
 import { useRegistryUsername } from "../../hooks/useRegistryUsername";
 
 const EMPTY = [];
@@ -1640,7 +1641,44 @@ export const LeadWorkspace = ({
   })();
   const toPlanner = (shown, request, label) =>
     !!(askCtl.current && askCtl.current.askPlanner(shown, request, label));
+  // A dashboard lead's request, in Create (the Dash Lead), when its plan
+  // came through incomplete (DASH-36). Create is the Dash Lead: not there.
+  const openInCreate =
+    contact && contact.kind === "lead" && String(firstAsk).trim()
+      ? () =>
+          planWithDashTeam(
+            { request: firstAsk },
+            {
+              dashboardName:
+                contact.recipient && contact.recipient.dashboardId != null
+                  ? dashboardName(contact.recipient.dashboardId)
+                  : "",
+              from: contact.name || "",
+            },
+          )
+      : null;
+  // What the plan that came through incomplete was for: the user's words
+  // just before it, asked again of the Planner itself (DASH-36).
+  const lostAsk = (() => {
+    const list = messages || [];
+    let i = list.length - 1;
+    while (i >= 0 && !(list[i] && list[i].who === "step" && list[i].planLost))
+      i -= 1;
+    for (let j = i - 1; j >= 0; j -= 1) {
+      if (list[j] && list[j].who === "you" && list[j].text) return list[j].text;
+    }
+    return i >= 0 ? firstAsk : "";
+  })();
   const planActions = {
+    onOpenCreate: openInCreate,
+    onRetryLost: String(lostAsk).trim()
+      ? () =>
+          toPlanner(
+            "Ask again",
+            startOverRequest(lostAsk),
+            "Asked the Planner again",
+          )
+      : null,
     // A provider the user picked in a question (it counts as chosen).
     onPicked: wp.notePicked,
     // `shown`: what the chat shows as theirs (a tap: just the option).
@@ -2518,7 +2556,11 @@ export const LeadWorkspace = ({
         reviewCard
       ) : i === choicesAt && reuseOn && !api.busy ? (
         reuseCard
-      ) : i === choicesAt && wp.plan && !wp.build && !api.busy ? (
+      ) : i === choicesAt &&
+        wp.plan &&
+        !wp.build &&
+        !api.busy &&
+        next !== "lost" ? (
         // The plan's next step, in the chat (DASH-21): its questions, or Yes.
         <div
           className="flex flex-col gap-2"
@@ -2643,7 +2685,13 @@ export const LeadWorkspace = ({
         before
       );
     // Shown under the plan already: its card has the choices.
-    const underPlan = !!wp.plan && !wp.build && choicesAt !== -1 && !api.busy;
+    // A plan that came through incomplete has no card: its next step shows.
+    const underPlan =
+      !!wp.plan &&
+      !wp.build &&
+      choicesAt !== -1 &&
+      !api.busy &&
+      next !== "lost";
     if (!nextInChat || underPlan || i !== messages.length - 1) return out;
     return (
       <>
@@ -3452,6 +3500,18 @@ export const LeadWorkspace = ({
                       // a change goes to the Planner.
                       if (!previewBuilt) return false;
                       sendFix(previewWaiting.id, t);
+                      return true;
+                    }
+                    // A yes to a plan that came through incomplete (DASH-36):
+                    // nothing to build — said here, not sent to the lead.
+                    if (next === "lost" && isPlainYes(t)) {
+                      const say = askCtl.current && askCtl.current.say;
+                      if (!say) return false;
+                      say({ who: "you", text: t, local: true });
+                      say({
+                        who: "note",
+                        text: "There's no plan to build yet: the Planner's plan came through incomplete. Click Ask again on the card, or open it in Create.",
+                      });
                       return true;
                     }
                     if (

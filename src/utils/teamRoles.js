@@ -84,7 +84,9 @@ export async function runTeamRole(
     }
     return {
       status: record.status,
-      output: record.output || text,
+      // The whole answer: the stored one keeps its last 8 KB, and a plan
+      // cut at the front can't be read (DASH-36).
+      output: record.wholeAnswer || record.output || text,
       model: record.model || null,
       usage: record.usage || null,
       cost: record.cost || null,

@@ -205,3 +205,63 @@ describe("a job run skips only its own bot's pause (DASH-12 review)", () => {
     }
   });
 });
+
+// DASH-36: the Planner's answer reaches the lead whole — the stored run
+// keeps only its last 8 KB — and a plan that still can't be read is said
+// plainly, so the lead doesn't claim one. (The same controller fake.)
+describe("a Dash team role's answer reaches the lead whole (DASH-36)", () => {
+  const plannerSetup = (record) => {
+    const planner = {
+      id: "dt_planner",
+      name: "Planner",
+      role: "planner",
+      system: "dash-team",
+    };
+    const c = fake({ paused: [] });
+    c._store.list = () => [LEAD, planner];
+    c._store.get = (id) => (id === LEAD.id ? LEAD : planner);
+    c._runner = { startedAt: () => "t1", isRunning: () => false };
+    c._handoffs = { take: () => true };
+    c._run = () => Promise.resolve(record);
+    return c;
+  };
+  const ask = (c) =>
+    c._askRole({
+      callerId: "lead_1",
+      role: "planner",
+      request: "Plan four bots",
+    });
+
+  it("a plan over 8 KB comes back whole, from its start", async () => {
+    const plan =
+      '<plan>{"summary":"Four bots","pieces":[' +
+      '"x",'.repeat(4000) +
+      '"y"]}</plan>';
+    const c = plannerSetup({
+      status: "completed",
+      output: "…[truncated]" + plan.slice(-8192),
+      wholeAnswer: "Here it is.\n" + plan,
+    });
+    const res = await ask(c);
+    assert.equal(res.isError, false);
+    assert.ok(res.text.includes('<plan>{"summary":"Four bots"'));
+    assert.doesNotMatch(res.text, /came through incomplete/);
+  });
+
+  it("a plan that can't be read says so, for the lead", async () => {
+    const c = plannerSetup({
+      status: "completed",
+      output: '…[truncated]MCP","tools":[]}]}</plan>\nShall I build it?',
+    });
+    const res = await ask(c);
+    assert.equal(res.isError, false);
+    assert.match(res.text, /plan came through incomplete/);
+    assert.match(res.text, /don't say a plan is shown or a build is starting/);
+  });
+
+  it("an answer with no plan in it is passed on as it is", async () => {
+    const c = plannerSetup({ status: "completed", output: "Which calendar?" });
+    const res = await ask(c);
+    assert.equal(res.text, "Planner: Which calendar?");
+  });
+});

@@ -111,12 +111,12 @@ describe("planEnsureDashTeam", () => {
 
   it("a Dash Lead still on release 1's or 3a's words upgrades; edited ones stay", () => {
     const spec = ROLES.find((r) => r.role === "dashlead");
-    assert.equal(spec.history.length, 3);
-    assert.match(spec.history[2], /open Create in the left menu/);
+    assert.equal(spec.history.length, 4);
+    assert.match(spec.history[3], /open Create in the left menu/);
     // 3a's could say it updated the plan when the Planner sent none.
-    assert.doesNotMatch(spec.history[1], /still as it was/);
+    assert.doesNotMatch(spec.history[2], /still as it was/);
     assert.match(spec.instructions, /the plan is still as it was/);
-    const was3a = { ...teamBot("dashlead"), instructions: spec.history[1] };
+    const was3a = { ...teamBot("dashlead"), instructions: spec.history[2] };
     assert.equal(
       upgrades([
         ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
@@ -124,7 +124,7 @@ describe("planEnsureDashTeam", () => {
       ]).length,
       1,
     );
-    const old = { ...teamBot("dashlead"), instructions: spec.history[2] };
+    const old = { ...teamBot("dashlead"), instructions: spec.history[3] };
     const plan = upgrades([
       ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
       old,
@@ -782,7 +782,24 @@ describe("Dash team instructions (plan → build: never stuck)", () => {
       /neither can you ask the Builder to build a plan/,
     );
     // The Lead on the words before upgrades.
-    assert.doesNotMatch(lead.history[0], /neither can you ask the Builder/);
+    assert.doesNotMatch(lead.history[1], /neither can you ask the Builder/);
+    const was = { ...teamBot("dashlead"), instructions: lead.history[1] };
+    const plan = upgrades([
+      ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),
+      was,
+    ]);
+    assert.equal(plan.length, 1);
+    assert.equal(plan[0].action, "upgrade");
+  });
+
+  it("the Lead never says a build started, and a Lead on the words before upgrades (DASH-36)", () => {
+    const lead = ROLES.find((r) => r.role === "dashlead");
+    assert.match(
+      lead.instructions,
+      /Never say a build has started or is starting/,
+    );
+    assert.match(lead.instructions, /came through incomplete, say so plainly/);
+    assert.doesNotMatch(lead.history[0], /Never say a build/);
     const was = { ...teamBot("dashlead"), instructions: lead.history[0] };
     const plan = upgrades([
       ...ROLE_IDS.filter((r) => r !== "dashlead").map((r) => teamBot(r)),

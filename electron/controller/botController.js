@@ -212,7 +212,7 @@ const {
   themeOrigin,
   themePublished,
 } = require("../../src/utils/themeStanding");
-const { planTarget, validatePlan } = require("../bots/teamPlan");
+const { planLost, planTarget, validatePlan } = require("../bots/teamPlan");
 const { resolveEditTarget, ownsWidget } = require("../bots/editTarget");
 const { checkBot } = require("../bots/checkBot");
 const { summarizeSpending } = require("../bots/spending");
@@ -2625,7 +2625,7 @@ const botController = {
           return;
         }
         background.status = r.skipped ? "skipped" : r.status || "completed";
-        background.answer = String(r.output || "");
+        background.answer = String(r.wholeAnswer || r.output || "");
         background.error = r.error || r.reason || null;
         keep();
       },
@@ -6708,8 +6708,16 @@ const botController = {
         `The ${target.name} failed: ${record.error || "no details"}.`,
       );
     }
+    // The whole answer (DASH-36): the stored run keeps only its last 8 KB,
+    // and a plan cut at the front can't be read or shown.
+    const answer = record.wholeAnswer || record.output || "(no answer)";
+    // A plan that still can't be read: said plainly, so no one claims a
+    // plan or a build that isn't there.
+    const lost = planLost(answer)
+      ? `\n\n(The ${target.name}'s plan came through incomplete, so the app can't show it or build from it. Tell the user so plainly: don't say a plan is shown or a build is starting. They can ask again from the card in the conversation.)`
+      : "";
     return {
-      text: `${target.name}: ${record.output || "(no answer)"}`,
+      text: `${target.name}: ${answer}${lost}`,
       isError: false,
     };
   },
