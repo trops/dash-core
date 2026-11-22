@@ -361,6 +361,15 @@ function extractPlan(text) {
 }
 
 /**
+ * An answer that carried a plan that can't be read (DASH-36): a <plan> or
+ * </plan> is in it, but no whole plan — cut short, or not valid JSON.
+ */
+function planLost(text) {
+  const s = String(text || "");
+  return /<\/?plan>/i.test(s) && !extractPlan(s);
+}
+
+/**
  * Check a plan's shape and its promises.
  * @param {object} plan
  * @param {{ providers?: string[], dashboards?: [{ id }], themes?: string[] }}
@@ -928,6 +937,7 @@ export {
   SOURCES,
   BEFORE_KINDS,
   extractPlan,
+  planLost,
   planPages,
   planTarget,
   validatePlan,

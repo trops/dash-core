@@ -50,6 +50,11 @@ const QUIT = Symbol("quit");
 // long JSON answer, and the sample stays small.
 const TEST_ANSWER_LIMIT = 32 * 1024;
 
+// How much of an answer the returned run carries whole (DASH-36): the
+// stored run keeps its last 8 KB, but a plan for several bots is longer
+// and can't be read without its start.
+const WHOLE_ANSWER_LIMIT = 256 * 1024;
+
 /** Wait `ms`, or less if the run is stopped meanwhile. */
 /** What a run stopped by its time limit says. */
 function timeLimitNote(minutes) {
@@ -890,6 +895,12 @@ class BotRunner {
       });
     }
 
+    // Only on the run handed back (a copy), never stored: the answer from
+    // its start, for whoever reads it next (a plan, a lead's hand-off) —
+    // when the stored one was cut.
+    if (!test && runRecord.output !== answer) {
+      return { ...runRecord, wholeAnswer: answer.slice(0, WHOLE_ANSWER_LIMIT) };
+    }
     return runRecord;
   }
 }

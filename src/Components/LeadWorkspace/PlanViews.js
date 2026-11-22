@@ -1,5 +1,6 @@
 import React, { useContext, useMemo, useState } from "react";
 import {
+  AlertBanner,
   Button,
   Button2,
   Button3,
@@ -566,6 +567,8 @@ export const PlanChoices = ({
  * @param {() => void} onBuild        Yes, make it (null while it starts)
  * @param {() => void} onChange       Change something (the reply box)
  * @param {() => void} onStopPlanner  Stop, while the Planner answers
+ * @param {() => void} onOpenCreate   the request, in Create (a lead's chat)
+ * @param {() => void} onRetryLost    what the lost plan was for, again
  */
 export const PlanNext = ({
   next,
@@ -579,6 +582,8 @@ export const PlanNext = ({
   onBuild = null,
   onChange = () => {},
   onStopPlanner = null,
+  onOpenCreate = null,
+  onRetryLost = null,
   leadName = "The Dash Lead",
   onPicked = null,
 }) => {
@@ -762,6 +767,25 @@ export const PlanNext = ({
           ) : null}
           {onStartOver ? (
             <Button2 title="Start the plan over" onClick={onStartOver} />
+          ) : null}
+        </div>
+      </div>
+    );
+  } else if (next === "lost") {
+    // The Planner's plan came through incomplete (DASH-36): said plainly,
+    // with a way on — Ask again, or the request in Create.
+    const again = onRetryLost || onAskAgain || onStartOver;
+    body = (
+      <div className="flex flex-col gap-3" data-testid="plan-lost">
+        <AlertBanner
+          variant="warning"
+          title="The Planner's plan couldn't be shown"
+          message="Its answer came through incomplete, so there's nothing to build from yet. Nothing was built."
+        />
+        <div className="flex flex-row flex-wrap gap-2">
+          {again ? <Button title="Ask again" onClick={again} /> : null}
+          {onOpenCreate ? (
+            <Button2 title="Open in Create" onClick={onOpenCreate} />
           ) : null}
         </div>
       </div>

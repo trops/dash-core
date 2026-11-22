@@ -64,8 +64,15 @@ const BRING_IN_DASH_TEAM = BRING_IN_DASH_TEAM_BEFORE_CHANGES.replace(
   "(a new widget on this dashboard, a new bot, a new theme for it)",
   "(a new widget on this dashboard, a new bot, a new theme for it or a change to the one it has)",
 );
-const CURRENT_LEAD_ACTION = ASK_BOTS + BRING_IN_DASH_TEAM;
+// DASH-36: it never says a build started, and says plainly when a plan
+// didn't come.
+const BRING_IN_DASH_TEAM_DASH36 =
+  BRING_IN_DASH_TEAM +
+  " Never say a build has started or is starting: the app starts it when the user says yes, and shows it. If the Planner's answer has no plan in it, or says its plan came through incomplete, say so plainly — never that a plan is shown beside your answer.";
+const CURRENT_LEAD_ACTION = ASK_BOTS + BRING_IN_DASH_TEAM_DASH36;
 const LEAD_ACTION_HISTORY = [
+  // Before DASH-36 (it could say a build had started)
+  ASK_BOTS + BRING_IN_DASH_TEAM,
   // Lead-workspace theme round (before themes could be changed)
   ASK_BOTS + BRING_IN_DASH_TEAM_BEFORE_CHANGES,
   // Lead-workspace release 3c (before the theme round)

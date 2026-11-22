@@ -487,3 +487,10 @@ The conversation card touched the Recents column and the Outputs column. The Nee
   - **A bot's test** runs in the chat (`BotTestOutput` under the build's message), with Save the bot under the result.
   - The right column now holds only outputs.
 
+### DASH-36: a plan longer than 8 KB (2026-11-21)
+
+- **What broke:** a run's stored answer keeps its last 8 KB (`truncateText` in `BotRunner`). A Planner plan for several bots is longer, so its `<plan>` start was cut. Every reader got nothing, so no card showed, a typed yes went to the lead, and the lead said the build was starting.
+- **The plan travels whole.** `BotRunner.run` hands back `wholeAnswer` (up to 256 KB) on a copy of the run when the stored one was cut, and never stores it. `_askRole` (team_ask_dash_team and ask_role), the background answer, `runTeamRole` and `askTeamLead` read it.
+- **When a plan still can't be read** (`planLost` in teamPlan, both copies): `_askRole` tells the lead plainly, `withResult` marks the step `planLost`, and `planNext` gives "lost". `PlanNext` then shows "The Planner's plan couldn't be shown" with Ask again and, in a dashboard lead's chat, Open in Create (`planWithDashTeam`). A typed yes then gets a note from the app instead of going to the lead.
+- **Leads never say a build started.** The Dash Lead's and a dashboard lead's instructions say so, with history entries so existing leads upgrade.
+- **A typed yes:** `isPlainYes` also takes "build them", "build it all" and "make them all".

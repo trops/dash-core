@@ -11,6 +11,7 @@ import {
   isPlainYes,
   nextNeedsYou,
   planNext,
+  planWasLost,
   startOverRequest,
   withPlanContext,
 } from "./workspacePlan";
@@ -184,6 +185,11 @@ describe("a typed plain yes", () => {
     "build it",
     "make it please",
     "Yeah, do it",
+    // A plan of several (DASH-36).
+    "yes build them",
+    "build them all",
+    "Yes, build it all",
+    "make all of them",
   ])("%s builds", (t) => expect(isPlainYes(t)).toBe(true));
   test.each([
     "yes but make it purple",
@@ -195,6 +201,7 @@ describe("a typed plain yes", () => {
     "sure",
     "",
     "build it with a calendar",
+    "build them but skip the drafter",
   ])("%s doesn't", (t) => expect(isPlainYes(t)).toBe(false));
 });
 
@@ -231,5 +238,83 @@ describe("an answer that made nothing", () => {
     });
     expect(s.nothing).toBe(true);
     expect(s.answer).toMatch(/haven't created/);
+  });
+});
+
+// DASH-36: a plan that came through incomplete — the step says so, and the
+// card offers to ask again, never a plan that isn't there.
+describe("a plan that came through incomplete", () => {
+  const asked = {
+    who: "step",
+    id: "1:p",
+    bot: "the Planner",
+    status: "asking",
+  };
+  test("the step is marked, without the broken JSON", () => {
+    const [s] = withResult([asked], {
+      type: "tool_result",
+      id: "1:p",
+      output:
+        'Planner: …[truncated]MCP","tools":[]}]}</plan>\nShall I build it?\n\n(The Planner\'s plan came through incomplete, so the app can\'t show it or build from it. Tell the user so plainly.)',
+    });
+    expect(s.planLost).toBe(true);
+    expect(s.plan).toBeUndefined();
+    expect(s.nothing).toBeUndefined();
+    expect(s.answer).toBe("Shall I build it?");
+  });
+
+  test("a whole plan isn't lost", () => {
+    const [s] = withResult([asked], {
+      type: "tool_result",
+      id: "1:p",
+      output: `Planner: Here.\n<plan>${JSON.stringify(READY)}</plan>`,
+    });
+    expect(s.planLost).toBeUndefined();
+    expect(s.plan.summary).toBe("Halloween");
+  });
+
+  test("planNext: lost, waiting on you; a newer whole plan wins", () => {
+    const lost = step(null, { planLost: true });
+    expect(planNext({ messages: [you("4 bots"), lost] })).toBe("lost");
+    expect(nextNeedsYou("lost")).toBe(true);
+    // Still answering: not yet.
+    expect(planNext({ messages: [you("4 bots"), lost], busy: true })).toBe(
+      "answering",
+    );
+    // An earlier plan doesn't hide that the latest one was lost.
+    expect(
+      planNext({
+        messages: [step(READY, { id: "1:a" }), you("more"), lost],
+        plan: READY,
+      }),
+    ).toBe("lost");
+    // Asked again, and a whole plan came: it's that plan's card.
+    expect(
+      planNext({
+        messages: [lost, you("again"), step(READY, { id: "1:b" })],
+        plan: READY,
+      }),
+    ).toBe("ready");
+  });
+
+  test("lost clears when the app asks again and the Planner answers", () => {
+    const lost = step(null, { planLost: true, id: "1:l" });
+    expect(planWasLost([you("4 bots"), lost])).toBe(true);
+    const asking = step(null, { id: "1:d", direct: true, status: "asking" });
+    // Asked again, still answering: still lost underneath, waiting on top.
+    expect(planWasLost([you("4 bots"), lost, asking])).toBe(true);
+    expect(planNext({ messages: [you("4 bots"), lost, asking] })).toBe(
+      "waiting",
+    );
+    // It answered with words only: not lost any more — no new plan.
+    const answered = step(null, { id: "1:d", direct: true });
+    expect(planWasLost([you("4 bots"), lost, answered])).toBe(false);
+    expect(planNext({ messages: [you("4 bots"), lost, answered] })).toBe(
+      "nothing",
+    );
+    // After something was built: a newer lost plan still says so.
+    expect(
+      planNext({ messages: [step(READY), you("more"), lost], build: null }),
+    ).toBe("lost");
   });
 });
