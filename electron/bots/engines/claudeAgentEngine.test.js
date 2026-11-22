@@ -274,6 +274,80 @@ describe("claudeAgentEngine", () => {
     assert.equal(asked.length, 1);
   });
 
+  // DASH-38: built-ins none or read-only govern Claude's own tools only — a
+  // granted connector's tools still go to the connector check.
+  for (const builtinTools of ["none", "read-only", "all"]) {
+    it(`built-ins ${builtinTools}: a granted connector's allowed tools run, the rest don't`, async () => {
+      stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+      const asked = [];
+      await collect(
+        claudeAgentEngine.run(
+          withConnector({
+            builtinTools,
+            approvalPolicy: "ask",
+            requestPermission: async (name) => {
+              asked.push(name);
+              return { allow: true };
+            },
+          }),
+        ),
+      );
+      const can = captured.options.canUseTool;
+      const ok = await can("mcp__claude_ai_Google_Calendar__list_events", {});
+      assert.equal(ok.behavior, "allow");
+      const no = await can("mcp__claude_ai_Google_Calendar__delete_event", {});
+      assert.equal(no.behavior, "deny");
+      assert.match(no.message, /isn't allowed for this bot/);
+      const other = await can("mcp__claude_ai_Slack__send_message", {});
+      assert.equal(other.behavior, "deny");
+      assert.deepEqual(asked, ["mcp__claude_ai_Google_Calendar__list_events"]);
+    });
+  }
+
+  it("built-ins none, allow policy: a connector tool runs, but asks on a lead's run", async () => {
+    const asked = [];
+    const run = async (leadRequest) => {
+      stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+      await collect(
+        claudeAgentEngine.run(
+          withConnector({
+            builtinTools: "none",
+            approvalPolicy: "allow",
+            leadRequest,
+            requestPermission: async (name) => {
+              asked.push(name);
+              return { allow: true };
+            },
+          }),
+        ),
+      );
+      return captured.options.canUseTool(
+        "mcp__claude_ai_Google_Calendar__list_events",
+        {},
+      );
+    };
+    assert.equal((await run(false)).behavior, "allow");
+    assert.deepEqual(asked, []);
+    assert.equal((await run(true)).behavior, "allow");
+    assert.deepEqual(asked, ["mcp__claude_ai_Google_Calendar__list_events"]);
+  });
+
+  for (const builtinTools of ["none", "read-only"]) {
+    it(`built-ins ${builtinTools}: a connector doesn't open Bash, Edit or Write`, async () => {
+      stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+      await collect(
+        claudeAgentEngine.run(
+          withConnector({ builtinTools, approvalPolicy: "allow" }),
+        ),
+      );
+      const can = captured.options.canUseTool;
+      for (const tool of ["Bash", "Edit", "Write"]) {
+        const r = await can(tool, { command: "ls", file_path: "/tmp/x" });
+        assert.equal(r.behavior, "deny", tool);
+      }
+    });
+  }
+
   it("a connector run on an API key is refused with the reason", async () => {
     stubQuery([{ type: "result", subtype: "success", usage: {} }]);
     const events = await collect(
