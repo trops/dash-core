@@ -110,6 +110,7 @@ Bots hand work to each other through events and loose results. Nothing records w
 - `electron/jobs/jobStore.js` (one sealed file per job under `userData/jobs`), `jobTracker.js` (start, steps, settle, wait for the end, restart cleanup).
 - botController `_run` starts or joins the job and ends its step (also on a rejected run); `handleEvent` / `_holdEvent` say a hand-on that didn't start or waits on the user; the checks job's `patchRun` moves the step's checks stage; `_leadAskBotRun` passes the lead's job and waits on a run already going in it (`_runsInProgress`). `causeFromEvent` / `buildBotEventMessage` carry `jobId`.
 - MCP: `teamTools.startTask` (`startTaskJob`, `waitForJob`, `abandonJob`), `get_task_status` (`jobId`, `steps`), `mcpTasks.running(id, { jobId })`.
+- DASH-33: a finished task's `summary` is the lead's answer exactly as it gave it; what the bots it handed on to said is in `handOns` (`[{ bot, summary }]`, trimmed in `list_tasks`), and in `message` after a blank line each. Gluing them onto the lead's last line broke a `FILES:` line a bridge reads.
 - IPC: `bots-list-jobs`, `bots-get-job`, `bots-stop-job`, `bots-delete-job`; broadcast `bot-jobs-changed`. Handlers in dash-electron `public/electron.js`.
 - Tests: `electron/jobs/jobTracker.test.js`, `jobWiring.test.js` (the real `_run`), `electron/mcp/teamTasks.test.js`. Checked live: a real lead asked a Designer whose Completed event started a Drafter; one job followed all three and ended done after the Drafter.
 
@@ -120,3 +121,4 @@ Bots hand work to each other through events and loose results. Nothing records w
 | 2026-11-16 | Created for DASH-2 (phase 1). |
 | 2026-11-21 | Jobs as chains through a lead (DASH-28, DASH-31), part 1. |
 | 2026-11-21 | Part 2: the Jobs page, the strip, the opt-in clear (DASH-31). |
+| 2026-11-21 | A task's hand-on answers apart from the lead's (DASH-33). |
