@@ -56,6 +56,26 @@ test("grants without fs, and a clean file, are returned as-is", () => {
   assert.strictEqual(grants, input);
 });
 
+test("DASH-46: a placed widget's own grant ('#' key) keeps its widget's files", () => {
+  const key = NOTEPAD + "#ws1:u1";
+  const own = `1-${NOTEPAD}-3.json`;
+  const input = {
+    [key]: {
+      grantOrigin: "live",
+      servers: { notes: { tools: ["read_note"], readPaths: ["Dash/Specs"] } },
+    },
+    [NOTEPAD + "#ws2:u3"]: fsGrant([own]),
+  };
+  const { grants, removed } = dropMisattributedFsPaths(input);
+  assert.strictEqual(removed, 0);
+  assert.deepStrictEqual(grants, input);
+  // Another widget's file on a '#' key is still dropped.
+  const foreign = dropMisattributedFsPaths({
+    [NOTIFY + "#ws1:u1"]: fsGrant([own]),
+  });
+  assert.strictEqual(foreign.removed, 1);
+});
+
 test("idempotent, and the input isn't mutated", () => {
   const input = { [NOTIFY]: fsGrant([`1-${NOTEPAD}-3.json`]) };
   const once = dropMisattributedFsPaths(input);

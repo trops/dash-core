@@ -161,7 +161,7 @@ export const AppSettingsModal = ({
               panelStyles.textColor || "text-gray-200"
             }`}
           >
-            <PrivacySecuritySection />
+            <PrivacySecuritySection workspaces={workspaces} />
           </div>
         )}
       </SettingsModal.Body>

@@ -66,7 +66,11 @@ export function groupRowsByPackage(rows) {
     }
     const group = byPackage.get(key);
     group.widgets.push(row);
-    if (_hasGrant(row.granted)) {
+    // A placed widget's own grant (DASH-46) counts too.
+    const placedGrants = Array.isArray(row.instances)
+      ? row.instances.some((i) => _hasGrant(i && i.granted))
+      : false;
+    if (_hasGrant(row.granted) || placedGrants) {
       group.grantCount += 1;
       group.hasAnyGrant = true;
     }

@@ -196,6 +196,13 @@ function withinServerRoots(requested, roots) {
   });
 }
 
+/** Does the path climb with a ".." segment anywhere in it? */
+function hasTraversal(p) {
+  return String(p)
+    .split(/[\\/]+/)
+    .some((seg) => seg === "..");
+}
+
 /** A root that names a real folder or file on this computer. */
 function isLocalRoot(root) {
   if (typeof root !== "string" || !path.isAbsolute(root)) return false;
@@ -213,9 +220,20 @@ function isLocalRoot(root) {
  * path that only means something on the server, like "Life/Modules" — is
  * compared as a server path. The tool still gets the argument unchanged.
  *
- * @returns {{ ok: true } | { ok: false, reason: string }}
+ * A refusal carries a `code`: "invalid" (not a usable path), "traversal"
+ * (a ".." segment anywhere in it) or "not-in-root" (an ordinary path
+ * outside every root — the only kind worth asking the user about).
+ *
+ * @returns {{ ok: true } | { ok: false, reason: string, code: string }}
  */
 function checkToolPath(requested, roots) {
+  if (typeof requested !== "string" || !requested) {
+    return {
+      ok: false,
+      code: "invalid",
+      reason: "requested path is not a valid path",
+    };
+  }
   const list = Array.isArray(roots) ? roots.filter(Boolean) : [];
   const local = list.filter(isLocalRoot);
   const server = list.filter((r) => !isLocalRoot(r));
@@ -232,6 +250,7 @@ function checkToolPath(requested, roots) {
   }
   return {
     ok: false,
+    code: hasTraversal(requested) ? "traversal" : "not-in-root",
     reason:
       "requested path is not within any allowed root. Requested: " +
       requested +
@@ -248,4 +267,5 @@ module.exports = {
   serverPathOf,
   withinServerRoots,
   checkToolPath,
+  hasTraversal,
 };

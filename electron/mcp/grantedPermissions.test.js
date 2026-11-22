@@ -50,6 +50,9 @@ const {
   revokeServer,
   listAllGrants,
   clearCache,
+  instanceGrantKey,
+  getEffectiveGrant,
+  seedInstanceGrant,
 } = require("./grantedPermissions");
 
 // Helper: clear cache + delete the on-disk file before each test so cases
@@ -516,5 +519,82 @@ test("the cleanup runs once: a cross-widget file grant made later is kept", () =
   assert.deepStrictEqual(
     getGrant("trops.dash-samples.ReaderWidget").domains.fs.readPaths,
     [notepadFile],
+  );
+});
+
+// --- DASH-46: a placed widget's own grant -------------------------------
+
+const NOTES = "ai-built.notesfolder.NotesFolder";
+const notesGrant = (readPaths) => ({
+  grantOrigin: "live",
+  servers: {
+    "Mac Mini Notes MCP": {
+      tools: ["list_notes", "read_note"],
+      readPaths,
+      writePaths: [],
+    },
+  },
+});
+
+test("instanceGrantKey: '<widgetId>#<instanceId>', null without either", () => {
+  assert.strictEqual(instanceGrantKey(NOTES, "ws1:u1"), NOTES + "#ws1:u1");
+  assert.strictEqual(instanceGrantKey(NOTES, null), null);
+  assert.strictEqual(instanceGrantKey(NOTES, ""), null);
+  assert.strictEqual(instanceGrantKey("", "ws1:u1"), null);
+});
+
+test("getEffectiveGrant: instance grant, else the type grant (inherited), else null", () => {
+  resetState();
+  assert.strictEqual(getEffectiveGrant(NOTES, "ws1:u1"), null);
+
+  setGrant(NOTES, notesGrant(["Woodworking"]));
+  const inherited = getEffectiveGrant(NOTES, "ws1:u1");
+  assert.strictEqual(inherited.key, NOTES);
+  assert.strictEqual(inherited.inherited, true);
+  assert.deepStrictEqual(
+    inherited.grant.servers["Mac Mini Notes MCP"].readPaths,
+    ["Woodworking"],
+  );
+
+  setGrant(NOTES + "#ws1:u1", notesGrant(["Dash/Specs"]));
+  const own = getEffectiveGrant(NOTES, "ws1:u1");
+  assert.strictEqual(own.key, NOTES + "#ws1:u1");
+  assert.strictEqual(own.inherited, false);
+  assert.deepStrictEqual(own.grant.servers["Mac Mini Notes MCP"].readPaths, [
+    "Dash/Specs",
+  ]);
+
+  // No instance: the type grant, not marked inherited.
+  const legacy = getEffectiveGrant(NOTES, null);
+  assert.strictEqual(legacy.key, NOTES);
+  assert.strictEqual(legacy.inherited, false);
+});
+
+test("seedInstanceGrant keeps servers and tools, empties the paths", () => {
+  const seed = seedInstanceGrant(notesGrant(["Woodworking"]));
+  assert.deepStrictEqual(seed.servers, {
+    "Mac Mini Notes MCP": {
+      tools: ["list_notes", "read_note"],
+      readPaths: [],
+      writePaths: [],
+    },
+  });
+  assert.strictEqual(seedInstanceGrant(null), null);
+});
+
+test("instance and type keys are stored and revoked on their own", () => {
+  resetState();
+  setGrant(NOTES, notesGrant(["Woodworking"]));
+  setGrant(NOTES + "#ws2:u3", notesGrant(["Dash/Specs"]));
+  clearCache();
+  assert.deepStrictEqual(
+    getGrant(NOTES + "#ws2:u3").servers["Mac Mini Notes MCP"].readPaths,
+    ["Dash/Specs"],
+  );
+  assert.strictEqual(revokeGrant(NOTES + "#ws2:u3"), true);
+  assert.strictEqual(getGrant(NOTES + "#ws2:u3"), null);
+  assert.deepStrictEqual(
+    getGrant(NOTES).servers["Mac Mini Notes MCP"].readPaths,
+    ["Woodworking"],
   );
 });

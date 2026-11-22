@@ -2,7 +2,9 @@
  * MountTokenWrapper
  *
  * Owns the per-widget mount-token lifecycle. On mount, calls
- * `framework.registerMount(widgetId)` and stores the resulting token;
+ * `framework.registerMount(widgetId, instanceId)` and stores the resulting token;
+ * `instanceId` ("<dashboardId>:<uuid>", or null) names the placed widget
+ * so it gets its own MCP grant (DASH-46);
  * on unmount, calls `framework.unregisterMount(token)`. Provides a
  * per-mount bound API (via `makeBoundApi`) through `WidgetContext`.
  *
@@ -20,7 +22,12 @@ import React, { useEffect, useState } from "react";
 import { WidgetContext } from "../Context/WidgetContext";
 import { makeBoundApi } from "../Api/makeBoundApi";
 
-export const MountTokenWrapper = ({ widgetId, widgetData, children }) => {
+export const MountTokenWrapper = ({
+  widgetId,
+  instanceId = null,
+  widgetData,
+  children,
+}) => {
   const [token, setToken] = useState(null);
 
   useEffect(() => {
@@ -37,7 +44,10 @@ export const MountTokenWrapper = ({ widgetId, widgetData, children }) => {
 
     (async () => {
       try {
-        myToken = await window.mainApi.framework.registerMount(widgetId);
+        myToken = await window.mainApi.framework.registerMount(
+          widgetId,
+          instanceId || null,
+        );
       } catch (e) {
         // Non-fatal — register-mount IPC failed. Widget renders
         // without a bound api; gated calls will be denied.
@@ -72,7 +82,7 @@ export const MountTokenWrapper = ({ widgetId, widgetData, children }) => {
         }
       }
     };
-  }, [widgetId]);
+  }, [widgetId, instanceId]);
 
   // Build the per-mount bound API only when we actually have a token.
   // Re-memoizing on token change keeps the proxy stable across renders.

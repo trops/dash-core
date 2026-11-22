@@ -24,6 +24,7 @@ const assert = require("node:assert");
 const {
   register,
   lookup,
+  lookupIdentity,
   unregister,
   _resetForTests,
 } = require("./mountTokenRegistry");
@@ -91,4 +92,30 @@ test("unregister of unknown token is a silent no-op", () => {
   unregister("not-a-real-token");
   unregister(null);
   unregister(undefined);
+});
+
+// DASH-46: the mount also names the placed widget.
+test("register with an instanceId: lookupIdentity has both, lookup still the widgetId", () => {
+  _resetForTests();
+  const token = register("a.b.C", "ws1:u1");
+  assert.deepStrictEqual(lookupIdentity(token), {
+    widgetId: "a.b.C",
+    instanceId: "ws1:u1",
+  });
+  assert.strictEqual(lookup(token), "a.b.C");
+});
+
+test("register without an instanceId stores instanceId: null", () => {
+  _resetForTests();
+  const token = register("a.b.C");
+  assert.deepStrictEqual(lookupIdentity(token), {
+    widgetId: "a.b.C",
+    instanceId: null,
+  });
+  for (const bad of ["", 42, {}, null]) {
+    assert.strictEqual(lookupIdentity(register("a.b.C", bad)).instanceId, null);
+  }
+  assert.strictEqual(lookupIdentity("not-a-real-token"), null);
+  unregister(token);
+  assert.strictEqual(lookupIdentity(token), null);
 });

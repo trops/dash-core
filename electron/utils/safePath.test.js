@@ -234,3 +234,23 @@ test("local roots keep the on-disk check", () => {
     false,
   );
 });
+
+// DASH-46: the gate asks for a folder only on "not-in-root".
+test("checkToolPath refusals carry a code", () => {
+  const roots = ["Woodworking"];
+  assert.strictEqual(
+    checkToolPath("Dash/Specs/x.md", roots).code,
+    "not-in-root",
+  );
+  assert.strictEqual(
+    checkToolPath("../../etc/passwd", roots).code,
+    "traversal",
+  );
+  assert.strictEqual(
+    checkToolPath("Woodworking/../Dash/x.md", roots).code,
+    "traversal",
+  );
+  assert.strictEqual(checkToolPath("", roots).code, "invalid");
+  assert.strictEqual(checkToolPath(null, roots).code, "invalid");
+  assert.strictEqual(checkToolPath("Woodworking/x.md", roots).code, undefined);
+});

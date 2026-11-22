@@ -61,8 +61,14 @@ function nextRequestId() {
 function coalesceKeyOf(req) {
   if (req.domain === "mcp") {
     const innerArgs = req.args || {};
+    // Two placed widgets of one type each get their own prompt (and their
+    // own grant) — one answer must never settle the other's (DASH-46).
+    const who =
+      typeof req.instanceId === "string" && req.instanceId
+        ? req.widgetId + "#" + req.instanceId
+        : req.widgetId;
     return [
-      req.widgetId,
+      who,
       "mcp",
       innerArgs.serverName || "",
       innerArgs.toolName || "",
@@ -188,6 +194,14 @@ function requestApproval(req, opts = {}) {
         typeof req.toolPattern === "string" && req.toolPattern
           ? req.toolPattern
           : null,
+      // The placed widget asking ("<dashboardId>:<uuid>"), or null.
+      instanceId:
+        typeof req.instanceId === "string" && req.instanceId
+          ? req.instanceId
+          : null,
+      // "path-not-in-root": the widget has the tool and asks for the
+      // folder its path is in. null for an ordinary request.
+      reason: typeof req.reason === "string" && req.reason ? req.reason : null,
     });
   });
 }
