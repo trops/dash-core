@@ -262,8 +262,9 @@ It is resumable and safe to run again:
 - No changes and no PR on the branch → it stops with "Nothing to release".
 
 **PR CI:** every pull request runs `.github/workflows/pr-ci.yml` (the validation part of
-`ci.sh` on GitHub; `ci.sh` skips nvm when `GITHUB_ACTIONS` is set). Check it's green
-(`gh pr checks`) before releasing.
+`ci.sh` on GitHub; `ci.sh` skips nvm when `GITHUB_ACTIONS` is set). `ci:release` **waits
+for it** before merging (up to 30 minutes) and stops, with nothing merged, if a check fails
+or the PR has no checks. Fix, push, and run the same command again.
 
 **Changing `.github/workflows/`** needs the `workflow` scope on the `gh` login, or the push
 is refused. The user adds it once with `gh auth refresh -h github.com -s workflow`
