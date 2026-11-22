@@ -176,7 +176,10 @@ function _makeCanUseTool(ctx) {
     // an "allow" policy. Bridged Dash tools fall through to the gate below.
     const bridged =
       typeof toolName === "string" && toolName.startsWith(BRIDGED_PREFIX);
-    if (ctx.builtinTools === "none" && !bridged) {
+    // A Claude connector this bot was granted isn't a built-in, so the
+    // built-ins setting doesn't touch it (DASH-38); its own check is below.
+    const linked = !bridged && connectorForTool(ctx.connectors, toolName);
+    if (ctx.builtinTools === "none" && !bridged && !linked) {
       return {
         behavior: "deny",
         message: "This bot has no built-in tools; use its team tools.",
@@ -185,6 +188,7 @@ function _makeCanUseTool(ctx) {
     if (
       ctx.builtinTools === "read-only" &&
       !bridged &&
+      !linked &&
       !READ_ONLY_BUILTINS.includes(toolName)
     ) {
       return {
@@ -197,7 +201,6 @@ function _makeCanUseTool(ctx) {
     // and only a tool it may use; then the same Dash gate as its providers
     // (keyed by the CLI's full tool name, which the gate maps to the
     // provider).
-    const linked = !bridged && connectorForTool(ctx.connectors, toolName);
     if (linked) {
       const allowed = linked.connector.allowed;
       if (Array.isArray(allowed) && !allowed.includes(linked.tool)) {
