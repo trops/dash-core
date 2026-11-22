@@ -40,6 +40,8 @@ const KIND_BY_TYPE = {
   "budget-set": "budgets",
   "budget-override": "budgets",
   "bot-created": "bots",
+  // Changed by an app over MCP (DASH-37).
+  "bot-changed": "bots",
   "bot-deleted": "bots",
 };
 

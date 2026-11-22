@@ -80,6 +80,11 @@ const BOTS_TASK_PASSPHRASE_REVEAL = "bots-task-passphrase-reveal";
 const BOTS_TASK_PASSPHRASE_SET = "bots-task-passphrase-set";
 const BOTS_TASK_PASSPHRASE_REMOVE = "bots-task-passphrase-remove";
 const BOTS_UNLOCK_MCP_TASKS = "bots-unlock-mcp-tasks";
+// Bots made or changed via MCP (DASH-37): the passphrase switch and
+// which teams' bots MCP clients may list, create and change.
+const BOTS_MCP_BOT_SETTINGS = "bots-mcp-bot-settings";
+const BOTS_SET_ASKS_BOT_PASSPHRASE = "bots-set-asks-bot-passphrase";
+const BOTS_SET_TAKES_MCP_BOTS = "bots-set-takes-mcp-bots";
 // Building an approved plan (create-entry CRE-004, phase 4d).
 const BOTS_START_PLAN_BUILD = "bots-start-plan-build";
 const BOTS_STOP_PLAN_BUILD = "bots-stop-plan-build";
@@ -198,6 +203,9 @@ module.exports = {
   BOTS_TASK_PASSPHRASE_SET,
   BOTS_TASK_PASSPHRASE_REMOVE,
   BOTS_UNLOCK_MCP_TASKS,
+  BOTS_MCP_BOT_SETTINGS,
+  BOTS_SET_ASKS_BOT_PASSPHRASE,
+  BOTS_SET_TAKES_MCP_BOTS,
   BOTS_START_PLAN_BUILD,
   BOTS_STOP_PLAN_BUILD,
   BOTS_GET_PLAN_BUILD,

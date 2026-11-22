@@ -103,6 +103,7 @@ const { registerDashboardTools } = require("./mcp/dashboardTools");
 const { registerWidgetTools } = require("./mcp/widgetTools");
 const { registerThemeTools } = require("./mcp/themeTools");
 const { registerTeamTools } = require("./mcp/teamTools");
+const { registerBotTools } = require("./mcp/botTools");
 const { registerProviderTools } = require("./mcp/providerTools");
 const { registerGuideTools } = require("./mcp/guideTools");
 const { registerLayoutTools } = require("./mcp/layoutTools");
@@ -116,6 +117,8 @@ registerWidgetTools();
 registerThemeTools();
 // The AI Assistant talks to team leads (bot-teams TEAM-004).
 registerTeamTools();
+// Apps outside Dash list, create and change bots (DASH-37; off by default).
+registerBotTools();
 registerProviderTools();
 registerGuideTools();
 registerLayoutTools();

@@ -32,6 +32,10 @@ jest.mock("@trops/dash-react", () => ({
 jest.mock("./TaskPassphraseSection", () => ({
   TaskPassphraseSection: () => null,
 }));
+// And the tools' switches (McpToolsSection.test.js).
+jest.mock("./McpToolsSection", () => ({
+  McpToolsSection: () => null,
+}));
 
 import { McpServerSection } from "./McpServerSection";
 

@@ -12,10 +12,15 @@ const MCP_DASH_SERVER_START = "mcp-dash-server:start";
 const MCP_DASH_SERVER_STOP = "mcp-dash-server:stop";
 const MCP_DASH_SERVER_STATUS = "mcp-dash-server:status";
 const MCP_DASH_SERVER_GET_TOKEN = "mcp-dash-server:get-token";
+// Settings › MCP Server › Tools (DASH-37): each tool's on/off switch.
+const MCP_DASH_SERVER_LIST_TOOLS = "mcp-dash-server:list-tools";
+const MCP_DASH_SERVER_SET_TOOL_ON = "mcp-dash-server:set-tool-on";
 
 module.exports = {
   MCP_DASH_SERVER_START,
   MCP_DASH_SERVER_STOP,
   MCP_DASH_SERVER_STATUS,
   MCP_DASH_SERVER_GET_TOKEN,
+  MCP_DASH_SERVER_LIST_TOOLS,
+  MCP_DASH_SERVER_SET_TOOL_ON,
 };

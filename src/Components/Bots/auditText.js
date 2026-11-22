@@ -23,6 +23,9 @@ const toolOn = (e) =>
 // Reasons that just mean "the user said no" — no need to repeat them.
 const PLAIN_DENIALS = new Set(["approval denied", "denied by user"]);
 const possessive = (name) => (name.endsWith("s") ? `${name}'` : `${name}'s`);
+// A bot made or changed by an app connected over MCP (DASH-37).
+const overMcp = (e) =>
+  e.via === "mcp" ? ` over MCP${e.from ? ` (by ${e.from})` : ""}` : "";
 
 const BUDGET_OWNER = {
   workspace: "its dashboard's",
@@ -106,7 +109,13 @@ function sentence(entry) {
     case "budget-override":
       return budgetOverride(e);
     case "bot-created":
-      return `Created ${botOf(e)}`;
+      return `Created ${botOf(e)}${overMcp(e)}`;
+    case "bot-changed":
+      return `Changed ${botOf(e)}${overMcp(e)}${
+        Array.isArray(e.fields) && e.fields.length
+          ? `: ${e.fields.join(", ")}`
+          : ""
+      }`;
     case "bot-deleted":
       return `Deleted ${botOf(e)}`;
     default:

@@ -129,6 +129,17 @@ test("bots, and a bot that's gone", () => {
     "A bot asked to use t",
   );
   expect(auditSentence({ type: "bot-created", ...bot })).toBe("Created Writer");
+  expect(
+    auditSentence({ type: "bot-created", ...bot, via: "mcp", from: "voice" }),
+  ).toBe("Created Writer over MCP (by voice)");
+  expect(
+    auditSentence({
+      type: "bot-changed",
+      ...bot,
+      via: "mcp",
+      fields: ["model", "instructions"],
+    }),
+  ).toBe("Changed Writer over MCP: model, instructions");
   expect(auditSentence({ type: "bot-deleted", botId: "x" })).toBe(
     "Deleted a bot",
   );
