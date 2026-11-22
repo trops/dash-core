@@ -33,92 +33,91 @@ const repoRoot = path.join(__dirname, "..");
 
 // 1. Checker exists.
 const checkerPath = path.join(
-    repoRoot,
-    "scripts",
-    "check-untracked-sources.js",
+  repoRoot,
+  "scripts",
+  "check-untracked-sources.js",
 );
 assert.ok(
-    fs.existsSync(checkerPath),
-    "scripts/check-untracked-sources.js must exist",
+  fs.existsSync(checkerPath),
+  "scripts/check-untracked-sources.js must exist",
 );
 const checkerSrc = fs.readFileSync(checkerPath, "utf8");
 
 // 2. Structural references.
 assert.ok(
-    /git\s+status\s+--porcelain/.test(checkerSrc) ||
-        /["']git["'][\s\S]{0,40}["']status["'][\s\S]{0,40}["']--porcelain["']/.test(
-            checkerSrc,
-        ),
-    "check-untracked-sources.js must invoke git status --porcelain (string or arg-array form)",
+  /git\s+status\s+--porcelain/.test(checkerSrc) ||
+    /["']git["'][\s\S]{0,40}["']status["'][\s\S]{0,40}["']--porcelain["']/.test(
+      checkerSrc,
+    ),
+  "check-untracked-sources.js must invoke git status --porcelain (string or arg-array form)",
 );
 assert.ok(
-    /\?\?\s/.test(checkerSrc) || /"\?\? "/.test(checkerSrc),
-    "check-untracked-sources.js must filter on the `?? ` untracked marker",
+  /\?\?\s/.test(checkerSrc) || /"\?\? "/.test(checkerSrc),
+  "check-untracked-sources.js must filter on the `?? ` untracked marker",
 );
 assert.ok(
-    /SOURCE_DIRS|sourceDirs|sourceDirectories/.test(checkerSrc),
-    "check-untracked-sources.js must define a list of source directories to scan",
+  /SOURCE_DIRS|sourceDirs|sourceDirectories/.test(checkerSrc),
+  "check-untracked-sources.js must define a list of source directories to scan",
 );
 assert.ok(
-    /ALLOWLIST|allowlist|allowList/.test(checkerSrc),
-    "check-untracked-sources.js must define an allowlist mechanism for known carryover paths",
+  /ALLOWLIST|allowlist|allowList/.test(checkerSrc),
+  "check-untracked-sources.js must define an allowlist mechanism for known carryover paths",
 );
 assert.ok(
-    /process\.exit\(1\)/.test(checkerSrc),
-    "check-untracked-sources.js must exit 1 when violations are found",
+  /process\.exit\(1\)/.test(checkerSrc),
+  "check-untracked-sources.js must exit 1 when violations are found",
 );
 
 // 3. package.json scripts.
 const pkg = JSON.parse(
-    fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
+  fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
 assert.ok(
-    typeof pkg?.scripts?.["check:untracked"] === "string",
-    "package.json must define `check:untracked` script",
+  typeof pkg?.scripts?.["check:untracked"] === "string",
+  "package.json must define `check:untracked` script",
 );
 assert.ok(
-    typeof pkg?.scripts?.["test:untracked-pin"] === "string",
-    "package.json must define `test:untracked-pin` script",
+  typeof pkg?.scripts?.["test:untracked-pin"] === "string",
+  "package.json must define `test:untracked-pin` script",
 );
 
-// 4. ci.sh integration + ordering: checker invocation must come BEFORE
-// the `git add -u` line.
-const ciShPath = path.join(repoRoot, "scripts", "ci.sh");
-const ciShLines = fs.readFileSync(ciShPath, "utf8").split("\n");
-
-let checkerLine = -1;
-let gitAddLine = -1;
-ciShLines.forEach((line, idx) => {
-    if (
-        checkerLine === -1 &&
-        /(npm\s+run\s+check:untracked\b|node\s+scripts\/check-untracked-sources\.js)/.test(
-            line,
-        )
-    ) {
-        checkerLine = idx;
-    }
-    if (gitAddLine === -1 && /^\s*git\s+add\s+-u\b/.test(line)) {
-        gitAddLine = idx;
-    }
-});
-
+// 4. The checker runs before `git add -u` (DASH-48: the git workflow is in
+// scripts/release.js). ci.sh must pass it as --pre-commit, and release.js
+// must run --pre-commit before its `git add -u` — both checked by position.
+const ciSh = fs.readFileSync(path.join(repoRoot, "scripts", "ci.sh"), "utf8");
+const releaseCall =
+  /node\s+scripts\/release\.js[\s\S]*?--pre-commit\s+(["'])([\s\S]*?)\1/.exec(
+    ciSh,
+  );
 assert.ok(
-    checkerLine !== -1,
-    "scripts/ci.sh must invoke `npm run check:untracked` (or `node scripts/check-untracked-sources.js`)",
+  releaseCall,
+  'scripts/ci.sh must call `node scripts/release.js … --pre-commit "…"`',
 );
 assert.ok(
-    gitAddLine !== -1,
-    "scripts/ci.sh must contain a `git add -u` line (sanity check)",
+  /(npm\s+run\s+check:untracked\b|node\s+scripts\/check-untracked-sources\.js)/.test(
+    releaseCall[2],
+  ),
+  "ci.sh's --pre-commit must run `npm run check:untracked` (or `node scripts/check-untracked-sources.js`)",
+);
+
+const releaseSrc = fs.readFileSync(
+  path.join(repoRoot, "scripts", "release.js"),
+  "utf8",
+);
+const preCommitAt = releaseSrc.search(
+  /run\("bash",\s*\["-c",\s*opts\.preCommit\]\)/,
+);
+const gitAddAt = releaseSrc.search(/run\("git",\s*\["add",\s*"-u"\]\)/);
+assert.ok(preCommitAt !== -1, "release.js must run opts.preCommit");
+assert.ok(
+  gitAddAt !== -1,
+  "release.js must contain `git add -u` (sanity check)",
 );
 assert.ok(
-    checkerLine < gitAddLine,
-    `Checker must run BEFORE 'git add -u'. Got checker at line ${
-        checkerLine + 1
-    }, git add -u at line ${gitAddLine + 1}.`,
+  preCommitAt < gitAddAt,
+  "release.js must run --pre-commit BEFORE `git add -u`",
 );
 
 console.log(
-    `PASS  untracked-sources gate: checker exists at line ${
-        checkerLine + 1
-    }, before \`git add -u\` at line ${gitAddLine + 1}`,
+  "PASS  untracked-sources gate: ci.sh passes it to release.js as --pre-commit, run before `git add -u`",
 );

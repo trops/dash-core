@@ -66,16 +66,20 @@ no_temp_leaks() {
 # VALIDATION STEPS
 # ============================================================================
 
-# 1. Ensure Node 20 via nvm
-step "Ensuring Node 20 via nvm"
-unset npm_config_prefix
-export NVM_DIR="$HOME/.nvm"
-if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
-    echo "Error: nvm not found at $NVM_DIR/nvm.sh"
-    exit 1
+# 1. Ensure Node 20 via nvm (on GitHub Actions the workflow sets up Node)
+if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    step "Using the runner's Node (GitHub Actions)"
+else
+    step "Ensuring Node 20 via nvm"
+    unset npm_config_prefix
+    export NVM_DIR="$HOME/.nvm"
+    if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+        echo "Error: nvm not found at $NVM_DIR/nvm.sh"
+        exit 1
+    fi
+    source "$NVM_DIR/nvm.sh" --no-use
+    nvm use --delete-prefix v20.20.0
 fi
-source "$NVM_DIR/nvm.sh" --no-use
-nvm use --delete-prefix v20.20.0
 echo "Node version: $(node -v)"
 echo "npm version: $(npm -v)"
 
@@ -104,6 +108,10 @@ npx jest --watchAll=false
 # 5a. Temp-dir hygiene: the self-cleaning temp helper + the leak guard
 step "Running temp-dir helper + leak guard tests"
 no_temp_leaks node --test electron/testUtils/tempDir.test.js scripts/checkTempLeaks.test.js
+
+# 5a1. The release script (DASH-48): resumable, worktree-safe git workflow
+step "Testing the release script"
+no_temp_leaks node --test scripts/release.test.js
 
 # 6. Run MCP tests
 #   CAP-002: built-in providers (Web Fetch) — builtinServers/
@@ -212,79 +220,17 @@ if [[ "$MODE" == "validate" ]]; then
 fi
 
 # ============================================================================
-# GIT WORKFLOW
+# GIT WORKFLOW (DASH-48: scripts/release.js)
 # ============================================================================
+# Resumable: after --pr, run --release on the same branch to merge, tag and
+# clean up. Safe to run again. Works in a git worktree. Before committing it
+# runs `npm run check:untracked`: `git add -u` only stages tracked files, and
+# a brand-new file left out broke the v0.1.484 publish (safeJsExecutor.js).
 
-BRANCH="$(git branch --show-current)"
-MAIN_BRANCH="master"
-
-if [[ "$BRANCH" == "$MAIN_BRANCH" ]]; then
-    echo "Error: Cannot run --$MODE from $MAIN_BRANCH. Create a feature branch first."
-    exit 1
-fi
-
-# --- Ensure git credentials via gh ---
-step "Configuring git credentials via gh"
-gh auth setup-git
-
-# --- Commit ---
-step "Checking for untracked source files"
-# Aborts the release if anything in electron/, src/, scripts/, docs/ is
-# untracked. `git add -u` below only stages tracked-modified files;
-# brand-new files would silently get dropped from the release commit
-# otherwise. Dash-core hit this in v0.1.484 — safeJsExecutor.js was
-# referenced by transform.js but never committed, so the npm publish
-# rollup build failed with "Could not resolve './safeJsExecutor'".
-npm run check:untracked
-
-step "Committing changes"
-git add -u
-git commit -m "$COMMIT_MSG"
-
-# --- Rebase on latest remote ---
-step "Rebasing on latest origin"
-git fetch origin
-REBASE_TARGET=""
-if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
-    REBASE_TARGET="origin/$BRANCH"
-elif [[ "$BRANCH" != "$MAIN_BRANCH" ]]; then
-    REBASE_TARGET="origin/$MAIN_BRANCH"
-fi
-if [[ -n "$REBASE_TARGET" ]]; then
-    git rebase "$REBASE_TARGET" || {
-        echo "Error: Rebase on $REBASE_TARGET failed (conflicts)."
-        echo "Aborting rebase. Resolve manually and re-run."
-        git rebase --abort 2>/dev/null || true
-        exit 1
-    }
-fi
-
-step "Bumping version"
-npm version patch --no-git-tag-version
-VERSION="$(node -p "require('./package.json').version")"
-git add package.json package-lock.json
-git commit -m "Bump version to $VERSION"
-
-echo "New version: $VERSION"
-
-if [[ "$MODE" == "commit" ]]; then
-    exit 0
-fi
-
-# --- Push ---
-step "Pushing branch to origin"
-git push -u origin "$BRANCH"
-
-if [[ "$MODE" == "push" ]]; then
-    exit 0
-fi
-
-# --- PR ---
-step "Creating pull request"
-PR_URL="$(gh pr create --title "$COMMIT_MSG" --body "## Summary
+export RELEASE_PR_BODY="## Summary
 $COMMIT_MSG
 
-Version: $VERSION
+Version: {{VERSION}}
 
 ## Validation
 - Prettier: passed
@@ -292,29 +238,7 @@ Version: $VERSION
 - Electron build (Rollup + MCP catalog): passed
 - Jest tests: passed
 - MCP tests: passed
-- Output verification: passed")"
+- Output verification: passed"
 
-echo "PR created: $PR_URL"
-
-if [[ "$MODE" == "pr" ]]; then
-    exit 0
-fi
-
-# --- Release ---
-step "Merging pull request"
-gh pr merge --merge
-
-step "Switching to master and pulling"
-git checkout master
-git pull
-
-step "Tagging v$VERSION"
-git tag "v$VERSION"
-git push origin "v$VERSION"
-
-step "Cleaning up branch: $BRANCH"
-git branch -d "$BRANCH" 2>/dev/null || true
-git push origin --delete "$BRANCH" 2>/dev/null || true
-
-echo ""
-echo "Release complete: v$VERSION"
+node scripts/release.js --mode "$MODE" -m "$COMMIT_MSG" --main master \
+    --pre-commit "npm run check:untracked"
