@@ -7,6 +7,9 @@
  *   node scripts/release.js --mode <commit|push|pr|release> -m "message"
  *       [--main <default branch>] [--pre-commit "<command>"]
  *
+ * It waits for the PR's GitHub checks (PR CI) to pass before merging, and
+ * stops without merging if one fails.
+ *
  * It is resumable and safe to run again:
  *   - Local changes → commit, rebase, bump the version (once per branch),
  *     push, open the PR, merge, tag — as far as --mode says.
@@ -21,7 +24,7 @@
  */
 "use strict";
 
-const { execFileSync } = require("child_process");
+const { execFileSync, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
@@ -93,6 +96,97 @@ function nextPatch(v) {
     .split(".")
     .map((n) => parseInt(n, 10) || 0);
   return `${maj}.${min}.${pat + 1}`;
+}
+
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** A GitHub check run as pass / fail / cancel / pending. */
+function bucketOf(run) {
+  if (run.status !== "completed") return "pending";
+  if (["success", "neutral", "skipped"].includes(run.conclusion)) {
+    return "pass";
+  }
+  return run.conclusion === "cancelled" ? "cancel" : "fail";
+}
+
+/**
+ * Wait until the GitHub checks (PR CI) on `sha` — the commit just pushed —
+ * have all passed. Checks are read for that exact commit, so a run on an
+ * earlier push never counts. A failed or cancelled check stops the release
+ * before anything is merged. No checks at all after a short grace period also
+ * stops it (PR CI should be there), unless RELEASE_ALLOW_NO_CHECKS is set.
+ *
+ * Env (tests): RELEASE_CHECKS_INTERVAL_SEC (15), RELEASE_CHECKS_TIMEOUT_SEC
+ * (1800), RELEASE_CHECKS_GRACE_SEC (120).
+ */
+function waitForChecks(sha, { cwd = process.cwd(), env = process.env } = {}) {
+  step(`Waiting for PR CI to pass on ${sha.slice(0, 8)}`);
+  const intervalMs = Number(env.RELEASE_CHECKS_INTERVAL_SEC || 15) * 1000;
+  const timeoutMs = Number(env.RELEASE_CHECKS_TIMEOUT_SEC || 1800) * 1000;
+  const graceMs = Number(env.RELEASE_CHECKS_GRACE_SEC || 120) * 1000;
+  const started = Date.now();
+  let said = "";
+  for (;;) {
+    const res = spawnSync(
+      "gh",
+      ["api", `repos/{owner}/{repo}/commits/${sha}/check-runs`],
+      { cwd, env, encoding: "utf8" },
+    );
+    let checks = [];
+    try {
+      const body = JSON.parse(String(res.stdout || "").trim() || "{}");
+      checks = (body.check_runs || []).map((r) => ({
+        name: r.name,
+        bucket: bucketOf(r),
+      }));
+    } catch (_e) {
+      checks = [];
+    }
+    const names = (list) => list.map((c) => c.name).join(", ");
+    const failed = checks.filter(
+      (c) => c.bucket === "fail" || c.bucket === "cancel",
+    );
+    if (failed.length) {
+      throw new Error(
+        `PR CI failed: ${names(failed)}. Nothing was merged. ` +
+          "Fix it, push the fix, and run this again.",
+      );
+    }
+    const pending = checks.filter((c) => c.bucket === "pending");
+    if (checks.length && !pending.length) {
+      console.log(`PR CI passed: ${names(checks)}`);
+      return checks;
+    }
+    const waited = Date.now() - started;
+    if (!checks.length && waited >= graceMs) {
+      if (env.RELEASE_ALLOW_NO_CHECKS) {
+        console.log("No PR checks; RELEASE_ALLOW_NO_CHECKS is set, going on.");
+        return checks;
+      }
+      throw new Error(
+        "No PR CI checks on this pull request. Nothing was merged. " +
+          "Is .github/workflows/pr-ci.yml in the repo? " +
+          "(RELEASE_ALLOW_NO_CHECKS=1 releases without them.)",
+      );
+    }
+    if (waited >= timeoutMs) {
+      throw new Error(
+        `PR CI is still running after ${Math.round(timeoutMs / 60000)} ` +
+          `minutes (${names(pending)}). Nothing was merged. ` +
+          "Run this again to keep waiting.",
+      );
+    }
+    const now = checks.length
+      ? `Waiting for ${names(pending)}…`
+      : "Waiting for PR CI to start…";
+    if (now !== said) {
+      console.log(now);
+      said = now;
+    }
+    sleepMs(intervalMs);
+  }
 }
 
 function release(opts, { cwd = process.cwd(), env = process.env } = {}) {
@@ -226,8 +320,22 @@ function release(opts, { cwd = process.cwd(), env = process.env } = {}) {
     }
     if (at(mode) < at("release")) return { done: "pr" };
 
+    // The checks of the commit just pushed — never an earlier push's.
+    waitForChecks(out("git", ["rev-parse", "HEAD"]), { cwd, env });
+
     step("Merging pull request");
-    run("gh", ["pr", "merge", branch, "--merge"]);
+    // Right after a push GitHub can refuse with "Base branch was
+    // modified" while it works out the PR's new state: try again.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        run("gh", ["pr", "merge", branch, "--merge"]);
+        break;
+      } catch (e) {
+        if (attempt >= 3) throw e;
+        console.log(`Merge refused; trying again (${attempt + 1} of 3)…`);
+        sleepMs(Number(env.RELEASE_MERGE_RETRY_SEC || 10) * 1000);
+      }
+    }
     pr = prInfo();
   } else {
     step(`PR already merged: ${pr.url}`);
@@ -290,4 +398,11 @@ if (require.main === module) {
   }
 }
 
-module.exports = { release, parseArgs, compareVersions, nextPatch };
+module.exports = {
+  release,
+  waitForChecks,
+  bucketOf,
+  parseArgs,
+  compareVersions,
+  nextPatch,
+};
