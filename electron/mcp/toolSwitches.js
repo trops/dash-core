@@ -3,7 +3,7 @@
  * (DASH-37, Settings › MCP Server › Tools).
  *
  * Each tool has a switch. Tools are on unless registered with
- * `defaultOff: true` (the bot tools); the user's choices, saved as
+ * `defaultOff: true` (the bot tools, answer_approval); the user's choices, saved as
  * `mcpDashServer.tools: { [name]: boolean }`, override that. A tool that's
  * off isn't registered on the request's server at all, and its handler
  * refuses too, in case a client calls it anyway.
@@ -32,6 +32,8 @@ const TOOL_GROUPS = [
       "confirm_task",
       "get_task_status",
       "list_tasks",
+      // Approvals over MCP (DASH-32): off unless turned on.
+      "answer_approval",
     ],
   },
   {

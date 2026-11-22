@@ -73,6 +73,8 @@ const {
   BOTS_LIST_MCP_TASK_TEAMS,
   BOTS_SET_TAKES_MCP_TASKS,
   BOTS_SET_ASKS_TASK_PASSPHRASE,
+  BOTS_GET_APPROVAL_WAIT_HOURS,
+  BOTS_SET_APPROVAL_WAIT_HOURS,
   BOTS_TASK_PASSPHRASE_STATE,
   BOTS_TASK_PASSPHRASE_REVEAL,
   BOTS_TASK_PASSPHRASE_SET,
@@ -399,6 +401,11 @@ const botApi = {
   /** The team's "Ask for a passphrase first" switch. */
   setAsksTaskPassphrase: (workspaceId, on) =>
     ipcRenderer.invoke(BOTS_SET_ASKS_TASK_PASSPHRASE, { workspaceId, on }),
+  /** The team's "Wait for approvals up to", in hours (1, 4, 12 or 24). */
+  getApprovalWaitHours: (workspaceId) =>
+    ipcRenderer.invoke(BOTS_GET_APPROVAL_WAIT_HOURS, { workspaceId }),
+  setApprovalWaitHours: (workspaceId, hours) =>
+    ipcRenderer.invoke(BOTS_SET_APPROVAL_WAIT_HOURS, { workspaceId, hours }),
   /** { set, short, setAt, lockedUntil } — never the phrase. */
   getTaskPassphraseState: () => ipcRenderer.invoke(BOTS_TASK_PASSPHRASE_STATE),
   /** The phrase itself, for Settings' Show button. */

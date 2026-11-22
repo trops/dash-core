@@ -863,6 +863,24 @@ describe("BotRunner.run — stopped runs", () => {
     });
   }
 
+  for (const throwOnAbort of [false, true]) {
+    it(`a run stopped as failed (an unanswered approval, DASH-32) records that error (engine ${throwOnAbort ? "throws" : "ends quietly"})`, async () => {
+      const { runner, runs } = makeRunner(stoppableEngine({ throwOnAbort }));
+      const events = [];
+      const pending = runner.run("bot_1", { emit: (e) => events.push(e) });
+      await new Promise((r) => setTimeout(r, 10));
+      const why = "Approval for Undo on Sawhorse wasn't answered within 4 h";
+      assert.equal(runner.abort("bot_1", "fail", why), true);
+      const record = await pending;
+      assert.equal(record.status, "failed");
+      assert.equal(record.error, why);
+      assert.equal(runs[0].run.error, why);
+      assert.ok(
+        events.some((e) => e.type === "error" && e.code === "APPROVAL_TIMEOUT"),
+      );
+    });
+  }
+
   it(`records "interrupted" when stopped because Dash is quitting (US-018 AC6)`, async () => {
     const { runner, runs } = makeRunner(
       stoppableEngine({ throwOnAbort: true }),

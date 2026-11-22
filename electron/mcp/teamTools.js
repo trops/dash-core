@@ -14,6 +14,10 @@
  *                     (bots/mcpTasks.js), and only on a team the user let
  *                     take tasks. The lead's run is via "mcp-task[:<from>]",
  *                     which may run its bots — an ask (via "mcp") can't.
+ *   answer_approval — Allow once / Deny a tool approval a bot in a task's
+ *                     job waits on (DASH-32), with the task passphrase;
+ *                     off unless the user turns it on. get_task_status
+ *                     shows those as status "needs" with an approvals list.
  *
  * A paused or over-budget lead returns that status instead of an answer; a
  * question that fans out to many teams is capped (5 leads per 2 minutes).
@@ -27,6 +31,7 @@ const {
   AskCap,
 } = require("../bots/teamDirectory");
 const { extractHandoff, withoutHandoff } = require("../bots/handoff");
+const { needsLine } = require("../bots/remoteApprovals");
 
 const CAP_LIMIT = 5;
 // How long confirm_task waits for the team before saying it's still going.
@@ -106,7 +111,7 @@ const TEAM_TOOLS = [
   {
     name: "get_task_status",
     description:
-      "How a task from give_task is going: waiting for the passphrase, running, done (with the team's summary), failed (with why), or expired. A task is running until every bot it set going has finished — the lead, the bots it asked and the ones they handed on to; steps lists each, with its status. When done, summary is the lead's answer exactly as it gave it; what the bots it handed on to said is in handOns, each { bot, summary }.",
+      "How a task from give_task is going: waiting for the passphrase, running, needs, done (with the team's summary), failed (with why), or expired. A task is running until every bot it set going has finished — the lead, the bots it asked and the ones they handed on to; steps lists each, with its status. While a bot in it waits on the user — a tool approval, or a paused bot — status is 'needs' and approvals lists each, { approvalId, bot, provider, tool, toolTitle, what, askedAt, remote } (a paused bot: { kind: 'paused-bot', bot }); one with remote true can be answered with answer_approval, the rest only in Dash. When done, summary is the lead's answer exactly as it gave it; what the bots it handed on to said is in handOns, each { bot, summary }.",
     inputSchema: {
       type: "object",
       properties: {
@@ -118,8 +123,39 @@ const TEAM_TOOLS = [
   {
     name: "list_tasks",
     description:
-      "The most recent tasks given to teams via MCP, newest first, with their status.",
+      "The most recent tasks given to teams via MCP, newest first, with their status ('needs' while a bot in one waits on the user — get_task_status has what).",
     inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "answer_approval",
+    // Approvals over MCP: off unless the user turns it on (DASH-32).
+    defaultOff: true,
+    description:
+      "Answer a tool approval a bot is waiting on, from get_task_status's approvals — only one marked remote: true (a provider's tool, in a task started over MCP). 'allow_once' lets the bot use the tool this once; 'deny' says no. There's no Always allow: that's only in Dash. It needs the user's task passphrase, said by them just now — never guess or reuse one. The first answer wins, in Dash or here; a later one hears who answered.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        approvalId: {
+          type: "string",
+          description: "From get_task_status's approvals.",
+        },
+        decision: {
+          type: "string",
+          enum: ["allow_once", "deny"],
+          description: "allow_once or deny.",
+        },
+        passphrase: {
+          type: "string",
+          description: "The user's task passphrase, as they said it.",
+        },
+        answeredBy: {
+          type: "string",
+          description:
+            "Who or what answered (your app's short name, or the person it relayed for), kept in Dash's log.",
+        },
+      },
+      required: ["approvalId", "decision", "passphrase"],
+    },
   },
 ];
 
@@ -262,7 +298,20 @@ function makeTeamToolHandlers({
   bots,
   cap = new AskCap({ limit: CAP_LIMIT }),
   taskWaitMs = TASK_WAIT_MS,
+  // Settings › MCP Server › Tools: answer_approval is off unless turned on.
+  isOn = () => true,
 }) {
+  // What a running task's job waits on (DASH-32): its approvals and paused
+  // bots, or none.
+  const jobNeeds = (task) => {
+    if (!task || task.status !== "running" || !task.jobId) return [];
+    try {
+      return (bots.jobApprovals && bots.jobApprovals(task.jobId)) || [];
+    } catch (_e) {
+      return [];
+    }
+  };
+
   const lastRunAt = (botId) => {
     try {
       const runs = bots.getRuns(botId, { limit: 1 }) || [];
@@ -632,11 +681,128 @@ function makeTeamToolHandlers({
         return json({ message: "No task with that taskId." }, true);
       }
       const job = task.jobId && bots.getJob ? bots.getJob(task.jobId) : null;
+      // Waiting on the user: reported as "needs" (the task itself is still
+      // running), with what it waits on.
+      // With answer_approval off, nothing can be answered from here.
+      const canAnswer = isOn("answer_approval");
+      const needs = (job ? jobNeeds(task) : []).map((n) =>
+        canAnswer || !n.remote ? n : { ...n, remote: false },
+      );
+      if (needs.length) {
+        const remote = needs.some((n) => n.remote);
+        return json({
+          ...taskView(task),
+          status: "needs",
+          jobId: job.id,
+          steps: stepsView(job),
+          approvals: needs,
+          message: `${needsLine(needs)}${
+            remote
+              ? " One marked remote can be answered with answer_approval and the user's task passphrase; the user can also answer in Dash."
+              : " The user can answer in Dash."
+          }`,
+        });
+      }
       const going = task.status === "running" && job ? stillGoing(job) : "";
       return json({
         ...taskView(task),
         ...(job ? { jobId: job.id, steps: stepsView(job) } : {}),
         message: `${STATUS_MESSAGE[task.status](task)}${going ? ` ${going}` : ""}`,
+      });
+    },
+
+    async answer_approval(args = {}) {
+      if (!isOn("answer_approval")) {
+        return json(
+          {
+            error: "turned_off",
+            message:
+              "answer_approval is turned off in Dash (Settings › MCP Server › Tools).",
+          },
+          true,
+        );
+      }
+      const decision = String((args && args.decision) || "");
+      if (decision !== "allow_once" && decision !== "deny") {
+        return json(
+          {
+            error: "bad_decision",
+            message: "decision is 'allow_once' or 'deny'.",
+          },
+          true,
+        );
+      }
+      const approvalId = String((args && args.approvalId) || "");
+      const check = bots.checkRemoteApproval(approvalId);
+      if (check.error) {
+        const { approval: _a, job: _j, ok: _o, ...err } = check;
+        return json({ approvalId, ...err }, true);
+      }
+      // Always the passphrase, even for a team whose tasks don't ask.
+      const pass = bots.tasks().verify(args.passphrase);
+      if (pass.notSet) {
+        return json(
+          {
+            approvalId,
+            error: "passphrase_not_set",
+            message:
+              "The user hasn't set a task passphrase, so nothing was answered. They can set one in Dash: Settings › MCP Server › Task passphrase.",
+          },
+          true,
+        );
+      }
+      if (pass.locked) {
+        const why = pass.wrong
+          ? "That passphrase isn't right either, and that was 5 wrong ones"
+          : "There were 5 wrong passphrases";
+        return json(
+          {
+            approvalId,
+            error: "locked",
+            message: `${why}: answers over MCP are locked until ${timeOf(
+              pass.locked,
+            )}. Nothing was answered; the user can answer in Dash.`,
+          },
+          true,
+        );
+      }
+      if (pass.wrong) {
+        return json(
+          {
+            approvalId,
+            error: "bad_passphrase",
+            triesLeft: pass.triesLeft,
+            message: `That passphrase isn't right, so nothing was answered. ${
+              pass.triesLeft
+            } ${pass.triesLeft === 1 ? "try" : "tries"} left before it locks for 15 minutes. Ask the user to say it again.`,
+          },
+          true,
+        );
+      }
+      const allow = decision === "allow_once";
+      const res = bots.answerApproval(approvalId, {
+        allow,
+        answeredBy: args.answeredBy ? String(args.answeredBy) : null,
+      });
+      if (!res || res.error) {
+        const {
+          approval: _a,
+          job: _j,
+          ok: _o,
+          ...err
+        } = res || {
+          error: "unknown_approval",
+        };
+        return json({ approvalId, ...err }, true);
+      }
+      const a = res.approval || {};
+      const tool = `${a.toolTitle || "the tool"}${a.provider ? ` on ${a.provider}` : ""}`;
+      return json({
+        approvalId,
+        status: allow ? "allowed" : "denied",
+        message: allow
+          ? `Allowed once: ${a.bot || "the bot"} can use ${tool} this time.`
+          : `Denied: ${a.bot || "the bot"} won't use ${tool}.`,
       });
     },
 
@@ -651,7 +817,11 @@ function makeTeamToolHandlers({
         tasks: bots
           .tasks()
           .list({ limit: 10 })
-          .map(taskView)
+          .map((t) => ({
+            ...taskView(t),
+            // Waiting on the user: "needs" (get_task_status has what).
+            ...(jobNeeds(t).length ? { status: "needs" } : {}),
+          }))
           .map((t) => ({
             ...t,
             task: clip(t.task),
@@ -779,6 +949,7 @@ function registerTeamTools() {
   const {
     registerTool,
     getServerContext,
+    isToolOn,
   } = require("../controller/mcpDashServerController");
   const workspaceController = require("../controller/workspaceController");
   const botController = require("../controller/botController");
@@ -810,7 +981,12 @@ function registerTeamTools() {
       waitForJob: (jobId) => botController.waitForJob(jobId),
       getJob: (jobId) => botController.getJob(jobId),
       abandonJob: (jobId, why) => botController.abandonJob(jobId, why),
+      // Approvals over MCP (DASH-32).
+      jobApprovals: (jobId) => botController.jobApprovals(jobId),
+      checkRemoteApproval: (id) => botController.checkRemoteApproval(id),
+      answerApproval: (id, opts) => botController.answerApproval(id, opts),
     },
+    isOn: (name) => isToolOn(name),
   });
 
   for (const tool of TEAM_TOOLS) {
@@ -818,6 +994,7 @@ function registerTeamTools() {
       name: tool.name,
       description: tool.description,
       inputSchema: tool.inputSchema,
+      ...(tool.defaultOff ? { defaultOff: true } : {}),
       handler: (args) => handlers[tool.name](args),
     });
   }

@@ -239,10 +239,19 @@ class BotRunner {
    * records it as "interrupted"; otherwise it was stopped by the user.
    * @returns {boolean} whether a run was aborted
    */
-  abort(botId, reason) {
+  /**
+   * Stop a bot's run. `reason` "quit": interrupted (Dash is closing);
+   * "fail" with a `message`: the run fails with that error (an approval
+   * that wasn't answered in time, DASH-32); otherwise stopped.
+   */
+  abort(botId, reason, message) {
     const controller = this._active.get(botId);
     if (!controller) return false;
-    controller.abort(reason === "quit" ? "quit" : "stop");
+    if (reason === "fail" && message) {
+      controller.abort({ fail: String(message) });
+    } else {
+      controller.abort(reason === "quit" ? "quit" : "stop");
+    }
     return true;
   }
 
@@ -807,6 +816,13 @@ class BotRunner {
     // the engine threw on its way out. Stopped because Dash quit:
     // "interrupted" (US-018 AC6).
     // Stopped by its time limit: a failure that says which limit it hit.
+    // Failed on purpose (an approval nobody answered in time): that error.
+    const failNote =
+      controller.signal.aborted &&
+      controller.signal.reason &&
+      typeof controller.signal.reason === "object"
+        ? controller.signal.reason.fail || null
+        : null;
     if (
       controller.signal.aborted &&
       controller.signal.reason === "time-limit"
@@ -814,6 +830,10 @@ class BotRunner {
       status = "failed";
       errorMessage = timeLimitNote(timeLimitMinutes);
       emit({ type: "error", message: errorMessage, code: "RUN_LIMIT" });
+    } else if (failNote) {
+      status = "failed";
+      errorMessage = failNote;
+      emit({ type: "error", message: errorMessage, code: "APPROVAL_TIMEOUT" });
     } else if (controller.signal.aborted) {
       status = controller.signal.reason === "quit" ? "interrupted" : "stopped";
       errorMessage = null;
