@@ -106,7 +106,7 @@ const TEAM_TOOLS = [
   {
     name: "get_task_status",
     description:
-      "How a task from give_task is going: waiting for the passphrase, running, done (with the team's summary), failed (with why), or expired. A task is running until every bot it set going has finished — the lead, the bots it asked and the ones they handed on to; steps lists each, with its status.",
+      "How a task from give_task is going: waiting for the passphrase, running, done (with the team's summary), failed (with why), or expired. A task is running until every bot it set going has finished — the lead, the bots it asked and the ones they handed on to; steps lists each, with its status. When done, summary is the lead's answer exactly as it gave it; what the bots it handed on to said is in handOns, each { bot, summary }.",
     inputSchema: {
       type: "object",
       properties: {
@@ -152,6 +152,7 @@ const taskView = (t) => ({
   createdAt: t.createdAt,
   ...(t.status === "waiting" ? { expiresAt: t.expiresAt } : {}),
   ...(t.summary ? { summary: t.summary } : {}),
+  ...(t.handOns && t.handOns.length ? { handOns: t.handOns } : {}),
   ...(t.needsYou ? { needsUser: t.needsYou } : {}),
   ...(t.error ? { error: t.error } : {}),
   ...(t.endedAt ? { endedAt: t.endedAt } : {}),
@@ -201,7 +202,10 @@ function stillGoing(job) {
     .join(" ");
 }
 
-/** After the lead's answer: what the bots it set off said (hand-ons). */
+/**
+ * After the lead's answer: what the bots it set off said (hand-ons), kept
+ * apart from it so the lead's answer stays exactly as it gave it (DASH-33).
+ */
 function afterLead(job) {
   return ((job && job.steps) || [])
     .filter(
@@ -211,9 +215,12 @@ function afterLead(job) {
         st.status === "done" &&
         st.summary,
     )
-    .map((st) => `${st.botName}: ${st.summary}`)
-    .join(" ");
+    .map((st) => ({ bot: st.botName, summary: st.summary }));
 }
+
+/** The hand-ons as text: each in its own paragraph, after a blank line. */
+const handOnsText = (t) =>
+  (t.handOns || []).map((h) => `\n\n${h.bot}: ${h.summary}`).join("");
 
 const STATUS_MESSAGE = {
   waiting: (t) =>
@@ -221,8 +228,8 @@ const STATUS_MESSAGE = {
   running: (t) => `${t.teamName} is working on it.`,
   done: (t) =>
     t.needsYou
-      ? `${t.teamName} did what it could, but part of it needs the user in Dash: ${t.needsYou} ${t.summary || ""}`.trim()
-      : `${t.teamName} finished: ${t.summary || "(no summary)"}`,
+      ? `${`${t.teamName} did what it could, but part of it needs the user in Dash: ${t.needsYou} ${t.summary || ""}`.trim()}${handOnsText(t)}`
+      : `${t.teamName} finished: ${t.summary || "(no summary)"}${handOnsText(t)}`,
   failed: (t) => `${t.teamName} couldn't do it: ${t.error}`,
   expired: () =>
     "It expired before the passphrase was given. Give the task again if the user still wants it.",
@@ -359,11 +366,7 @@ function makeTeamToolHandlers({
         // The lead has answered; the task ends when its job does.
         return Promise.resolve(bots.waitForJob(jobId)).then((job) => {
           if (!job || job.status === "done") {
-            const more = afterLead(job);
-            return tasks.done(task.id, {
-              ...lead,
-              summary: more ? `${lead.summary} ${more}`.trim() : lead.summary,
-            });
+            return tasks.done(task.id, { ...lead, handOns: afterLead(job) });
           }
           const bad = job.steps.find(
             (st) => st.status === "failed" || st.status === "stopped",
@@ -653,6 +656,14 @@ function makeTeamToolHandlers({
             ...t,
             task: clip(t.task),
             ...(t.summary ? { summary: clip(t.summary) } : {}),
+            ...(t.handOns
+              ? {
+                  handOns: t.handOns.map((h) => ({
+                    ...h,
+                    summary: clip(h.summary),
+                  })),
+                }
+              : {}),
           })),
       });
     },

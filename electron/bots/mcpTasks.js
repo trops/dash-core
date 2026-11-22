@@ -29,6 +29,8 @@ const SHORT_LETTERS = 8;
 // A task's longest text. give_task refuses a longer one — never cuts it
 // (DASH-23: a 5,389-character task lost the end of a bot's instructions).
 const MAX_TASK_CHARS = 20000;
+// How many hand-on answers a finished task keeps.
+const MAX_HAND_ONS = 10;
 const MAX_PASSPHRASE_CHARS = 200;
 
 /** "Purple, Otter." → "purple otter" */
@@ -250,15 +252,27 @@ function createMcpTasks({
 
     /**
      * Finished. `needsYou`: what's left for the user in Dash (a bot that
-     * was paused, so it never ran) — done, but not all of it.
+     * was paused, so it never ran) — done, but not all of it. `handOns`:
+     * what the bots it set off said, apart from the lead's answer (DASH-33).
      */
-    done(id, { summary = "", runAt = null, needsYou = null } = {}) {
+    done(
+      id,
+      { summary = "", runAt = null, needsYou = null, handOns = null } = {},
+    ) {
+      const after = (Array.isArray(handOns) ? handOns : [])
+        .filter((h) => h && h.summary)
+        .slice(0, MAX_HAND_ONS)
+        .map((h) => ({
+          bot: String(h.bot || ""),
+          summary: String(h.summary).slice(0, MAX_TASK_CHARS),
+        }));
       return update(id, {
         status: "done",
         summary: String(summary || "").slice(0, MAX_TASK_CHARS),
         endedAt: iso(now()),
         ...(runAt ? { runAt } : {}),
         ...(needsYou ? { needsYou: String(needsYou).slice(0, 500) } : {}),
+        ...(after.length ? { handOns: after } : {}),
       });
     },
 

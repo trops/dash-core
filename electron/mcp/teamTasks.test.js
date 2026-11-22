@@ -355,7 +355,134 @@ describe("give_task", () => {
     await new Promise((res) => setImmediate(res));
     const after = tasks.get(r.taskId);
     assert.equal(after.status, "done");
-    assert.match(after.summary, /Drafter: Drawn: 3 sheets\./);
+    // The lead's answer stays exactly as it gave it; the Drafter's is apart
+    // (DASH-33).
+    assert.equal(
+      after.summary,
+      "Designed the guest bedroom: 3 looks, 12 images.",
+    );
+    assert.deepEqual(after.handOns, [
+      { bot: "Drafter", summary: "Drawn: 3 sheets." },
+    ]);
+    const done = body(await handlers.get_task_status({ taskId: r.taskId }));
+    assert.deepEqual(done.handOns, after.handOns);
+    assert.match(done.message, /12 images\.\n\nDrafter: Drawn: 3 sheets\.$/);
+  });
+
+  // DASH-33: seen live, a lead's last "FILES:" line got the Drafter's answer
+  // glued on, so the bridge waited for a file that didn't exist.
+  it("a lead answer ending in a FILES: line stays exactly its answer (DASH-33)", async () => {
+    const lead = [
+      "Pine Step Stool is ready.",
+      "FILES: /x/Pine Step Stool - Cut List.csv",
+      "FILES: /x/y.shz",
+    ].join("\n");
+    const job = {
+      id: "job_9",
+      status: "done",
+      steps: [
+        {
+          botName: "Woodworking Lead",
+          status: "done",
+          why: { kind: "task", label: "slack" },
+          summary: lead,
+        },
+        {
+          botName: "Drafter",
+          status: "done",
+          why: { kind: "handon", by: "Woodworking Lead", label: "Completed" },
+          summary: "I wrote the cut list.\n\n**Files written:**\n- `a.pdf`",
+        },
+      ],
+    };
+    const { handlers, tasks } = setup({
+      asks: [],
+      askLead: async () => ({ status: "completed", output: lead }),
+      startTaskJob: () => "job_9",
+      getJob: () => job,
+      waitForJob: async () => job,
+    });
+    const r = body(
+      await handlers.give_task({ task: "Pine step stool", team: "7" }),
+    );
+    await new Promise((res) => setImmediate(res));
+    const t = tasks.get(r.taskId);
+    assert.equal(t.status, "done");
+    assert.equal(t.summary, lead);
+    assert.equal(t.summary.split("\n").pop(), "FILES: /x/y.shz");
+    assert.equal(t.handOns[0].bot, "Drafter");
+    assert.match(t.handOns[0].summary, /\*\*Files written:\*\*\n- `a\.pdf`/);
+  });
+
+  it("no hand-ons: the summary is the lead's answer and there's no handOns (DASH-33)", async () => {
+    const { handlers, tasks } = setup({ asks: [] });
+    const r = body(await handlers.give_task({ task: "Design it", team: "7" }));
+    await new Promise((res) => setImmediate(res));
+    const s = body(await handlers.get_task_status({ taskId: r.taskId }));
+    assert.equal(s.status, "done");
+    assert.equal(s.summary, "Designed the guest bedroom: 3 looks, 12 images.");
+    assert.equal(s.handOns, undefined);
+    assert.equal(tasks.get(r.taskId).handOns, undefined);
+  });
+
+  it("a job that ends with no hand-ons: no handOns either (DASH-33)", async () => {
+    const job = {
+      id: "job_7",
+      status: "done",
+      steps: [
+        {
+          botName: "Room Design Lead",
+          status: "done",
+          why: { kind: "task" },
+          summary: "Done.",
+        },
+        {
+          botName: "Designer",
+          status: "done",
+          why: { kind: "asked", by: "Room Design Lead" },
+          summary: "3 looks.",
+        },
+      ],
+    };
+    const { handlers, tasks } = setup({
+      asks: [],
+      startTaskJob: () => "job_7",
+      getJob: () => job,
+      waitForJob: async () => job,
+    });
+    const r = body(await handlers.give_task({ task: "Design it", team: "7" }));
+    await new Promise((res) => setImmediate(res));
+    const t = tasks.get(r.taskId);
+    assert.equal(t.status, "done");
+    assert.equal(t.summary, "Designed the guest bedroom: 3 looks, 12 images.");
+    assert.equal(t.handOns, undefined);
+  });
+
+  it("list_tasks trims long hand-on answers too (DASH-33)", async () => {
+    const job = {
+      id: "job_8",
+      status: "done",
+      steps: [
+        {
+          botName: "Drafter",
+          status: "done",
+          why: { kind: "handon", by: "Lead" },
+          summary: "x".repeat(900),
+        },
+      ],
+    };
+    const { handlers } = setup({
+      asks: [],
+      startTaskJob: () => "job_8",
+      getJob: () => job,
+      waitForJob: async () => job,
+    });
+    await handlers.give_task({ task: "Draw it", team: "7" });
+    await new Promise((res) => setImmediate(res));
+    const list = body(await handlers.list_tasks());
+    const h = list.tasks[0].handOns[0];
+    assert.equal(h.bot, "Drafter");
+    assert.match(h.summary, /^x{500}… \(get_task_status has all of it\)$/);
   });
 
   it("a job that fails fails the task, naming the bot (DASH-28)", async () => {

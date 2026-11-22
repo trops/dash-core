@@ -150,6 +150,27 @@ describe("tasks", () => {
     );
   });
 
+  it("a finished task keeps the hand-ons apart from its summary (DASH-33)", () => {
+    const { tasks } = setup();
+    const a = tasks.create({ task: "a", team });
+    const done = tasks.done(a.id, {
+      summary: "FILES: /x/y.shz",
+      handOns: [
+        { bot: "Drafter", summary: "Drawn." },
+        { bot: "Empty", summary: "" },
+        ...Array.from({ length: 12 }, (_, i) => ({
+          bot: `B${i}`,
+          summary: "ok",
+        })),
+      ],
+    });
+    assert.equal(done.summary, "FILES: /x/y.shz");
+    assert.deepEqual(done.handOns[0], { bot: "Drafter", summary: "Drawn." });
+    assert.equal(done.handOns.length, 10);
+    const b = tasks.create({ task: "b", team });
+    assert.equal(tasks.done(b.id, { summary: "x" }).handOns, undefined);
+  });
+
   it("Dash closing marks a running task as not finished", () => {
     const { tasks } = setup();
     const a = tasks.create({ task: "a", team });
