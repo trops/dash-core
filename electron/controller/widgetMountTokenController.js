@@ -10,7 +10,9 @@
  * the longer threat-model note.
  *
  * Channels:
- *   - "framework:register-widget-mount" (widgetId) → token string
+ *   - "framework:register-widget-mount" (widgetId, instanceId?) → token string
+ *     instanceId ("<dashboardId>:<uuid>") keys the widget's own MCP grant;
+ *     a non-string or empty value is treated as none.
  *   - "framework:unregister-widget-mount" (token) → boolean (true = unregistered)
  */
 "use strict";
@@ -19,16 +21,24 @@ const { ipcMain } = require("electron");
 const { register, unregister } = require("../security/mountTokenRegistry");
 
 function setupWidgetMountTokenHandlers() {
-  ipcMain.handle("framework:register-widget-mount", (_event, widgetId) => {
-    if (typeof widgetId !== "string" || widgetId.length === 0) {
-      return null;
-    }
-    try {
-      return register(widgetId);
-    } catch {
-      return null;
-    }
-  });
+  ipcMain.handle(
+    "framework:register-widget-mount",
+    (_event, widgetId, instanceId) => {
+      if (typeof widgetId !== "string" || widgetId.length === 0) {
+        return null;
+      }
+      try {
+        return register(
+          widgetId,
+          typeof instanceId === "string" && instanceId.length > 0
+            ? instanceId
+            : null,
+        );
+      } catch {
+        return null;
+      }
+    },
+  );
 
   ipcMain.handle("framework:unregister-widget-mount", (_event, token) => {
     if (typeof token !== "string" || token.length === 0) return false;

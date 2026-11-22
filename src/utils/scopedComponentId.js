@@ -79,6 +79,27 @@ export function resolveGateWidgetId(component, paramsName) {
 }
 
 /**
+ * The placed widget's id for its own MCP grant: "<dashboardId>:<uuid>".
+ * uuids repeat across dashboards, so the dashboard is part of it. null
+ * when either is missing — the gate then uses the widget type's grant.
+ * (DASH-46)
+ *
+ * @param {{ dashboardId?: string|number, uuid?: string }} [params]
+ * @returns {string|null}
+ */
+export function gateInstanceId(params) {
+  const dashboardId = params ? params.dashboardId : null;
+  const uuid = params ? params.uuid : null;
+  if (dashboardId === null || dashboardId === undefined || dashboardId === "")
+    return null;
+  const hasUuid =
+    (typeof uuid === "string" && uuid) ||
+    (typeof uuid === "number" && Number.isFinite(uuid));
+  if (!hasUuid) return null;
+  return `${dashboardId}:${uuid}`;
+}
+
+/**
  * Pull the bare component name from a scoped or unscoped id.
  *
  * @param {string} idOrName

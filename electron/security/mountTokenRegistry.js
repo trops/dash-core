@@ -29,7 +29,11 @@
 
 const crypto = require("crypto");
 
-const _byToken = new Map(); // token → widgetId
+// token → { widgetId, instanceId }. instanceId ("<dashboardId>:<uuid>") names
+// the one placed widget the mount belongs to, so MCP grants can be kept per
+// widget instead of per widget type (DASH-46). null when the caller didn't
+// send one.
+const _byToken = new Map();
 
 function _generateToken() {
   // 24 random bytes = 48 hex chars = 192 bits of entropy. More than
@@ -40,9 +44,11 @@ function _generateToken() {
 /**
  * Register a widgetId mount and return a fresh token bound to it.
  * @param {string} widgetId
+ * @param {string} [instanceId] the placed widget ("<dashboardId>:<uuid>");
+ *   anything but a non-empty string is stored as null.
  * @returns {string} token
  */
-function register(widgetId) {
+function register(widgetId, instanceId) {
   if (typeof widgetId !== "string" || widgetId.length === 0) {
     throw new Error(
       "mountTokenRegistry.register: widgetId must be a non-empty string",
@@ -54,7 +60,13 @@ function register(widgetId) {
   while (_byToken.has(token)) {
     token = _generateToken();
   }
-  _byToken.set(token, widgetId);
+  _byToken.set(token, {
+    widgetId,
+    instanceId:
+      typeof instanceId === "string" && instanceId.length > 0
+        ? instanceId
+        : null,
+  });
   return token;
 }
 
@@ -64,8 +76,21 @@ function register(widgetId) {
  * @returns {string|null}
  */
 function lookup(token) {
+  const identity = lookupIdentity(token);
+  return identity ? identity.widgetId : null;
+}
+
+/**
+ * Resolve a token to the widget type and placed instance it was bound to.
+ * @param {string} token
+ * @returns {{ widgetId: string, instanceId: string|null } | null}
+ */
+function lookupIdentity(token) {
   if (typeof token !== "string") return null;
-  return _byToken.has(token) ? _byToken.get(token) : null;
+  const entry = _byToken.get(token);
+  return entry
+    ? { widgetId: entry.widgetId, instanceId: entry.instanceId }
+    : null;
 }
 
 /**
@@ -84,4 +109,10 @@ function _resetForTests() {
   _byToken.clear();
 }
 
-module.exports = { register, lookup, unregister, _resetForTests };
+module.exports = {
+  register,
+  lookup,
+  lookupIdentity,
+  unregister,
+  _resetForTests,
+};

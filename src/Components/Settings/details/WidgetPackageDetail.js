@@ -15,6 +15,7 @@
 import React, { useState } from "react";
 import { Button, FontAwesomeIcon } from "@trops/dash-react";
 import { WidgetGrantRow } from "../sections/WidgetGrantRow";
+import { PlacedWidgetGrants } from "./PlacedWidgetGrants";
 
 export const WidgetPackageDetail = ({
   packageGroup,
@@ -26,6 +27,7 @@ export const WidgetPackageDetail = ({
   onToggleAllForServer,
   onDeletePath,
   onDeleteDomainItem,
+  workspaces = [],
 }) => {
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
 
@@ -97,23 +99,30 @@ export const WidgetPackageDetail = ({
 
         <div className="flex flex-col space-y-3">
           {widgets.map((row) => (
-            <WidgetGrantRow
-              key={row.widgetId}
-              widgetId={row.widgetId}
-              declared={row.declared}
-              granted={row.granted}
-              hasManifest={row.hasManifest}
-              grantOrigin={row.grantOrigin}
-              onRevokeWidget={() => onRevokeWidget(row.widgetId)}
-              onRevokeServer={(serverName) =>
-                onRevokeServer(row.widgetId, serverName)
-              }
-              onGrantManually={() => onGrantManually(row.widgetId)}
-              onToggleTool={onToggleTool}
-              onToggleAllForServer={onToggleAllForServer}
-              onDeletePath={onDeletePath}
-              onDeleteDomainItem={onDeleteDomainItem}
-            />
+            <div key={row.widgetId} className="flex flex-col space-y-2">
+              <WidgetGrantRow
+                widgetId={row.widgetId}
+                declared={row.declared}
+                granted={row.granted}
+                hasManifest={row.hasManifest}
+                grantOrigin={row.grantOrigin}
+                onRevokeWidget={() => onRevokeWidget(row.widgetId)}
+                onRevokeServer={(serverName) =>
+                  onRevokeServer(row.widgetId, serverName)
+                }
+                onGrantManually={() => onGrantManually(row.widgetId)}
+                onToggleTool={onToggleTool}
+                onToggleAllForServer={onToggleAllForServer}
+                onDeletePath={onDeletePath}
+                onDeleteDomainItem={onDeleteDomainItem}
+              />
+              {/* Placed widgets of this type with their own grant (DASH-46). */}
+              <PlacedWidgetGrants
+                instances={row.instances}
+                workspaces={workspaces}
+                onRevoke={(key) => onRevokeWidget(key)}
+              />
+            </div>
           ))}
         </div>
       </div>

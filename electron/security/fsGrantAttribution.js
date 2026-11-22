@@ -25,7 +25,10 @@ function dataFileOwner(filename) {
   return m[1].split(".").length === 3 ? m[1] : null;
 }
 
-const belongsElsewhere = (widgetId) => (p) => {
+// A placed widget's own grant is keyed "<widgetId>#<instanceId>"; its data
+// files are named after the widget type, so compare against that.
+const belongsElsewhere = (grantKey) => (p) => {
+  const widgetId = String(grantKey).split("#")[0];
   const owner = dataFileOwner(p);
   return owner !== null && owner !== widgetId;
 };

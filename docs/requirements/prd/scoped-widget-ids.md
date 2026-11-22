@@ -210,6 +210,17 @@ The audit query is `grep -r 'ComponentManager.map\|componentMap()'`.
   v0.1.436 PR shipped widgets only; themes and dashboards each get
   their own `migrate*InWorkspace`-style pre-pass, registration
   choke point, and audit checklist update.
+- **Instance grants (DASH-46).** MCP grants used to be keyed by the
+  scoped id alone, so every widget of one type shared one grant (a
+  second Notes Folder was limited to the first one's folder). Each
+  mount now registers `instanceId = "<dashboardId>:<uuid>"` too; the MCP
+  gate reads `"<scopedId>#<instanceId>"` in `widgetMcpGrants.json` first
+  and falls back to the type grant. Approvals go to the instance key,
+  seeded with the type grant's tools and no paths. A granted tool on a
+  path outside the granted folders asks for that folder. Still open:
+  moving a widget to another dashboard loses its grant (it asks again);
+  the type grant stays broad for widgets that never got their own; the
+  fs and network gates are still per type.
 
 ## Lessons (internal, for future-me)
 

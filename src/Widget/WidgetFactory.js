@@ -14,7 +14,10 @@ import { DashboardActionsApi } from "../Api/DashboardActionsApi";
 import { getUUID } from "@trops/dash-react";
 import { WidgetCardStatusBar } from "../Components/Layout/Builder/Enhanced/WidgetCardStatusBar";
 import { WidgetNotFound } from "./WidgetNotFound";
-import { resolveGateWidgetId } from "../utils/scopedComponentId";
+import {
+  resolveGateWidgetId,
+  gateInstanceId,
+} from "../utils/scopedComponentId";
 import { MountTokenWrapper } from "./MountTokenWrapper";
 import { buildWidgetData } from "./buildWidgetData";
 import { canFixWithAi, fixRequestDetail } from "./canFixWithAi";
@@ -375,6 +378,9 @@ const WidgetRenderer = ({
       // gate looked up a bare key, missed the approved grant, and
       // re-prompted per call (the ~20 popups after a package update).
       const widgetIdForGate = resolveGateWidgetId(component, params?.name);
+      // The placed widget, so two widgets of one type (two Notes Folders
+      // on different folders) each get their own MCP grant (DASH-46).
+      const instanceIdForGate = gateInstanceId(params);
       const label = pickWidgetDisplayName(params, config);
       // While editing, a widget can be taken off its box (waits for Save).
       const removeIt =
@@ -418,7 +424,11 @@ const WidgetRenderer = ({
           }
           onRemove={removeIt}
         >
-          <MountTokenWrapper widgetId={widgetIdForGate} widgetData={widgetData}>
+          <MountTokenWrapper
+            widgetId={widgetIdForGate}
+            instanceId={instanceIdForGate}
+            widgetData={widgetData}
+          >
             {/* Keyed to the widget's version: new code (Fix with AI, an
               update) clears the error box instead of waiting for Retry. */}
             <WidgetErrorBoundary

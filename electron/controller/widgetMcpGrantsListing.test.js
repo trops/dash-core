@@ -27,6 +27,7 @@ test("buildGrantsListing: includes installed widgets with no manifest and no gra
     granted: null,
     hasManifest: false,
     grantOrigin: null,
+    instances: [],
   });
 });
 
@@ -204,4 +205,37 @@ test("buildGrantsListing: tolerates malformed installed entries", () => {
   const rows = buildGrantsListing(installed, grants, declared);
   assert.strictEqual(rows.length, 1);
   assert.strictEqual(rows[0].widgetId, "@trops/ok");
+});
+
+// DASH-46: a placed widget's own grant is listed under its type's row.
+const NOTES = "ai-built.notesfolder.NotesFolder";
+const g = (readPaths) => ({
+  grantOrigin: "live",
+  servers: { notes: { tools: ["read_note"], readPaths, writePaths: [] } },
+});
+
+test("buildGrantsListing: instance keys go under their type's row, not as orphans", () => {
+  const grants = new Map([
+    [NOTES, g(["Woodworking"])],
+    [NOTES + "#ws1:u1", g(["Dash/Specs"])],
+  ]);
+  const rows = buildGrantsListing([{ name: NOTES }], grants, new Map());
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].widgetId, NOTES);
+  assert.strictEqual(rows[0].instances.length, 1);
+  assert.deepStrictEqual(rows[0].instances[0], {
+    key: NOTES + "#ws1:u1",
+    instanceId: "ws1:u1",
+    granted: g(["Dash/Specs"]),
+  });
+  assert.ok(!rows.some((r) => r.widgetId.includes("#")));
+});
+
+test("buildGrantsListing: an instance of an uninstalled, ungranted type is one orphan row", () => {
+  const grants = new Map([[NOTES + "#ws1:u1", g(["Dash/Specs"])]]);
+  const rows = buildGrantsListing([], grants, new Map());
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].widgetId, NOTES);
+  assert.strictEqual(rows[0].granted, null);
+  assert.strictEqual(rows[0].instances.length, 1);
 });

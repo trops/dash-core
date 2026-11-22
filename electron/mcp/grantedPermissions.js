@@ -35,7 +35,15 @@
  *   revokeGrant(widgetId) → boolean
  *   revokeServer(widgetId, serverName) → boolean
  *   listAllGrants() → [{ widgetId, granted }]
+ *   instanceGrantKey(widgetId, instanceId) → "<widgetId>#<instanceId>" | null
+ *   getEffectiveGrant(widgetId, instanceId) → { grant, key, inherited } | null
+ *   seedInstanceGrant(typeGrant) → grant | null
  *   clearCache() → void   // test-only
+ *
+ * Instance grants (DASH-46): a placed widget's own grant is stored under
+ * "<widgetId>#<instanceId>" (instanceId = "<dashboardId>:<uuid>") in the
+ * same file. The gate reads it first and falls back to the widget type's
+ * grant, so two widgets of one type no longer share each other's folders.
  */
 "use strict";
 
@@ -313,6 +321,52 @@ function listAllGrants() {
   }));
 }
 
+const INSTANCE_SEPARATOR = "#";
+
+/** The key a placed widget's own grant is kept under, or null. */
+function instanceGrantKey(widgetId, instanceId) {
+  if (typeof widgetId !== "string" || !widgetId) return null;
+  if (typeof instanceId !== "string" || !instanceId) return null;
+  return widgetId + INSTANCE_SEPARATOR + instanceId;
+}
+
+/**
+ * The grant a placed widget runs under: its own instance grant when it has
+ * one, else its type's grant (inherited: true), else null.
+ * @returns {{ grant: object, key: string, inherited: boolean } | null}
+ */
+function getEffectiveGrant(widgetId, instanceId) {
+  const key = instanceGrantKey(widgetId, instanceId);
+  if (key) {
+    const own = getGrant(key);
+    if (own) return { grant: own, key, inherited: false };
+  }
+  const typeGrant = getGrant(widgetId);
+  if (typeGrant) {
+    return { grant: typeGrant, key: widgetId, inherited: key !== null };
+  }
+  return null;
+}
+
+/**
+ * The start of a new instance grant: the type grant's servers and tools,
+ * with no paths. A folder granted to one widget never carries over to
+ * another widget of the same type.
+ */
+function seedInstanceGrant(typeGrant) {
+  if (!typeGrant || typeof typeGrant !== "object") return null;
+  const servers = {};
+  for (const [name, perms] of Object.entries(typeGrant.servers || {})) {
+    if (!perms || typeof perms !== "object") continue;
+    servers[name] = {
+      tools: Array.isArray(perms.tools) ? [...perms.tools] : [],
+      readPaths: [],
+      writePaths: [],
+    };
+  }
+  return { grantOrigin: typeGrant.grantOrigin || null, servers };
+}
+
 function clearCache() {
   _cache = null;
 }
@@ -323,6 +377,10 @@ module.exports = {
   revokeGrant,
   revokeServer,
   listAllGrants,
+  instanceGrantKey,
+  getEffectiveGrant,
+  seedInstanceGrant,
   clearCache,
   ALLOWED_GRANT_ORIGINS,
+  INSTANCE_SEPARATOR,
 };

@@ -1352,3 +1352,208 @@ test("bot allow: a notes server's own paths, against relative roots", () => {
   assert.strictEqual(out.allow, false);
   assert.match(out.reason, /path argument.*rejected/i);
 });
+
+// --- DASH-46: grants per placed widget ----------------------------------
+//
+// Two Notes Folder widgets on different dashboards: the type grant was
+// approved for the Woodworking one. The Dash Specs one asks for its own
+// folder, and neither can then read the other's.
+
+const {
+  register: registerMount,
+  _resetForTests: resetMounts,
+} = require("../security/mountTokenRegistry");
+
+const NOTES = "ai-built.notesfolder.NotesFolder";
+const NOTES_SERVER = "Mac Mini Notes MCP";
+const SPEC = "Dash/Specs/DASH-40 README one-line comment.md";
+
+function setupNotesFolders() {
+  clearGrantCache();
+  revokeGrant(NOTES);
+  revokeGrant(NOTES + "#ws1:u1");
+  revokeGrant(NOTES + "#ws2:u3");
+  setGrant(NOTES, {
+    grantOrigin: "live",
+    servers: {
+      [NOTES_SERVER]: {
+        tools: ["list_notes", "read_note"],
+        readPaths: ["Woodworking"],
+        writePaths: [],
+      },
+    },
+  });
+  resetMounts();
+  return {
+    a: registerMount(NOTES, "ws1:u1"),
+    b: registerMount(NOTES, "ws2:u3"),
+  };
+}
+
+const readNote = (token, p) => ({
+  token,
+  serverName: NOTES_SERVER,
+  toolName: "read_note",
+  args: { path: p },
+});
+
+const folderApproval = (folder) => ({
+  approve: true,
+  scope: "tool+path",
+  granted: {
+    grantOrigin: "live",
+    servers: {
+      [NOTES_SERVER]: {
+        tools: ["read_note"],
+        readPaths: [folder],
+        writePaths: [],
+      },
+    },
+  },
+});
+
+const noSiblings = () => null;
+
+test("DASH-46: a second widget of a type asks for its folder; the grant is its own", async () => {
+  const { a, b } = setupNotesFolders();
+  // A: the type grant still covers its folder.
+  assert.deepStrictEqual(gateToolCall(readNote(a, "Woodworking/x.md")), {
+    allow: true,
+  });
+
+  let asked = null;
+  __mockApproval = async (req) => {
+    asked = req;
+    return folderApproval("Dash/Specs");
+  };
+  const r = await gateToolCallWithJit(readNote(b, SPEC), {
+    enableJit: true,
+    getRegistrySnapshot: noSiblings,
+  });
+  assert.deepStrictEqual(r, { allow: true });
+  assert.strictEqual(asked.instanceId, "ws2:u3");
+  assert.strictEqual(asked.reason, "path-not-in-root");
+  assert.deepStrictEqual(asked.siblingWidgetIds, [NOTES]);
+
+  // Saved under B's instance key only; the type grant is unchanged.
+  const own = getGrant(NOTES + "#ws2:u3");
+  assert.deepStrictEqual(own.servers[NOTES_SERVER].readPaths, ["Dash/Specs"]);
+  assert.deepStrictEqual(own.servers[NOTES_SERVER].tools.sort(), [
+    "list_notes",
+    "read_note",
+  ]);
+  assert.deepStrictEqual(getGrant(NOTES).servers[NOTES_SERVER].readPaths, [
+    "Woodworking",
+  ]);
+  assert.strictEqual(getGrant(NOTES + "#ws1:u1"), null);
+
+  // DASH-46 test 7: neither reads the other's folder.
+  const aSpecs = gateToolCall(readNote(a, SPEC));
+  assert.strictEqual(aSpecs.allow, false);
+  assert.match(aSpecs.reason, /not within any allowed root/);
+  const bWood = gateToolCall(readNote(b, "Woodworking/x.md"));
+  assert.strictEqual(bWood.allow, false);
+  assert.match(bWood.reason, /not within any allowed root/);
+});
+
+test("DASH-46: path outside the folders with JIT off denies without asking", async () => {
+  const { b } = setupNotesFolders();
+  __mockApproval = () => {
+    throw new Error("must not ask");
+  };
+  const r = await gateToolCallWithJit(readNote(b, SPEC), { enableJit: false });
+  assert.strictEqual(r.allow, false);
+  assert.strictEqual(r.code, "path-not-in-root");
+});
+
+test("DASH-46: a traversal path never asks, even with the tool granted", async () => {
+  const { b } = setupNotesFolders();
+  let called = false;
+  __mockApproval = async () => {
+    called = true;
+    return folderApproval("..");
+  };
+  const r = await gateToolCallWithJit(readNote(b, "../../etc/passwd"), {
+    enableJit: true,
+    getRegistrySnapshot: noSiblings,
+  });
+  assert.strictEqual(r.allow, false);
+  assert.strictEqual(r.code, "traversal");
+  assert.strictEqual(called, false);
+  const inside = await gateToolCallWithJit(
+    readNote(b, "Woodworking/../Dash/Specs/x.md"),
+    { enableJit: true, getRegistrySnapshot: noSiblings },
+  );
+  assert.strictEqual(inside.allow, false);
+  assert.strictEqual(called, false);
+});
+
+test("DASH-46: declining the folder prompt denies and writes nothing", async () => {
+  const { b } = setupNotesFolders();
+  __mockApproval = async () => ({ approve: false });
+  const r = await gateToolCallWithJit(readNote(b, SPEC), {
+    enableJit: true,
+    getRegistrySnapshot: noSiblings,
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /declined/);
+  assert.strictEqual(getGrant(NOTES + "#ws2:u3"), null);
+  assert.deepStrictEqual(getGrant(NOTES).servers[NOTES_SERVER].readPaths, [
+    "Woodworking",
+  ]);
+});
+
+test("DASH-46: a caller without an instance keeps the type-level behaviour", async () => {
+  setupNotesFolders();
+  const legacy = registerMount(NOTES);
+  __mockApproval = () => {
+    throw new Error("legacy path-not-in-root must not ask");
+  };
+  const r = await gateToolCallWithJit(readNote(legacy, SPEC), {
+    enableJit: true,
+    getRegistrySnapshot: noSiblings,
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /not within any allowed root/);
+
+  // A tool missing from the grant still asks, and is saved to the type key.
+  __mockApproval = async () => ({
+    approve: true,
+    scope: "tool",
+    granted: {
+      grantOrigin: "live",
+      servers: {
+        [NOTES_SERVER]: {
+          tools: ["search_notes"],
+          readPaths: [],
+          writePaths: [],
+        },
+      },
+    },
+  });
+  const s = await gateToolCallWithJit(
+    {
+      token: legacy,
+      serverName: NOTES_SERVER,
+      toolName: "search_notes",
+      args: { query: "x" },
+    },
+    { enableJit: true, getRegistrySnapshot: noSiblings },
+  );
+  assert.deepStrictEqual(s, { allow: true });
+  assert.ok(
+    getGrant(NOTES).servers[NOTES_SERVER].tools.includes("search_notes"),
+  );
+  assert.deepStrictEqual(getGrant(NOTES).servers[NOTES_SERVER].readPaths, [
+    "Woodworking",
+  ]);
+});
+
+test("DASH-46: an unknown token is still refused", async () => {
+  setupNotesFolders();
+  const r = await gateToolCallWithJit(readNote("not-a-real-token", SPEC), {
+    enableJit: true,
+  });
+  assert.strictEqual(r.allow, false);
+  assert.match(r.reason, /unknown mount token/);
+});

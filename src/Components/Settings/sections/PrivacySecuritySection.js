@@ -35,7 +35,9 @@ import { applyDomainItemRemoval } from "./applyDomainItemRemoval";
  * Reads `window.mainApi.widgetMcp.{listAll,revoke,revokeServer,setGrant}`
  * exposed by dash-electron's preload.
  */
-export const PrivacySecuritySection = () => {
+// `workspaces`: the user's dashboards, to name the dashboard a placed
+// widget's own grant belongs to.
+export const PrivacySecuritySection = ({ workspaces = [] } = {}) => {
   const { providers } = useContext(AppContext);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -258,8 +260,11 @@ export const PrivacySecuritySection = () => {
     // end picks up whatever did succeed.
     try {
       for (const w of packageGroup.widgets) {
-        if (!w.granted) continue;
-        await window.mainApi?.widgetMcp?.revoke?.(w.widgetId);
+        if (w.granted) await window.mainApi?.widgetMcp?.revoke?.(w.widgetId);
+        // Placed widgets' own grants (DASH-46).
+        for (const inst of w.instances || []) {
+          await window.mainApi?.widgetMcp?.revoke?.(inst.key);
+        }
       }
       reload();
     } catch (e) {
@@ -340,6 +345,7 @@ export const PrivacySecuritySection = () => {
         onToggleAllForServer={toggleAllForServer}
         onDeletePath={deletePath}
         onDeleteDomainItem={deleteDomainItem}
+        workspaces={workspaces}
       />
     );
   }

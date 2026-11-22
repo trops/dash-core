@@ -38,11 +38,19 @@
  */
 "use strict";
 
-const { getGrant, setGrant } = require("./grantedPermissions");
+const {
+  getGrant,
+  setGrant,
+  getEffectiveGrant,
+  seedInstanceGrant,
+  instanceGrantKey,
+} = require("./grantedPermissions");
 const { checkToolPath } = require("../utils/safePath");
 const { requestApproval } = require("./jitConsent");
 const { approvalErrorReason } = require("./approvalErrorReason");
-const { lookup: lookupMountToken } = require("../security/mountTokenRegistry");
+const {
+  lookupIdentity: lookupMountIdentity,
+} = require("../security/mountTokenRegistry");
 const { resolveSiblings } = require("../security/resolveSiblings");
 const { getWidgetMcpPermissions } = require("./widgetPermissions");
 const { toolListAllows, isToolPattern, toolMatches } = require("./toolPattern");
@@ -65,14 +73,29 @@ function _defaultRegistrySnapshot() {
 // via lookupMountToken and ignore renderer-claimed widgetId. Slice 1
 // keeps the legacy widgetId-only path working (additive); slice 2 will
 // flip to deny-without-token.
+//
+// A token also names the placed widget (`instanceId`, "<dashboardId>:<uuid>")
+// when the mount sent one, so the widget gets its own grant (DASH-46). The
+// legacy widgetId-only path never has one.
 function _resolveIdentity({ token, widgetId }) {
   if (typeof token === "string" && token.length > 0) {
-    const resolved = lookupMountToken(token);
-    if (resolved) return { widgetId: resolved, source: "token" };
-    return { widgetId: null, source: "token-unknown" };
+    const resolved = lookupMountIdentity(token);
+    if (resolved) {
+      return {
+        widgetId: resolved.widgetId,
+        instanceId: resolved.instanceId || null,
+        source: "token",
+      };
+    }
+    return { widgetId: null, instanceId: null, source: "token-unknown" };
   }
-  return { widgetId: widgetId || null, source: "legacy" };
+  return { widgetId: widgetId || null, instanceId: null, source: "legacy" };
 }
+
+// The denial code for a path argument outside the granted folders (or with
+// no folders granted at all). The only path denial the user can fix by
+// granting a folder; traversal and malformed paths never get this code.
+const PATH_NOT_IN_ROOT = "path-not-in-root";
 
 // Argument keys that look like paths. Different MCP servers use
 // different conventions; this list covers the common filesystem-style
@@ -105,7 +128,14 @@ const WIDGET_NO_GRANT_GUIDANCE =
  * is preserved character-for-character (label "widget" + the Settings
  * guidance) so the existing widget gate tests stay green.
  *
- * @returns {{ allow: true } | { allow: false, reason: string }}
+ * `grant` is the grant to check, when the caller already looked it up (a
+ * widget's own instance grant, or its type's); otherwise the principal's
+ * grant is read. Denial messages always name `principalId`.
+ *
+ * A path denial the user could fix by granting the folder carries
+ * `code: "path-not-in-root"` and the `pathArg` it was about.
+ *
+ * @returns {{ allow: true } | { allow: false, reason: string, code?: string, pathArg?: { key: string, value: string } }}
  */
 function _evaluateGrant({
   principalId,
@@ -114,8 +144,9 @@ function _evaluateGrant({
   serverName,
   toolName,
   args,
+  grant,
 }) {
-  const perms = getGrant(principalId);
+  const perms = grant === undefined ? getGrant(principalId) : grant;
   if (!perms) {
     return {
       allow: false,
@@ -174,6 +205,11 @@ function _evaluateGrant({
       if (allowedPaths.length === 0) {
         return {
           allow: false,
+          code:
+            checkToolPath(v, []).code === "traversal"
+              ? "traversal"
+              : PATH_NOT_IN_ROOT,
+          pathArg: { key, value: v },
           reason:
             "tool '" +
             toolName +
@@ -197,6 +233,9 @@ function _evaluateGrant({
       if (!checked.ok) {
         return {
           allow: false,
+          code:
+            checked.code === "not-in-root" ? PATH_NOT_IN_ROOT : checked.code,
+          pathArg: { key, value: v },
           reason: "path argument '" + key + "' rejected: " + checked.reason,
         };
       }
@@ -225,6 +264,8 @@ function gateToolCall({ widgetId, token, serverName, toolName, args }) {
     };
   }
 
+  // The placed widget's own grant first, then its type's (DASH-46).
+  const effective = getEffectiveGrant(widgetId, resolved.instanceId);
   return _evaluateGrant({
     principalId: widgetId,
     label: "widget",
@@ -232,6 +273,7 @@ function gateToolCall({ widgetId, token, serverName, toolName, args }) {
     serverName,
     toolName,
     args,
+    grant: effective ? effective.grant : null,
   });
 }
 
@@ -410,6 +452,15 @@ function _mergeGrant(current, addition) {
  * (unknown token, missing widgetId) likewise short-circuit to the sync
  * verdict — those are abuse or caller bugs, not consent gaps.
  *
+ * Placed widgets (DASH-46): when the mount named its instance, the gate
+ * reads that widget's own grant first (falling back to its type's), and
+ * every approval is saved to the instance key — seeded from the type
+ * grant's tools with no paths, so a folder never carries over to another
+ * widget of the same type. A granted tool whose path argument is outside
+ * the granted folders ("path-not-in-root") asks for that folder instead of
+ * failing; traversal and malformed paths still deny without asking. Legacy
+ * callers (no instance) keep the type-level behaviour unchanged.
+ *
  * @returns {Promise<{ allow: true } | { allow: false, reason: string }>}
  */
 async function gateToolCallWithJit(req, opts = {}) {
@@ -426,20 +477,32 @@ async function gateToolCallWithJit(req, opts = {}) {
     return gateToolCall(req);
   }
   const verifiedWidgetId = resolved.widgetId;
+  const instanceId = resolved.instanceId || null;
+  const instanceKey = instanceGrantKey(verifiedWidgetId, instanceId);
 
   // Structural escalation: when the tool already exists in the grant,
   // the sync gate's verdict is authoritative — any denial is structural
   // (containment / scope) and not recoverable by re-prompting. When the
   // tool is missing from the grant, escalate regardless of which of the
   // three "missing" shapes caused it.
-  const grant = getGrant(verifiedWidgetId);
+  const effective = getEffectiveGrant(verifiedWidgetId, instanceId);
+  const grant = effective ? effective.grant : null;
   const hasToolInGrant = !!(
     grant &&
     grant.servers &&
     grant.servers[req.serverName] &&
     toolListAllows(grant.servers[req.serverName].tools, req.toolName)
   );
-  if (hasToolInGrant) return gateToolCall(req);
+  // A placed widget whose granted tool reached outside its folders may
+  // ask for that folder; nothing else with the tool granted prompts.
+  let pathRequest = null;
+  if (hasToolInGrant) {
+    const sync = gateToolCall(req);
+    if (sync.allow || !instanceKey || sync.code !== PATH_NOT_IN_ROOT) {
+      return sync;
+    }
+    pathRequest = sync.pathArg || null;
+  }
 
   // Slice 5: resolve siblings so the modal can offer "Apply to all
   // widgets from <package>". Siblings are computed from the registry
@@ -447,7 +510,10 @@ async function gateToolCallWithJit(req, opts = {}) {
   // siblings after consent must re-prompt; supply-chain defense).
   const getRegistrySnapshot =
     opts.getRegistrySnapshot || _defaultRegistrySnapshot;
-  const siblingInfo = resolveSiblings(verifiedWidgetId, getRegistrySnapshot());
+  // A placed widget's approval is its own: no package-wide fan-out.
+  const siblingInfo = instanceKey
+    ? { packageId: null, siblingWidgetIds: [verifiedWidgetId] }
+    : resolveSiblings(verifiedWidgetId, getRegistrySnapshot());
 
   // Filter siblings to those whose per-component manifest actually
   // declares the requested `serverName + toolName`. Without this
@@ -489,6 +555,11 @@ async function gateToolCallWithJit(req, opts = {}) {
         packageId: siblingInfo.packageId,
         siblingWidgetIds: applicableSiblingIds,
         toolPattern,
+        // The placed widget asking (its prompts never merge with another
+        // widget's), and whether this is a folder request for a tool it
+        // already has.
+        instanceId,
+        reason: pathRequest ? PATH_NOT_IN_ROOT : null,
       },
       { timeoutMs: opts.timeoutMs },
     );
@@ -550,6 +621,7 @@ async function gateToolCallWithJit(req, opts = {}) {
   // the user's "Apply to all N widgets" decision was already made
   // against the correct set.
   const targetWidgetIds =
+    !instanceKey &&
     decision.applyToSiblings === true &&
     Array.isArray(applicableSiblingIds) &&
     applicableSiblingIds.length > 1
@@ -557,10 +629,18 @@ async function gateToolCallWithJit(req, opts = {}) {
       : [verifiedWidgetId];
 
   try {
-    for (const targetId of targetWidgetIds) {
-      const current = getGrant(targetId);
-      const merged = _mergeGrant(current, addition);
-      setGrant(targetId, merged);
+    if (instanceKey) {
+      // The placed widget's own grant; its first one starts from the type
+      // grant's tools, without the type grant's folders.
+      const current =
+        getGrant(instanceKey) || seedInstanceGrant(getGrant(verifiedWidgetId));
+      setGrant(instanceKey, _mergeGrant(current, addition));
+    } else {
+      for (const targetId of targetWidgetIds) {
+        const current = getGrant(targetId);
+        const merged = _mergeGrant(current, addition);
+        setGrant(targetId, merged);
+      }
     }
   } catch (e) {
     return {
@@ -583,4 +663,5 @@ module.exports = {
   gateToolCallWithJit,
   isWriteTool,
   PATH_ARG_KEYS,
+  PATH_NOT_IN_ROOT,
 };
