@@ -314,7 +314,18 @@ function release(opts, { cwd = process.cwd(), env = process.env } = {}) {
     waitForChecks(branch, { cwd, env });
 
     step("Merging pull request");
-    run("gh", ["pr", "merge", branch, "--merge"]);
+    // Right after a push GitHub can refuse with "Base branch was
+    // modified" while it works out the PR's new state: try again.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        run("gh", ["pr", "merge", branch, "--merge"]);
+        break;
+      } catch (e) {
+        if (attempt >= 3) throw e;
+        console.log(`Merge refused; trying again (${attempt + 1} of 3)…`);
+        sleepMs(Number(env.RELEASE_MERGE_RETRY_SEC || 10) * 1000);
+      }
+    }
     pr = prInfo();
   } else {
     step(`PR already merged: ${pr.url}`);
