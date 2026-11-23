@@ -104,3 +104,26 @@ describe("runCommand", () => {
     assert.equal(proofLine("no json here"), null);
   });
 });
+
+describe("runCommand's environment (DASH-53)", () => {
+  it("a command that isn't installed says so", async () => {
+    const r = await runCommand(
+      { command: "dash-no-such-tool-xyz --version" },
+      { input: {} },
+      { cwd: dir },
+    );
+    assert.equal(r.pass, false);
+    assert.equal(r.exitCode, 127);
+    assert.match(r.reason, /^Needs `dash-no-such-tool-xyz`: /);
+  });
+
+  it("runs with the user's PATH, Homebrew's folders included", async () => {
+    const r = await runCommand(
+      { command: 'printf %s "$PATH"' },
+      { input: {} },
+      { cwd: dir },
+    );
+    assert.equal(r.pass, true);
+    assert.match(r.output, /\/opt\/homebrew\/bin/);
+  });
+});
