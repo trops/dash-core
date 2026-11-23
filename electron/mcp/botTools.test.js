@@ -1225,7 +1225,7 @@ describe("checks over MCP (DASH-52)", () => {
     check: {
       kind: "command",
       command: '/bin/cat "$DASH_INPUT"',
-      passWhen: { matches: "PR: https://github\\.com/" },
+      passWhen: { type: "matches", pattern: "PR: https://github\\.com/" },
     },
   };
   const withReviewer = (extra = {}) => ({
@@ -1268,11 +1268,12 @@ describe("checks over MCP (DASH-52)", () => {
     assert.equal(saved.maxTries, 3);
     assert.equal(saved.handsOn, "answer");
     assert.deepEqual(saved.steps[2].check.passWhen, {
-      matches: "PR: https://github\\.com/",
+      type: "matches",
+      pattern: "PR: https://github\\.com/",
     });
     assert.match(
       w.summary,
-      /Checks: none \(its work goes straight on\) → 1\. "Validate": runs `\.\/scripts\/ci\.sh`; passes when it exits 0; 2\. "Reviewer": Reviewer reviews the work; 3\. "Finished with a PR": runs .*passes when output matches/,
+      /Checks: none \(its work goes straight on\) → 1\. "Validate": runs `\.\/scripts\/ci\.sh`; passes when it exits 0; 2\. "Reviewer": Reviewer reviews the work; 3\. "Finished with a PR": runs .*passes when its output matches/,
     );
     assert.match(w.summary, /up to 3 tries/);
     const ok = body(

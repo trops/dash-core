@@ -257,7 +257,7 @@ const BOT_FIELDS = {
             check: {
               type: "object",
               description:
-                "For kind 'check', as the Bots tab saves it. { kind: 'command', command, passWhen?, timeoutSec? }: runs in its first folder and gets its answer as JSON on stdin and in $DASH_INPUT; passes on exit 0, or when passWhen ({ contains } or { matches }) holds. { kind: 'tool', server, tool, args?, answerRules? }: a read-only provider tool. { kind: 'rules', rules }. { kind: 'script', script, timeoutSec? }.",
+                "For kind 'check', as the Bots tab saves it. { kind: 'command', command, passWhen?, timeoutSec? }: runs in its first folder and gets its answer as JSON on stdin and in $DASH_INPUT; passWhen is { type: 'exit0' } (the default), { type: 'contains', text } (exit 0 and the output has it) or { type: 'matches', pattern } (the output matches the regex). { kind: 'tool', server, tool, args?, answerRules? }: a read-only provider tool. { kind: 'rules', rules }. { kind: 'script', script, timeoutSec? }.",
             },
             bot: {
               type: "string",
@@ -825,12 +825,15 @@ function checkStepText(step, nameOf) {
     return `${name}: ${oneLine(nameOf(step.botId))} reviews the work`;
   }
   const c = step.check || {};
+  // As command.js reads it: { type: "exit0" | "contains" | "matches" }.
+  const when =
+    (c.passWhen && typeof c.passWhen === "object" && c.passWhen) || {};
   const pass =
-    c.passWhen && typeof c.passWhen === "object"
-      ? Object.entries(c.passWhen)
-          .map(([k, v]) => `output ${k} ${JSON.stringify(String(v))}`)
-          .join(" and ")
-      : "it exits 0";
+    when.type === "contains"
+      ? `it exits 0 and its output contains ${JSON.stringify(String(when.text || ""))}`
+      : when.type === "matches"
+        ? `its output matches /${oneLine(when.pattern || "")}/`
+        : "it exits 0";
   switch (c.kind) {
     case "command":
       return `${name}: runs \`${oneLine(c.command)}\`; passes when ${pass}`;
