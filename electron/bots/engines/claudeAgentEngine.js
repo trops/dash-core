@@ -37,6 +37,7 @@ const { BOT_MCP_SERVER, buildBotMcpServer } = require("./agentToolBridge");
 const { imagePlaceholder } = require("../toolImages");
 const { commandDecision } = require("../../checks/commandRules");
 const { runEnv } = require("../runEnv");
+const { gitSignInEnv, redact } = require("../gitSignIn");
 const {
   FILE_TOOL_FIELDS,
   makeFence,
@@ -419,6 +420,11 @@ async function _runAgent(ctx, stream) {
   // A bot that runs again within the hour keeps its prompt cached that long
   // (reads cost a tenth; Settings › AI).
   if (ctx.longCache) env.ENABLE_PROMPT_CACHING_1H = "1";
+  // Its GitHub provider signs its git and gh commands in (DASH-55): this
+  // run's env only, kept out of what the run shows.
+  const gitToken = typeof ctx.gitToken === "string" ? ctx.gitToken : null;
+  if (gitToken) Object.assign(env, gitSignInEnv(gitToken, env));
+  const shown = (ev) => (gitToken ? redact(ev, gitToken) : ev);
 
   const options = {
     model: ctx.model,
@@ -547,9 +553,9 @@ async function _runAgent(ctx, stream) {
         // Its text is the error, not the bot's answer.
         apiErrorKind = msg.error;
       } else if (msg.type === "assistant") {
-        for (const ev of _fromAssistant(msg.message)) stream.push(ev);
+        for (const ev of _fromAssistant(msg.message)) stream.push(shown(ev));
       } else if (msg.type === "user") {
-        for (const ev of _fromUser(msg.message)) stream.push(ev);
+        for (const ev of _fromUser(msg.message)) stream.push(shown(ev));
       } else if (msg.type === "result") {
         stopReason = msg.subtype || "end";
         const u = msg.usage || {};
@@ -607,13 +613,17 @@ async function _runAgent(ctx, stream) {
 
   if (sessionId) stream.push({ type: "session", session: { id: sessionId } });
   if (failure) {
-    stream.push({
-      type: "error",
-      message: failure.message,
-      code: failure.code || "CLAUDE_API_ERROR",
-      ...(typeof failure.status === "number" ? { status: failure.status } : {}),
-      usage,
-    });
+    stream.push(
+      shown({
+        type: "error",
+        message: failure.message,
+        code: failure.code || "CLAUDE_API_ERROR",
+        ...(typeof failure.status === "number"
+          ? { status: failure.status }
+          : {}),
+        usage,
+      }),
+    );
     return;
   }
   stream.push({ type: "done", stopReason, usage });
