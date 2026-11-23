@@ -76,6 +76,20 @@ const answerOf = (record) =>
     ? record.output.answer
     : null;
 
+/**
+ * What a check printed, from its record's proof: { output, exitCode }
+ * (a command's last lines and its exit code; empty for a reviewer).
+ */
+export function checkOutputOf(record) {
+  const ev =
+    (record && Array.isArray(record.evidence) && record.evidence) || [];
+  const find = (label) => {
+    const e = ev.find((x) => x && x.label === label);
+    return e && typeof e.value === "string" && e.value ? e.value : null;
+  };
+  return { output: find("output"), exitCode: find("exit code") };
+}
+
 // A run's times are ISO strings; a record's are numbers.
 const msOf = (v) => (typeof v === "number" ? v : Date.parse(v));
 
@@ -102,9 +116,10 @@ function tryMs(record, runs, botId) {
 /**
  * The job's rows, top to bottom:
  *   asked    { who, kind, text, at }
- *   try      { n, at, ms, answer }
- *   passed   { names: [{ name, reviewer?, said? }] }  checks that passed
- *   failed   { name, reason, reviewer, then: "back"|"you"|"stop"|null }
+ *   try      { n, of, at, ms, answer }                 try n of `of`
+ *   passed   { names: [{ name, reviewer?, said?, output? }] }  checks that passed
+ *   failed   { name, reason, reviewer, then: "back"|"you"|"stop"|null,
+ *              output, exitCode, at }                 what the check printed
  *   you      { action, reason, at }                    your move
  *   came     { reason, at }                            it came to you
  *   now      { state: "working"|"checking"|"waiting"|"needs-you"|"done"|
@@ -120,6 +135,7 @@ export function jobTimeline(goal, { nameOf = () => null } = {}) {
   const steps = new Map((flow.steps || []).map((s) => [s.id, s]));
   const bot = jobBot(goal);
   const asked = askedBy(goal, nameOf);
+  const maxRounds = (task && task.maxRounds) || flow.maxRounds || 3;
   const rows = [
     {
       type: "asked",
@@ -166,6 +182,7 @@ export function jobTimeline(goal, { nameOf = () => null } = {}) {
       rows.push({
         type: "try",
         n: tries,
+        of: Math.max(maxRounds, tries),
         at: r.at,
         ms: tryMs(r, goal.runs, bot.id),
         answer: answerOf(r),
@@ -176,11 +193,13 @@ export function jobTimeline(goal, { nameOf = () => null } = {}) {
     const reviewer = step.kind === "bot";
     const name = step.name || (reviewer ? r.botName : null) || "A check";
     if (r.status === "passed") {
+      const { output } = checkOutputOf(r);
       passed.push({
         name,
         ...(reviewer
           ? { reviewer: r.botName || "a reviewer", said: r.summary || "" }
           : {}),
+        ...(output ? { output } : {}),
       });
       return;
     }
@@ -203,6 +222,7 @@ export function jobTimeline(goal, { nameOf = () => null } = {}) {
         reason: r.summary || "",
         reviewer: reviewer ? r.botName || "a reviewer" : null,
         then,
+        ...checkOutputOf(r),
         at: r.at,
       });
       return;
@@ -230,7 +250,7 @@ export function jobTimeline(goal, { nameOf = () => null } = {}) {
     since,
     work,
     round: (task && task.round) || 1,
-    maxRounds: (task && task.maxRounds) || flow.maxRounds || 3,
+    maxRounds,
     bot: bot.name,
     approved: history.some((r) => r.by === "you" && r.status === "done"),
     // It came to you because a check failed (not, say, a missing record).

@@ -11,6 +11,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { whenText } from "../Issues/issueText";
 import { diagramWidgets, widgetEdges } from "../Bots/widgetDiagram";
 import { handsOnTargets } from "../Bots/checksView";
+import { CheckOutput } from "./JobCheckRows";
 import {
   durationText,
   eventText,
@@ -235,7 +236,7 @@ export const BotJobDetail = ({
             <span className="flex flex-row flex-wrap items-center gap-2">
               <span className={`text-sm ${strong}`}>
                 <span className="font-semibold">{bot.name}</span>
-                {` finished, try ${r.n}`}
+                {` finished, try ${r.n} of ${r.of}`}
                 <span className={muted}>
                   {` · ${whenText(r.at, now)}${durationText(r.ms) ? ` · ${durationText(r.ms)}` : ""}`}
                 </span>
@@ -276,6 +277,7 @@ export const BotJobDetail = ({
             {r.reason ? (
               <span className={`text-sm ${muted}`}>{r.reason}</span>
             ) : null}
+            <CheckOutput output={r.output} exitCode={r.exitCode} />
             <span className={`text-xs ${muted}`}>
               {r.then === "back"
                 ? `Sent back to ${bot.name} with that.`
@@ -309,6 +311,15 @@ export const BotJobDetail = ({
                   .join(" · ")}
               </span>
             ) : null}
+            {r.names
+              .filter((n) => n.output)
+              .map((n, j) => (
+                <CheckOutput
+                  key={j}
+                  output={n.output}
+                  label={r.names.length > 1 ? n.name : null}
+                />
+              ))}
           </Row>
         );
       case "you":

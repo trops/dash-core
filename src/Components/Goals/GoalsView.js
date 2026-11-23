@@ -54,6 +54,8 @@ export const GoalsView = ({
   useEffect(() => {
     if (!openGoal || !openGoal.goalId) return;
     setFilter("all");
+    // From a job's step (See checks): its checks replace the job shown.
+    setJobId(null);
     setSelectedId(openGoal.goalId);
     // Opened once: coming back to Jobs later doesn't open it again.
     if (onOpenedGoal) onOpenedGoal();
