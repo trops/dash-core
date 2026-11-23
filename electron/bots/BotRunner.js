@@ -43,6 +43,7 @@ const {
   retryDelay,
 } = require("./retryPolicy");
 const { redactArgs } = require("../issues/issueStore");
+const { missingTool, needsMessage } = require("./runEnv");
 
 const QUIT = Symbol("quit");
 
@@ -390,6 +391,8 @@ class BotRunner {
     // Each call's input, by id — only kept on the run when the call fails.
     const callInputs = new Map();
     const toolErrors = [];
+    // Shell commands it found missing (DASH-53), each warned about once.
+    const neededTools = new Set();
     let providerOf = () => null;
     // This run's granted Claude connectors (set once its tools resolve).
     let linkedConnectors = [];
@@ -684,6 +687,23 @@ class BotRunner {
                     : JSON.stringify(event.output || ""),
                 ).slice(0, 500),
               });
+            }
+            // A shell command that isn't installed: one plain warning on
+            // the run, naming it (DASH-53) — not a confusing failure later.
+            if (toolCalls[at].tool === "Bash") {
+              const tool = missingTool(
+                typeof event.output === "string"
+                  ? event.output
+                  : JSON.stringify(event.output || ""),
+              );
+              if (tool && !neededTools.has(tool)) {
+                neededTools.add(tool);
+                emit({
+                  type: "warning",
+                  message: needsMessage(tool),
+                  provider: "computer",
+                });
+              }
             }
           }
           if (event.type === "session") {

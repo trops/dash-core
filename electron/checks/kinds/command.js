@@ -16,6 +16,7 @@ const os = require("os");
 const path = require("path");
 const { spawn: nodeSpawn } = require("child_process");
 const { blockedBy } = require("../commandRules");
+const { runEnv, missingTool, needsMessage } = require("../../bots/runEnv");
 
 const DEFAULT_TIMEOUT_SEC = 120;
 const MAX_TIMEOUT_SEC = 30 * 60;
@@ -120,7 +121,12 @@ function runCommand(check, input, opts = {}) {
       child = spawn(command, {
         cwd,
         shell: true,
-        env: { ...process.env, ...(opts.env || {}), DASH_INPUT: inputFile },
+        // The user's PATH, not the Mac app's bare one (DASH-53).
+        env: {
+          ...runEnv(process.env),
+          ...(opts.env || {}),
+          DASH_INPUT: inputFile,
+        },
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (e) {
@@ -162,9 +168,13 @@ function runCommand(check, input, opts = {}) {
       }
       const proof = proofLine(out);
       const ok = passes(check, code, out);
+      // A tool that isn't installed says so, plainly (DASH-53).
+      const missing =
+        !ok && code === 127 ? missingTool(`${err}\n${out}`) : null;
       finish({
         pass: ok,
         reason:
+          (missing && needsMessage(missing)) ||
           (proof && typeof proof.reason === "string" && proof.reason) ||
           (ok ? `Passed (exit ${code})` : `Failed (exit ${code})`),
         details: proof && proof.details !== undefined ? proof.details : null,
