@@ -1630,3 +1630,54 @@ describe("BotRunner — a built-in tool the user always allowed", () => {
     assert.deepEqual(created, ["WebFetch"]);
   });
 });
+
+describe("BotRunner — GitHub sign-in (DASH-55)", () => {
+  it("passes its GitHub provider's token to the engine, and warns once when GitHub refuses it", async () => {
+    const refused =
+      "remote: Invalid username or token.\nfatal: Authentication failed for 'https://github.com/o/r.git/'";
+    const engine = mockEngine([
+      {
+        type: "tool_call",
+        id: "c1",
+        name: "Bash",
+        input: { command: "git push" },
+      },
+      { type: "tool_result", id: "c1", output: refused, isError: true },
+      {
+        type: "tool_call",
+        id: "c2",
+        name: "Bash",
+        input: { command: "git push" },
+      },
+      { type: "tool_result", id: "c2", output: refused, isError: true },
+      { type: "done", stopReason: "end_turn" },
+    ]);
+    const seen = [];
+    const { runner } = makeRunner(engine, {
+      deps: {
+        resolveTools: async () => ({
+          tools: [],
+          resolveServer: () => null,
+          gitToken: "github_pat_RUNNER123456",
+        }),
+      },
+    });
+    await runner.run("bot_1", { prompt: "go", emit: (e) => seen.push(e) });
+    assert.equal(engine.lastCtx.gitToken, "github_pat_RUNNER123456");
+    const warned = seen.filter(
+      (e) => e.type === "warning" && e.provider === "GitHub",
+    );
+    assert.equal(warned.length, 1);
+    assert.match(
+      warned[0].message,
+      /check the token in this bot's GitHub provider/,
+    );
+  });
+
+  it("no GitHub provider: no token on the run", async () => {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine);
+    await runner.run("bot_1", { prompt: "go" });
+    assert.equal(engine.lastCtx.gitToken, undefined);
+  });
+});

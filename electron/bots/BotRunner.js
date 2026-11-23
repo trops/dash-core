@@ -44,6 +44,7 @@ const {
 } = require("./retryPolicy");
 const { redactArgs } = require("../issues/issueStore");
 const { missingTool, needsMessage } = require("./runEnv");
+const { signInProblem } = require("./gitSignIn");
 
 const QUIT = Symbol("quit");
 
@@ -393,6 +394,10 @@ class BotRunner {
     const toolErrors = [];
     // Shell commands it found missing (DASH-53), each warned about once.
     const neededTools = new Set();
+    // A refused GitHub sign-in, warned about once (DASH-55).
+    let signInWarned = false;
+    // The bot's GitHub token for git and gh, from its GitHub provider.
+    let gitToken = null;
     let providerOf = () => null;
     // This run's granted Claude connectors (set once its tools resolve).
     let linkedConnectors = [];
@@ -443,7 +448,10 @@ class BotRunner {
         // What the bot should know about this run's tools ("Gmail was
         // left out"), added to its instructions.
         notes: toolNotes = [],
+        // Its GitHub provider's token, for git and gh (DASH-55).
+        gitToken: resolvedGitToken = null,
       } = await this._resolveTools(bot, { ...opts, emit });
+      gitToken = resolvedGitToken;
       providerOf = (name) => {
         try {
           return resolveServer(name) || null;
@@ -604,6 +612,8 @@ class BotRunner {
         leadRequest,
         createApproval,
       };
+      // Its git and gh commands sign in to GitHub with it (DASH-55).
+      if (gitToken) ctx.gitToken = gitToken;
       if (connectors.length) {
         ctx.connectors = connectors;
         ctx.connectorServers = connectorServers;
@@ -703,6 +713,19 @@ class BotRunner {
                   message: needsMessage(tool),
                   provider: "computer",
                 });
+              }
+              // GitHub refused the sign-in: say where to fix it (DASH-55).
+              const signIn =
+                !signInWarned &&
+                signInProblem(
+                  typeof event.output === "string"
+                    ? event.output
+                    : JSON.stringify(event.output || ""),
+                  { hasToken: !!gitToken },
+                );
+              if (signIn) {
+                signInWarned = true;
+                emit({ type: "warning", message: signIn, provider: "GitHub" });
               }
             }
           }

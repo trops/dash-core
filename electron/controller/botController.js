@@ -273,6 +273,10 @@ const {
   CONNECTOR_CLASS,
   checkToolCall,
 } = require("../bots/toolSources");
+const { gitTokenFor } = require("../bots/gitSignIn");
+// What a bot with a GitHub provider is told about git (DASH-55).
+const GIT_SIGNED_IN_NOTE =
+  "git and gh are signed in to GitHub for this run, from your GitHub provider: clone, push and open pull requests with them as usual (https://github.com/… or git@github.com:… addresses both work). Never print, echo or write down the token.";
 const {
   createConnectorLister,
   readClaudeAuthStatus,
@@ -7127,6 +7131,21 @@ const botController = {
     }
   },
 
+  /** The token of the bot's GitHub provider, or null (DASH-55). Never logged. */
+  async _gitTokenFor(bot) {
+    if (!this._providers || !this._providers.getProvider) return null;
+    try {
+      const win = this._getMainWindow();
+      return await gitTokenFor({
+        bot,
+        getProvider: async (name) =>
+          this._providers.getProvider(win, this._appId, name),
+      });
+    } catch (_e) {
+      return null;
+    }
+  },
+
   _connectedServers() {
     return this._mcp && this._mcp.listConnectedServers
       ? this._mcp.listConnectedServers()
@@ -7221,6 +7240,7 @@ const botController = {
         });
       }
     }
+    const gitToken = await this._gitTokenFor(bot);
     // Each provider's declared tools (Settings → Providers) are the ceiling;
     // the bot's toolSelections narrow within them.
     const { tools, toolServer, allowedFor } = resolveBotTools({
@@ -7263,7 +7283,11 @@ const botController = {
       connectors: linked.connectors,
       connectorServers: linked.connectorServers,
       readOnlyTools: linked.readOnly,
-      notes: linked.notes || [],
+      notes: gitToken
+        ? [...(linked.notes || []), GIT_SIGNED_IN_NOTE]
+        : linked.notes || [],
+      // Its GitHub provider's token signs its git and gh in (DASH-55).
+      gitToken,
     };
   },
 

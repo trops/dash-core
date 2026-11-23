@@ -1303,3 +1303,55 @@ describe('claudeAgentEngine — "unattended" (DASH-54)', () => {
     assert.deepEqual(seen, []);
   });
 });
+
+describe("GitHub sign-in (DASH-55)", () => {
+  const TOKEN = "github_pat_ENGINE123456";
+
+  it("a run with a GitHub token signs git and gh in, in its own env only", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(ctx({ gitToken: TOKEN })));
+    const env = captured.options.env;
+    assert.equal(env.GH_TOKEN, TOKEN);
+    assert.equal(env.DASH_GIT_TOKEN, TOKEN);
+    assert.equal(env.GIT_TERMINAL_PROMPT, "0");
+    assert.ok(Number(env.GIT_CONFIG_COUNT) >= 4);
+    assert.notEqual(process.env.GH_TOKEN, TOKEN);
+  });
+
+  it("without one, nothing is added", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(ctx()));
+    assert.equal(captured.options.env.DASH_GIT_TOKEN, undefined);
+  });
+
+  it("the token never shows in what the run sends back", async () => {
+    stubQuery([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "text", text: `the token is ${TOKEN}` },
+            {
+              type: "tool_use",
+              id: "t1",
+              name: "Bash",
+              input: { command: `echo ${TOKEN}` },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "t1", content: TOKEN }],
+        },
+      },
+      { type: "result", subtype: "success", usage: {} },
+    ]);
+    const events = await collect(
+      claudeAgentEngine.run(ctx({ gitToken: TOKEN })),
+    );
+    assert.ok(events.some((e) => e.type === "tool_result"));
+    assert.ok(!JSON.stringify(events).includes(TOKEN));
+  });
+});
