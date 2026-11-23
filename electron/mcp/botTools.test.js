@@ -1212,3 +1212,204 @@ describe("tools that are off", () => {
     assert.deepEqual(byName.confirm_bot.onWith, ["create_bot", "update_bot"]);
   });
 });
+
+describe("checks over MCP (DASH-52)", () => {
+  const validate = {
+    kind: "check",
+    name: "Validate",
+    check: { kind: "command", command: "./scripts/ci.sh", timeoutSec: 900 },
+  };
+  const withPr = {
+    kind: "check",
+    name: "Finished with a PR",
+    check: {
+      kind: "command",
+      command: '/bin/cat "$DASH_INPUT"',
+      passWhen: { matches: "PR: https://github\\.com/" },
+    },
+  };
+  const withReviewer = (extra = {}) => ({
+    state: {
+      bots: [
+        ...baseBots(),
+        { id: "b_reviewer", workspaceId: "1", name: "Reviewer" },
+      ],
+      ...extra,
+    },
+  });
+
+  it("update_bot sets checks as the Bots tab saves them, and says so", async () => {
+    const { handlers, state } = setup(withReviewer());
+    const w = body(
+      await handlers.update_bot({
+        bot: "Writer",
+        checks: {
+          steps: [validate, { kind: "reviewer", bot: "Reviewer" }, withPr],
+          onFail: "retry",
+          maxTries: 3,
+        },
+      }),
+    );
+    assert.equal(w.status, "waiting");
+    const saved = state.checks[0].checks;
+    assert.deepEqual(
+      saved.steps.map((s) => [
+        s.kind,
+        s.botId || null,
+        s.check && s.check.kind,
+      ]),
+      [
+        ["check", null, "command"],
+        ["reviewer", "b_reviewer", undefined],
+        ["check", null, "command"],
+      ],
+    );
+    assert.equal(saved.onFail, "retry");
+    assert.equal(saved.maxTries, 3);
+    assert.equal(saved.handsOn, "answer");
+    assert.deepEqual(saved.steps[2].check.passWhen, {
+      matches: "PR: https://github\\.com/",
+    });
+    assert.match(
+      w.summary,
+      /Checks: none \(its work goes straight on\) → 1\. "Validate": runs `\.\/scripts\/ci\.sh`; passes when it exits 0; 2\. "Reviewer": Reviewer reviews the work; 3\. "Finished with a PR": runs .*passes when output matches/,
+    );
+    assert.match(w.summary, /up to 3 tries/);
+    const ok = body(
+      await handlers.confirm_bot({
+        requestId: w.requestId,
+        passphrase: "purple otter",
+      }),
+    );
+    assert.equal(ok.status, "changed");
+    assert.equal(state.saves[0].def.checks.steps.length, 3);
+  });
+
+  it("list_bots shows a bot's checks", async () => {
+    const { handlers } = setup({
+      state: {
+        bots: baseBots().map((b) =>
+          b.id === "b_writer" ? { ...b, checks: { steps: [validate] } } : b,
+        ),
+      },
+    });
+    const writer = body(await handlers.list_bots({})).bots.find(
+      (b) => b.id === "b_writer",
+    );
+    assert.equal(writer.checks.steps[0].check.command, "./scripts/ci.sh");
+    assert.equal(writer.checks.onFail, "retry");
+  });
+
+  it("the same checks again change nothing", async () => {
+    const { handlers, state } = setup({
+      state: {
+        asks: false,
+        bots: baseBots().map((b) =>
+          b.id === "b_writer" ? { ...b, checks: { steps: [validate] } } : b,
+        ),
+      },
+    });
+    const b = body(
+      await handlers.update_bot({
+        bot: "Writer",
+        checks: { steps: [validate] },
+      }),
+    );
+    assert.equal(state.saves.length, 0, JSON.stringify(b));
+  });
+
+  it("{ steps: [] } removes them, said as more access", async () => {
+    const { handlers, state } = setup({
+      state: {
+        bots: baseBots().map((b) =>
+          b.id === "b_writer"
+            ? { ...b, checks: { steps: [validate, { kind: "you" }] } }
+            : b,
+        ),
+      },
+    });
+    const w = body(
+      await handlers.update_bot({ bot: "Writer", checks: { steps: [] } }),
+    );
+    assert.equal(state.checks[0].checks, null);
+    assert.match(
+      w.summary,
+      /Checks: .* → none \(its work goes straight on\) \(more access\)/,
+    );
+  });
+
+  it("create_bot takes checks, and its summary lists them", async () => {
+    const { handlers, state } = setup(withReviewer());
+    const w = body(
+      await handlers.create_bot(
+        newBot({
+          checks: {
+            steps: [
+              { kind: "reviewer", bot: "b_reviewer" },
+              { kind: "you", name: "Merge?" },
+            ],
+            onFail: "you",
+          },
+        }),
+      ),
+    );
+    assert.equal(w.status, "waiting");
+    assert.equal(state.checks[0].checks.steps[0].botId, "b_reviewer");
+    assert.match(
+      w.summary,
+      /Checks: 1\. "Reviewer": Reviewer reviews the work; 2\. "Merge\?": waits for the user to approve; a fail goes to the user\./,
+    );
+  });
+
+  it("checks that couldn't run come back with every reason; nothing is saved", async () => {
+    const { handlers, state } = setup(withReviewer());
+    const b = body(
+      await handlers.update_bot({
+        bot: "Writer",
+        checks: {
+          steps: [
+            { kind: "check", check: { kind: "command", command: "  " } },
+            { kind: "check", check: { kind: "tool", server: "GitHub" } },
+            { kind: "reviewer", bot: "Nobody" },
+            { kind: "reviewer", bot: "Writer" },
+            { kind: "reviewer" },
+          ],
+        },
+      }),
+    );
+    assert.equal(b.status, "invalid");
+    assert.equal(b.reasons.length, 5, b.reasons.join("\n"));
+    assert.match(b.reasons[0], /Check 1: a command check needs its command/);
+    assert.match(
+      b.reasons[1],
+      /Check 2: a tool check needs its server and tool/,
+    );
+    assert.match(b.reasons[2], /no bot named "Nobody"/);
+    assert.match(b.reasons[3], /can't review its own work/);
+    assert.match(b.reasons[4], /needs the bot that reviews/);
+    assert.equal(state.saves.length, 0);
+  });
+
+  it("a wrong kind or onFail is refused", async () => {
+    const { handlers } = setup();
+    const b1 = body(
+      await handlers.update_bot({
+        bot: "Writer",
+        checks: { steps: [{ kind: "maybe" }] },
+      }),
+    );
+    assert.equal(b1.status, "invalid");
+    assert.match(b1.reasons[0], /kind must be one of check, reviewer, you/);
+    const b2 = body(
+      await handlers.update_bot({
+        bot: "Writer",
+        checks: { steps: [validate], onFail: "later" },
+      }),
+    );
+    assert.match(b2.reasons[0], /onFail must be one of retry, you, stop/);
+    const b3 = body(
+      await handlers.update_bot({ bot: "Writer", checks: [validate] }),
+    );
+    assert.match(b3.reasons[0], /checks must be an object/);
+  });
+});
