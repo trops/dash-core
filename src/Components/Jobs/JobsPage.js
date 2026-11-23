@@ -14,6 +14,7 @@ import { ManageLayout } from "../AppPages/ManageLayout";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useJob, useJobs } from "../../hooks/useJobs";
 import { openRunConversation } from "../Bots/runConversation";
+import { JobCheckRows } from "../Goals/JobCheckRows";
 import {
   JOB_STATUS,
   STEP_STATUS,
@@ -152,6 +153,7 @@ const JobStep = ({ job, step, last }) => {
             {step.summary}
           </span>
         ) : null}
+        {step.goalId ? <JobCheckRows goalId={step.goalId} /> : null}
         <span className="flex flex-row flex-wrap gap-2">
           {step.status === "needs-you" && step.waiting === "paused" ? (
             <Button
