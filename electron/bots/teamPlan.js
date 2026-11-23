@@ -700,10 +700,10 @@ function validatePlan(plan, context = {}) {
       // a value the bot can't take is left out, and said.
       if (
         p.approvalPolicy !== undefined &&
-        !["ask", "ask-every", "allow"].includes(p.approvalPolicy)
+        !["ask", "ask-every", "allow", "unattended"].includes(p.approvalPolicy)
       ) {
         warnings.push(
-          `${at}.approvalPolicy should be "ask", "ask-every" or "allow" — it's left as "ask".`,
+          `${at}.approvalPolicy should be "ask", "ask-every", "allow" or "unattended" — it's left as "ask".`,
         );
       }
       if (

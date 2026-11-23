@@ -317,3 +317,28 @@ describe("createRequestPermission — a run its lead started (DASH-29)", () => {
     assert.equal(approvals.length, 0);
   });
 });
+
+describe('createRequestPermission — "unattended" (DASH-54)', () => {
+  const risky = (name) => /delete|send/.test(name);
+
+  it("runs its providers' tools without asking, on its lead's runs too", async () => {
+    const { requestPermission, approvals, audit } = setup({
+      approvalPolicy: "unattended",
+      leadRequest: true,
+      deletesOrSends: risky,
+    });
+    const d = await requestPermission("mcp__github__delete_branch", {});
+    assert.equal(d.allow, true);
+    assert.equal(approvals.length, 0);
+    assert.equal(audit[0].outcome, "policy-allow");
+  });
+
+  it("a pause still stops it", async () => {
+    const { requestPermission } = setup({
+      approvalPolicy: "unattended",
+      isPaused: () => true,
+    });
+    const d = await requestPermission("mcp__github__create_issue", {});
+    assert.equal(d.allow, false);
+  });
+});

@@ -27,7 +27,7 @@ const { botEventType, parseResultEventType } = require("./botEvents");
 const SCHEMA_VERSION = 1;
 const TEAM_TYPE = "bot-team";
 const AI_TYPES = ["anthropic", "openai", "xai"];
-const APPROVAL_POLICIES = ["ask", "ask-every", "allow"];
+const APPROVAL_POLICIES = ["ask", "ask-every", "allow", "unattended"];
 // What imported bots ask before (decided 2026-10-05): a shared file can't
 // switch prompts off.
 const IMPORT_APPROVAL_POLICY = "ask";

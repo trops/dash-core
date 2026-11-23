@@ -37,7 +37,7 @@ const { deletesOrSends } = require("../bots/riskyTools");
 const { cleanFrom, TASK_EXPIRES_MS } = require("../bots/mcpTasks");
 
 const BUILTIN = ["none", "read-only", "all"];
-const POLICIES = ["ask", "ask-every", "allow"];
+const POLICIES = ["ask", "ask-every", "allow", "unattended"];
 const WHILE_PAUSED = ["queue", "drop"];
 const BOT_EVENTS = ["completed", "failed"];
 // A widget event's name, as widgets declare them.
@@ -63,6 +63,8 @@ const POLICY_WORDS = {
   "ask-every": "asks before every tool",
   allow:
     "uses its tools without asking, except deleting or sending when its lead asks",
+  unattended:
+    "never asks, on any run: everything inside its folders runs, anything outside them is refused",
 };
 const WHILE_PAUSED_WORDS = {
   queue: "what starts it is kept for when it's turned on",
@@ -72,7 +74,7 @@ const ALWAYS_BLOCKED =
   "Always blocked, whatever is listed: git push --force, git reset --hard, rm -rf, pushing to the main branch, and publishing a package.";
 // More of each is wider access.
 const BUILTIN_RANK = { none: 0, "read-only": 1, all: 2 };
-const POLICY_RANK = { "ask-every": 0, ask: 1, allow: 2 };
+const POLICY_RANK = { "ask-every": 0, ask: 1, allow: 2, unattended: 3 };
 
 const SET_UP_TEAMS =
   'The user can choose teams in Dash: Settings › MCP Server › Tools › Bots › "Which teams".';
@@ -137,7 +139,7 @@ const BOT_FIELDS = {
     type: "string",
     enum: POLICIES,
     description:
-      "'ask' (asks before anything that changes things), 'ask-every' (before every tool) or 'allow' (without asking; deleting or sending still asks when its lead asks). New bots: 'ask' unless given.",
+      "'ask' (asks before anything that changes things), 'ask-every' (before every tool) or 'allow' (without asking; deleting or sending still asks when its lead asks) or 'unattended' (never asks, on any run: inside its folders everything runs, outside them is refused; it needs folders). New bots: 'ask' unless given.",
   },
   providers: {
     type: "array",

@@ -17,8 +17,10 @@ const { checksError } = require("./botChecks");
 const SCHEMA_VERSION = 1;
 
 // "ask": ask before tools that aren't read-only; "ask-every": ask before
-// every tool; "allow": never ask.
-const APPROVAL_POLICIES = new Set(["ask", "ask-every", "allow"]);
+// every tool; "allow": never ask; "unattended" (DASH-54): never asks, never
+// re-asks on a run its lead started — inside its folders everything runs,
+// outside them is refused. It needs folders.
+const APPROVAL_POLICIES = new Set(["ask", "ask-every", "allow", "unattended"]);
 // What a bot may do on the computer itself (DASH-27). Left out → "all".
 const BUILTIN_TOOLS = new Set(["none", "read-only", "all"]);
 const WHILE_PAUSED = new Set(["queue", "drop"]);
@@ -126,6 +128,17 @@ function validateBotDefinition(def) {
     if (typeof def.engine !== "string" || !def.engine) {
       errors.push("engine must be null or a non-empty string");
     }
+  }
+  if (
+    def.approvalPolicy === "unattended" &&
+    !(
+      Array.isArray(def.projects) &&
+      def.projects.some((p) => String(p || "").trim())
+    )
+  ) {
+    errors.push(
+      "an unattended bot needs at least one folder it works in: that's where it may do everything, and outside them it's refused",
+    );
   }
   if (!APPROVAL_POLICIES.has(def.approvalPolicy)) {
     errors.push(

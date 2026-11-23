@@ -1083,7 +1083,7 @@ function planBotDefinition(piece, { dashboardId, sources, team }) {
  * A planned bot's approval policy and run limits (DASH-26): only valid
  * values — anything else keeps the bot's defaults.
  */
-const PLAN_POLICIES = new Set(["ask", "ask-every", "allow"]);
+const PLAN_POLICIES = new Set(["ask", "ask-every", "allow", "unattended"]);
 const PLAN_BUILTINS = new Set(["none", "read-only", "all"]);
 function planBotSettings(piece) {
   const out = {};
