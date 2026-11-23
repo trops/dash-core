@@ -1187,3 +1187,119 @@ describe("claudeAgentEngine — a bot's folders (DASH-47)", () => {
     assert.equal(r.behavior, "deny");
   });
 });
+
+describe('claudeAgentEngine — "unattended" (DASH-54)', () => {
+  const fs = require("fs");
+  const path = require("path");
+  const { tempDir } = require("../../testUtils/tempDir");
+
+  let root;
+  function unattendedCtx(seen, over = {}) {
+    root = root || tempDir("engine-unattended-");
+    return ctx({
+      approvalPolicy: "unattended",
+      workingDir: root,
+      projects: [root],
+      leadRequest: true,
+      requestPermission: async (name) => {
+        seen.push(`gate:${name}`);
+        return { allow: false };
+      },
+      createApproval: () => {
+        seen.push("asked");
+        return { promise: Promise.resolve({ allow: false }) };
+      },
+      ...over,
+    });
+  }
+  async function hook(c) {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(c));
+    return captured.options.canUseTool;
+  }
+
+  it("on a run its lead started, does everything inside its folders without asking", async () => {
+    const seen = [];
+    const can = await hook(unattendedCtx(seen));
+    const clone = path.join(root, "DASH-60");
+    fs.mkdirSync(clone, { recursive: true });
+    const file = path.join(clone, "src", "a.js");
+    for (const [tool, input] of [
+      [
+        "Bash",
+        { command: `cd ${root} && git clone https://github.com/o/r DASH-60` },
+      ],
+      ["Write", { file_path: file, content: "x" }],
+      ["Edit", { file_path: file, old_string: "x", new_string: "y" }],
+      ["Bash", { command: `cd ${clone} && npm ci && ./scripts/ci.sh` }],
+      ["Bash", { command: `cd ${clone} && git push -u origin fix/DASH-60` }],
+      ["Bash", { command: `rm -rf ${clone}` }],
+      ["WebFetch", { url: "https://example.com" }],
+      ["mcp__bot-mcp__create_pull_request", { title: "x" }],
+    ]) {
+      const r = await can(tool, input);
+      assert.equal(r.behavior, "allow", `${tool} ${JSON.stringify(input)}`);
+    }
+    assert.deepEqual(seen, []);
+  });
+
+  it("refuses anything outside its folders, never asking", async () => {
+    const seen = [];
+    const can = await hook(unattendedCtx(seen));
+    for (const [tool, input] of [
+      ["Write", { file_path: "/tmp/elsewhere.js" }],
+      ["Read", { file_path: "~/.ssh/config" }],
+      ["Bash", { command: "cat ~/.ssh/config" }],
+      ["Bash", { command: `cd ${root} && cd .. && ls` }],
+    ]) {
+      const r = await can(tool, input);
+      assert.equal(r.behavior, "deny", `${tool} ${JSON.stringify(input)}`);
+    }
+    assert.deepEqual(seen, []);
+  });
+
+  it("rm -rf only of folders strictly inside its folders", async () => {
+    const seen = [];
+    const can = await hook(unattendedCtx(seen));
+    for (const command of [
+      `rm -rf ${root}`, // its folder itself
+      "rm -rf /tmp/x", // outside
+      `rm -rf ${path.join(root, "..", "x")}`, // up and out
+      `rm -rf ${path.join(root, "*")}`, // a wildcard
+      "rm -rf build", // relative: the shell may have moved
+      `rm -rf ${path.join(root, "a")} && ls`, // more than the rm
+      `rm -rf $HOME/x`, // a variable
+    ]) {
+      const r = await can("Bash", { command });
+      assert.equal(r.behavior, "deny", command);
+    }
+    assert.deepEqual(seen, []);
+  });
+
+  it("still refuses the always-blocked rules (force-push, publishing)", async () => {
+    const seen = [];
+    const can = await hook(unattendedCtx(seen));
+    for (const command of [
+      `cd ${root} && git push --force`,
+      `cd ${root} && npm publish`,
+    ]) {
+      const r = await can("Bash", { command });
+      assert.equal(r.behavior, "deny", command);
+      assert.match(r.message, /always blocked/);
+    }
+    assert.deepEqual(seen, []);
+  });
+
+  it("with no folders, changes nothing on the computer", async () => {
+    const seen = [];
+    const can = await hook(unattendedCtx(seen, { projects: [] }));
+    const w = await can("Write", { file_path: "/tmp/bot_1/files/x" });
+    assert.equal(w.behavior, "deny");
+    assert.match(w.message, /no folders to work in/);
+    const b = await can("Bash", { command: "ls" });
+    assert.equal(b.behavior, "deny");
+    const r = await can("Read", { file_path: "/tmp/bot_1/files/x" });
+    assert.equal(r.behavior, "allow");
+    assert.deepEqual(seen, []);
+  });
+});

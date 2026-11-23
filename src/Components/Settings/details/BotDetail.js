@@ -145,6 +145,8 @@ const APPROVAL_HINTS = {
     "Asks before every tool, reads included, unless you chose Always allow.",
   allow:
     "Runs every tool without asking. When its team lead asks it, these still ask first: tools that delete or send (unless you chose Always allow), and file changes, shell commands and web fetches.",
+  unattended:
+    "Never asks, on any run, its lead's included: inside its folders it reads, writes, deletes and runs commands; anything outside them is refused. Its checks still hold its work. Needs at least one folder.",
 };
 
 // What a bot may do on the computer itself (DASH-27).
@@ -164,6 +166,7 @@ const APPROVAL_OPTIONS = [
   { value: "ask", label: "Ask before external actions" },
   { value: "ask-every", label: "Ask before every tool" },
   { value: "allow", label: "Allow without prompting" },
+  { value: "unattended", label: "Unattended (never asks; only its folders)" },
 ];
 
 // Events that arrive while the bot is paused or over budget (US-011 AC8).

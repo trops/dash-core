@@ -30,7 +30,7 @@
  *   allowedTools?: string[],
  *   mcpServers?: string[],
  *   internalServers?: string[],
- *   approvalPolicy?: "ask" | "ask-every" | "allow",
+ *   approvalPolicy?: "ask" | "ask-every" | "allow" | "unattended",
  *   isReadOnly?: (toolName: string) => boolean,
  *   leadRequest?: boolean,
  *   deletesOrSends?: (toolName: string) => boolean,
@@ -128,9 +128,10 @@ function createRequestPermission(ctx) {
     //     runs without a prompt (pause and unconfigured servers still apply)
     //     — except, on a run its lead started, a tool that deletes or sends
     //     (DASH-29): that goes on to the checks below.
+    //     "unattended" (DASH-54) never asks, on any run: nobody is there.
     if (
-      approvalPolicy === "allow" &&
-      !(leadRequest && deletesOrSends(toolName))
+      approvalPolicy === "unattended" ||
+      (approvalPolicy === "allow" && !(leadRequest && deletesOrSends(toolName)))
     ) {
       return record(
         toolName,

@@ -43,6 +43,7 @@ const {
   fileToolOutside,
   bashOutside,
   bashSends,
+  rmInside,
 } = require("./folderFence");
 const {
   connectorForTool,
@@ -178,7 +179,15 @@ function _allowedBuiltins(ctx) {
 }
 
 /** Build the SDK canUseTool hook from the run context. */
-function _makeCanUseTool(ctx) {
+function _makeCanUseTool(runCtx) {
+  // "unattended" (DASH-54): nobody is there to ask, on any run — its lead's
+  // included. It decides as "allow" does on a run of its own: inside its
+  // folders everything runs, outside them is refused (the fence below), and
+  // nothing ever waits for an approval.
+  const unattended = runCtx.approvalPolicy === "unattended";
+  const ctx = unattended
+    ? { ...runCtx, approvalPolicy: "allow", leadRequest: false }
+    : runCtx;
   // A bot's folders (DASH-47): null when it has none — no fence, as before.
   const fence = makeFence(ctx);
   const outsideMessage = (what) =>
@@ -242,6 +251,20 @@ function _makeCanUseTool(ctx) {
             message: (decision && decision.reason) || "not permitted",
           };
     }
+    // An unattended bot without folders (saving refuses it; a backstop):
+    // built-ins that change things or run commands are refused, not run.
+    if (
+      unattended &&
+      !fence &&
+      !bridged &&
+      !READ_ONLY_BUILTINS.includes(toolName)
+    ) {
+      return {
+        behavior: "deny",
+        message:
+          "This unattended bot has no folders to work in, so it can't change files or run commands. Give it folders in Dash.",
+      };
+    }
     // Anything else outside this bot's built-ins — denied, never asked, even
     // under "allow".
     if (!bridged && !_allowedBuiltins(ctx).includes(toolName)) {
@@ -276,6 +299,11 @@ function _makeCanUseTool(ctx) {
       input &&
       typeof input.command === "string"
     ) {
+      // An unattended bot deletes its own work (DASH-54): rm -rf of
+      // folders strictly inside its folders, and nothing else, runs.
+      if (unattended && rmInside(fence, input.command)) {
+        return { behavior: "allow", updatedInput: input };
+      }
       const d = commandDecision(input.command, ctx.commands || {});
       if (d.decision === "blocked") {
         return {

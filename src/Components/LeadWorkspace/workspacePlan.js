@@ -711,6 +711,8 @@ const POLICY_WORDS = {
     "uses its tools without asking, except deleting or sending when its lead asks",
   ask: "asks before it changes anything",
   "ask-every": "asks before every tool",
+  unattended:
+    "never asks, on any run: everything inside its folders runs, anything outside them is refused",
 };
 // Its built-in tools, as the plan says (DASH-27).
 const BUILTIN_WORDS = {

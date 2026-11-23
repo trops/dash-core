@@ -14,6 +14,7 @@ const POLICY_LABELS = {
   ask: "Ask before external actions",
   "ask-every": "Ask before every tool",
   allow: "Allow without prompting",
+  unattended: "Unattended",
 };
 
 const MODEL_LABELS = {

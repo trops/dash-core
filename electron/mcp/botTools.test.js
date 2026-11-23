@@ -1213,6 +1213,25 @@ describe("tools that are off", () => {
   });
 });
 
+describe('update_bot — "unattended" (DASH-54)', () => {
+  it("takes the policy and says it never asks, as more access", async () => {
+    const { handlers, state } = setup();
+    const w = body(
+      await handlers.update_bot({
+        bot: "Writer",
+        approvalPolicy: "unattended",
+        projects: ["/Users/me/DashFactory"],
+      }),
+    );
+    assert.equal(w.status, "waiting");
+    assert.equal(state.checks[0].approvalPolicy, "unattended");
+    assert.match(
+      w.summary,
+      /Approvals: .* → never asks, on any run: everything inside its folders runs, anything outside them is refused \(more access\)/,
+    );
+  });
+});
+
 describe("checks over MCP (DASH-52)", () => {
   const validate = {
     kind: "check",

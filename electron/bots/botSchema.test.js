@@ -246,3 +246,27 @@ describe("botSchema.validateBotDefinition — publishes (TD-001)", () => {
     assert.match(check(many)[0], /at most 20 results/);
   });
 });
+
+describe('botSchema — "unattended" (DASH-54)', () => {
+  it("takes it with folders, refuses it without", () => {
+    const withFolders = withDefaults({
+      name: "Coder",
+      instructions: "Code it.",
+      approvalPolicy: "unattended",
+      projects: ["/Users/me/DashFactory"],
+    });
+    assert.deepEqual(validateBotDefinition(withFolders).errors, []);
+    const none = withDefaults({
+      name: "Coder",
+      instructions: "Code it.",
+      approvalPolicy: "unattended",
+      projects: [],
+    });
+    const r = validateBotDefinition(none);
+    assert.equal(r.valid, false);
+    assert.match(
+      r.errors.join("\n"),
+      /unattended bot needs at least one folder/,
+    );
+  });
+});

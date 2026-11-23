@@ -209,11 +209,48 @@ function bashSends(command) {
   return false;
 }
 
+/**
+ * Is this an `rm -r`/`rm -rf` of folders strictly inside the fence, and
+ * nothing else (DASH-54)? An unattended bot cleans up its own work this way
+ * (the Code Factory deletes a ticket's clone). Only one command, only
+ * absolute or home paths — no relative ones (the shell's folder can have
+ * moved), no wildcards, variables or "..", and never a fence folder itself.
+ */
+function rmInside(fence, command) {
+  if (!fence || typeof command !== "string") return false;
+  const parts = partsOf(command);
+  if (parts.length !== 1 || /[`$*?[{\n;&|<>]/.test(command)) return false;
+  const w = wordsOf(parts[0]);
+  if (w[0] !== "rm") return false;
+  let endOfFlags = false;
+  const targets = [];
+  for (const word of w.slice(1)) {
+    if (!endOfFlags && word === "--") {
+      endOfFlags = true;
+      continue;
+    }
+    if (!endOfFlags && word.startsWith("-")) {
+      if (!/^-[rRfdv]+$|^--(recursive|force|verbose)$/.test(word)) return false;
+      continue;
+    }
+    targets.push(word);
+  }
+  if (!targets.length) return false;
+  return targets.every((t) => {
+    const p = expandHome(t);
+    if (!path.isAbsolute(p) || p.split(/[\\/]/).includes("..")) return false;
+    const r = realPath(p);
+    if (fence.roots.includes(r)) return false;
+    return isInside(fence, p);
+  });
+}
+
 module.exports = {
   FILE_TOOL_FIELDS,
   makeFence,
   fileToolOutside,
   bashOutside,
   bashSends,
+  rmInside,
   realPath,
 };
