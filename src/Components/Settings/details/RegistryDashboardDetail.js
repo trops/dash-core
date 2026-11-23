@@ -114,9 +114,14 @@ export const RegistryDashboardDetail = ({
     return window.mainApi?.menuItems?.saveMenuItem?.(appId, menuItem);
   }
 
-  async function handleOptionsConfirm({ name, menuId }) {
+  async function handleOptionsConfirm({ name, menuId, teamValues }) {
     setShowOptionsModal(false);
-    await runInstall({ name, menuId });
+    await runInstall({
+      name,
+      menuId,
+      // Its team's settings (DASH-57).
+      ...(teamValues ? { teamValues } : {}),
+    });
   }
 
   async function runInstall(installOptions = {}) {
@@ -680,6 +685,11 @@ export const RegistryDashboardDetail = ({
         menuItems={menuItems}
         onCreateFolder={handleCreateFolder}
         onConfirm={handleOptionsConfirm}
+        teamSettings={
+          ((preview?.team || pkg.team) &&
+            (preview?.team || pkg.team).settings) ||
+          []
+        }
       />
 
       {/* Progress Modal */}

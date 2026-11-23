@@ -9,6 +9,7 @@ import {
   getStylesForItem,
   themeObjects,
 } from "@trops/dash-react";
+import { TeamSettingsForm } from "../../Bots/TeamSettingsForm";
 
 /**
  * DashboardInstallOptionsModal
@@ -48,8 +49,10 @@ import {
  *   Called when the user creates a new folder inline. Should persist
  *   via the existing `saveMenuItem` IPC. Returns the saved record so
  *   the modal can pick its id.
- * @param {({ name: string, menuId: any }) => void} onConfirm
+ * @param {({ name: string, menuId: any, teamValues?: object }) => void} onConfirm
  *   Called with the user's choices when they click Install.
+ * @param {object[]} [teamSettings]  the settings its team declares
+ *   (DASH-57): filled in here, used by its bots as {name}.
  */
 export const DashboardInstallOptionsModal = ({
   isOpen,
@@ -58,6 +61,7 @@ export const DashboardInstallOptionsModal = ({
   menuItems = [],
   onCreateFolder,
   onConfirm,
+  teamSettings = [],
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -73,6 +77,7 @@ export const DashboardInstallOptionsModal = ({
   const [newFolderName, setNewFolderName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
+  const [teamValues, setTeamValues] = useState({});
 
   // Reset state every time the modal opens with a new package.
   useEffect(() => {
@@ -82,6 +87,7 @@ export const DashboardInstallOptionsModal = ({
     setNewFolderMode(false);
     setNewFolderName("");
     setError(null);
+    setTeamValues({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, pkg?.name]);
 
@@ -133,6 +139,7 @@ export const DashboardInstallOptionsModal = ({
     onConfirm({
       name: (name || "").trim() || defaultName,
       menuId,
+      ...(teamSettings && teamSettings.length ? { teamValues } : {}),
     });
   }
 
@@ -229,6 +236,26 @@ export const DashboardInstallOptionsModal = ({
               </div>
             )}
           </div>
+
+          {teamSettings && teamSettings.length ? (
+            <div
+              className="flex flex-col gap-2"
+              data-testid="install-team-settings"
+            >
+              <label className="text-sm font-medium">Team settings</label>
+              <span className="text-[10px] opacity-50">
+                Its bots use these in their instructions, checks and folders.
+                You can change them later on the dashboard.
+              </span>
+              <TeamSettingsForm
+                settings={teamSettings}
+                values={teamValues}
+                onChange={(n, v) =>
+                  setTeamValues((prev) => ({ ...prev, [n]: v }))
+                }
+              />
+            </div>
+          ) : null}
 
           {error && (
             <div className="text-xs text-red-300 bg-red-900/30 border border-red-700/40 rounded px-3 py-2">

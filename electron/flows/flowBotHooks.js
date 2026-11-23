@@ -91,7 +91,10 @@ function flowBotHooks(ctl) {
         : run();
     },
     isBusy: (botId) => ctl._runner.listActive().includes(botId),
-    getBot: (botId) => ctl._store.get(botId) || null,
+    // As it runs: its team's settings filled in (DASH-57).
+    getBot: (botId) =>
+      (ctl.resolvedBot ? ctl.resolvedBot(botId) : ctl._store.get(botId)) ||
+      null,
     listBots: (workspaceId) =>
       ctl._store.list().filter((b) => isOnTeam(b, workspaceId)),
 

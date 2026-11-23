@@ -307,7 +307,7 @@ describe("controllers are wired (pins)", () => {
   it("import: bots installed paused and wired to the new dashboard", () => {
     assert.match(
       ctrl,
-      /^  installDashboardTeam\(workspaceId, manifest, embedded = null\)/m,
+      /^  installDashboardTeam\(workspaceId, manifest, embedded = null, values = null\)/m,
     );
     assert.match(
       ctrl,

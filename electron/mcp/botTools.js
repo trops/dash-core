@@ -12,8 +12,11 @@
  *                  team bot.
  *   update_bot   — change only the fields given. A lead's role, team and
  *                  built-in tools stay Dash's.
+ *   set_team_settings — declare a team's settings and set their values
+ *                  (DASH-57): its bots use them as {name}. Waits for the
+ *                  passphrase like a change.
  *   confirm_bot  — the passphrase for a waiting create or change (on while
- *                  create_bot or update_bot is).
+ *                  create_bot, update_bot or set_team_settings is).
  *
  * A create or change is checked first, exactly as a save is
  * (botController.checkSave): one that wouldn't save returns every reason
@@ -176,7 +179,8 @@ const BOT_FIELDS = {
   projects: {
     type: "array",
     items: { type: "string" },
-    description: "Folders it works in.",
+    description:
+      "Folders it works in: whole paths, or one of its team's settings like '{workFolder}' or '{workFolder}/repo' (set_team_settings), filled in when it runs.",
   },
   schedules: {
     type: "array",
@@ -350,9 +354,58 @@ const BOT_TOOLS = [
     },
   },
   {
+    name: "set_team_settings",
+    defaultOff: true,
+    description:
+      "Declare a team's settings and set their values. Each bot on the team can use a setting as {name} in its instructions, its check commands (and their other fields), its folders, its schedules' prompts and its triggers' notes; Dash fills in the value when it runs, so the bots keep {name} and one change reaches all of them. A folder like '{workFolder}/repo' counts for the bot's folder fence once filled in. 'declare' adds settings or replaces ones of the same name, each { name (letters, digits, _), label, type: 'text'|'url'|'folder'|'command'|'boolean'|'number', default?, description? } — a folder is a whole path (/… or ~/…), a boolean reads as yes/no. 'values' sets values by name ('' clears one, so its default is used). 'remove' takes settings away. Settings aren't secret: tokens belong in a provider. Settings travel when the team is published (their values don't); a run that uses a setting with no value fails saying which. Like update_bot it usually waits for confirm_bot. list_bots shows each team's settings.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        team: {
+          type: "string",
+          description: "The team's dashboard name or id.",
+        },
+        declare: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              label: { type: "string" },
+              type: {
+                type: "string",
+                enum: ["text", "url", "folder", "command", "boolean", "number"],
+              },
+              default: {},
+              description: { type: "string" },
+            },
+            required: ["name"],
+          },
+          description: "Settings to add or replace.",
+        },
+        values: {
+          type: "object",
+          description:
+            "Values by setting name; '' clears one (its default is used).",
+        },
+        remove: {
+          type: "array",
+          items: { type: "string" },
+          description: "Names of settings to take away.",
+        },
+        from: {
+          type: "string",
+          description:
+            "Your app's short name (e.g. 'voice-assistant'), shown to the user in Dash.",
+        },
+      },
+      required: ["team"],
+    },
+  },
+  {
     name: "confirm_bot",
-    // No switch of its own: on while either tool it confirms is.
-    onWith: ["create_bot", "update_bot"],
+    // No switch of its own: on while any tool it confirms is.
+    onWith: ["create_bot", "update_bot", "set_team_settings"],
     description:
       "Save a waiting create_bot or update_bot with the task passphrase the user just said.",
     inputSchema: {
@@ -1479,6 +1532,80 @@ function withProviderGrants(perms, changes) {
  *           now?: () => number, newId?: () => string,
  *           maxPending?: number }} deps
  */
+/**
+ * A settings change in words: { lines, names (the settings it changes),
+ * wider (a folder setting a bot works in, changed) }.
+ */
+function describeSettings(before, next, { usedBy = {} } = {}) {
+  const lines = [];
+  const names = [];
+  const wider = [];
+  const show = (d, v) =>
+    v === undefined || v === null || v === ""
+      ? "no value"
+      : d && d.type === "boolean"
+        ? v
+          ? "yes"
+          : "no"
+        : `"${oneLine(String(v))}"`;
+  const valueOf = (t, d) =>
+    t.values && Object.prototype.hasOwnProperty.call(t.values, d.name)
+      ? t.values[d.name]
+      : d.default;
+  const old = new Map((before.declared || []).map((d) => [d.name, d]));
+  const now = new Map((next.declared || []).map((d) => [d.name, d]));
+  for (const d of next.declared || []) {
+    const was = old.get(d.name);
+    const label = `${oneLine(d.label || d.name)} ({${d.name}})`;
+    if (!was) {
+      lines.push(
+        `- New setting ${label}: ${d.type}${
+          d.default !== undefined ? `, default ${show(d, d.default)}` : ""
+        }; value ${show(d, valueOf(next, d))}.`,
+      );
+      names.push(d.name);
+      continue;
+    }
+    if (stable(was) !== stable(d)) {
+      lines.push(
+        `- ${label} is declared again: ${d.type}${
+          d.default !== undefined ? `, default ${show(d, d.default)}` : ""
+        }.`,
+      );
+      names.push(d.name);
+    }
+    const a = valueOf(before, was);
+    const b = valueOf(next, d);
+    if (stable(a) !== stable(b)) {
+      const users = usedBy[d.name] || [];
+      lines.push(
+        `- ${label}: ${show(was, a)} → ${show(d, b)}${
+          users.length ? ` (used by ${users.map(oneLine).join(", ")})` : ""
+        }.`,
+      );
+      if (!names.includes(d.name)) names.push(d.name);
+      if (d.type === "folder" && users.length) {
+        wider.push(
+          `${users.map(oneLine).join(", ")} may work in ${show(d, b)}`,
+        );
+      }
+    }
+  }
+  for (const d of before.declared || []) {
+    if (now.has(d.name)) continue;
+    const users = usedBy[d.name] || [];
+    lines.push(
+      `- Remove the setting ${oneLine(d.label || d.name)} ({${d.name}})${
+        users.length
+          ? ` — ${users.map(oneLine).join(", ")} still use it, and their runs will fail until it's back`
+          : ""
+      }.`,
+    );
+    names.push(d.name);
+  }
+  return { lines, names, wider };
+}
+
 function makeBotToolHandlers({
   getWorkspaces,
   bots,
@@ -1642,6 +1769,7 @@ function makeBotToolHandlers({
 
   /** Save it: the bot, what runs without asking, on or paused, audit, notice. */
   const commit = async (request) => {
+    if (request.kind === "settings") return commitSettings(request);
     const { kind, from } = request;
     const tool = kind === "create" ? "create_bot" : "update_bot";
     if (!isOn(tool)) return off(tool);
@@ -1772,6 +1900,65 @@ function makeBotToolHandlers({
     });
   };
 
+  /** A team's settings for list_bots: { declared, values, usedBy }. */
+  const settingsOf = (teamId) => {
+    try {
+      const t = bots.teamValues ? bots.teamValues(teamId) : null;
+      return t && Array.isArray(t.declared) && t.declared.length ? t : null;
+    } catch (_e) {
+      return null;
+    }
+  };
+
+  /** Save a team's settings (set_team_settings, confirmed). */
+  const commitSettings = (request) => {
+    const tool = "set_team_settings";
+    if (!isOn(tool)) return off(tool);
+    if (!takes(request.teamId)) {
+      return json({
+        status: "failed",
+        message: `That team no longer lets MCP clients change its bots, so nothing was saved. ${SET_UP_TEAMS}`,
+      });
+    }
+    const saved = bots.setTeamValues(request.teamId, request.change);
+    if (!saved || (saved.errors && saved.errors.length)) {
+      return json({
+        status: "invalid",
+        reasons: (saved && saved.errors) || ["It couldn't be saved."],
+        message: "It wouldn't save now, so nothing was saved:",
+      });
+    }
+    const by = request.from || "an app over MCP";
+    // Each bot that uses a changed setting: in its audit log.
+    const changed = new Set(request.names);
+    for (const bot of visibleBots(
+      getWorkspaces().filter((w) => sameId(w.id, request.teamId)),
+    )) {
+      const uses = Object.entries(saved.usedBy || {}).some(
+        ([n, list]) => changed.has(n) && list.includes(bot.name || bot.id),
+      );
+      if (!uses) continue;
+      bots.logAudit({
+        type: "bot-changed",
+        botId: bot.id,
+        via: "mcp",
+        ...(request.from ? { from: request.from } : {}),
+        fields: ["team settings"],
+      });
+    }
+    bots.sendNotice({
+      kind: "mcp-changed",
+      botId: null,
+      title: "Team settings changed over MCP",
+      body: `${request.teamName}'s settings were changed by ${by}.`,
+    });
+    return json({
+      status: "changed",
+      settings: saved,
+      message: `${request.teamName}'s settings were changed.`,
+    });
+  };
+
   return {
     async list_bots(args = {}) {
       if (!isOn("list_bots")) return off("list_bots");
@@ -1797,10 +1984,76 @@ function makeBotToolHandlers({
             paused: paused.all || paused.ids.has(b.id),
           }),
         ),
-        teams: teams.map((w) => ({
-          id: String(w.id),
-          name: w.name || "Untitled",
-        })),
+        teams: teams.map((w) => {
+          const settings = settingsOf(w.id);
+          return {
+            id: String(w.id),
+            name: w.name || "Untitled",
+            ...(settings ? { settings } : {}),
+          };
+        }),
+      });
+    },
+
+    async set_team_settings(args = {}) {
+      if (!isOn("set_team_settings")) return off("set_team_settings");
+      args = args || {};
+      const workspaces = getWorkspaces();
+      const found = findTeam(workspaces, args.team);
+      if (found.reply) return found.reply;
+      const ws = found.team;
+      const change = {};
+      if (args.declare !== undefined) change.declare = args.declare;
+      if (args.values !== undefined) change.values = args.values;
+      if (args.remove !== undefined) change.remove = args.remove;
+      if (!Object.keys(change).length) {
+        return json(
+          {
+            status: "invalid",
+            message: "Give declare, values or remove: nothing to change.",
+          },
+          true,
+        );
+      }
+      if (!bots.setTeamValues || !bots.teamValues) {
+        return json(
+          { status: "failed", message: "Team settings need a newer Dash." },
+          true,
+        );
+      }
+      const before = bots.teamValues(ws.id) || { declared: [], values: {} };
+      const next = bots.setTeamValues(ws.id, change, { dryRun: true });
+      if (!next || (next.errors && next.errors.length)) {
+        return json({
+          status: "invalid",
+          reasons: (next && next.errors) || ["It couldn't be checked."],
+          message: "It wouldn't save, so nothing was saved:",
+        });
+      }
+      const { lines, names, wider } = describeSettings(before, next, {
+        usedBy: before.usedBy || {},
+      });
+      if (!lines.length) {
+        return json({
+          status: "unchanged",
+          message: `${ws.name || "That team"} already has all of that; nothing to change.`,
+        });
+      }
+      const summary = [
+        `Change the settings of ${oneLine(ws.name || "the team")}:`,
+        ...lines,
+        ...(wider.length
+          ? [`This gives bots more access (${wider.join("; ")}).`]
+          : []),
+      ].join("\n");
+      return askOrSave({
+        kind: "settings",
+        teamId: String(ws.id),
+        teamName: ws.name || "The team",
+        change,
+        names,
+        from: cleanFrom(args.from),
+        summary,
       });
     },
 
@@ -2144,7 +2397,12 @@ function makeBotToolHandlers({
           true,
         );
       }
-      const tool = request.kind === "create" ? "create_bot" : "update_bot";
+      const tool =
+        request.kind === "create"
+          ? "create_bot"
+          : request.kind === "settings"
+            ? "set_team_settings"
+            : "update_bot";
       if (!isOn(tool)) {
         pending.delete(id);
         return off(tool);
@@ -2223,6 +2481,10 @@ function registerBotTools() {
       logAudit: (entry) => botController.logAudit(entry),
       sendNotice: (notice) => botController.sendNotice(notice),
       afterSave: () => botController.afterSave(),
+      // A team's settings (DASH-57).
+      teamValues: (id) => botController.teamValues(id),
+      setTeamValues: (id, change, opts) =>
+        botController.setTeamValues(id, change, opts),
       // The user's providers and the tools each lists (null until it's
       // connected) — what runWithoutAsking is checked against.
       providerTools: (name) => {
@@ -2265,4 +2527,5 @@ module.exports = {
   registerBotTools,
   withProviderGrants,
   describeNew,
+  describeSettings,
 };

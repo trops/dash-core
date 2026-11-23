@@ -1206,10 +1206,19 @@ describe("tools that are off", () => {
 
   it("the bot tools are off by default; confirm_bot follows them", () => {
     const byName = Object.fromEntries(BOT_TOOLS.map((t) => [t.name, t]));
-    for (const n of ["list_bots", "create_bot", "update_bot"]) {
+    for (const n of [
+      "list_bots",
+      "create_bot",
+      "update_bot",
+      "set_team_settings",
+    ]) {
       assert.equal(byName[n].defaultOff, true, n);
     }
-    assert.deepEqual(byName.confirm_bot.onWith, ["create_bot", "update_bot"]);
+    assert.deepEqual(byName.confirm_bot.onWith, [
+      "create_bot",
+      "update_bot",
+      "set_team_settings",
+    ]);
   });
 });
 

@@ -1531,7 +1531,7 @@ export const LeadWorkspace = ({
     }
     setReview(r);
   };
-  const installReviewed = async (choices, roles = null) => {
+  const installReviewed = async (choices, roles = null, values = null) => {
     const b = botsApi();
     if (!b || !review) return;
     setInstalling(true);
@@ -1544,9 +1544,16 @@ export const LeadWorkspace = ({
               review.previewId,
               choices,
               roles,
+              // Its team's settings, when it has some (DASH-57).
+              ...(values ? [values] : []),
             )
-          : await b.installTeam(targetId, review.manifest, choices, roles)) ||
-        {};
+          : await b.installTeam(
+              targetId,
+              review.manifest,
+              choices,
+              roles,
+              ...(values ? [values] : []),
+            )) || {};
       if (r.error) {
         setWayError([r.error, ...(r.errors || [])].join(" "));
         return;

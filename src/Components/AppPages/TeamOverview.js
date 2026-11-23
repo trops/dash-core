@@ -10,6 +10,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { DASH_TEAM_CONTACT } from "../Bots/dashTeamContact";
 import { triggerSummary } from "../Bots/teamUtils";
+import { TeamSettingsPanel } from "../Bots/TeamSettingsForm";
 
 const howItRuns = (bot) =>
   bot && bot.system === "dash-team" ? bot.summary || "" : triggerSummary(bot);
@@ -185,6 +186,13 @@ export const TeamOverview = ({
           onRowClick={isEmpty ? null : (row) => onPickBot(row.id)}
         />
         <span className={`text-xs ${muted}`}>{note}</span>
+        {/* Its settings (DASH-57), when its bots declare some. */}
+        {team.kind === "team" && team.workspace ? (
+          <TeamSettingsPanel
+            key={String(team.workspace.id)}
+            workspaceId={team.workspace.id}
+          />
+        ) : null}
       </div>
     </div>
   );
