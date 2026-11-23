@@ -36,6 +36,7 @@ const { createEventStream } = require("./eventStream");
 const { BOT_MCP_SERVER, buildBotMcpServer } = require("./agentToolBridge");
 const { imagePlaceholder } = require("../toolImages");
 const { commandDecision } = require("../../checks/commandRules");
+const { runEnv } = require("../runEnv");
 const {
   FILE_TOOL_FIELDS,
   makeFence,
@@ -396,7 +397,9 @@ async function _runAgent(ctx, stream) {
   // default; a bot's Anthropic API key, when set, goes in THIS run's env only —
   // never process.env, which would leak it to the rest of the main process and
   // to other bots.
-  const env = { ...process.env };
+  // Its shell commands find what the user's Terminal finds (DASH-53): the
+  // login shell's PATH, not the Mac app's bare one.
+  const env = runEnv(process.env);
   if (ctx.credentials && ctx.credentials.apiKey) {
     env.ANTHROPIC_API_KEY = ctx.credentials.apiKey;
   }

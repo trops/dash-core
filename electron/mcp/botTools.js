@@ -35,6 +35,7 @@ const { resolveDashboard } = require("../bots/teamDirectory");
 const { botEventType, botRef } = require("../bots/botEvents");
 const { deletesOrSends } = require("../bots/riskyTools");
 const { cleanFrom, TASK_EXPIRES_MS } = require("../bots/mcpTasks");
+const { cleanBotChecks, checksError } = require("../bots/botChecks");
 
 const BUILTIN = ["none", "read-only", "all"];
 const POLICIES = ["ask", "ask-every", "allow", "unattended"];
@@ -236,6 +237,55 @@ const BOT_FIELDS = {
     },
     description: "Results it publishes for widgets.",
   },
+  checks: {
+    type: "object",
+    properties: {
+      steps: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            kind: {
+              type: "string",
+              enum: ["check", "reviewer", "you"],
+              description:
+                "'check' (Dash runs it, no AI), 'reviewer' (another bot on its team judges the work) or 'you' (waits for the user to approve or send it back).",
+            },
+            name: { type: "string", description: "Shown on the job." },
+            note: {
+              type: "string",
+              description: "What it looks for (for a reviewer or the user).",
+            },
+            check: {
+              type: "object",
+              description:
+                "For kind 'check', as the Bots tab saves it. { kind: 'command', command, passWhen?, timeoutSec? }: runs in its first folder and gets its answer as JSON on stdin and in $DASH_INPUT; passWhen is { type: 'exit0' } (the default), { type: 'contains', text } (exit 0 and the output has it) or { type: 'matches', pattern } (the output matches the regex). { kind: 'tool', server, tool, args?, answerRules? }: a read-only provider tool. { kind: 'rules', rules }. { kind: 'script', script, timeoutSec? }.",
+            },
+            bot: {
+              type: "string",
+              description:
+                "For kind 'reviewer': the bot that reviews (name or id, on its team).",
+            },
+          },
+          required: ["kind"],
+        },
+      },
+      onFail: {
+        type: "string",
+        enum: ["retry", "you", "stop"],
+        description:
+          "A failed check: 'retry' (back to the bot with what failed, up to maxTries, then to the user), 'you' (straight to the user) or 'stop'.",
+      },
+      maxTries: { type: "number", description: "Tries for 'retry'." },
+      handsOn: {
+        type: "string",
+        enum: ["answer", "summary", "files"],
+        description: "What passed work hands on to the next bots.",
+      },
+    },
+    description:
+      "Its checks, all of them (this replaces them): they hold its work until they pass; only work that passed is handed on. { steps: [] } removes them.",
+  },
   from: {
     type: "string",
     description:
@@ -248,7 +298,7 @@ const BOT_TOOLS = [
     name: "list_bots",
     defaultOff: true,
     description:
-      "List the bots on the teams the user lets MCP clients see, with everything each may do: team, role, paused, model, built-in tools, approvals, providers with their tools (and which run without asking, in which folders), commands, run limits, folders it works in, schedules, triggers and instructions. 'team' (a dashboard name or id) narrows it to one team.",
+      "List the bots on the teams the user lets MCP clients see, with everything each may do: team, role, paused, model, built-in tools, approvals, providers with their tools (and which run without asking, in which folders), commands, run limits, folders it works in, schedules, triggers, checks and instructions. 'team' (a dashboard name or id) narrows it to one team.",
     inputSchema: {
       type: "object",
       properties: {
@@ -505,6 +555,7 @@ function botView(bot, { workspaces, grant, paused }) {
     }),
     whilePaused: bot.whilePaused || "queue",
     publishes: Array.isArray(bot.publishes) ? bot.publishes : [],
+    checks: cleanBotChecks(bot.checks),
     instructions: bot.instructions || "",
   };
 }
@@ -681,7 +732,130 @@ function readFields(
       };
     }
   }
+  if (has("checks")) {
+    const r = readChecks(args.checks, { members, selfId });
+    if (r.problems.length) problems.push(...r.problems);
+    else fields.checks = { checks: r.checks };
+  }
   return { fields, access, problems };
+}
+
+/**
+ * A bot's checks as given over MCP → as the Bots tab saves them (botChecks
+ * cleanBotChecks), or null for none. A reviewer is named by bot (name or
+ * id) on its team; the settings each check kind needs must be there — a
+ * check that couldn't run is a problem, never dropped quietly.
+ * @returns {{ checks: object|null, problems: string[] }}
+ */
+function readChecks(input, { members = [], selfId = null }) {
+  const problems = [];
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {
+      checks: null,
+      problems: [
+        "checks must be an object: { steps, onFail?, maxTries?, handsOn? }.",
+      ],
+    };
+  }
+  if (input.steps !== undefined && !Array.isArray(input.steps)) {
+    return { checks: null, problems: ["checks.steps must be a list."] };
+  }
+  const steps = (input.steps || []).map((s, i) => {
+    const label = `Check ${i + 1}`;
+    if (!s || typeof s !== "object") {
+      problems.push(`${label} must be an object.`);
+      return s;
+    }
+    const step = { ...s };
+    if (s.kind === "reviewer") {
+      const ref = String(s.bot || s.botId || "").trim();
+      const found = members.filter(
+        (b) => !isDashTeam(b) && (b.id === ref || lower(b.name) === lower(ref)),
+      );
+      if (!ref)
+        problems.push(
+          `${label}: a reviewer needs the bot that reviews ('bot').`,
+        );
+      else if (!found.length)
+        problems.push(`${label}: no bot named "${ref}" on its team to review.`);
+      else if (found.length > 1) {
+        problems.push(
+          `${label}: several bots on its team are named "${ref}": ${found.map((b) => b.id).join(", ")}. Use its id.`,
+        );
+      } else if (selfId && found[0].id === selfId) {
+        problems.push(`${label}: a bot can't review its own work.`);
+      } else step.botId = found[0].id;
+      delete step.bot;
+    }
+    if (s.kind === "check") {
+      const c = s.check && typeof s.check === "object" ? s.check : {};
+      const blank = (v) => !String(v || "").trim();
+      if (c.kind === "command" && blank(c.command)) {
+        problems.push(`${label}: a command check needs its command.`);
+      } else if (c.kind === "tool" && (blank(c.server) || blank(c.tool))) {
+        problems.push(`${label}: a tool check needs its server and tool.`);
+      } else if (
+        c.kind === "rules" &&
+        !(Array.isArray(c.rules) && c.rules.length)
+      ) {
+        problems.push(`${label}: a rules check needs at least one rule.`);
+      } else if (c.kind === "script" && blank(c.script)) {
+        problems.push(`${label}: a script check needs its script.`);
+      }
+    }
+    return step;
+  });
+  if (problems.length) return { checks: null, problems };
+  const raw = { ...input, steps };
+  const err = checksError(raw, selfId);
+  if (err) return { checks: null, problems: [`checks: ${err}.`] };
+  return { checks: cleanBotChecks(raw), problems };
+}
+
+const ON_FAIL_WORDS = {
+  retry: (n) =>
+    `a fail goes back to it with what failed (up to ${n} tries), then to the user`,
+  you: () => "a fail goes to the user",
+  stop: () => "a fail stops it",
+};
+
+/** One check step in words. */
+function checkStepText(step, nameOf) {
+  const name = `"${oneLine(step.name)}"`;
+  if (step.kind === "you") return `${name}: waits for the user to approve`;
+  if (step.kind === "reviewer") {
+    return `${name}: ${oneLine(nameOf(step.botId))} reviews the work`;
+  }
+  const c = step.check || {};
+  // As command.js reads it: { type: "exit0" | "contains" | "matches" }.
+  const when =
+    (c.passWhen && typeof c.passWhen === "object" && c.passWhen) || {};
+  const pass =
+    when.type === "contains"
+      ? `it exits 0 and its output contains ${JSON.stringify(String(when.text || ""))}`
+      : when.type === "matches"
+        ? `its output matches /${oneLine(when.pattern || "")}/`
+        : "it exits 0";
+  switch (c.kind) {
+    case "command":
+      return `${name}: runs \`${oneLine(c.command)}\`; passes when ${pass}`;
+    case "tool":
+      return `${name}: asks ${oneLine(c.server)} › ${oneLine(c.tool)} (read-only)`;
+    case "rules":
+      return `${name}: ${(c.rules || []).length} rule(s)`;
+    case "script":
+      return `${name}: a script`;
+    default:
+      return name;
+  }
+}
+
+/** A bot's checks in words, for a summary. */
+function checksText(checks, nameOf = (id) => id) {
+  const c = cleanBotChecks(checks);
+  if (!c) return "none (its work goes straight on)";
+  const steps = c.steps.map((s, i) => `${i + 1}. ${checkStepText(s, nameOf)}`);
+  return `${steps.join("; ")}; ${ON_FAIL_WORDS[c.onFail](c.maxTries)}`;
 }
 
 /**
@@ -991,7 +1165,16 @@ function startsText(def, hasLead) {
 }
 
 /** A new bot: everything it saves. */
-function describeNew(def, { teamName, grants, ignored, startPaused, hasLead }) {
+/** A bot's name by id among these bots (for summaries), else the id. */
+const nameIn = (bots) => (id) => {
+  const b = (bots || []).find((x) => x.id === id);
+  return (b && b.name) || String(id);
+};
+
+function describeNew(
+  def,
+  { teamName, grants, ignored, startPaused, hasLead, nameOf = (id) => id },
+) {
   const builtin = builtinOf(def);
   const lines = [
     `Create "${oneLine(def.name)}" on ${oneLine(teamName)}.`,
@@ -1034,6 +1217,7 @@ function describeNew(def, { teamName, grants, ignored, startPaused, hasLead }) {
         : "none"
     }.`,
   );
+  lines.push(`Checks: ${checksText(def.checks, nameOf)}.`);
   lines.push(
     startPaused
       ? "It's saved paused: the user turns it on in Dash."
@@ -1052,7 +1236,7 @@ function describeChanges(
   bot,
   changes,
   grantChanges,
-  { teamName, removedTriggers = [] },
+  { teamName, removedTriggers = [], nameOf = (id) => id },
 ) {
   const lines = [];
   const wider = [];
@@ -1220,6 +1404,21 @@ function describeChanges(
       case "team":
         line("Team", oneLine(teamName.from), oneLine(teamName.to));
         break;
+      case "checks": {
+        // Fewer checks, or no longer waiting for the user, hold its work
+        // to less: said as more access.
+        const from = cleanBotChecks(bot.checks);
+        const to = next.checks;
+        const count = (c) => (c ? c.steps.length : 0);
+        const asksYou = (c) => !!c && c.steps.some((s) => s.kind === "you");
+        line(
+          "Checks",
+          checksText(from, nameOf),
+          checksText(to, nameOf),
+          count(to) < count(from) || (asksYou(from) && !asksYou(to)),
+        );
+        break;
+      }
       default:
         break;
     }
@@ -1672,6 +1871,7 @@ function makeBotToolHandlers({
         ...pick("subscriptions"),
         ...pick("whilePaused"),
         ...pick("publishes"),
+        ...pick("checks"),
       };
       // Only tools named in runWithoutAsking ever run without asking.
       const grants = {};
@@ -1708,6 +1908,7 @@ function makeBotToolHandlers({
           ignored,
           startPaused,
           hasLead,
+          nameOf: nameIn(members),
         }),
       });
     },
@@ -1821,6 +2022,7 @@ function makeBotToolHandlers({
         subscriptions: { subscriptions: bot.subscriptions || [] },
         whilePaused: { whilePaused: bot.whilePaused || "queue" },
         publishes: { publishes: bot.publishes || [] },
+        checks: { checks: cleanBotChecks(bot.checks) },
       };
       const changes = {};
       for (const [k, frag] of Object.entries(read.fields)) {
@@ -1899,6 +2101,7 @@ function makeBotToolHandlers({
           to: (target && target.name) || "no team",
         },
         removedTriggers,
+        nameOf: nameIn(visibleBots(workspaces)),
       });
       const summary = [
         `Change "${oneLine(bot.name)}"${fromTeam ? ` on ${oneLine(fromTeam.name)}` : ""}:`,
