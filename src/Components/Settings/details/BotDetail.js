@@ -668,6 +668,23 @@ export const BotDetail = ({
     );
   };
 
+  // Tools chosen for this bot that the provider doesn't have (DASH-72):
+  // misspelt, or renamed upstream. They never run, so they're shown.
+  const missingTools = (source) => {
+    const sel = toolSelections[source.serverName];
+    if (!Array.isArray(sel) || !Array.isArray(source.tools)) return [];
+    return sel.filter((t) => !source.tools.includes(t));
+  };
+  const dropMissingTools = (serverName, allTools) =>
+    setToolSelections((prev) => {
+      const sel = Array.isArray(prev[serverName]) ? prev[serverName] : null;
+      if (!sel) return prev;
+      return {
+        ...prev,
+        [serverName]: sel.filter((t) => allTools.includes(t)),
+      };
+    });
+
   // Is `tool` allowed for this bot on `serverName`? No stored selection → yes.
   const isToolOn = (serverName, tool) => {
     const sel = toolSelections[serverName];
@@ -1234,6 +1251,25 @@ export const BotDetail = ({
                                       </div>
                                     ))}
                                   </div>
+                                  {missingTools(s).length ? (
+                                    <div className="flex flex-row flex-wrap items-center gap-2">
+                                      <span className="text-xs text-red-500">
+                                        Not a tool on this provider (it
+                                        won&apos;t run):{" "}
+                                        {missingTools(s).join(", ")}
+                                      </span>
+                                      <Button3
+                                        title="Remove"
+                                        size="xs"
+                                        onClick={() =>
+                                          dropMissingTools(
+                                            s.serverName,
+                                            s.tools,
+                                          )
+                                        }
+                                      />
+                                    </div>
+                                  ) : null}
                                 </>
                               ) : (
                                 <span className="text-xs opacity-50">

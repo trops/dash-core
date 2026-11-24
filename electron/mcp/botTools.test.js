@@ -1442,3 +1442,87 @@ describe("checks over MCP (DASH-52)", () => {
     assert.match(b3.reasons[0], /checks must be an object/);
   });
 });
+
+describe("provider tool names are checked (DASH-72)", () => {
+  const atlassian = [
+    "searchJiraIssuesUsingJql",
+    "getJiraIssue",
+    "transitionJiraIssue",
+    "addOrEditJiraIssueComment",
+  ].map((name) => ({ name, inputSchema: null }));
+  const withAtlassian = () =>
+    setup({
+      providerTools: (name) => (name === "Atlassian MCP" ? atlassian : null),
+    });
+
+  it("refuses a tool the provider doesn't have, with its real tools and the nearest", async () => {
+    const { handlers, state } = withAtlassian();
+    const b = body(
+      await handlers.create_bot(
+        newBot({
+          providers: [
+            {
+              name: "Atlassian MCP",
+              tools: ["getJiraIssue", "addCommentToJiraIssue"],
+            },
+          ],
+        }),
+      ),
+    );
+    assert.equal(b.status, "invalid");
+    const why = b.reasons.join(" ");
+    assert.match(why, /Atlassian MCP has no tool named addCommentToJiraIssue/);
+    assert.match(why, /did you mean addOrEditJiraIssueComment\?/);
+    assert.match(why, /Its tools: searchJiraIssuesUsingJql, getJiraIssue/);
+    assert.equal(state.checks.length, 0, "nothing was saved");
+  });
+
+  it("takes tools the provider has", async () => {
+    const { handlers } = withAtlassian();
+    const b = body(
+      await handlers.create_bot(
+        newBot({
+          providers: [
+            {
+              name: "Atlassian MCP",
+              tools: ["getJiraIssue", "addOrEditJiraIssueComment"],
+            },
+          ],
+        }),
+      ),
+    );
+    assert.notEqual(b.status, "invalid");
+    assert.doesNotMatch(b.summary || "", /weren't checked/);
+  });
+
+  it("a provider Dash can't list: saved, but the summary says so", async () => {
+    const { handlers } = withAtlassian();
+    const b = body(
+      await handlers.create_bot(
+        newBot({
+          providers: [{ name: "Slack", tools: ["send_message"] }],
+        }),
+      ),
+    );
+    assert.notEqual(b.status, "invalid");
+    assert.match(
+      b.summary,
+      /Slack isn't connected, so its tool names weren't checked/,
+    );
+  });
+
+  it("update_bot refuses one too", async () => {
+    const { handlers, state } = withAtlassian();
+    const bot = state.bots.find(
+      (x) => x.workspaceId === "1" && x.role !== "lead",
+    );
+    const b = body(
+      await handlers.update_bot({
+        bot: bot.id,
+        providers: [{ name: "Atlassian MCP", tools: ["addComment"] }],
+      }),
+    );
+    assert.equal(b.status, "invalid");
+    assert.match(b.reasons.join(" "), /has no tool named addComment/);
+  });
+});
