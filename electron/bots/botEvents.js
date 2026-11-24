@@ -23,8 +23,15 @@
 
 const { RESULT_NAME_RE } = require("./botSchema");
 
-/** Stop bot→bot chains at this depth (PRD US-011 AC6). */
+/** Stop bot→bot chains at this depth (PRD US-011 AC6), at least. */
 const MAX_CHAIN_DEPTH = 5;
+/**
+ * The longest chain ever allowed. Inside one team a bot can't run twice in
+ * a chain (checkChain refuses loops), so a team's chain is at most as long
+ * as the team: a team bigger than MAX_CHAIN_DEPTH gets its whole length,
+ * up to this (DASH-69).
+ */
+const MAX_CHAIN_HARD_CAP = 25;
 /** Cap on text carried in a payload (final answer / tool result). */
 const PAYLOAD_TEXT_LIMIT = 8 * 1024;
 
@@ -183,6 +190,15 @@ function buildBotEventMessage(bot, event, payload, cause = rootCause()) {
   return msg;
 }
 
+/**
+ * How deep a chain may go on a team of `teamSize` bots: MAX_CHAIN_DEPTH, or
+ * the team's size when it's bigger, never past MAX_CHAIN_HARD_CAP (DASH-69).
+ */
+function chainLimit(teamSize) {
+  const n = Math.floor(Number(teamSize)) || 0;
+  return Math.min(MAX_CHAIN_HARD_CAP, Math.max(MAX_CHAIN_DEPTH, n));
+}
+
 /** May `botId` be triggered by `event`? Refuses loops and deep chains. */
 function checkChain(event, botId, maxDepth = MAX_CHAIN_DEPTH) {
   const { chain, depth } = causeFromEvent(event);
@@ -249,6 +265,8 @@ function ownerNote(note) {
 
 module.exports = {
   MAX_CHAIN_DEPTH,
+  MAX_CHAIN_HARD_CAP,
+  chainLimit,
   PAYLOAD_TEXT_LIMIT,
   slugify,
   botRef,
