@@ -891,7 +891,11 @@ function checkStepText(step, nameOf) {
         : "it exits 0";
   switch (c.kind) {
     case "command":
-      return `${name}: runs \`${oneLine(c.command)}\`; passes when ${pass}`;
+      return `${name}: runs \`${oneLine(c.command)}\`; passes when ${pass}${
+        step.held
+          ? " (off: it came with a package, so it doesn't run until it's turned on)"
+          : ""
+      }`;
     case "tool":
       return `${name}: asks ${oneLine(c.server)} › ${oneLine(c.tool)} (read-only)`;
     case "rules":

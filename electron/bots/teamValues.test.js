@@ -431,6 +431,104 @@ describe("a Code Factory package installed twice", () => {
   });
 });
 
+describe("a package's command checks install switched off", () => {
+  const manifestOf = () =>
+    validateTeamManifest(
+      JSON.parse(
+        JSON.stringify(
+          buildTeamManifest({
+            name: "Factory",
+            settings: SETTINGS,
+            providers: [],
+            bots: [
+              {
+                id: "bot_coder",
+                name: "Coder",
+                instructions: "Code.",
+                checks: {
+                  steps: [
+                    {
+                      id: "step_c1",
+                      kind: "check",
+                      name: "Tests pass",
+                      check: { kind: "command", command: "{validate}" },
+                      held: true,
+                    },
+                    {
+                      id: "step_c2",
+                      kind: "check",
+                      name: "Has an answer",
+                      check: {
+                        kind: "rules",
+                        rules: [
+                          { type: "required", field: "input.answer", on: true },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }).manifest,
+        ),
+      ),
+    ).manifest;
+
+  it("the package doesn't carry the off mark; installing adds it to commands only", () => {
+    const m = manifestOf();
+    const exported = m.members[0].embedded.checks.steps;
+    assert.equal(exported[0].held, undefined);
+    const plan = planTeamInstall(m, { workspaceId: "1", providers: [] });
+    const steps = plan.members[0].definition.checks.steps;
+    assert.equal(steps[0].held, true);
+    assert.equal(steps[1].held, undefined);
+  });
+
+  it("an off command isn't run: its job waits for you in its place", () => {
+    const plan = planTeamInstall(manifestOf(), {
+      workspaceId: "1",
+      providers: [],
+    });
+    const bot = { ...plan.members[0].definition, id: "bot_1" };
+    const flow = checksFlow(bot);
+    const step = flow.steps.find((s) => s.id === "step_c1");
+    assert.equal(step.kind, "you");
+    assert.equal(step.name, "Tests pass (off)");
+    assert.equal(step.check, undefined);
+    assert.equal(flow.steps.find((s) => s.id === "step_c2").kind, "check");
+    // Turned on (saved without the mark), it runs.
+    const on = {
+      ...bot,
+      checks: {
+        ...bot.checks,
+        steps: bot.checks.steps.map(({ held: _h, ...s }) => s),
+      },
+    };
+    const ran = checksFlow(on).steps.find((s) => s.id === "step_c1");
+    assert.equal(ran.kind, "check");
+    assert.equal(ran.check.command, "{validate}");
+  });
+
+  it("only a command can be off", () => {
+    const { cleanBotChecks } = require("./botChecks");
+    const c = cleanBotChecks({
+      steps: [
+        {
+          kind: "check",
+          name: "R",
+          held: true,
+          check: { kind: "rules", rules: [] },
+        },
+        { kind: "you", name: "Y", held: true },
+      ],
+    });
+    assert.deepEqual(
+      c.steps.map((s) => s.held),
+      [undefined, undefined],
+    );
+  });
+});
+
 describe("a run (BotRunner)", () => {
   function runnerFor(team) {
     const engine = {

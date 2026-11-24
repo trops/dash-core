@@ -133,7 +133,7 @@ describe("installing a team package", () => {
       "Tests pass: runs cd {workFolder} && npm test",
     );
     expect(box).toHaveTextContent("You approve: waits for your approval");
-    expect(box).toHaveTextContent("Dash runs these on this computer");
+    expect(box).toHaveTextContent("Commands install switched off");
   });
 
   it("fills in its settings on the review screen and installs with them", () => {
@@ -213,6 +213,23 @@ describe("installing a dashboard from the registry", () => {
     ).toMatch(
       /Fill in its team settings \(Repository URL, Work folder\) on the Bots page/,
     );
+  });
+
+  it("after installing, says how many command checks are off", () => {
+    expect(
+      installedText(
+        {
+          workspace: { name: "Code Factory" },
+          summary: {
+            bots: {
+              installed: [{ id: "b1" }],
+              heldChecks: ["Coder: Tests pass", "Coder: Lint"],
+            },
+          },
+        },
+        "x",
+      ),
+    ).toMatch(/2 command checks are off until you turn them on/);
   });
 });
 

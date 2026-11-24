@@ -34,6 +34,8 @@ const STEP_KINDS = ["check", "reviewer", "you"];
 const MAX_CHECK_STEPS = 10;
 const WORK_STEP = "step_work";
 const MAX_TITLE = 120;
+const HELD_NOTE =
+  "This command came with a package and is off, so Dash didn't run it. Approve the work yourself, or turn the check on in the bot's checks.";
 
 const str = (v, max = 400) =>
   typeof v === "string" ? v.trim().slice(0, max) : "";
@@ -60,6 +62,9 @@ function cleanCheckStep(s, i) {
     } catch (_e) {
       return null;
     }
+    // A command that came with a package stays off until you turn it on
+    // (DASH-57): nothing it says runs on this computer before then.
+    if (s.held === true && check.kind === "command") step.held = true;
   }
   if (s.kind === "reviewer") {
     // A reviewer with no bot could never answer: left out.
@@ -168,7 +173,18 @@ function checksFlow(bot) {
     },
   ];
   for (const c of checks.steps) {
-    if (c.kind === "check") {
+    if (c.kind === "check" && c.held) {
+      // Off until you turn it on: you look at the work in its place.
+      steps.push({
+        id: c.id,
+        kind: "you",
+        name: `${c.name} (off)`,
+        note: HELD_NOTE,
+        mode: "approve",
+        action: "Approve",
+        sendBackTo: WORK_STEP,
+      });
+    } else if (c.kind === "check") {
       steps.push({
         id: c.id,
         kind: "check",
@@ -328,6 +344,7 @@ module.exports = {
   STEP_KINDS,
   MAX_CHECK_STEPS,
   WORK_STEP,
+  HELD_NOTE,
   cleanBotChecks,
   checksError,
   checksOf,

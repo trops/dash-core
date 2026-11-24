@@ -3238,6 +3238,14 @@ const botController = {
         }
       }
     }
+    // Commands that came with it: off until turned on (DASH-57).
+    const heldChecks = [];
+    for (const m of plan.members) {
+      const bot = created[m.role];
+      for (const st of (bot && bot.checks && bot.checks.steps) || []) {
+        if (st && st.held) heldChecks.push(`${bot.name}: ${st.name}`);
+      }
+    }
     this._recordInstalled(plan, created, registryRef, embedded);
     return {
       installed: plan.members.map((m) => ({
@@ -3248,6 +3256,7 @@ const botController = {
       droppedWiring: plan.droppedWiring || [],
       unwired,
       ...(needsSettings.length ? { needsSettings } : {}),
+      ...(heldChecks.length ? { heldChecks } : {}),
     };
   },
 

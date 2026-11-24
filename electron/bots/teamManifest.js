@@ -371,7 +371,8 @@ function exportChecks(bot, roleOf, notIncluded) {
       );
       continue;
     }
-    steps.push(s);
+    const { held: _h, ...plain } = s;
+    steps.push(plain);
   }
   if (!steps.length) return null;
   return { ...checks, steps };
@@ -428,7 +429,12 @@ function checksForInstall(checks, picked) {
       const { role, ...rest } = s;
       steps.push({ ...rest, botId: `role:${role}` });
     } else {
-      steps.push(JSON.parse(JSON.stringify(s)));
+      const copy = JSON.parse(JSON.stringify(s));
+      // A command from a package runs on this computer: it installs off,
+      // until you turn it on (DASH-57).
+      if (copy.kind === "check" && copy.check && copy.check.kind === "command")
+        copy.held = true;
+      steps.push(copy);
     }
   }
   return steps.length ? { ...checks, steps } : null;

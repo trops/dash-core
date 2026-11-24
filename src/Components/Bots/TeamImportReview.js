@@ -312,11 +312,12 @@ export const TeamImportReview = ({
                       </span>
                     ))}
                     {checkLines(e.checks, names).some(
-                      (l) => l.command !== undefined || l.runs,
+                      (l) => l.command !== undefined,
                     ) ? (
                       <span className={`text-xs ${status.warning.text}`}>
-                        Dash runs these on this computer after each of its runs,
-                        without asking: read them before you turn it on.
+                        Commands install switched off: nothing runs on this
+                        computer until you read each one and turn it on in the
+                        bot's checks.
                       </span>
                     ) : null}
                   </div>

@@ -207,3 +207,40 @@ describe("BotChecksModal", () => {
     );
   });
 });
+
+describe("a command that came with a package (DASH-57)", () => {
+  const imported = {
+    ...writer,
+    checks: {
+      ...writer.checks,
+      steps: [
+        {
+          id: "step_c1",
+          kind: "check",
+          name: "Tests pass",
+          held: true,
+          check: {
+            kind: "command",
+            command: "npm test",
+            passWhen: { type: "exit0" },
+          },
+        },
+      ],
+    },
+  };
+
+  it("shows it's off with its command, and Turn on saves it on", async () => {
+    const { onSave } = open({ bot: imported, members: [imported] });
+    const held = screen.getByTestId("held-check");
+    expect(held).toHaveTextContent("it's off");
+    expect(held).toHaveTextContent("npm test");
+    expect(
+      screen.getByText("Off · came with the package · npm test"),
+    ).toBeInTheDocument();
+    fireEvent.click(within(held).getByRole("button", { name: "Turn on" }));
+    expect(screen.queryByTestId("held-check")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].checks.steps[0].held).toBeUndefined();
+  });
+});

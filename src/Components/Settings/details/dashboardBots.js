@@ -50,6 +50,11 @@ export function installedText(result, fallbackName) {
     if (needs.length) {
       text += ` Fill in its team settings (${needs.join(", ")}) on the Bots page before turning them on.`;
     }
+    // Its command checks, off until you read and turn on each (DASH-57).
+    const held = bots.heldChecks || [];
+    if (held.length) {
+      text += ` ${held.length} command check${held.length === 1 ? " is" : "s are"} off until you turn ${held.length === 1 ? "it" : "them"} on in the bot's checks.`;
+    }
   }
   return text;
 }
