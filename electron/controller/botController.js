@@ -240,6 +240,7 @@ const { onWorkspaceDeleted } = require("../utils/workspaceEvents");
 const profileMembership = require("../profile/profileMembership");
 const {
   checkChain,
+  chainLimit,
   rootCause,
   causeFromEvent,
   sourceFromEvent,
@@ -340,6 +341,17 @@ function jobStartedBy(opts = {}) {
   if (m) return { kind: "task", label: m[1] || "MCP" };
   if (/^mcp/.test(String(opts.via || ""))) return { kind: "mcp", label: "MCP" };
   return { kind: "you" };
+}
+
+/** How many bots are on the team (dashboard) `workspaceId` (DASH-69). */
+function teamSizeOf(store, workspaceId) {
+  if (workspaceId === null || workspaceId === undefined) return 0;
+  if (!store || typeof store.list !== "function") return 0;
+  const ws = String(workspaceId);
+  return store
+    .list()
+    .filter((b) => b && b.workspaceId != null && String(b.workspaceId) === ws)
+    .length;
 }
 
 /** A hand-on: which bot's event started it. */
@@ -995,16 +1007,13 @@ const botController = {
       excludeBotId: event.originBotId,
     });
     for (const bot of bots) {
-      const loop = checkChain(event, bot.id);
+      const loop = checkChain(
+        event,
+        bot.id,
+        chainLimit(teamSizeOf(this._store, bot.workspaceId)),
+      );
       if (!loop.ok) {
-        // Visible in the Activity feed rather than silently dropped.
-        this._broadcast(BOT_STREAM, {
-          botId: bot.id,
-          event: {
-            type: "warning",
-            message: `Not triggered by ${event.eventType}: ${loop.reason}.`,
-          },
-        });
+        this._refuseHandOn(bot, event, loop.reason);
         continue;
       }
       // Paused or over budget (US-011 AC8): keep it for when the bot is
@@ -1028,6 +1037,37 @@ const botController = {
       }
       this._dispatcher.note(bot.id);
       this._runEvent(bot, event);
+    }
+  },
+
+  /**
+   * A hand-on the loop guard refused (a loop, or a chain past its limit).
+   * Never silent (DASH-69): it's said on the Activity feed, kept as a
+   * skipped step on the job, and notified, since the rest of the chain
+   * (its failure paths included) won't run.
+   */
+  _refuseHandOn(bot, event, reason) {
+    const message = `Not triggered by ${event.eventType}: ${reason}.`;
+    this._broadcast(BOT_STREAM, {
+      botId: bot.id,
+      event: { type: "warning", message },
+    });
+    const jobId = this._handOnJob(event, bot);
+    if (jobId) {
+      this._jobs.skipStep(jobId, {
+        botId: bot.id,
+        botName: bot.name,
+        why: handOnWhy(this._store, event, bot),
+        summary: `${bot.name} didn't run: ${reason}.`,
+      });
+    }
+    if (!isDashTeam(bot)) {
+      this._sendNotice({
+        kind: "failed",
+        botId: bot.id,
+        title: "Bot chain stopped",
+        body: `${bot.name} didn't run: ${reason}.`,
+      });
     }
   },
 
