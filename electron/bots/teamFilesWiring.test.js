@@ -33,14 +33,14 @@ describe("team export/import — wiring", () => {
     assert.match(api, /previewTeamImport: \(workspaceId\) =>/);
     assert.match(
       api,
-      /installTeam: \(workspaceId, manifest, choices, roles\) =>/,
+      /installTeam: \(workspaceId, manifest, choices, roles, values\) =>/,
     );
   });
 
   it("installTeam re-checks the manifest instead of trusting the renderer", () => {
     assert.match(
       ctrl,
-      /installTeam\(workspaceId, manifest, choices = \{\}, roles = null\) \{\s*const \{ valid, errors, manifest: clean \} = validateTeamManifest\(manifest\);/,
+      /installTeam\(\s*workspaceId,\s*manifest,\s*choices = \{\},\s*roles = null,\s*values = null,?\s*\) \{\s*const \{ valid, errors, manifest: clean \} = validateTeamManifest\(manifest\);/,
     );
   });
 
@@ -121,7 +121,7 @@ describe("registry install — wiring (TEAM-007 slice 3b)", () => {
     assert.match(api, /previewRegistryInstall: \(workspaceId, packageRef\) =>/);
     assert.match(
       api,
-      /installFromRegistry: \(workspaceId, previewId, choices, roles\) =>/,
+      /installFromRegistry: \(workspaceId, previewId, choices, roles, values\) =>/,
     );
   });
 
@@ -132,7 +132,7 @@ describe("registry install — wiring (TEAM-007 slice 3b)", () => {
     );
     assert.match(
       ctrl,
-      /installFromRegistry\(workspaceId, previewId, choices = \{\}, roles = null\) \{\s*const preview =\s*this\._registryPreviews && this\._registryPreviews\.get\(previewId\);/,
+      /installFromRegistry\(\s*workspaceId,\s*previewId,\s*choices = \{\},\s*roles = null,\s*values = null,?\s*\) \{\s*const preview =\s*this\._registryPreviews && this\._registryPreviews\.get\(previewId\);/,
     );
   });
 

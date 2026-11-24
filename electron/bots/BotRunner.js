@@ -45,6 +45,8 @@ const {
 const { redactArgs } = require("../issues/issueStore");
 const { missingTool, needsMessage } = require("./runEnv");
 const { signInProblem } = require("./gitSignIn");
+const { withTeamValues, missingMessage } = require("./teamValues");
+const os = require("os");
 
 const QUIT = Symbol("quit");
 
@@ -263,6 +265,26 @@ class BotRunner {
    * @param {{ prompt?: string, trigger?: string, emit?: (e: object) => void }} opts
    * @returns {Promise<object>} the appended run record (or a skip marker)
    */
+  /** The bot with its team's settings filled in: { bot, missing }. */
+  _withTeamValues(bot) {
+    if (
+      !bot ||
+      bot.workspaceId === null ||
+      bot.workspaceId === undefined ||
+      !this._store ||
+      typeof this._store.getTeamSettings !== "function"
+    ) {
+      return { bot, missing: [] };
+    }
+    let team = null;
+    try {
+      team = this._store.getTeamSettings(bot.workspaceId);
+    } catch (_e) {
+      team = null;
+    }
+    return withTeamValues(bot, team, { home: os.homedir() });
+  }
+
   async run(botId, opts = {}) {
     const sendEvent = typeof opts.emit === "function" ? opts.emit : () => {};
     // What went wrong along the way (a server that couldn't start, a
@@ -297,8 +319,13 @@ class BotRunner {
     // A test (bot-test-run PRD) runs the definition it's given — the form as
     // it stands, saved or not — and keeps nothing: no session, no record.
     const test = !!opts.test;
-    const bot = opts.bot || this._store.get(botId);
-    if (!bot) throw new Error(`BotRunner.run: no bot "${botId}"`);
+    const stored = opts.bot || this._store.get(botId);
+    if (!stored) throw new Error(`BotRunner.run: no bot "${botId}"`);
+    // Its team's settings filled in (DASH-57): {repoUrl} in its
+    // instructions, folders and checks becomes this team's value. One it
+    // uses with no value fails the run, saying which.
+    const filled = this._withTeamValues(stored);
+    const bot = filled.bot;
 
     const blocked = this._startBlocker(botId);
     if (blocked) {
@@ -426,6 +453,9 @@ class BotRunner {
     }
 
     try {
+      if (filled.missing.length) {
+        throw new Error(missingMessage(filled.missing));
+      }
       const profile = await this._resolveRunProfile(bot);
       runProfile = profile;
       const engine = this._engines.getEngine(profile.engineId);

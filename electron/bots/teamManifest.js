@@ -16,6 +16,12 @@
  * bot is a personal setting, stripped on export, so it's rebound on import.
  * Older versions drop these fields, never fail on them.
  *
+ * A team's settings (DASH-57) travel as `settings` (name, label, type,
+ * default — never the values: those are filled in at install). Members
+ * carry their checks (a reviewer by role) and the folders they work in
+ * that come from a setting ("{workFolder}/repo"); a folder on this
+ * computer stays behind.
+ *
  * Pure (NFR-006): decisions only; botController reads/writes files and saves
  * the bots.
  */
@@ -23,6 +29,8 @@
 
 const { RESULT_NAME_RE } = require("./botSchema");
 const { botEventType, parseResultEventType } = require("./botEvents");
+const { cleanBotChecks, checksError } = require("./botChecks");
+const { cleanSettings, usesSetting } = require("./teamValues");
 
 const SCHEMA_VERSION = 1;
 const TEAM_TYPE = "bot-team";
@@ -49,6 +57,7 @@ const LIMITS = {
   triggers: 100,
   listeners: 100,
   resultWidgets: 50,
+  folders: 20,
 };
 
 /** A wiring entry, with its note when it has one. */
@@ -137,10 +146,14 @@ function buildTeamManifest({
   // result listeners travel too.
   dashboardId = null,
   workspace = null,
+  // The team's declared settings (DASH-57): their values stay here.
+  settings = [],
 }) {
   const members = (Array.isArray(bots) ? bots : []).filter(
     (b) => b && b.role !== "lead",
   );
+  const declared = cleanSettings(settings).settings;
+  const settingNames = declared.map((d) => d.name);
   const typeOf = new Map(
     (Array.isArray(providers) ? providers : [])
       .filter((p) => p && p.name)
@@ -173,6 +186,17 @@ function buildTeamManifest({
       const sel = selections[providerName];
       providersOut.push({ type, tools: Array.isArray(sel) ? [...sel] : null });
     }
+    // Folders from a setting travel; one on this computer doesn't.
+    const projects = [];
+    for (const p of Array.isArray(bot.projects) ? bot.projects : []) {
+      if (usesSetting(p, settingNames)) projects.push(String(p));
+      else if (String(p || "").trim()) {
+        notIncluded.push(
+          `${bot.name}: the folder "${p}" (a folder on this computer: use a team setting, like {workFolder})`,
+        );
+      }
+    }
+    const checks = exportChecks(bot, roleOf, notIncluded);
     return {
       role: roleOf.get(bot.id),
       embedded: {
@@ -198,6 +222,8 @@ function buildTeamManifest({
             label: p.label || "",
             description: p.description || "",
           })),
+        ...(projects.length ? { projects } : {}),
+        ...(checks ? { checks } : {}),
       },
     };
   });
@@ -308,9 +334,125 @@ function buildTeamManifest({
       triggers,
       listeners,
       resultWidgets,
+      ...(declared.length ? { settings: declared } : {}),
     },
     notIncluded,
   };
+}
+
+/**
+ * A bot's checks as they travel: a reviewer by its role (one outside the
+ * team stays behind), a script from a file on this computer stays behind.
+ */
+function exportChecks(bot, roleOf, notIncluded) {
+  const checks = cleanBotChecks(bot && bot.checks);
+  if (!checks) return null;
+  const steps = [];
+  for (const s of checks.steps) {
+    if (s.kind === "reviewer") {
+      const role = roleOf.get(s.botId);
+      if (!role || s.botId === bot.id) {
+        notIncluded.push(
+          `${bot.name}: the check "${s.name}" (its reviewer isn't on this team)`,
+        );
+        continue;
+      }
+      const { botId: _b, ...rest } = s;
+      steps.push({ ...rest, role });
+      continue;
+    }
+    if (
+      s.kind === "check" &&
+      s.check.kind === "script" &&
+      /^local:/.test(String(s.check.script || ""))
+    ) {
+      notIncluded.push(
+        `${bot.name}: the check "${s.name}" (its script is a file on this computer)`,
+      );
+      continue;
+    }
+    const { held: _h, ...plain } = s;
+    steps.push(plain);
+  }
+  if (!steps.length) return null;
+  return { ...checks, steps };
+}
+
+/**
+ * A member's checks from a file, checked: { checks, error }. Reviewers
+ * name a role of the team (not its own).
+ */
+function importChecks(input, role, roles) {
+  if (input === undefined || input === null) return { checks: null };
+  if (typeof input !== "object" || Array.isArray(input)) {
+    return { error: "checks must be an object" };
+  }
+  const steps = Array.isArray(input.steps) ? input.steps : [];
+  for (const s of steps) {
+    if (s && s.kind === "reviewer") {
+      if (typeof s.role !== "string" || !roles.has(s.role)) {
+        return { error: "a reviewer check must name one of the team's roles" };
+      }
+      if (s.role === role) return { error: "a bot can't review its own work" };
+    }
+  }
+  // Checked as a save checks it, a reviewer standing in by its role.
+  const asBot = {
+    ...input,
+    steps: steps.map((s) =>
+      s && s.kind === "reviewer" ? { ...s, botId: `role:${s.role}` } : s,
+    ),
+  };
+  const err = checksError(asBot);
+  if (err) return { error: err };
+  const clean = cleanBotChecks(asBot);
+  if (!clean) return { checks: null };
+  return {
+    checks: {
+      ...clean,
+      steps: clean.steps.map((s) => {
+        if (s.kind !== "reviewer") return s;
+        const { botId, ...rest } = s;
+        return { ...rest, role: botId.slice(5) };
+      }),
+    },
+  };
+}
+
+/** A member's checks for install: reviewers stand in as "role:<role>". */
+function checksForInstall(checks, picked) {
+  if (!checks) return null;
+  const steps = [];
+  for (const s of checks.steps) {
+    if (s.kind === "reviewer") {
+      if (!picked.has(s.role)) continue;
+      const { role, ...rest } = s;
+      steps.push({ ...rest, botId: `role:${role}` });
+    } else {
+      const copy = JSON.parse(JSON.stringify(s));
+      // A command from a package runs on this computer: it installs off,
+      // until you turn it on (DASH-57).
+      if (copy.kind === "check" && copy.check && copy.check.kind === "command")
+        copy.held = true;
+      steps.push(copy);
+    }
+  }
+  return steps.length ? { ...checks, steps } : null;
+}
+
+/** Installed bots' checks with each reviewer's role turned into its bot. */
+function resolveReviewers(checks, created) {
+  if (!checks || !Array.isArray(checks.steps)) return checks;
+  const steps = checks.steps
+    .map((s) => {
+      if (!s || s.kind !== "reviewer") return s;
+      const m = /^role:(.+)$/.exec(String(s.botId || ""));
+      if (!m) return s;
+      const bot = created[m[1]];
+      return bot ? { ...s, botId: bot.id } : null;
+    })
+    .filter(Boolean);
+  return steps.length ? { ...checks, steps } : null;
 }
 
 // ─── Validate ────────────────────────────────────────────────────────
@@ -347,6 +489,17 @@ function validateTeamManifest(input) {
   if (input.version != null && !str(input.version, LIMITS.short)) {
     errors.push("version must be text");
   }
+
+  // Its settings (DASH-57): what its bots use as {name}.
+  const settingsRead = cleanSettings(input.settings);
+  for (const e of settingsRead.errors) errors.push(e);
+  const settingNames = settingsRead.settings.map((d) => d.name);
+  // Every role first: a reviewer check names another member's.
+  const allRoles = new Set(
+    (Array.isArray(input.members) ? input.members : [])
+      .map((m) => m && m.role)
+      .filter((r) => typeof r === "string"),
+  );
 
   const members = [];
   const roles = new Set();
@@ -434,6 +587,24 @@ function validateTeamManifest(input) {
       ) {
         errors.push(`${where}: results are malformed`);
       }
+      const projects = [];
+      if (e.projects != null) {
+        if (!Array.isArray(e.projects) || e.projects.length > LIMITS.folders) {
+          errors.push(`${where}: projects must be a list of folders`);
+        } else {
+          for (const f of e.projects) {
+            if (!str(f, LIMITS.short) || !usesSetting(f, settingNames)) {
+              errors.push(
+                `${where}: a folder must start with one of the team's settings, like {workFolder}`,
+              );
+              break;
+            }
+            projects.push(f);
+          }
+        }
+      }
+      const checksRead = importChecks(e.checks, m.role, allRoles);
+      if (checksRead.error) errors.push(`${where}: ${checksRead.error}`);
       members.push({
         role: m.role,
         embedded: {
@@ -461,6 +632,8 @@ function validateTeamManifest(input) {
             label: (p && p.label) || "",
             description: (p && p.description) || "",
           })),
+          ...(projects.length ? { projects } : {}),
+          ...(checksRead.checks ? { checks: checksRead.checks } : {}),
         },
       });
     });
@@ -603,6 +776,9 @@ function validateTeamManifest(input) {
       triggers,
       listeners,
       resultWidgets,
+      ...(settingsRead.settings.length
+        ? { settings: settingsRead.settings }
+        : {}),
     },
   };
 }
@@ -686,6 +862,13 @@ function planTeamInstall(
           })),
           subscriptions: [],
           publishes: (e.publishes || []).map((p) => ({ ...p })),
+          // Folders from the team's settings, filled in when it runs.
+          ...(Array.isArray(e.projects) && e.projects.length
+            ? { projects: [...e.projects] }
+            : {}),
+          // Reviewers stand in by role until the bots exist
+          // (resolveReviewers).
+          ...(e.checks ? { checks: checksForInstall(e.checks, picked) } : {}),
         },
       };
     });
@@ -693,6 +876,8 @@ function planTeamInstall(
   const copy = (w) => wiringEntry(w.role, w.on, w.note);
   return {
     name: manifest.name,
+    // Its settings, for the install form (DASH-57).
+    settings: (manifest.settings || []).map((d) => ({ ...d })),
     members,
     // Wiring only between the bots being installed.
     wiring: manifest.wiring
@@ -811,6 +996,10 @@ function teamSummaryFor(manifest) {
       role: w.role,
       on: { role: w.on.role, event: w.on.event },
     })),
+    // Its settings, so the install form shows before the download.
+    ...(Array.isArray(manifest.settings) && manifest.settings.length
+      ? { settings: manifest.settings.map((d) => ({ ...d })) }
+      : {}),
   };
 }
 
@@ -876,6 +1065,7 @@ module.exports = {
   buildTeamManifest,
   validateTeamManifest,
   planTeamInstall,
+  resolveReviewers,
   wireTeam,
   wireWidgets,
   stripBotListeners,

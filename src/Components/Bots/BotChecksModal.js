@@ -1,5 +1,6 @@
 import React, { useContext, useMemo, useState } from "react";
 import {
+  AlertBanner,
   Button,
   Button3,
   ButtonIcon,
@@ -40,6 +41,7 @@ import {
   stepTone,
   targetChanges,
   updateStep,
+  turnOnStep,
 } from "./checksView";
 
 const HANDS_ON_OPTIONS = [
@@ -426,6 +428,25 @@ export const BotChecksModal = ({
                     }
                   }}
                 />
+                {step.held ? (
+                  <div className="flex flex-col gap-2" data-testid="held-check">
+                    <AlertBanner
+                      variant="warning"
+                      size="compact"
+                      message="This command came with the package, so it's off: Dash won't run it on this computer until you turn it on. Until then, its jobs wait for you to approve the work."
+                    />
+                    <code className="font-mono text-xs break-all">
+                      {(step.check && step.check.command) || ""}
+                    </code>
+                    <div>
+                      <Button
+                        title="Turn on"
+                        size="sm"
+                        onClick={() => setDraft((d) => turnOnStep(d, selected))}
+                      />
+                    </div>
+                  </div>
+                ) : null}
                 {step.kind === "check" && step.check ? (
                   <>
                     <span className={`text-sm ${muted}`}>

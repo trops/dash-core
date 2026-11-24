@@ -126,6 +126,9 @@ export function stepSub(step, nameOf = () => null) {
     return who ? `Reviewer bot · ${who}` : "Reviewer bot · pick who reviews";
   }
   const c = step.check || {};
+  if (c.kind === "command" && step.held) {
+    return `Off · came with the package · ${c.command || ""}`;
+  }
   if (c.kind === "command") {
     return c.command ? `Command · ${c.command}` : "Command · not set yet";
   }
@@ -149,7 +152,7 @@ export function cardRows(checks, max = 3) {
   return {
     rows: shown.map((s, i) => ({
       key: s.id || `s${i}`,
-      name: s.name || TONE[stepTone(s)].label,
+      name: `${s.name || TONE[stepTone(s)].label}${s.held ? " (off)" : ""}`,
       tone: stepTone(s),
     })),
     more: steps.length - shown.length,
@@ -192,6 +195,33 @@ export function moveStep(draft, from, to) {
   const [s] = steps.splice(from, 1);
   steps.splice(Math.max(0, Math.min(to, steps.length)), 0, s);
   return { ...draft, steps };
+}
+
+/**
+ * Commands that came with a package and are off until turned on
+ * (DASH-57): `{ index, name, command }`.
+ */
+export function heldSteps(draft) {
+  return ((draft && draft.steps) || [])
+    .map((s, index) => ({ s, index }))
+    .filter(({ s }) => s && s.held)
+    .map(({ s, index }) => ({
+      index,
+      name: s.name || "A command",
+      command: String((s.check && s.check.command) || ""),
+    }));
+}
+
+/** The draft with a package's command turned on (it runs from then on). */
+export function turnOnStep(draft, i) {
+  return {
+    ...draft,
+    steps: draft.steps.map((s, n) => {
+      if (n !== i) return s;
+      const { held: _h, ...rest } = s;
+      return rest;
+    }),
+  };
 }
 
 export function removeStep(draft, i) {

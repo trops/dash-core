@@ -52,6 +52,9 @@ const BOTS_CHANGE_ALWAYS_ALLOWED = "bots-change-always-allowed";
 const BOTS_ENSURE_LEAD = "bots-ensure-lead";
 const BOTS_SET_LEAD_ENABLED = "bots-set-lead-enabled";
 const BOTS_GET_TEAM_SETTINGS = "bots-get-team-settings";
+// A team's settings used as {name} in its bots (DASH-57).
+const BOTS_GET_TEAM_VALUES = "bots-get-team-values";
+const BOTS_SET_TEAM_VALUES = "bots-set-team-values";
 const BOTS_DISMISS_LEAD_INTRO = "bots-dismiss-lead-intro";
 // A bot's built-in instructions, for its settings (TEAM-017).
 const BOTS_BUILTIN_INSTRUCTIONS = "bots-builtin-instructions";
@@ -184,6 +187,8 @@ module.exports = {
   BOTS_ENSURE_LEAD,
   BOTS_SET_LEAD_ENABLED,
   BOTS_GET_TEAM_SETTINGS,
+  BOTS_GET_TEAM_VALUES,
+  BOTS_SET_TEAM_VALUES,
   BOTS_DISMISS_LEAD_INTRO,
   BOTS_BUILTIN_INSTRUCTIONS,
   BOTS_DISMISS_LAYERS_NOTICE,

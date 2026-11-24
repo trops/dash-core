@@ -44,6 +44,8 @@ const {
   BOTS_DISMISS_LAYERS_NOTICE,
   BOTS_SET_LEAD_ENABLED,
   BOTS_GET_TEAM_SETTINGS,
+  BOTS_GET_TEAM_VALUES,
+  BOTS_SET_TEAM_VALUES,
   BOTS_DISMISS_LEAD_INTRO,
   BOTS_GET_SETTINGS,
   BOTS_LIST_DASH_TEAM,
@@ -157,12 +159,14 @@ const botApi = {
   previewTeamImport: (workspaceId) =>
     ipcRenderer.invoke(BOTS_PREVIEW_TEAM_IMPORT, { workspaceId }),
   /** Install a reviewed team into this dashboard (new, paused bots); roles = the bots picked (all when omitted). */
-  installTeam: (workspaceId, manifest, choices, roles) =>
+  installTeam: (workspaceId, manifest, choices, roles, values) =>
     ipcRenderer.invoke(BOTS_INSTALL_TEAM, {
       workspaceId,
       manifest,
       choices,
       roles,
+      // Its settings, as filled in on the review screen (DASH-57).
+      values,
     }),
   /** Bot and team packages in the registry: opts { query, type: "bot"|"bot-team"|null }. */
   searchRegistry: (opts) => ipcRenderer.invoke(BOTS_SEARCH_REGISTRY, opts),
@@ -173,12 +177,13 @@ const botApi = {
       packageRef,
     }),
   /** Install a previewed registry package (from the main process's checked copy). */
-  installFromRegistry: (workspaceId, previewId, choices, roles) =>
+  installFromRegistry: (workspaceId, previewId, choices, roles, values) =>
     ipcRenderer.invoke(BOTS_INSTALL_FROM_REGISTRY, {
       workspaceId,
       previewId,
       choices,
       roles,
+      values,
     }),
   /**
    * What publishing would send (TEAM-006): opts { kind: "team"|"bot",
@@ -286,6 +291,12 @@ const botApi = {
   /** { leadEnabled, introDismissed? } for a dashboard. */
   getTeamSettings: (workspaceId) =>
     ipcRenderer.invoke(BOTS_GET_TEAM_SETTINGS, { workspaceId }),
+  /** A team's settings (DASH-57): { declared, values, usedBy }. */
+  getTeamValues: (workspaceId) =>
+    ipcRenderer.invoke(BOTS_GET_TEAM_VALUES, { workspaceId }),
+  /** Change them: change { declare?, values?, remove? } → the same, or { errors }. */
+  setTeamValues: (workspaceId, change) =>
+    ipcRenderer.invoke(BOTS_SET_TEAM_VALUES, { workspaceId, change }),
   dismissLeadIntro: (workspaceId) =>
     ipcRenderer.invoke(BOTS_DISMISS_LEAD_INTRO, { workspaceId }),
   /** A bot's built-in instructions and the user's own. → { builtin, user } */

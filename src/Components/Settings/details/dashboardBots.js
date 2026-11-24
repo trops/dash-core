@@ -45,6 +45,16 @@ export function installedText(result, fallbackName) {
     text += ` ${n} bot${n === 1 ? "" : "s"} added — paused; resume them on the Bots page.`;
     const unwired = bots.unwired || [];
     if (unwired.length) text += ` Not wired: ${unwired.join("; ")}.`;
+    // Its team's settings with no value yet (DASH-57).
+    const needs = bots.needsSettings || [];
+    if (needs.length) {
+      text += ` Fill in its team settings (${needs.join(", ")}) on the Bots page before turning them on.`;
+    }
+    // Its command checks, off until you read and turn on each (DASH-57).
+    const held = bots.heldChecks || [];
+    if (held.length) {
+      text += ` ${held.length} command check${held.length === 1 ? " is" : "s are"} off until you turn ${held.length === 1 ? "it" : "them"} on in the bot's checks.`;
+    }
   }
   return text;
 }

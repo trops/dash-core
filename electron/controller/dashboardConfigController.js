@@ -974,6 +974,8 @@ async function processDashboardConfig(
             version: options.registryRef.version,
           }
         : null,
+      // Its team's settings, from the install form (DASH-57).
+      options.teamValues || null,
     );
     // Wiring the team edits the layout: what the dashboard is as installed
     // is taken after (a profile save sees only later edits).
@@ -1044,13 +1046,23 @@ function teamForExport(workspace, options = {}) {
  * Install an imported dashboard's team: { installed, unwired, droppedWiring }
  * or { error } — the dashboard itself is already saved either way.
  */
-function installTeamForImport(workspaceId, team, embedded = null) {
+function installTeamForImport(
+  workspaceId,
+  team,
+  embedded = null,
+  values = null,
+) {
   try {
     const botController = require("./botController");
     if (!botController._ready) {
       return { error: "Bots aren't available right now." };
     }
-    return botController.installDashboardTeam(workspaceId, team, embedded);
+    return botController.installDashboardTeam(
+      workspaceId,
+      team,
+      embedded,
+      values,
+    );
   } catch (err) {
     return { error: err.message };
   }
@@ -1337,6 +1349,11 @@ async function installDashboardFromRegistry(
         themeKey: installOptions.themeKey,
         intoWorkspaceId: installOptions.intoWorkspaceId,
         withTeam: installOptions.withTeam,
+        teamValues:
+          installOptions.teamValues &&
+          typeof installOptions.teamValues === "object"
+            ? installOptions.teamValues
+            : null,
         exactWidgetVersions: !!installOptions.exactWidgetVersions,
         ownPackage: isOwnScope(registryPkg.scope),
       },

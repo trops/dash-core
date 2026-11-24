@@ -56,10 +56,16 @@ const {
   buildTeamManifest,
   validateTeamManifest,
   planTeamInstall,
+  resolveReviewers,
   wireTeam,
   wireWidgets,
   stripBotListeners,
 } = require("../bots/teamManifest");
+const {
+  mergeTeamValues,
+  withTeamValues,
+  namesUsed,
+} = require("../bots/teamValues");
 const { saveTeamFile, openTeamFile } = require("./teamFiles");
 const {
   buildBotPackage,
@@ -642,7 +648,8 @@ const botController = {
     // ledger until it passes, then it goes on.
     this._checkJobs = createCheckJobs({
       goals: () => goalController.store(),
-      getBot: (id) => this._store.get(id),
+      // As it runs: its team's settings filled in (DASH-57).
+      getBot: (id) => this.resolvedBot(id),
       publisher: this._events,
       patchRun: (id, startedAt, patch) => {
         const r = this._store.patchRun(id, startedAt, patch);
@@ -2128,6 +2135,61 @@ const botController = {
     return this._store.getTeamSettings(workspaceId);
   },
 
+  /**
+   * A team's settings (DASH-57): what it declares, its values, and which
+   * bots use each ({ [name]: [botName] }).
+   */
+  teamValues(workspaceId) {
+    const t = this._store.getTeamSettings(workspaceId) || {};
+    const declared = Array.isArray(t.declared) ? t.declared : [];
+    const usedBy = {};
+    for (const bot of this._store.list()) {
+      if (!isOnTeam(bot, workspaceId)) continue;
+      for (const name of namesUsed(bot)) {
+        if (!declared.some((d) => d.name === name)) continue;
+        (usedBy[name] = usedBy[name] || []).push(bot.name || bot.id);
+      }
+    }
+    return {
+      declared,
+      values: (t.values && typeof t.values === "object" && t.values) || {},
+      usedBy,
+    };
+  },
+
+  /**
+   * Change a team's settings: `{ declare, values, remove }`
+   * (teamValues.mergeTeamValues). Saves nothing when there are errors.
+   * @returns {{ declared, values, usedBy } | { errors: string[] }}
+   */
+  setTeamValues(workspaceId, change = {}, opts = {}) {
+    if (workspaceId === null || workspaceId === undefined) {
+      return { errors: ["Team settings belong to a dashboard's team."] };
+    }
+    const merged = mergeTeamValues(
+      this._store.getTeamSettings(workspaceId),
+      change || {},
+    );
+    if (merged.errors.length) return { errors: merged.errors };
+    if (opts.dryRun) {
+      return { declared: merged.declared, values: merged.values };
+    }
+    this._store.setTeamSettings(workspaceId, {
+      declared: merged.declared,
+      values: merged.values,
+    });
+    return this.teamValues(workspaceId);
+  },
+
+  /** A bot as it runs: its team's settings filled in (DASH-57). */
+  resolvedBot(id) {
+    const bot = this._store.get(id);
+    if (!bot || bot.workspaceId == null) return bot || null;
+    return withTeamValues(bot, this._store.getTeamSettings(bot.workspaceId), {
+      home: require("os").homedir(),
+    }).bot;
+  },
+
   // ---- Tasks via MCP (TEAM-016) ------------------------------------------
 
   /** Does this dashboard's team take tasks via MCP? Off unless turned on. */
@@ -2852,6 +2914,8 @@ const botController = {
       // Its widget triggers and result listeners go along (5a).
       dashboardId: workspaceId,
       workspace: this._loadWorkspace(workspaceId),
+      // Its settings travel, never their values (DASH-57).
+      settings: this.teamValues(workspaceId).declared,
     });
     if (!manifest.members.length) {
       return { saved: false, error: "This dashboard has no bots to export." };
@@ -2880,6 +2944,7 @@ const botController = {
       providers: this._providerList(),
       dashboardId: workspaceId,
       workspace,
+      settings: this.teamValues(workspaceId).declared,
     });
     return {
       team: manifest,
@@ -2897,7 +2962,7 @@ const botController = {
    * the wiring re-pointed to the new bots and this dashboard. The manifest
    * is re-checked here.
    */
-  installDashboardTeam(workspaceId, manifest, embedded = null) {
+  installDashboardTeam(workspaceId, manifest, embedded = null, values = null) {
     const { valid, errors, manifest: clean } = validateTeamManifest(manifest);
     if (!valid) return { error: "The dashboard's team isn't valid.", errors };
     return this._installTeamPlan(
@@ -2908,6 +2973,8 @@ const botController = {
       null,
       // The dashboard package it came with (`{ package, version }`).
       embedded,
+      // Its settings as filled in on the install form (DASH-57).
+      values,
     );
   },
 
@@ -2944,7 +3011,13 @@ const botController = {
    * as chosen on the review screen, wiring resolved to the new bots. The
    * manifest is re-checked here — the renderer's copy isn't trusted.
    */
-  installTeam(workspaceId, manifest, choices = {}, roles = null) {
+  installTeam(
+    workspaceId,
+    manifest,
+    choices = {},
+    roles = null,
+    values = null,
+  ) {
     const { valid, errors, manifest: clean } = validateTeamManifest(manifest);
     if (!valid) return { error: "That isn't a Dash team file.", errors };
     return this._installTeamPlan(
@@ -2955,6 +3028,8 @@ const botController = {
         roles,
       }),
       null,
+      null,
+      values,
     );
   },
 
@@ -3006,9 +3081,25 @@ const botController = {
     }
   },
 
-  _installTeamPlan(plan, source, embedded = null) {
+  _installTeamPlan(plan, source, embedded = null, values = null) {
     if (!plan.members.length)
       return { error: "Pick at least one bot to install." };
+    // Its settings (DASH-57): checked before anything is created.
+    const dashboardOf =
+      plan.members[0] && plan.members[0].definition.workspaceId;
+    let teamValues = null;
+    if ((plan.settings || []).length && dashboardOf != null) {
+      teamValues = mergeTeamValues(this._store.getTeamSettings(dashboardOf), {
+        declare: plan.settings,
+        values,
+      });
+      if (teamValues.errors.length) {
+        return {
+          error: `The team wasn't installed:\n${teamValues.errors.map((p) => `- ${p}`).join("\n")}`,
+          errors: teamValues.errors,
+        };
+      }
+    }
     // Every member checked before any is created (Phase 1d) — a bad one
     // can't leave half a team installed.
     const problems = [];
@@ -3112,8 +3203,48 @@ const botController = {
       const saved = this._saveWorkspace(ws);
       if (saved && saved.error) unwired.push(`listeners: ${saved.error}`);
     }
-    for (const [role, subscriptions] of Object.entries(subs)) {
-      this.save({ ...created[role], subscriptions });
+    for (const role of Object.keys(created)) {
+      const patch = {};
+      if (subs[role]) patch.subscriptions = subs[role];
+      // Reviewer checks: the role it named is now a bot.
+      const checks = created[role].checks;
+      if (
+        checks &&
+        (checks.steps || []).some((st) => /^role:/.test(String(st.botId)))
+      ) {
+        patch.checks = resolveReviewers(checks, created);
+      }
+      if (Object.keys(patch).length) {
+        created[role] = this.save({ ...created[role], ...patch });
+      }
+    }
+    // Settings left with no value: its bots that use them can't run yet.
+    const needsSettings = [];
+    if (teamValues) {
+      this._store.setTeamSettings(dashboardOf, {
+        declared: teamValues.declared,
+        values: teamValues.values,
+      });
+      for (const d of teamValues.declared) {
+        if (d.type === "boolean") continue;
+        const v = Object.prototype.hasOwnProperty.call(
+          teamValues.values,
+          d.name,
+        )
+          ? teamValues.values[d.name]
+          : d.default;
+        if (v === undefined || v === null || v === "") {
+          needsSettings.push(d.label || d.name);
+        }
+      }
+    }
+    // Commands that came with it: off until turned on (DASH-57).
+    const heldChecks = [];
+    for (const m of plan.members) {
+      const bot = created[m.role];
+      for (const st of (bot && bot.checks && bot.checks.steps) || []) {
+        if (st && st.held) heldChecks.push(`${bot.name}: ${st.name}`);
+      }
     }
     this._recordInstalled(plan, created, registryRef, embedded);
     return {
@@ -3124,6 +3255,8 @@ const botController = {
       })),
       droppedWiring: plan.droppedWiring || [],
       unwired,
+      ...(needsSettings.length ? { needsSettings } : {}),
+      ...(heldChecks.length ? { heldChecks } : {}),
     };
   },
 
@@ -3262,6 +3395,32 @@ const botController = {
       }
     }
     for (const { id, patch } of changes) this._store.update(id, patch);
+    // Settings the new version declares (DASH-57) join each team's, so
+    // the {name}s its bots now use are there to fill in.
+    if ((plan.settings || []).length) {
+      const teams = new Set(
+        changes
+          .map((c) => this._store.get(c.id))
+          .filter((b) => b && b.workspaceId != null)
+          .map((b) => String(b.workspaceId)),
+      );
+      for (const ws of teams) {
+        const merged = mergeTeamValues(this._store.getTeamSettings(ws), {
+          declare: plan.settings.filter(
+            (d) =>
+              !((this._store.getTeamSettings(ws) || {}).declared || []).some(
+                (x) => x && x.name === d.name,
+              ),
+          ),
+        });
+        if (!merged.errors.length) {
+          this._store.setTeamSettings(ws, {
+            declared: merged.declared,
+            values: merged.values,
+          });
+        }
+      }
+    }
     return {
       updated: changes.map((c) => c.id),
       skipped,
@@ -3270,7 +3429,13 @@ const botController = {
   },
 
   /** Install the previewed registry package — all bots, or the ones picked. */
-  installFromRegistry(workspaceId, previewId, choices = {}, roles = null) {
+  installFromRegistry(
+    workspaceId,
+    previewId,
+    choices = {},
+    roles = null,
+    values = null,
+  ) {
     const preview =
       this._registryPreviews && this._registryPreviews.get(previewId);
     if (!preview) {
@@ -3285,6 +3450,8 @@ const botController = {
         roles,
       }),
       preview.source,
+      null,
+      values,
     );
   },
 
@@ -3300,6 +3467,7 @@ const botController = {
         name,
         bots,
         providers: this._providerList(),
+        settings: this.teamValues(workspaceId).declared,
       });
       if (!manifest.members.length) {
         return { error: "This dashboard has no bots to publish." };

@@ -9,6 +9,7 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { TeamSettingsForm } from "./TeamSettingsForm";
 
 const POLICY_LABELS = {
   ask: "Ask before external actions",
@@ -30,6 +31,31 @@ function eventVerb(ev) {
   if (ev === "completed") return "completes";
   if (ev === "failed") return "fails";
   return `uses ${ev.replace(/^tool\./, "").replace(".", " ")}`;
+}
+
+/**
+ * A member's checks in words (DASH-57: they travel with the package). A
+ * command or script runs on this computer, so it's shown as it is.
+ */
+export function checkLines(checks, names = {}) {
+  const steps = (checks && Array.isArray(checks.steps) && checks.steps) || [];
+  return steps.map((st) => {
+    const name = st.name || "A check";
+    if (st.kind === "you") return { text: `${name}: waits for your approval` };
+    if (st.kind === "reviewer") {
+      return { text: `${name}: ${names[st.role] || st.role} reviews the work` };
+    }
+    const c = st.check || {};
+    if (c.kind === "command") {
+      return { text: `${name}: runs`, command: String(c.command || "") };
+    }
+    if (c.kind === "script")
+      return { text: `${name}: runs a script`, runs: true };
+    if (c.kind === "tool") {
+      return { text: `${name}: calls ${c.tool || "a tool"} (read-only)` };
+    }
+    return { text: `${name}: rules on the answer` };
+  });
 }
 
 /** "Agenda completes → Inbox runs" */
@@ -73,6 +99,8 @@ export const TeamImportReview = ({
 
   const { manifest, plan, fileName, source } = preview || {};
   const [choices, setChoices] = useState({});
+  // Its settings (DASH-57): filled in here, used by its bots as {name}.
+  const [values, setValues] = useState({});
   // Which bots to install (TEAM-007 slice 3b): all, until the user unticks.
   const [picked, setPicked] = useState(
     () => new Set(((manifest && manifest.members) || []).map((m) => m.role)),
@@ -176,6 +204,26 @@ export const TeamImportReview = ({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+        {!isBot && (manifest.settings || []).length ? (
+          <div
+            className="flex flex-col gap-2"
+            data-testid="team-install-settings"
+          >
+            <SectionLabel text="Team settings" />
+            <span className={`text-xs ${muted}`}>
+              This team's bots use these in their instructions, checks and
+              folders. You can change them later on the dashboard.
+            </span>
+            <TeamSettingsForm
+              settings={manifest.settings}
+              values={values}
+              onChange={(name, v) =>
+                setValues((prev) => ({ ...prev, [name]: v }))
+              }
+            />
+          </div>
+        ) : null}
+
         {dropped.length || memoryRoles.length ? (
           <div className="flex flex-col gap-1">
             <SectionLabel text="Installing only some of the team" />
@@ -248,6 +296,32 @@ export const TeamImportReview = ({
                     .join(" · ")}
                 </span>
                 <span className={`text-xs ${muted}`}>{policy}</span>
+                {checkLines(e.checks, names).length ? (
+                  <div
+                    className="flex flex-col gap-0.5"
+                    data-testid={`team-member-checks-${role}`}
+                  >
+                    <span className="text-xs font-medium">Its checks</span>
+                    {checkLines(e.checks, names).map((l, i) => (
+                      <span key={i} className={`text-xs ${muted}`}>
+                        {l.text}
+                        {l.command ? " " : null}
+                        {l.command ? (
+                          <code className="font-mono">{l.command}</code>
+                        ) : null}
+                      </span>
+                    ))}
+                    {checkLines(e.checks, names).some(
+                      (l) => l.command !== undefined,
+                    ) ? (
+                      <span className={`text-xs ${status.warning.text}`}>
+                        Commands install switched off: nothing runs on this
+                        computer until you read each one and turn it on in the
+                        bot's checks.
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 {p.needs.map((need) => providerLine(role, need))}
               </div>
             );
@@ -285,7 +359,11 @@ export const TeamImportReview = ({
             disabled={
               installing || pickedRoles.length === 0 || teamNeedsDashboard
             }
-            onClick={() => onInstall(choices, isPartial ? pickedRoles : null)}
+            onClick={() =>
+              !isBot && (manifest.settings || []).length
+                ? onInstall(choices, isPartial ? pickedRoles : null, values)
+                : onInstall(choices, isPartial ? pickedRoles : null)
+            }
           />
         </div>
       </div>
