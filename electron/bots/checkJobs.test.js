@@ -511,6 +511,16 @@ describe("the lead's wait", () => {
 });
 
 describe("nothing to hand on (DASH-65)", () => {
+  // A script check runs in its own process: wait by the clock, not by
+  // ticks (a slow CI machine takes longer than a few thousand ticks).
+  async function waitFor(fn, ms = 10000) {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (fn()) return true;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return fn();
+  }
   const NOTHING = {
     kind: "check",
     name: "A ticket to take",
@@ -535,9 +545,7 @@ describe("nothing to hand on (DASH-65)", () => {
     bot("bot_t", { checks: { steps: [NOTHING, REVIEW] } });
     retryResults = [];
     userRun("bot_t", "No ticket matched.");
-    assert.ok(
-      await until(() => notices.some((n) => n.state === "passed"), 3000),
-    );
+    assert.ok(await waitFor(() => notices.some((n) => n.state === "passed")));
     const last = notices[notices.length - 1];
     assert.equal(last.handOn, false);
     assert.equal(last.reason, "No ticket to take");
@@ -553,7 +561,7 @@ describe("nothing to hand on (DASH-65)", () => {
     bot("bot_reviewer");
     bot("bot_t", { checks: { steps: [NOTHING, REVIEW] } });
     userRun("bot_t", "DASH-1: take it");
-    assert.ok(await until(() => completedEvents().length === 1, 3000));
+    assert.ok(await waitFor(() => completedEvents().length === 1));
     assert.equal(started.length, 1, "the reviewer ran");
   });
 });

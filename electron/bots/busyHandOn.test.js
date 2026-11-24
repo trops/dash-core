@@ -116,7 +116,7 @@ function fake({ checking = () => false, cooldownFree = () => true } = {}) {
   c.finish = async () => {
     const f = pending.shift();
     if (f) f();
-    await tick(20);
+    await tick(80);
   };
   c.busyWith = (id) => active.add(id);
   c.free = (id) => active.delete(id);
@@ -137,7 +137,7 @@ function fake({ checking = () => false, cooldownFree = () => true } = {}) {
     c._busy().clear(PR.id);
     active.clear();
     while (pending.length) pending.shift()();
-    await tick(20);
+    await tick(80);
   };
   made.push(c);
   c.notices = [];
@@ -182,7 +182,7 @@ describe("handleEvent — a hand-on to a busy bot waits (DASH-73)", () => {
     const c = fake();
     c.handleEvent(coderDone("DASH-1"));
     c.handleEvent(coderDone("DASH-2"));
-    await tick(20);
+    await tick(80);
     assert.deepEqual(c.started, ["DASH-1"], "the PR Bot is busy with DASH-1");
     await c.finish();
     assert.deepEqual(c.started, ["DASH-1", "DASH-2"]);
@@ -203,10 +203,10 @@ describe("handleEvent — a hand-on to a busy bot waits (DASH-73)", () => {
     let checking = true;
     const c = fake({ checking: () => checking });
     c.handleEvent(coderDone("DASH-2"));
-    await tick(20);
+    await tick(80);
     assert.deepEqual(c.started, []);
     checking = false;
-    await tick(20);
+    await tick(80);
     assert.deepEqual(c.started, ["DASH-2"]);
   });
 
@@ -214,11 +214,11 @@ describe("handleEvent — a hand-on to a busy bot waits (DASH-73)", () => {
     let free = false;
     const c = fake({ cooldownFree: () => free });
     c.handleEvent(coderDone("DASH-2"));
-    await tick(20);
+    await tick(80);
     assert.deepEqual(c.started, []);
     assert.deepEqual(c.skipped, []);
     free = true;
-    await tick(20);
+    await tick(80);
     assert.deepEqual(c.started, ["DASH-2"]);
   });
 
@@ -238,7 +238,7 @@ describe("handleEvent — a hand-on to a busy bot waits (DASH-73)", () => {
     c.handleEvent(coderDone("DASH-2", "job_2"));
     c.stopJob("job_2");
     c.free(PR.id);
-    await tick(20);
+    await tick(80);
     assert.deepEqual(c.started, []);
   });
 
