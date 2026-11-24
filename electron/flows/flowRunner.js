@@ -231,7 +231,7 @@ function createFlowRunner(deps) {
       const res = await runCheck(
         step.check || {},
         input,
-        checkContext(goal, step),
+        await checkContext(goal, step),
       );
       const fresh = store.getTask(task.id);
       if (!fresh || keyOf(fresh) !== key) return;

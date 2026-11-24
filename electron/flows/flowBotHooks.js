@@ -95,6 +95,13 @@ function flowBotHooks(ctl) {
     getBot: (botId) =>
       (ctl.resolvedBot ? ctl.resolvedBot(botId) : ctl._store.get(botId)) ||
       null,
+    // The bot's GitHub sign-in for its command checks (DASH-66), or null.
+    // Never logged.
+    gitToken: async (botId) => {
+      const bot = ctl._store.get(botId);
+      if (!bot || !ctl._gitTokenFor) return null;
+      return ctl._gitTokenFor(bot);
+    },
     listBots: (workspaceId) =>
       ctl._store.list().filter((b) => isOnTeam(b, workspaceId)),
 

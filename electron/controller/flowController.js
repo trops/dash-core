@@ -20,6 +20,7 @@ const { runCheck } = require("../checks/checkRunner");
 const { fetchStatus } = require("../checks/linkStatus");
 const goalController = require("./goalController");
 const { isChecksFlow } = require("../bots/botChecks");
+const { gitSignInEnv } = require("../bots/gitSignIn");
 
 let runner = null;
 let offGoals = null;
@@ -28,6 +29,7 @@ let bots = {
   runBot: async () => ({ skipped: true, reason: "Bots aren't ready yet" }),
   isBusy: () => false,
   getBot: () => null,
+  gitToken: async () => null,
   callTool: async () => ({ isError: true, text: "Tools aren't ready yet" }),
   isReadOnlyTool: () => false,
   readOnlyTools: async () => [],
@@ -62,7 +64,7 @@ function filesOf(goalId) {
 }
 
 /** What a check needs to run for a job: its folder, scripts and tools. */
-function checkContext(goal, _step) {
+async function checkContext(goal, _step) {
   const g = goals();
   // A bot's own checks run in its first folder, where its work is.
   let own = null;
@@ -72,7 +74,19 @@ function checkContext(goal, _step) {
     if (first && fs.existsSync(first)) own = first;
   }
   const folder = own || (g && goal && goal.id ? g.paths(goal.id).work : null);
+  // A bot's command checks sign git and gh in like its own commands
+  // (DASH-66): its GitHub provider's token, for that check only, and taken
+  // out of what the check keeps.
+  let token = null;
+  if (goal && goal.flow && goal.flow.botId && bots.gitToken) {
+    try {
+      token = await bots.gitToken(goal.flow.botId);
+    } catch (_e) {
+      token = null;
+    }
+  }
   return {
+    ...(token ? { env: gitSignInEnv(token, process.env), secret: token } : {}),
     // The job's files reach a command through its input, never through a
     // path written into the command.
     cwd: folder,

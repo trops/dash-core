@@ -185,3 +185,38 @@ describe("signInProblem", () => {
     assert.equal(signInProblem("", { hasToken: false }), null);
   });
 });
+
+describe("command checks sign in like the bot's own commands (DASH-66)", () => {
+  const { runCheck } = require("../checks/checkRunner");
+  const os = require("os");
+  const TOKEN = "ghp_checkTokenForTests123456";
+
+  it("a command check gets the token for git and gh, and it never stays in what the check keeps", async () => {
+    const res = await runCheck(
+      {
+        kind: "command",
+        command:
+          'echo "token: $GH_TOKEN"; [ "$GH_TOKEN" = "$DASH_GIT_TOKEN" ] && [ -n "$DASH_GIT_TOKEN" ] && git config --get-urlmatch credential.helper https://github.com/x | grep -q DASH_GIT_TOKEN',
+      },
+      {},
+      {
+        cwd: os.tmpdir(),
+        tmpDir: os.tmpdir(),
+        env: gitSignInEnv(TOKEN, process.env),
+        secret: TOKEN,
+      },
+    );
+    assert.equal(res.pass, true, res.reason + " " + (res.output || ""));
+    assert.doesNotMatch(JSON.stringify(res), new RegExp(TOKEN));
+    assert.match(res.output, /token: \[GitHub token\]/);
+  });
+
+  it("a bot without one gets nothing new", async () => {
+    const res = await runCheck(
+      { kind: "command", command: '[ -z "$DASH_GIT_TOKEN" ]' },
+      {},
+      { cwd: os.tmpdir(), tmpDir: os.tmpdir() },
+    );
+    assert.equal(res.pass, true);
+  });
+});
