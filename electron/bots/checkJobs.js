@@ -117,6 +117,19 @@ function createCheckJobs(deps) {
     return { ...base, state: "checking" };
   }
 
+  /**
+   * Whether a bot's checks are still trying one of its runs (DASH-73): a
+   * new run of it would mix with that work, so a hand-on waits for it.
+   * Waiting on the user doesn't count: that can take any time.
+   */
+  function checkingFor(botId) {
+    for (const [goalId, entry] of held) {
+      if (!entry || entry.botId !== botId || settled.has(goalId)) continue;
+      if (stateOf(goalId).state === "checking") return true;
+    }
+    return false;
+  }
+
   /** Whether a run of this bot should hold the results it sends. */
   function holdsRun(bot, opts = {}) {
     if (!bot) return false;
@@ -426,7 +439,7 @@ function createCheckJobs(deps) {
     });
   }
 
-  return { afterRun, onChange, waitFor, stateOf, holdsRun };
+  return { afterRun, onChange, waitFor, stateOf, holdsRun, checkingFor };
 }
 
 module.exports = { createCheckJobs };

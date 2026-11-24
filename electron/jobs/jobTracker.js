@@ -259,6 +259,26 @@ function createJobTracker({
     return step;
   }
 
+  /**
+   * A hand-on waiting for its bot to finish another run (DASH-73). Queued
+   * counts as going, so the job stays open; startStep turns it into the run.
+   */
+  function queueStep(jobId, { botId, botName, why, summary }) {
+    const job = jobOf(jobId);
+    if (!job) return null;
+    unsettle(job.id);
+    const step = addStep(job, {
+      botId,
+      botName,
+      status: "queued",
+      why,
+      summary,
+    });
+    if (step) step.waiting = "busy";
+    commit(job);
+    return step;
+  }
+
   /** A hand-on that won't run (its bot drops events while paused). */
   function skipStep(jobId, { botId, botName, why, summary }) {
     const job = jobOf(jobId);
@@ -467,6 +487,7 @@ function createJobTracker({
     startJob,
     startStep,
     waitStep,
+    queueStep,
     skipStep,
     endStep,
     checksMoved,
