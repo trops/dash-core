@@ -37,7 +37,11 @@ function proofLine(out) {
   for (let i = lines.length - 1; i >= 0 && i >= lines.length - 3; i--) {
     try {
       const v = JSON.parse(lines[i]);
-      if (v && typeof v === "object" && ("reason" in v || "details" in v))
+      if (
+        v &&
+        typeof v === "object" &&
+        ("reason" in v || "details" in v || "handOn" in v)
+      )
         return v;
     } catch (_e) {
       // Not JSON.
@@ -178,6 +182,7 @@ function runCommand(check, input, opts = {}) {
           (proof && typeof proof.reason === "string" && proof.reason) ||
           (ok ? `Passed (exit ${code})` : `Failed (exit ${code})`),
         details: proof && proof.details !== undefined ? proof.details : null,
+        ...(ok && proof && proof.handOn === false ? { handOn: false } : {}),
         output: tail(out + (err ? `\n${err}` : "")),
         exitCode: code,
       });

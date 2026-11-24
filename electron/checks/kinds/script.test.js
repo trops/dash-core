@@ -159,3 +159,29 @@ describe("the runner's own network block (second layer)", () => {
     assert.match(res.reason, /No internet/);
   });
 });
+
+describe("nothing to hand on (DASH-65)", () => {
+  it("a script can pass with handOn false", async () => {
+    const res = await runScript(
+      {
+        script:
+          "function check(input) { return { pass: true, handOn: false, reason: 'Nothing' }; }",
+      },
+      { input: {} },
+    );
+    assert.equal(res.pass, true);
+    assert.equal(res.handOn, false);
+  });
+
+  it("handOn false on a fail is ignored", async () => {
+    const res = await runScript(
+      {
+        script:
+          "function check(input) { return { pass: false, handOn: false, reason: 'No' }; }",
+      },
+      { input: {} },
+    );
+    assert.equal(res.pass, false);
+    assert.equal(res.handOn, undefined);
+  });
+});

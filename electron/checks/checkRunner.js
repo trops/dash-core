@@ -78,6 +78,8 @@ async function runCheck(check, input, deps = {}) {
       2000,
     ),
     details: res.details === undefined ? null : res.details,
+    // Passed, with nothing to hand on (DASH-65): the work ends here.
+    ...(res.pass === true && res.handOn === false ? { handOn: false } : {}),
     ...(res.output ? { output: String(res.output).slice(-4000) } : {}),
     ...(res.exitCode !== undefined ? { exitCode: res.exitCode } : {}),
     kind: kind || null,

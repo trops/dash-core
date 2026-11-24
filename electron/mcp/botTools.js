@@ -263,7 +263,7 @@ const BOT_FIELDS = {
             check: {
               type: "object",
               description:
-                "For kind 'check', as the Bots tab saves it. { kind: 'command', command, passWhen?, timeoutSec? }: runs in its first folder and gets its answer as JSON on stdin and in $DASH_INPUT; passWhen is { type: 'exit0' } (the default), { type: 'contains', text } (exit 0 and the output has it) or { type: 'matches', pattern } (the output matches the regex). { kind: 'tool', server, tool, args?, answerRules? }: a read-only provider tool. { kind: 'rules', rules }. { kind: 'script', script, timeoutSec? }.",
+                "For kind 'check', as the Bots tab saves it. { kind: 'command', command, passWhen?, timeoutSec? }: runs in its first folder and gets its answer as JSON on stdin and in $DASH_INPUT; passWhen is { type: 'exit0' } (the default), { type: 'contains', text } (exit 0 and the output has it) or { type: 'matches', pattern } (the output matches the regex). { kind: 'tool', server, tool, args?, answerRules? }: a read-only provider tool. { kind: 'rules', rules }. { kind: 'script', script, timeoutSec? }: function check(input) returns { pass, reason }. A script, or a command's last output line as JSON, may pass with handOn: false ({ pass: true, handOn: false, reason }): the work ends there, the rest of the checks don't run, and nothing is handed on (no completed or failed event) — for a bot that found nothing to do.",
             },
             bot: {
               type: "string",

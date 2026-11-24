@@ -41,6 +41,7 @@ const { createJobStore } = require("../jobs/jobStore");
 const { createJobTracker } = require("../jobs/jobTracker");
 const { PausedQueue, drainBot } = require("../bots/pausedQueue");
 const { BusyQueue } = require("../bots/busyQueue");
+const { startsChain, chainStartedBy } = require("../jobs/chainJobs");
 const {
   stopBotRun,
   whenIdle: waitUntilIdle,
@@ -680,7 +681,8 @@ const botController = {
         });
         // Checks waiting on the user show on the job (DASH-31).
         if (info && info.goalId && this._jobs) {
-          this._jobs.checksMoved(info.goalId, info.state);
+          if (info.handOn === false) this._nothingToHandOn(info);
+          else this._jobs.checksMoved(info.goalId, info.state);
         }
       },
     });
@@ -1075,6 +1077,31 @@ const botController = {
         title: "Bot chain stopped",
         body: `${bot.name} didn't run: ${reason}.`,
       });
+    }
+  },
+
+  /**
+   * A bot's checks passed its work with nothing to hand on (DASH-65): its
+   * step is done, saying so. A chain's job that is only that step (a
+   * scheduled Ticket Bot that found no ticket) isn't kept: nothing
+   * happened.
+   */
+  _nothingToHandOn(info) {
+    const jobId = this._jobs.jobForGoal(info.goalId);
+    this._jobs.checksMoved(
+      info.goalId,
+      "passed",
+      `Nothing to hand on${info.reason ? `: ${info.reason}` : ""}.`,
+    );
+    const job = jobId ? this._jobs.get(jobId) : null;
+    if (job && !job.leadId && (job.steps || []).length === 1) {
+      if (this._jobs.remove(job.id)) {
+        this._broadcast(BOT_JOBS_CHANGED, {
+          jobId: job.id,
+          workspaceId: job.workspaceId,
+          status: "deleted",
+        });
+      }
     }
   },
 
@@ -4724,6 +4751,29 @@ const botController = {
         title: String(opts.jobTitle || opts.prompt || "").split("\n")[0],
         request: String(opts.jobTitle || opts.prompt || ""),
         startedBy: jobStartedBy(opts),
+        conversationId: opts.conversationId || null,
+      }).id;
+    }
+    // A chain's first run is a job too (DASH-70): a bot on a team whose
+    // runs start other bots (a scheduled Ticket Bot, say) — so one ticket
+    // is one job, all its steps on it. A check's retry joins its own.
+    if (
+      !jobId &&
+      willStart &&
+      !isLead(bot) &&
+      !isDashTeam(bot) &&
+      !opts.noTools &&
+      opts.trigger !== "flow" &&
+      startsChain(this._store, bot)
+    ) {
+      const asked = String(opts.jobTitle || opts.prompt || "").split("\n")[0];
+      jobId = this._jobs.startJob({
+        workspaceId: bot.workspaceId,
+        leadId: null,
+        leadName: bot.name,
+        title: asked ? `${bot.name}: ${asked}` : bot.name,
+        request: "",
+        startedBy: chainStartedBy(bot, opts, jobStartedBy(opts)),
         conversationId: opts.conversationId || null,
       }).id;
     }

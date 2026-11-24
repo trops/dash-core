@@ -238,6 +238,7 @@ function createFlowRunner(deps) {
       store.writeStepRecord(task.id, {
         stepId: step.id,
         status: res.pass ? "passed" : "failed",
+        ...(res.pass && res.handOn === false ? { handOn: false } : {}),
         summary: res.reason,
         details: res.details,
         kind: res.kind,

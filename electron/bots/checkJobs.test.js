@@ -509,3 +509,51 @@ describe("the lead's wait", () => {
     assert.equal(info.state, "checking");
   });
 });
+
+describe("nothing to hand on (DASH-65)", () => {
+  const NOTHING = {
+    kind: "check",
+    name: "A ticket to take",
+    check: {
+      kind: "script",
+      script:
+        "function check(input) {\n" +
+        "  const t = String(input.input.answer || '');\n" +
+        "  if (/no ticket/i.test(t)) return { pass: true, handOn: false, reason: 'No ticket to take' };\n" +
+        "  return { pass: true, reason: 'A ticket' };\n" +
+        "}",
+    },
+  };
+  const REVIEW = {
+    kind: "reviewer",
+    name: "Reviewer approves",
+    botId: "bot_reviewer",
+  };
+
+  it("ends the work: no completed, no failed, no results, the rest of its checks don't run", async () => {
+    bot("bot_reviewer");
+    bot("bot_t", { checks: { steps: [NOTHING, REVIEW] } });
+    retryResults = [];
+    userRun("bot_t", "No ticket matched.");
+    assert.ok(
+      await until(() => notices.some((n) => n.state === "passed"), 3000),
+    );
+    const last = notices[notices.length - 1];
+    assert.equal(last.handOn, false);
+    assert.equal(last.reason, "No ticket to take");
+    assert.equal(completedEvents().length, 0);
+    assert.equal(failedEvents().length, 0);
+    assert.equal(started.length, 0, "the reviewer never ran");
+    const task = onlyJob().tasks[0];
+    assert.equal(task.status, "done");
+    assert.equal(task.history[task.history.length - 1].handOn, false);
+  });
+
+  it("a pass without it hands on as before", async () => {
+    bot("bot_reviewer");
+    bot("bot_t", { checks: { steps: [NOTHING, REVIEW] } });
+    userRun("bot_t", "DASH-1: take it");
+    assert.ok(await until(() => completedEvents().length === 1, 3000));
+    assert.equal(started.length, 1, "the reviewer ran");
+  });
+});

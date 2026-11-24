@@ -96,6 +96,17 @@ function createCheckJobs(deps) {
       .find((r) => r && r.status === "failed");
     const reason = lastFail ? lastFail.summary || "" : "";
     if (task.status === "done") {
+      // A check passed it with nothing to hand on (DASH-65): done, and
+      // nothing goes out.
+      const last = (task.history || [])[(task.history || []).length - 1];
+      if (last && last.handOn === false) {
+        return {
+          ...base,
+          state: "passed",
+          handOn: false,
+          reason: last.summary || "",
+        };
+      }
       return {
         ...base,
         state: "passed",
@@ -357,6 +368,18 @@ function createCheckJobs(deps) {
           i === runs.length - 1 ? "passed" : "replaced",
         ),
       );
+      // Nothing to hand on (DASH-65): no results, no `completed`, no
+      // `failed`. What it held is let go.
+      if (info.handOn === false) {
+        settle(goal.id, info);
+        notify(botId, {
+          goalId: goal.id,
+          state: "passed",
+          handOn: false,
+          reason: info.reason || "",
+        });
+        return;
+      }
       if (bot) {
         publisher.release(bot, {
           cause: entry.cause,
