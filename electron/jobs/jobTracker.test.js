@@ -120,6 +120,23 @@ describe("a job through the lead", () => {
     assert.equal(t.get(job.id).status, "done");
   });
 
+  it("a step that passed its checks stays done when the reviewer's run ends after", () => {
+    const t = make();
+    const job = t.startJob({ leadId: null, title: "Ticket" });
+    t.startStep(job.id, { botId: "c", botName: "Coder" });
+    t.endStep(job.id, {
+      botId: "c",
+      record: done("Coded"),
+      checking: { goalId: "goal_r" },
+    });
+    t.checksMoved("goal_r", "passed");
+    // The reviewer's run is marked "review" when it ends, after the pass.
+    t.checksMoved("goal_r", "review");
+    settle();
+    assert.equal(t.get(job.id).steps[0].status, "done");
+    assert.equal(t.get(job.id).status, "done");
+  });
+
   it("a hand-on waiting on a paused bot: needs you, then running once it's on", () => {
     const t = make();
     const job = t.startJob({ leadId: "lead1", title: "Spool shelf" });
