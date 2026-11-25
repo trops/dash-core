@@ -703,6 +703,9 @@ const botController = {
         }),
     });
     this._jobs.interruptLeftovers();
+    // What waited for the jobs (tasks queued before a restart, DASH-81).
+    for (const fn of this._jobsReady || []) this._callReady(fn);
+    this._jobsReady = null;
     // Only if the user asked: finished jobs older than 90 days, now and
     // once a day.
     this._clearOldJobs();
@@ -2398,6 +2401,77 @@ const botController = {
     return saved;
   },
 
+  /**
+   * Does this team run one job at a time (DASH-81)? On unless turned off: a
+   * job made while one is going waits its turn (a schedule's run is
+   * skipped instead).
+   */
+  oneJobAtATime(workspaceId) {
+    if (workspaceId === null || workspaceId === undefined) return false;
+    return this._store.getTeamSettings(workspaceId).oneJobAtATime !== false;
+  },
+
+  setOneJobAtATime(workspaceId, on) {
+    const saved = this._store.setTeamSettings(workspaceId, {
+      oneJobAtATime: !!on,
+    });
+    // Turned off: what's waiting starts now.
+    if (!on && this._jobs) {
+      for (const job of this._jobs.queuedFor(workspaceId)) {
+        this._jobs.releaseQueued(job.id);
+      }
+    }
+    return saved;
+  },
+
+  /** Does this team have a job going, or waiting, so a new one must wait? */
+  _teamBusy(workspaceId) {
+    if (!this._jobs || !this.oneJobAtATime(workspaceId)) return false;
+    return (
+      !!this._jobs.activeFor(workspaceId) ||
+      this._jobs.queuedFor(workspaceId).length > 0
+    );
+  },
+
+  /** Is the team's queue full (20 waiting)? */
+  teamQueueFull(workspaceId) {
+    return (
+      !!this._jobs &&
+      this.oneJobAtATime(workspaceId) &&
+      this._jobs.queueFull(workspaceId)
+    );
+  },
+
+  /** Where a queued job is: { position, waitingFor } or null (DASH-81). */
+  jobQueue(jobId) {
+    return this._jobs ? this._jobs.queueInfo(String(jobId || "")) : null;
+  },
+
+  /** Run `fn` once the jobs are loaded (now, if they are). */
+  whenJobsReady(fn) {
+    if (this._jobs) return this._callReady(fn);
+    if (!this._jobsReady) this._jobsReady = [];
+    this._jobsReady.push(fn);
+    return null;
+  },
+
+  _callReady(fn) {
+    setTimeout(() => {
+      try {
+        fn();
+      } catch (_e) {
+        // One that fails never stops the rest.
+      }
+    }, 0);
+  },
+
+  /** Resolves true when a queued job's turn comes, false if it won't. */
+  waitForJobStart(jobId) {
+    return this._jobs
+      ? this._jobs.waitForStart(String(jobId || ""))
+      : Promise.resolve(true);
+  },
+
   /** Does this team ask for the task passphrase first? Off unless turned on. */
   asksTaskPassphrase(workspaceId) {
     return this._store.getTeamSettings(workspaceId).asksTaskPassphrase === true;
@@ -2623,13 +2697,18 @@ const botController = {
     let list = this._jobs.list({ workspaceId });
     if (open) {
       list = list.filter(
-        (j) => j.status === "running" || j.status === "needs-you",
+        (j) =>
+          j.status === "running" ||
+          j.status === "needs-you" ||
+          j.status === "queued",
       );
     }
     if (limit > 0) list = list.slice(0, limit);
     // What was asked is left out too (getJob has it).
     return list.map(({ request, ...j }) => ({
       ...j,
+      // Its place in its team's queue (DASH-81).
+      ...(j.status === "queued" ? { queue: this._jobs.queueInfo(j.id) } : {}),
       steps: (j.steps || []).map(({ summary, ...st }) =>
         st.status === "needs-you" ? { ...st, summary } : st,
       ),
@@ -2637,7 +2716,9 @@ const botController = {
   },
 
   getJob(jobId) {
-    return this._jobs ? this._jobs.get(String(jobId || "")) : null;
+    const job = this._jobs ? this._jobs.get(String(jobId || "")) : null;
+    if (!job || job.status !== "queued") return job;
+    return { ...job, queue: this._jobs.queueInfo(job.id) };
   },
 
   /** A task given via MCP: its job, made before the lead starts on it. */
@@ -2645,6 +2726,8 @@ const botController = {
     if (!this._jobs || !task) return null;
     const lead = this._store.get(task.leadId) || {};
     return this._jobs.startJob({
+      // One job at a time (DASH-81): behind what the team is doing.
+      queued: this._teamBusy(lead.workspaceId),
       workspaceId: lead.workspaceId,
       leadId: task.leadId,
       leadName: lead.name || task.teamName || "",
@@ -4696,6 +4779,77 @@ const botController = {
 
   // ---- internals ----------------------------------------------------------
 
+  /**
+   * Would this run start a job while its team has one going (DASH-81)? Then
+   * it's held (_holdForTeam): the run's promise. Otherwise null, and it runs
+   * as usual. What the user does in Dash, and what's asked over MCP, isn't
+   * held; give_task queues in startTaskJob.
+   */
+  _gateTeamJob(botId, bot, { jobId, willStart, opts }) {
+    const startsJob =
+      !jobId &&
+      willStart &&
+      !isDashTeam(bot) &&
+      !opts.noTools &&
+      (isLead(bot)
+        ? opts.trigger !== "schedule" && opts.trigger !== "catch-up"
+        : opts.trigger !== "flow" && startsChain(this._store, bot));
+    if (!startsJob || !this._teamBusy(bot.workspaceId)) return null;
+    return this._holdForTeam(botId, bot, opts);
+  },
+
+  /**
+   * A run that would start a job while its team has one going (DASH-81).
+   * A schedule's run is skipped, saying why; a trigger's waits as a queued
+   * job and runs when its turn comes. Returns the run's promise, or null
+   * when it isn't held (the user's own runs, MCP asks).
+   */
+  _holdForTeam(botId, bot, opts) {
+    const trigger = opts.trigger || "manual";
+    const ws = bot.workspaceId;
+    const skip = (reason) => {
+      this._broadcast(BOT_STREAM, {
+        botId,
+        event: { type: "skipped", reason },
+      });
+      return Promise.resolve({ botId, skipped: true, reason });
+    };
+    const active = this._jobs.activeFor(ws);
+    const busyWith = active
+      ? `the team is busy with "${active.title}"`
+      : "the team has jobs waiting their turn";
+    if (trigger === "schedule" || trigger === "catch-up") {
+      return skip(`${busyWith} (one job at a time)`);
+    }
+    if (trigger !== "event") return null;
+    if (this._jobs.queueFull(ws)) {
+      return skip("the team's queue is full (20 jobs waiting)");
+    }
+    const asked = String(opts.jobTitle || opts.prompt || "").split("\n")[0];
+    const lead = isLead(bot);
+    const job = this._jobs.startJob({
+      workspaceId: ws,
+      leadId: lead ? bot.id : null,
+      leadName: bot.name,
+      title: lead ? asked : asked ? `${bot.name}: ${asked}` : bot.name,
+      request: lead ? String(opts.jobTitle || opts.prompt || "") : "",
+      startedBy: lead
+        ? jobStartedBy(opts)
+        : chainStartedBy(bot, opts, jobStartedBy(opts)),
+      conversationId: opts.conversationId || null,
+      queued: true,
+    });
+    return this._jobs.waitForStart(job.id).then((started) =>
+      started
+        ? this._run(botId, { ...opts, jobId: job.id })
+        : {
+            botId,
+            skipped: true,
+            reason: "it was taken out of the team's queue",
+          },
+    );
+  },
+
   _run(botId, opts) {
     // Track the run for bot events — unless one is already in progress (the
     // runner will skip this one, and the active run keeps its own cause).
@@ -4735,6 +4889,9 @@ const botController = {
       (cause.jobId ? this._handOnJob(cause, bot) : null) ||
       (goal.goalId ? this._jobs.jobForGoal(goal.goalId) : null) ||
       null;
+    // One job at a time per team (DASH-81): held, or run as usual.
+    const held = this._gateTeamJob(botId, bot, { jobId, willStart, opts });
+    if (held) return held;
     if (
       !jobId &&
       willStart &&

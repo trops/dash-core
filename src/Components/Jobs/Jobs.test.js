@@ -15,9 +15,13 @@ import { JobsPage } from "./JobsPage";
 import { useJobs } from "../../hooks/useJobs";
 import { JobStrip, jobForConversation, stepsLine } from "./JobStrip";
 import {
+  JOB_STATUS,
+  aheadText,
   filterJobs,
   groupByDashboard,
   jobCounts,
+  ordinalText,
+  queueText,
   startedByText,
   whyText,
 } from "./jobText";
@@ -333,5 +337,69 @@ describe("Search and Run again", () => {
     render(<JobsPage workspaces={WORKSPACES} />);
     await screen.findByTestId("job-detail");
     expect(screen.queryByRole("button", { name: "Run again" })).toBeNull();
+  });
+});
+
+describe("Queued jobs (DASH-81)", () => {
+  const QUEUED = {
+    id: "job_q",
+    workspaceId: "1",
+    leadId: "lead1",
+    leadName: "Woodworking Lead",
+    title: "Cherry side table",
+    startedBy: { kind: "task", label: "slack" },
+    status: "queued",
+    queue: {
+      position: 2,
+      waitingFor: {
+        id: "job_a",
+        title: "Walnut U desk, 60 inches wide",
+        status: "needs-you",
+      },
+    },
+    createdAt: T,
+    updatedAt: T,
+    steps: [],
+  };
+
+  it("says where a queued job is in line, and what's ahead of it", () => {
+    expect(queueText(QUEUED)).toBe(
+      "2nd in line · after “Walnut U desk, 60 inches wide”, which needs you",
+    );
+    expect(
+      queueText({ ...QUEUED, queue: { position: 1, waitingFor: null } }),
+    ).toBe("Next in line");
+    expect(queueText(JOBS[0])).toBe("");
+    expect(aheadText(QUEUED)).toBe("Queued · 2 ahead");
+    expect(ordinalText(11)).toBe("11th");
+    expect(ordinalText(23)).toBe("23rd");
+    expect(JOB_STATUS.queued).toBe("Queued");
+    expect(jobCounts([QUEUED, ...JOBS]).queued).toBe(1);
+    expect(filterJobs([QUEUED, ...JOBS], "queued")).toEqual([QUEUED]);
+  });
+
+  it("the Jobs page shows it Queued with its place, and it can be taken out of the queue", async () => {
+    const calls = withApi([QUEUED, ...JOBS]);
+    render(<JobsPage workspaces={WORKSPACES} />);
+    // First in the list, so it's the one open.
+    const detail = await screen.findByTestId("job-detail");
+    expect(within(detail).getByText("Cherry side table")).toBeInTheDocument();
+    expect(
+      within(detail).getByText(/Waiting its turn: 2nd in line/),
+    ).toBeInTheDocument();
+    const row = screen
+      .getAllByTestId("job-row")
+      .find((r) => within(r).queryByText("Cherry side table"));
+    expect(within(row).getByTestId("job-queue")).toHaveTextContent(
+      "2nd in line",
+    );
+    expect(screen.getByText(/Queued · 1/)).toBeInTheDocument();
+    fireEvent.click(
+      within(detail).getByRole("button", { name: "Take out of the queue" }),
+    );
+    expect(calls.stop).toEqual(["job_q"]);
+    expect(
+      within(detail).queryByRole("button", { name: "Stop job" }),
+    ).toBeNull();
   });
 });

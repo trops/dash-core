@@ -11,6 +11,7 @@ import { BotAvatar } from "../Bots/BotAvatar";
 import { DASH_TEAM_CONTACT } from "../Bots/dashTeamContact";
 import { triggerSummary } from "../Bots/teamUtils";
 import { TeamSettingsPanel } from "../Bots/TeamSettingsForm";
+import { TeamJobSettings } from "../Bots/TeamJobSettings";
 
 const howItRuns = (bot) =>
   bot && bot.system === "dash-team" ? bot.summary || "" : triggerSummary(bot);
@@ -186,6 +187,10 @@ export const TeamOverview = ({
           onRowClick={isEmpty ? null : (row) => onPickBot(row.id)}
         />
         <span className={`text-xs ${muted}`}>{note}</span>
+        {/* One job at a time (DASH-81): a team's, whatever its bots. */}
+        {team.kind === "team" && team.workspace && !isEmpty ? (
+          <TeamJobSettings workspaceId={team.workspace.id} />
+        ) : null}
         {/* Its settings (DASH-57), when its bots declare some. */}
         {team.kind === "team" && team.workspace ? (
           <TeamSettingsPanel

@@ -75,6 +75,7 @@ const {
   BOTS_LIST_MCP_TASK_TEAMS,
   BOTS_SET_TAKES_MCP_TASKS,
   BOTS_SET_ASKS_TASK_PASSPHRASE,
+  BOTS_SET_ONE_JOB_AT_A_TIME,
   BOTS_GET_APPROVAL_WAIT_HOURS,
   BOTS_SET_APPROVAL_WAIT_HOURS,
   BOTS_TASK_PASSPHRASE_STATE,
@@ -412,6 +413,9 @@ const botApi = {
   /** The team's "Ask for a passphrase first" switch. */
   setAsksTaskPassphrase: (workspaceId, on) =>
     ipcRenderer.invoke(BOTS_SET_ASKS_TASK_PASSPHRASE, { workspaceId, on }),
+  /** The team's "One job at a time" switch (DASH-81). */
+  setOneJobAtATime: (workspaceId, on) =>
+    ipcRenderer.invoke(BOTS_SET_ONE_JOB_AT_A_TIME, { workspaceId, on }),
   /** The team's "Wait for approvals up to", in hours (1, 4, 12 or 24). */
   getApprovalWaitHours: (workspaceId) =>
     ipcRenderer.invoke(BOTS_GET_APPROVAL_WAIT_HOURS, { workspaceId }),

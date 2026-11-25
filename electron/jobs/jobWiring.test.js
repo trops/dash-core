@@ -105,6 +105,9 @@ function fakeCtl() {
   };
   ctl._run = botController._run.bind(ctl);
   ctl._handOnJob = botController._handOnJob.bind(ctl);
+  // One job at a time (DASH-81): its team is never busy here.
+  ctl._gateTeamJob = botController._gateTeamJob.bind(ctl);
+  ctl._teamBusy = () => false;
   return ctl;
 }
 const tick = () => new Promise((r) => setImmediate(r));

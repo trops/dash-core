@@ -111,7 +111,7 @@ const TEAM_TOOLS = [
   {
     name: "get_task_status",
     description:
-      "How a task from give_task is going: waiting for the passphrase, running, needs, done (with the team's summary), failed (with why), or expired. A task is running until every bot it set going has finished — the lead, the bots it asked and the ones they handed on to; steps lists each, with its status. While a bot in it waits on the user — a tool approval, or a paused bot — status is 'needs' and approvals lists each, { approvalId, bot, provider, tool, toolTitle, what, askedAt, remote } (a paused bot: { kind: 'paused-bot', bot }); one with remote true can be answered with answer_approval, the rest only in Dash. When done, summary is the lead's answer exactly as it gave it; what the bots it handed on to said is in handOns, each { bot, summary }.",
+      "How a task from give_task is going: waiting for the passphrase, queued (its team is doing another job first, one at a time; position 1 is next, waitingFor is that job), running, needs, done (with the team's summary), failed (with why), or expired. A task is running until every bot it set going has finished — the lead, the bots it asked and the ones they handed on to; steps lists each, with its status. While a bot in it waits on the user — a tool approval, or a paused bot — status is 'needs' and approvals lists each, { approvalId, bot, provider, tool, toolTitle, what, askedAt, remote } (a paused bot: { kind: 'paused-bot', bot }); one with remote true can be answered with answer_approval, the rest only in Dash. When done, summary is the lead's answer exactly as it gave it; what the bots it handed on to said is in handOns, each { bot, summary }.",
     inputSchema: {
       type: "object",
       properties: {
@@ -123,7 +123,7 @@ const TEAM_TOOLS = [
   {
     name: "list_tasks",
     description:
-      "The most recent tasks given to teams via MCP, newest first, with their status ('needs' while a bot in one waits on the user — get_task_status has what).",
+      "The most recent tasks given to teams via MCP, newest first, with their status ('needs' while a bot in one waits on the user — get_task_status has what; 'queued' with its position while its team finishes another job).",
     inputSchema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -187,6 +187,13 @@ const taskView = (t) => ({
   status: t.status,
   createdAt: t.createdAt,
   ...(t.status === "waiting" ? { expiresAt: t.expiresAt } : {}),
+  // Its place in line (DASH-81): position 1 is next.
+  ...(t.status === "queued" && t.queue
+    ? {
+        position: t.queue.position,
+        ...(t.queue.waitingFor ? { waitingFor: t.queue.waitingFor.title } : {}),
+      }
+    : {}),
   ...(t.summary ? { summary: t.summary } : {}),
   ...(t.handOns && t.handOns.length ? { handOns: t.handOns } : {}),
   ...(t.needsYou ? { needsUser: t.needsYou } : {}),
@@ -261,6 +268,12 @@ const handOnsText = (t) =>
 const STATUS_MESSAGE = {
   waiting: (t) =>
     `Waiting for the user's task passphrase (expires at ${timeOf(t.expiresAt)}). Ask them for it and call confirm_task.`,
+  queued: (t) =>
+    `${t.teamName} is doing another job first; this one starts when it's done${
+      t.queue && t.queue.position
+        ? ` (${t.queue.position === 1 ? "next" : `${t.queue.position}${ordinal(t.queue.position)} in line`})`
+        : ""
+    }.`,
   running: (t) => `${t.teamName} is working on it.`,
   done: (t) =>
     t.needsYou
@@ -270,6 +283,13 @@ const STATUS_MESSAGE = {
   expired: () =>
     "It expired before the passphrase was given. Give the task again if the user still wants it.",
 };
+
+/** 2 → "nd", 3 → "rd", 11 → "th". */
+function ordinal(n) {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return "th";
+  return { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th";
+}
 
 /** What the lead is asked: the task, and that the user stands behind it. */
 function taskPrompt(t) {
@@ -312,6 +332,19 @@ function makeTeamToolHandlers({
     }
   };
 
+  // A queued task, with its place in line (DASH-81).
+  const withQueue = (task) => {
+    if (!task || task.status !== "queued" || !task.jobId || !bots.jobQueue) {
+      return task;
+    }
+    try {
+      const queue = bots.jobQueue(task.jobId);
+      return queue ? { ...task, queue } : task;
+    } catch (_e) {
+      return task;
+    }
+  };
+
   const lastRunAt = (botId) => {
     try {
       const runs = bots.getRuns(botId, { limit: 1 }) || [];
@@ -342,12 +375,36 @@ function makeTeamToolHandlers({
 
   // A task's run, from the passphrase on: the lead does it with its bots
   // (allowed — the user confirmed it), and the task follows the run.
-  const startTask = (task) => {
+  const startTask = (task, queuedJobId = null) => {
     const tasks = bots.tasks();
     // Its job follows the whole chain — the lead, the bots it asks and
     // their hand-ons — so the task is done only when all of it is (DASH-28).
-    const jobId = bots.startTaskJob ? bots.startTaskJob(task) : null;
-    tasks.running(task.id, { jobId });
+    // Picked up again after a restart: the job it already has.
+    const jobId =
+      queuedJobId || (bots.startTaskJob ? bots.startTaskJob(task) : null);
+    // One job at a time (DASH-81): behind the team's job, it waits its turn.
+    const waits = !!(jobId && bots.jobQueue && bots.jobQueue(jobId));
+    if (waits) tasks.queued(task.id, { jobId });
+    else tasks.running(task.id, { jobId });
+    const turn =
+      waits && bots.waitForJobStart
+        ? Promise.resolve(bots.waitForJobStart(jobId))
+        : Promise.resolve(true);
+    return turn.then((started) => {
+      if (!started) {
+        return tasks.failed(
+          task.id,
+          "It was taken out of the team's queue before it started.",
+        );
+      }
+      if (waits) tasks.running(task.id, { jobId });
+      return runTask(task, jobId);
+    });
+  };
+
+  // The lead does the task (its turn has come).
+  const runTask = (task, jobId) => {
+    const tasks = bots.tasks();
     const via = `mcp-task${task.from ? `:${task.from}` : ""}`;
     // Notes left by an earlier run don't belong to this task.
     const takeNotes = () =>
@@ -493,13 +550,15 @@ function makeTeamToolHandlers({
     } finally {
       clearTimeout(timer);
     }
-    const now = done || tasks.get(task.id) || task;
+    const now = withQueue(done || tasks.get(task.id) || task);
     return json({
       ...taskView(now),
       message: `${prefix}${
         done
           ? STATUS_MESSAGE[now.status](now)
-          : `${task.teamName} has started. It's still working — check with get_task_status(taskId).`
+          : now.status === "queued"
+            ? `${STATUS_MESSAGE.queued(now)} Check with get_task_status(taskId).`
+            : `${task.teamName} has started. It's still working — check with get_task_status(taskId).`
       }`,
     });
   };
@@ -512,6 +571,9 @@ function makeTeamToolHandlers({
     const lead = bots.list().find((b) => b.id === leadId);
     if (!lead) {
       return `${name} has no team lead. The user can turn one on in that dashboard's Bots view.`;
+    }
+    if (bots.teamQueueFull && bots.teamQueueFull(teamId)) {
+      return `${name} already has 20 tasks waiting their turn. Give this one again once some have finished.`;
     }
     const avail = bots.leadAvailability(leadId) || {};
     if (avail.otherProfile) {
@@ -537,7 +599,34 @@ function makeTeamToolHandlers({
     return null;
   };
 
+  /**
+   * After a restart: tasks that were waiting their turn wait again on their
+   * job, and run when it comes (DASH-81). Returns how many.
+   */
+  const resumeQueued = () => {
+    let n = 0;
+    for (const task of bots.tasks().queuedTasks
+      ? bots.tasks().queuedTasks()
+      : []) {
+      const job = task.jobId && bots.getJob ? bots.getJob(task.jobId) : null;
+      if (!job || ["done", "failed", "stopped"].includes(job.status)) {
+        bots
+          .tasks()
+          .failed(
+            task.id,
+            "It was taken out of the team's queue before it started.",
+          );
+        continue;
+      }
+      startTask(task, task.jobId);
+      n += 1;
+    }
+    return n;
+  };
+
   return {
+    resumeQueued,
+
     async give_task(args = {}) {
       const text = String((args && args.task) || "").trim();
       if (!text) return json({ message: "give_task needs a 'task'." }, true);
@@ -667,16 +756,19 @@ function makeTeamToolHandlers({
         return json({ message: "No task with that taskId." }, true);
       }
       if (task.status !== "waiting") {
+        const now = withQueue(task);
         return json({
-          ...taskView(task),
-          message: STATUS_MESSAGE[task.status](task),
+          ...taskView(now),
+          message: STATUS_MESSAGE[now.status](now),
         });
       }
       return confirm(task, args.passphrase);
     },
 
     async get_task_status(args = {}) {
-      const task = bots.tasks().get(String((args && args.taskId) || ""));
+      const task = withQueue(
+        bots.tasks().get(String((args && args.taskId) || "")),
+      );
       if (!task) {
         return json({ message: "No task with that taskId." }, true);
       }
@@ -817,6 +909,7 @@ function makeTeamToolHandlers({
         tasks: bots
           .tasks()
           .list({ limit: 10 })
+          .map(withQueue)
           .map((t) => ({
             ...taskView(t),
             // Waiting on the user: "needs" (get_task_status has what).
@@ -978,6 +1071,10 @@ function registerTeamTools() {
       takeTaskNotes: (leadId) => botController.takeTaskNotes(leadId),
       // Jobs (DASH-28): the task follows its whole chain.
       startTaskJob: (task) => botController.startTaskJob(task),
+      // One job at a time per team (DASH-81).
+      jobQueue: (jobId) => botController.jobQueue(jobId),
+      waitForJobStart: (jobId) => botController.waitForJobStart(jobId),
+      teamQueueFull: (id) => botController.teamQueueFull(id),
       waitForJob: (jobId) => botController.waitForJob(jobId),
       getJob: (jobId) => botController.getJob(jobId),
       abandonJob: (jobId, why) => botController.abandonJob(jobId, why),
@@ -988,6 +1085,11 @@ function registerTeamTools() {
     },
     isOn: (name) => isToolOn(name),
   });
+
+  // Tasks that were waiting their turn when Dash closed (DASH-81).
+  if (botController.whenJobsReady) {
+    botController.whenJobsReady(() => handlers.resumeQueued());
+  }
 
   for (const tool of TEAM_TOOLS) {
     registerTool({

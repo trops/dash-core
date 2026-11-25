@@ -23,6 +23,7 @@ import {
   searchJobs,
   groupByDashboard,
   jobCounts,
+  queueText,
   startedByText,
   statusTone,
   tookText,
@@ -102,6 +103,11 @@ export const JobRow = ({ job, active = false, onClick, now }) => {
             {job.title}
           </span>
           <span className={`text-xs ${muted}`}>{startedByText(job)}</span>
+          {job.status === "queued" ? (
+            <span className={`text-xs ${muted}`} data-testid="job-queue">
+              {queueText(job)}
+            </span>
+          ) : null}
           <JobChain job={job} />
         </span>
         <span className="flex-shrink-0 flex flex-col items-end gap-1">
@@ -109,7 +115,10 @@ export const JobRow = ({ job, active = false, onClick, now }) => {
           <span className={`text-xs ${muted}`}>
             {job.status === "running"
               ? tookText(job, now)
-              : whenText(job.updatedAt, now)}
+              : whenText(
+                  job.status === "queued" ? job.createdAt : job.updatedAt,
+                  now,
+                )}
           </span>
         </span>
       </button>
@@ -255,6 +264,10 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
               last={i === steps.length - 1}
             />
           ))
+        ) : job.status === "queued" ? (
+          <span className={`text-sm ${muted}`} data-testid="job-queue">
+            Waiting its turn: {queueText(job)}. It starts when the team is free.
+          </span>
         ) : (
           <span className={`text-sm ${muted}`}>
             Its team lead is about to start.
@@ -262,6 +275,16 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
         )}
       </div>
       <div className="flex flex-row flex-wrap items-center gap-2">
+        {job.status === "queued" ? (
+          <Button3
+            title="Take out of the queue"
+            size="sm"
+            onClick={() => {
+              const api = botsApi();
+              if (api && api.stopJob) api.stopJob(job.id);
+            }}
+          />
+        ) : null}
         {going ? (
           <Button3
             title="Stop job"
@@ -328,6 +351,7 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
 const FILTERS = [
   { value: "all", label: "All" },
   { value: "running", label: "Running" },
+  { value: "queued", label: "Queued" },
   { value: "needs-you", label: "Needs you" },
   { value: "failed", label: "Failed" },
   { value: "done", label: "Done" },
@@ -402,9 +426,11 @@ export const JobsPage = ({
     const n =
       f.value === "running"
         ? counts.running
-        : f.value === "needs-you"
-          ? counts.needsYou
-          : 0;
+        : f.value === "queued"
+          ? counts.queued
+          : f.value === "needs-you"
+            ? counts.needsYou
+            : 0;
     return n ? { ...f, label: `${f.label} · ${n}` } : f;
   });
 
