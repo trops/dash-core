@@ -20,6 +20,14 @@
  * Settings aren't secret (they're kept as they are): tokens belong in a
  * provider.
  *
+ * A table (DASH-84) is rows of the same fields, each with a key: a team that
+ * works on several repos keeps one row per repo. Bots use {repo.url},
+ * {repo.validateCmd} … ({repo.key} is the row's key). Which row is the
+ * job's pick: a bot names a row in its answer's last ```json block
+ * ("repo": "dash-core"), and later runs fill {repo.*} from it (pickFrom).
+ * The answer only names a row; what's filled in is always what the user
+ * typed in the settings, so text from a ticket never becomes a command.
+ *
  * Kept on the dashboard's team settings (BotStore teams[workspaceId]):
  *   declared  the settings, as above
  *   values    { [name]: value } (a value left out uses the default)
@@ -28,11 +36,18 @@
  */
 "use strict";
 
-const TYPES = ["text", "url", "folder", "command", "boolean", "number"];
+const COLUMN_TYPES = ["text", "url", "folder", "command", "boolean", "number"];
+const TYPES = [...COLUMN_TYPES, "table"];
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
-// {name} in a bot's text (other braces, like JSON, are left alone).
-const USE_RE = /\{([A-Za-z][A-Za-z0-9_]{0,39})\}/g;
+// A table row's key: "dash-core", "web_app", "v2.api".
+const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+// {name} or {table.field} in a bot's text (other braces, like JSON, are
+// left alone).
+const USE_RE =
+  /\{([A-Za-z][A-Za-z0-9_]{0,39})(?:\.([A-Za-z][A-Za-z0-9_]{0,39}))?\}/g;
 const MAX_SETTINGS = 30;
+const MAX_COLUMNS = 12;
+const MAX_ROWS = 30;
 const MAX_LABEL = 120;
 const MAX_DESCRIPTION = 500;
 const MAX_VALUE = 2000;
@@ -116,6 +131,26 @@ function cleanSettings(input) {
     if (typeof s.description === "string" && s.description.trim()) {
       out.description = s.description.trim().slice(0, MAX_DESCRIPTION);
     }
+    if (type === "table") {
+      const read = cleanColumns(s, where);
+      if (read.error) {
+        errors.push(read.error);
+        return;
+      }
+      out.columns = read.columns;
+      if (s.pick !== undefined && s.pick !== null && s.pick !== "") {
+        if (typeof s.pick !== "string" || !NAME_RE.test(s.pick)) {
+          errors.push(
+            `${where} (${s.name}): pick must be a field name (letters, digits and underscores)`,
+          );
+          return;
+        }
+        if (s.pick !== s.name) out.pick = s.pick;
+      }
+      seen.add(s.name);
+      settings.push(out);
+      return;
+    }
     if (s.default !== undefined && s.default !== null && s.default !== "") {
       const d = coerce(type, s.default);
       if (d === undefined) {
@@ -136,6 +171,116 @@ function cleanSettings(input) {
     settings.push(out);
   });
   return { settings, errors };
+}
+
+/** A table's columns, checked: { columns } or { error }. */
+function cleanColumns(s, where) {
+  const cols = s.columns;
+  if (!Array.isArray(cols) || !cols.length) {
+    return {
+      error: `${where} (${s.name}): a table needs its columns, e.g. [{ name: "url", type: "url" }]`,
+    };
+  }
+  if (cols.length > MAX_COLUMNS) {
+    return {
+      error: `${where} (${s.name}): a table can have at most ${MAX_COLUMNS} columns`,
+    };
+  }
+  const columns = [];
+  const seen = new Set();
+  for (const c of cols) {
+    if (!isObj(c) || typeof c.name !== "string" || !NAME_RE.test(c.name)) {
+      return {
+        error: `${where} (${s.name}): each column's name must be letters, digits and underscores, starting with a letter`,
+      };
+    }
+    if (c.name === "key") {
+      return {
+        error: `${where} (${s.name}): "key" is the row's own key, not a column`,
+      };
+    }
+    if (seen.has(c.name)) {
+      return {
+        error: `${where} (${s.name}): column "${c.name}" is there twice`,
+      };
+    }
+    const type = c.type === undefined || c.type === null ? "text" : c.type;
+    if (!COLUMN_TYPES.includes(type)) {
+      return {
+        error: `${where} (${s.name}): column ${c.name}'s type must be one of ${COLUMN_TYPES.join(", ")}`,
+      };
+    }
+    seen.add(c.name);
+    const col = {
+      name: c.name,
+      label:
+        typeof c.label === "string" && c.label.trim()
+          ? c.label.trim().slice(0, MAX_LABEL)
+          : c.name,
+      type,
+    };
+    if (typeof c.description === "string" && c.description.trim()) {
+      col.description = c.description.trim().slice(0, MAX_DESCRIPTION);
+    }
+    columns.push(col);
+  }
+  return { columns };
+}
+
+/** A table's rows, checked: { rows } or { error }. "" cells are left out. */
+function cleanRows(s, raw) {
+  let input = raw;
+  if (typeof input === "string") {
+    try {
+      input = JSON.parse(input);
+    } catch (_e) {
+      return { error: `${s.label}: must be a list of rows` };
+    }
+  }
+  if (!Array.isArray(input)) {
+    return { error: `${s.label}: must be a list of rows` };
+  }
+  if (input.length > MAX_ROWS) {
+    return { error: `${s.label}: at most ${MAX_ROWS} rows` };
+  }
+  const cols = new Map((s.columns || []).map((c) => [c.name, c]));
+  const keys = new Set();
+  const rows = [];
+  for (const [i, r] of input.entries()) {
+    const where = `${s.label}, row ${i + 1}`;
+    if (!isObj(r)) return { error: `${where}: must be an object` };
+    const key = typeof r.key === "string" ? r.key.trim() : "";
+    if (!KEY_RE.test(key)) {
+      return {
+        error: `${where}: its key must be letters, digits, ".", "_" or "-" (e.g. dash-core)`,
+      };
+    }
+    if (keys.has(key))
+      return { error: `${where}: key "${key}" is there twice` };
+    keys.add(key);
+    const row = { key };
+    for (const [name, v] of Object.entries(r)) {
+      if (name === "key") continue;
+      const c = cols.get(name);
+      if (!c) return { error: `${where}: "${name}" isn't one of its columns` };
+      if (v === null || v === undefined || v === "") continue;
+      const cv = coerce(c.type, v);
+      if (cv === undefined || cv === "") {
+        return { error: `${where}: ${c.label} must be ${TYPE_WORDS[c.type]}` };
+      }
+      if (c.type === "folder" && !isFolderPath(cv)) {
+        return {
+          error: `${where}: ${c.label} must be a whole path (/… or ~/…)`,
+        };
+      }
+      if (typeof cv === "string" && cv.length > MAX_VALUE) {
+        return { error: `${where}: ${c.label} is too long` };
+      }
+      row[name] = cv;
+    }
+    rows.push(row);
+  }
+  return { rows };
 }
 
 /**
@@ -161,6 +306,16 @@ function cleanValues(settings, input, current = {}) {
     }
     if (raw === null || raw === "") {
       delete values[name];
+      continue;
+    }
+    if (s.type === "table") {
+      const read = cleanRows(s, raw);
+      if (read.error) {
+        errors.push(read.error);
+        continue;
+      }
+      if (read.rows.length) values[name] = read.rows;
+      else delete values[name];
       continue;
     }
     const v = coerce(s.type, raw);
@@ -200,6 +355,7 @@ function settingTexts(team, { home = null } = {}) {
   const values = (team && isObj(team.values) && team.values) || {};
   for (const s of declared) {
     if (!s || !NAME_RE.test(String(s.name || ""))) continue;
+    if (s.type === "table") continue; // filled from the job's pick
     const v = has(values, s.name) ? values[s.name] : s.default;
     if (v === undefined || v === null || v === "") {
       if (s.type === "boolean") text[s.name] = "no";
@@ -211,10 +367,24 @@ function settingTexts(team, { home = null } = {}) {
   return { text, empty };
 }
 
-/** `str` with each {name} of `text` filled in; `used` collects the names. */
-function fill(str, text, used = null) {
+/**
+ * `str` with each {name} (and {table.field}) of `text` filled in; `used`
+ * collects the names, and "table.field" for each cell. `tables`, when
+ * given, says which names are tables: a {x.y} whose x isn't one is left
+ * alone and not counted (it's someone's ${x.y}, not a setting).
+ */
+function fill(str, text, used = null, tables = null) {
   if (typeof str !== "string" || str.indexOf("{") === -1) return str;
-  return str.replace(USE_RE, (whole, name) => {
+  return str.replace(USE_RE, (whole, name, field) => {
+    if (field) {
+      if (tables && !tables.has(name)) return whole;
+      const cell = `${name}.${field}`;
+      if (used) {
+        used.add(name);
+        used.add(cell);
+      }
+      return has(text, cell) ? text[cell] : whole;
+    }
     if (!has(text, name)) {
       if (used) used.add(name);
       return whole;
@@ -225,12 +395,14 @@ function fill(str, text, used = null) {
 }
 
 /** Every string in `v` (deeply) filled in. */
-function fillDeep(v, text, used) {
-  if (typeof v === "string") return fill(v, text, used);
-  if (Array.isArray(v)) return v.map((x) => fillDeep(x, text, used));
+function fillDeep(v, text, used, tables = null) {
+  if (typeof v === "string") return fill(v, text, used, tables);
+  if (Array.isArray(v)) return v.map((x) => fillDeep(x, text, used, tables));
   if (isObj(v)) {
     const o = {};
-    for (const [k, x] of Object.entries(v)) o[k] = fillDeep(x, text, used);
+    for (const [k, x] of Object.entries(v)) {
+      o[k] = fillDeep(x, text, used, tables);
+    }
     return o;
   }
   return v;
@@ -254,60 +426,185 @@ function usedParts(bot) {
 }
 
 /**
+ * The rows of a team's tables a job picked (DASH-84), from a bot's answer:
+ * the last ```json block (or the whole text, when it's JSON), each table's
+ * field (its name, or its `pick`) naming a row's key. Only names; nothing
+ * here is checked against the rows (withTeamValues says when one isn't
+ * there). Returns { [table]: key }.
+ */
+function pickFrom(textIn, team) {
+  const declared =
+    (team && Array.isArray(team.declared) && team.declared) || [];
+  const tables = declared.filter((d) => d && d.type === "table");
+  if (!tables.length || typeof textIn !== "string" || !textIn) return {};
+  let j = null;
+  const blocks = [...textIn.matchAll(/```json\s*([\s\S]*?)```/g)];
+  try {
+    j = JSON.parse(blocks.length ? blocks[blocks.length - 1][1] : textIn);
+  } catch (_e) {
+    return {};
+  }
+  if (!isObj(j)) return {};
+  const picks = {};
+  for (const t of tables) {
+    const v = j[t.pick || t.name];
+    if (typeof v === "string" && KEY_RE.test(v.trim())) {
+      picks[t.name] = v.trim();
+    }
+  }
+  return picks;
+}
+
+/**
  * A bot as it runs, its team's settings filled in: its instructions, its
  * folders, its checks (commands and every other text in them), its
  * schedules' prompts and its triggers' notes. The bot itself is left
  * alone (it keeps {name}).
  *
- * @returns {{ bot: object, missing: Array<{name, label}> }} missing: the
- *   declared settings it uses that have no value (its run can't start).
+ * `picks` ({ [table]: key }, DASH-84) are the rows of its tables this run
+ * uses: {repo.url} is the url of the row the job picked.
+ *
+ * @returns {{ bot: object, missing: Array<{name, label, reason?, ...}> }}
+ *   missing: what it uses that can't be filled in (its run can't start):
+ *   a setting with no value, or a table with no rows, no pick, a pick
+ *   that isn't one of its rows, or an empty cell.
  */
-function withTeamValues(bot, team, { home = null } = {}) {
+function withTeamValues(bot, team, { home = null, picks = null } = {}) {
   if (!bot) return { bot, missing: [] };
   const declared =
     (team && Array.isArray(team.declared) && team.declared) || [];
   if (!declared.length) return { bot, missing: [] };
   const { text, empty } = settingTexts(team, { home });
+  const values = (team && isObj(team.values) && team.values) || {};
+  const tables = new Map();
+  for (const t of declared) {
+    if (!t || t.type !== "table" || !NAME_RE.test(String(t.name || ""))) {
+      continue;
+    }
+    const rows = Array.isArray(values[t.name]) ? values[t.name] : [];
+    const key =
+      picks && typeof picks[t.name] === "string" ? picks[t.name] : null;
+    const row = key ? rows.find((r) => r && r.key === key) || null : null;
+    tables.set(t.name, { setting: t, rows, key, row });
+    if (!row) continue;
+    text[`${t.name}.key`] = row.key;
+    for (const c of t.columns || []) {
+      const v = row[c.name];
+      if (v === undefined || v === null || v === "") {
+        if (c.type === "boolean") text[`${t.name}.${c.name}`] = "no";
+        continue;
+      }
+      text[`${t.name}.${c.name}`] = asText(c, v, home);
+    }
+  }
+  const tableNames = new Set(tables.keys());
   const used = new Set();
   const out = { ...bot };
   if (typeof bot.instructions === "string") {
-    out.instructions = fill(bot.instructions, text, used);
+    out.instructions = fill(bot.instructions, text, used, tableNames);
   }
   if (Array.isArray(bot.projects)) {
-    out.projects = bot.projects.map((p) => fill(p, text, used));
+    out.projects = bot.projects.map((p) => fill(p, text, used, tableNames));
   }
-  if (bot.checks) out.checks = fillDeep(bot.checks, text, used);
+  if (bot.checks) out.checks = fillDeep(bot.checks, text, used, tableNames);
   if (Array.isArray(bot.schedules)) {
     out.schedules = bot.schedules.map((s) =>
       s && typeof s.prompt === "string"
-        ? { ...s, prompt: fill(s.prompt, text, used) }
+        ? { ...s, prompt: fill(s.prompt, text, used, tableNames) }
         : s,
     );
   }
   if (Array.isArray(bot.subscriptions)) {
     out.subscriptions = bot.subscriptions.map((s) =>
       s && typeof s.note === "string"
-        ? { ...s, note: fill(s.note, text, used) }
+        ? { ...s, note: fill(s.note, text, used, tableNames) }
         : s,
     );
   }
   const missing = declared
-    .filter((s) => s && empty.has(s.name) && used.has(s.name))
+    .filter(
+      (s) => s && s.type !== "table" && empty.has(s.name) && used.has(s.name),
+    )
     .map((s) => ({ name: s.name, label: s.label || s.name }));
+  for (const [name, t] of tables) {
+    if (!used.has(name)) continue;
+    const label = t.setting.label || name;
+    const keys = t.rows.map((r) => r.key);
+    if (!t.rows.length) {
+      missing.push({ name, label, reason: "no-rows" });
+    } else if (!t.key) {
+      missing.push({
+        name,
+        label,
+        reason: "unpicked",
+        field: t.setting.pick || name,
+        keys,
+      });
+    } else if (!t.row) {
+      missing.push({ name, label, reason: "unknown", key: t.key, keys });
+    } else {
+      const cols = new Map((t.setting.columns || []).map((c) => [c.name, c]));
+      for (const u of used) {
+        if (!u.startsWith(`${name}.`)) continue;
+        const field = u.slice(name.length + 1);
+        if (has(text, u)) continue;
+        missing.push({
+          name,
+          label,
+          reason: cols.has(field) ? "empty-cell" : "no-column",
+          key: t.key,
+          field,
+          fieldLabel: cols.has(field) ? cols.get(field).label : field,
+        });
+      }
+    }
+  }
   return { bot: out, missing };
 }
 
-/** The run's error when settings it uses have no value. */
+/** The run's error when settings it uses can't be filled in. */
 function missingMessage(missing) {
-  const list = (missing || []).map((m) =>
+  const all = missing || [];
+  const plain = all.filter((m) => !m.reason);
+  const parts = [];
+  const list = plain.map((m) =>
     m.label && m.label !== m.name ? `${m.label} ({${m.name}})` : `{${m.name}}`,
   );
-  if (!list.length) return null;
-  return `This team's setting${list.length === 1 ? "" : "s"} ${list.join(
-    ", ",
-  )} ${list.length === 1 ? "has" : "have"} no value: fill ${
-    list.length === 1 ? "it" : "them"
-  } in on the dashboard (Bots › Team settings), then run again.`;
+  if (list.length) {
+    parts.push(
+      `This team's setting${list.length === 1 ? "" : "s"} ${list.join(
+        ", ",
+      )} ${list.length === 1 ? "has" : "have"} no value: fill ${
+        list.length === 1 ? "it" : "them"
+      } in on the dashboard (Bots › Team settings), then run again.`,
+    );
+  }
+  const keysText = (keys) =>
+    keys && keys.length ? keys.map((k) => `"${k}"`).join(", ") : "none";
+  for (const m of all) {
+    if (!m.reason) continue;
+    const t = `${m.label} ({${m.name}.…})`;
+    if (m.reason === "no-rows") {
+      parts.push(
+        `The team's table ${t} has no rows: add them on the dashboard (Bots › Team settings).`,
+      );
+    } else if (m.reason === "unpicked") {
+      parts.push(
+        `No row of ${t} is picked for this job yet: a bot before this one has to name one in its answer's JSON ("${m.field}": one of ${keysText(m.keys)}).`,
+      );
+    } else if (m.reason === "unknown") {
+      parts.push(
+        `This job picked "${m.key}" from ${t}, but it has no such row (it has ${keysText(m.keys)}).`,
+      );
+    } else if (m.reason === "empty-cell") {
+      parts.push(
+        `${t}: row "${m.key}" has no ${m.fieldLabel} ({${m.name}.${m.field}}): fill it in on the dashboard (Bots › Team settings).`,
+      );
+    } else if (m.reason === "no-column") {
+      parts.push(`${t} has no column "${m.field}" ({${m.name}.${m.field}}).`);
+    }
+  }
+  return parts.length ? parts.join(" ") : null;
 }
 
 /**
@@ -356,6 +653,9 @@ function usesSetting(str, names) {
 
 module.exports = {
   TYPES,
+  COLUMN_TYPES,
+  KEY_RE,
+  pickFrom,
   NAME_RE,
   cleanSettings,
   cleanValues,

@@ -357,7 +357,7 @@ const BOT_TOOLS = [
     name: "set_team_settings",
     defaultOff: true,
     description:
-      "Declare a team's settings and set their values. Each bot on the team can use a setting as {name} in its instructions, its check commands (and their other fields), its folders, its schedules' prompts and its triggers' notes; Dash fills in the value when it runs, so the bots keep {name} and one change reaches all of them. A folder like '{workFolder}/repo' counts for the bot's folder fence once filled in. 'declare' adds settings or replaces ones of the same name, each { name (letters, digits, _), label, type: 'text'|'url'|'folder'|'command'|'boolean'|'number', default?, description? } — a folder is a whole path (/… or ~/…), a boolean reads as yes/no. 'values' sets values by name ('' clears one, so its default is used). 'remove' takes settings away. Settings aren't secret: tokens belong in a provider. Settings travel when the team is published (their values don't); a run that uses a setting with no value fails saying which. Like update_bot it usually waits for confirm_bot. list_bots shows each team's settings.",
+      "Declare a team's settings and set their values. Each bot on the team can use a setting as {name} in its instructions, its check commands (and their other fields), its folders, its schedules' prompts and its triggers' notes; Dash fills in the value when it runs, so the bots keep {name} and one change reaches all of them. A folder like '{workFolder}/repo' counts for the bot's folder fence once filled in. 'declare' adds settings or replaces ones of the same name, each { name (letters, digits, _), label, type: 'text'|'url'|'folder'|'command'|'boolean'|'number', default?, description? } — a folder is a whole path (/… or ~/…), a boolean reads as yes/no. A 'table' (DASH-84) is rows of the same fields, one per repo for example: declare it with 'columns' ([{ name, label, type }]) and set its value to a list of rows, each with a 'key' ([{ key: 'dash-core', url: '…', validateCmd: '…' }]). Bots use {repo.url}, {repo.validateCmd}, {repo.key}; each job uses the row a bot names in its answer's last json block ('repo': 'dash-core', or the table's 'pick' field), and a run that uses the table before a row is picked fails saying so. 'values' sets values by name ('' clears one, so its default is used). 'remove' takes settings away. Settings aren't secret: tokens belong in a provider. Settings travel when the team is published (their values don't); a run that uses a setting with no value fails saying which. Like update_bot it usually waits for confirm_bot. list_bots shows each team's settings.",
     inputSchema: {
       type: "object",
       properties: {
@@ -374,10 +374,48 @@ const BOT_TOOLS = [
               label: { type: "string" },
               type: {
                 type: "string",
-                enum: ["text", "url", "folder", "command", "boolean", "number"],
+                enum: [
+                  "text",
+                  "url",
+                  "folder",
+                  "command",
+                  "boolean",
+                  "number",
+                  "table",
+                ],
               },
               default: {},
               description: { type: "string" },
+              columns: {
+                type: "array",
+                description:
+                  "For a table: its fields (not 'key', which every row has).",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    label: { type: "string" },
+                    type: {
+                      type: "string",
+                      enum: [
+                        "text",
+                        "url",
+                        "folder",
+                        "command",
+                        "boolean",
+                        "number",
+                      ],
+                    },
+                    description: { type: "string" },
+                  },
+                  required: ["name"],
+                },
+              },
+              pick: {
+                type: "string",
+                description:
+                  "For a table: the answer's field that names the job's row (default: the table's name).",
+              },
             },
             required: ["name"],
           },
@@ -386,7 +424,7 @@ const BOT_TOOLS = [
         values: {
           type: "object",
           description:
-            "Values by setting name; '' clears one (its default is used).",
+            "Values by setting name; '' clears one (its default is used). A table's value is its rows: [{ key, ...columns }].",
         },
         remove: {
           type: "array",

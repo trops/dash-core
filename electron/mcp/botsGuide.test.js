@@ -71,3 +71,12 @@ describe("the bots guide", () => {
     assert.ok(named.size >= 8, "the guide names the tools it relies on");
   });
 });
+
+describe("bots guide: several repos (DASH-84)", () => {
+  it("explains table settings and the job's pick", () => {
+    const { BOTS_GUIDE: g } = require("./botsGuide");
+    assert.match(g, /table/);
+    assert.match(g, /\{repo\.url\}/);
+    assert.match(g, /"repo": "dash-core"/);
+  });
+});

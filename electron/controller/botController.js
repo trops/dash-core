@@ -66,6 +66,7 @@ const {
 const {
   mergeTeamValues,
   withTeamValues,
+  pickFrom,
   namesUsed,
 } = require("../bots/teamValues");
 const { saveTeamFile, openTeamFile } = require("./teamFiles");
@@ -663,7 +664,7 @@ const botController = {
     this._checkJobs = createCheckJobs({
       goals: () => goalController.store(),
       // As it runs: its team's settings filled in (DASH-57).
-      getBot: (id) => this.resolvedBot(id),
+      getBot: (id, ctx) => this.resolvedBot(id, ctx),
       publisher: this._events,
       patchRun: (id, startedAt, patch) => {
         const r = this._store.patchRun(id, startedAt, patch);
@@ -2377,12 +2378,40 @@ const botController = {
     return this.teamValues(workspaceId);
   },
 
-  /** A bot as it runs: its team's settings filled in (DASH-57). */
-  resolvedBot(id) {
+  /** A job remembers the table rows an answer picked (DASH-84). */
+  _rememberPicks(jobId, workspaceId, output) {
+    if (!jobId || workspaceId == null || !this._jobs.setPicks) return;
+    try {
+      const picks = pickFrom(
+        String(output),
+        this._store.getTeamSettings(workspaceId),
+      );
+      if (Object.keys(picks).length) this._jobs.setPicks(jobId, picks);
+    } catch (_e) {
+      // A pick that can't be read is no pick; the next run says so.
+    }
+  },
+
+  /**
+   * A bot as it runs: its team's settings filled in (DASH-57). `ctx`
+   * (DASH-84): the rows of its team's tables are the ones its answer
+   * (ctx.output) picks, else its input (ctx.prompt), else its job.
+   */
+  resolvedBot(id, ctx = null) {
     const bot = this._store.get(id);
     if (!bot || bot.workspaceId == null) return bot || null;
-    return withTeamValues(bot, this._store.getTeamSettings(bot.workspaceId), {
+    const team = this._store.getTeamSettings(bot.workspaceId);
+    const c = ctx || {};
+    const picks = {
+      ...(c.jobId && this._jobs && this._jobs.picksOf
+        ? this._jobs.picksOf(c.jobId)
+        : {}),
+      ...pickFrom(typeof c.prompt === "string" ? c.prompt : "", team),
+      ...pickFrom(typeof c.output === "string" ? c.output : "", team),
+    };
+    return withTeamValues(bot, team, {
       home: require("os").homedir(),
+      picks,
     }).bot;
   },
 
@@ -4957,6 +4986,11 @@ const botController = {
       if (!jobStep || jobStepEnded) return;
       jobStepEnded = true;
       this._jobs.endStep(jobId, { botId, record, checking });
+      // The rows of the team's tables its answer picked (DASH-84): the
+      // job's later runs fill {repo.*} from them.
+      if (record && record.status === "completed" && record.output) {
+        this._rememberPicks(jobId, bot.workspaceId, record.output);
+      }
     };
     // A bot with checks holds the results it sends until they pass
     // (bot-checks PRD).
@@ -4985,6 +5019,10 @@ const botController = {
       trigger: opts.trigger,
       // What triggered an event run, for the run record (Bots view).
       source: opts.source || null,
+      // The rows of its team's tables this job picked (DASH-84).
+      ...(jobId && this._jobs.picksOf
+        ? { teamPicks: this._jobs.picksOf(jobId) }
+        : {}),
       // Who asked, when not the user directly (the AI Assistant, TEAM-004).
       via: opts.via || null,
       // The conversation it came from (release 5).
@@ -5044,7 +5082,7 @@ const botController = {
         let held = false;
         if (!alreadyRunning) {
           try {
-            held = this._checkJobs.afterRun({ botId, opts, record });
+            held = this._checkJobs.afterRun({ botId, opts, record, jobId });
           } catch (_e) {
             held = false;
           }

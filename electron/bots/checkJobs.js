@@ -166,8 +166,14 @@ function createCheckJobs(deps) {
    * work is held — the caller then publishes nothing.
    * @param {{ botId: string, opts: object, record: object }} p
    */
-  function afterRun({ botId, opts = {}, record }) {
-    const bot = getBot(botId);
+  function afterRun({ botId, opts = {}, record, jobId = null }) {
+    // Its checks filled in with the rows of its team's tables this answer
+    // (or its input, or its job) picked (DASH-84).
+    const bot = getBot(botId, {
+      jobId,
+      prompt: opts.prompt,
+      output: record && record.output,
+    });
     if (!bot || !record || record.skipped) return false;
     const s = store();
     if (!s) return false;
