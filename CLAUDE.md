@@ -282,6 +282,14 @@ The npm publish to `@trops/dash-core` is handled by the **GitHub Actions
 workflow** (`release-package.yml`) on push to master. Claude's job ends at
 `ci:release` completing locally.
 
+**The workflow picks the published version** (`scripts/pickReleaseVersion.js`):
+package.json's version if it's past everything on npm, else the next patch after
+npm's highest. So PRs made from the same master (yours or the Code Factory's) can
+merge in any order without claiming the same version. A PR doesn't have to bump
+the version (ci.sh --pr still does, which is fine). master's package.json can
+therefore be behind npm. `npm view @trops/dash-core version` is the truth, and the
+run's summary says which version a merge published as.
+
 After `ci:release` reports success:
 
 - ✅ Verify the publish landed with `npm view @trops/dash-core version`. That's it.

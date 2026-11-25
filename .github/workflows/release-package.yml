@@ -5,6 +5,11 @@ on:
     branches:
       - "master"
 
+# One publish at a time: two quick merges must not pick the same version.
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
 jobs:
   publish-npm:
     runs-on: ubuntu-latest
@@ -44,7 +49,34 @@ jobs:
       # token line can come out. Removing the token now (with
       # npm 10.x) produces an E404 on PUT — see commit history
       # for the prior CLI-upgrade attempt that broke other things.
-      - run: npm publish --provenance --access public
+      # The version is picked here, at merge time, not in the PR: several
+      # PRs (yours or the Code Factory's) can wait at once, all made from
+      # the same master. package.json's version is used if it's past
+      # everything on npm (you bumped it, e.g. ci.sh --pr); otherwise the
+      # next patch after npm's highest. The bump stays in this runner;
+      # master's package.json isn't changed (it's protected), and npm's
+      # provenance records which commit each version came from.
+      # npm can lag a few minutes behind a publish, so a clash with a
+      # version it doesn't list yet moves on to the next one (3 tries).
+      - name: Pick the version and publish
+        id: publish
+        shell: bash
+        run: |
+          taken=()
+          for try in 1 2 3; do
+            VERSION="$(node scripts/pickReleaseVersion.js "${taken[@]}")"
+            npm version "$VERSION" --no-git-tag-version --allow-same-version > /dev/null
+            echo "Publishing @trops/dash-core@$VERSION (try $try)"
+            if npm publish --provenance --access public 2>&1 | tee "$RUNNER_TEMP/publish.log"; then
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+              echo "Published @trops/dash-core@$VERSION from ${GITHUB_SHA::8}" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            grep -qiE "previously published|EPUBLISHCONFLICT|cannot publish over" "$RUNNER_TEMP/publish.log" || exit 1
+            taken+=(--taken "$VERSION")
+          done
+          echo "Couldn't find a free version after 3 tries." >&2
+          exit 1
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -58,7 +90,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DASH_BOT_TOKEN }}
         run: |
-          VERSION="$(node -p "require('./package.json').version")"
+          VERSION="${{ steps.publish.outputs.version }}"
           gh api repos/trops/dash-electron/dispatches \
               -f event_type=dash-core-published \
               -f "client_payload[version]=$VERSION"
