@@ -5,6 +5,7 @@
  * Each handler delegates to existing controllers via getServerContext().
  */
 const { randomUUID } = require("crypto");
+const { BOTS_GUIDE } = require("./botsGuide");
 const {
   layoutOf,
   withLayout,
@@ -2374,6 +2375,10 @@ You are connected to Dash, a dashboard application. Here is what you can help wi
 - **Connect** external services (Slack, GitHub, Algolia, etc.) with add_provider
 - **Check** existing connections with list_providers
 
+## Bots and Teams
+- **Build** a team of bots that work together with create_bot, update_bot and set_team_settings
+- **Read** get_setup_guide("bots") first: how to chain bots, gate their work with checks, and keep a team portable
+
 ## Typical Workflow
 1. Create a dashboard: create_dashboard("My Dashboard")
 2. Search for widgets: search_widgets("slack") or list_widgets()
@@ -2469,6 +2474,9 @@ Some widgets require providers (external service connections). Check the "provid
 - You can add the same widget type multiple times with different configs
 - Widgets auto-refresh when providers are connected`,
 };
+
+// Building a team of bots (DASH-80): long, so it lives in its own file.
+GUIDE_CONTENT.bots = BOTS_GUIDE;
 
 async function handleGetSetupGuide({ topic }) {
   const key = topic || "overview";

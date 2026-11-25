@@ -375,9 +375,16 @@ const guideTools = [
       properties: {
         topic: {
           type: "string",
-          enum: ["dashboard", "theme", "provider", "widget", "overview"],
+          enum: [
+            "dashboard",
+            "theme",
+            "provider",
+            "widget",
+            "bots",
+            "overview",
+          ],
           description:
-            "Topic to get help with. Use 'overview' or omit for a general capabilities guide.",
+            "Topic to get help with. 'bots' is how to build a team of bots that works (chains, checks, team settings, safety). Use 'overview' or omit for a general capabilities guide.",
         },
       },
       required: [],
