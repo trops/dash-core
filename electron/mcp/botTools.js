@@ -318,7 +318,7 @@ const BOT_TOOLS = [
     name: "create_bot",
     defaultOff: true,
     description:
-      "Make a new bot on one of the user's teams (one they let MCP clients change). It's checked the way Dash checks a save; one that wouldn't save comes back with every reason. Usually it then waits for the user: status 'waiting' with a summary and requestId — show the user the whole summary, ask for their task passphrase, and call confirm_bot. Never guess or reuse a passphrase the user didn't just say. A new bot is on once saved (it can take tasks) unless startPaused.",
+      "Make a new bot on one of the user's teams (one they let MCP clients change). It's checked the way Dash checks a save; one that wouldn't save comes back with every reason. Usually it then waits for the user: status 'waiting' with a summary and requestId — show the user the whole summary, ask for their task passphrase, and call confirm_bot. Never guess or reuse a passphrase the user didn't just say. A new bot is on once saved (it can take tasks) unless startPaused. Building a team? Read get_setup_guide({ topic: 'bots' }) first.",
     inputSchema: {
       type: "object",
       properties: {
@@ -339,7 +339,7 @@ const BOT_TOOLS = [
     name: "update_bot",
     defaultOff: true,
     description:
-      "Change a bot (from list_bots): give only the fields to change. 'bot' is its id, or its name when that's unique on the teams you can see. The summary says what changes, old → new, and when it gets more access. Like create_bot, it usually waits for confirm_bot. A team lead's role, team and built-in tools can't be changed.",
+      "Change a bot (from list_bots): give only the fields to change. 'bot' is its id, or its name when that's unique on the teams you can see. The summary says what changes, old → new, and when it gets more access. Like create_bot, it usually waits for confirm_bot. A team lead's role, team and built-in tools can't be changed. Its checks and providers replace the whole list; get_setup_guide({ topic: 'bots' }) has how to build checks that work.",
     inputSchema: {
       type: "object",
       properties: {
