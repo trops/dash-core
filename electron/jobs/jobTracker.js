@@ -664,8 +664,34 @@ function createJobTracker({
       : all.filter((j) => String(j.workspaceId) === String(workspaceId));
   }
 
+  // ---- The rows of its team's tables a job picked (DASH-84) ---------------
+
+  /** Remember picks ({ [table]: key }) for the job's later runs. */
+  function setPicks(jobId, picks) {
+    const job = store.get(jobId);
+    if (!job || !picks || typeof picks !== "object") return null;
+    const clean = {};
+    for (const [k, v] of Object.entries(picks)) {
+      if (typeof v === "string" && v)
+        clean[String(k).slice(0, 40)] = v.slice(0, 64);
+    }
+    if (!Object.keys(clean).length) return job;
+    const now = job.picks || {};
+    if (Object.entries(clean).every(([k, v]) => now[k] === v)) return job;
+    job.picks = { ...now, ...clean };
+    return commit(job);
+  }
+
+  /** The job's picks, or {}. */
+  function picksOf(jobId) {
+    const job = jobId ? store.get(jobId) : null;
+    return (job && job.picks && { ...job.picks }) || {};
+  }
+
   return {
     startJob,
+    setPicks,
+    picksOf,
     startStep,
     waitStep,
     queueStep,

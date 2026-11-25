@@ -305,3 +305,64 @@ describe("TeamSettingsPanel (the dashboard's team settings)", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+// DASH-84: a table setting (one row per repo).
+describe("a table setting", () => {
+  const REPOS = {
+    name: "repo",
+    label: "Repos",
+    type: "table",
+    columns: [
+      { name: "url", label: "Repository", type: "url" },
+      { name: "validateCmd", label: "Validate command", type: "command" },
+    ],
+  };
+
+  it("shows its rows, and a table with none as empty", () => {
+    const { rerender } = render(
+      <TeamSettingsForm settings={[REPOS]} values={{}} onChange={() => {}} />,
+    );
+    expect(screen.getByText(/No rows yet/)).toBeInTheDocument();
+    expect(emptySettings([REPOS], {}).map((s) => s.name)).toEqual(["repo"]);
+    rerender(
+      <TeamSettingsForm
+        settings={[REPOS]}
+        values={{ repo: [{ key: "dash-core", url: "https://x/core" }] }}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/No rows yet/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Repos row 1 key")).toHaveValue("dash-core");
+    expect(screen.getByLabelText("Repos row 1 Repository")).toHaveValue(
+      "https://x/core",
+    );
+    expect(screen.getByText(/\{repo\.url\}/)).toBeInTheDocument();
+  });
+
+  it("adds, edits and removes rows", () => {
+    const changes = [];
+    const onChange = (name, v) => changes.push([name, v]);
+    const rows = [{ key: "dash-core" }];
+    render(
+      <TeamSettingsForm
+        settings={[REPOS]}
+        values={{ repo: rows }}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByText("Add a row"));
+    expect(changes.pop()).toEqual([
+      "repo",
+      [{ key: "dash-core" }, { key: "" }],
+    ]);
+    fireEvent.change(screen.getByLabelText("Repos row 1 Validate command"), {
+      target: { value: "npm test" },
+    });
+    expect(changes.pop()).toEqual([
+      "repo",
+      [{ key: "dash-core", validateCmd: "npm test" }],
+    ]);
+    fireEvent.click(screen.getByText("Remove"));
+    expect(changes.pop()).toEqual(["repo", []]);
+  });
+});

@@ -8,6 +8,9 @@
  *
  *   TeamSettingsForm   the fields, controlled: values + onChange(name, v)
  *   TeamSettingsPanel  a dashboard's settings, loaded and saved
+ *
+ * A table (DASH-84) is rows of the same fields, each with a key: one row
+ * per repo. Bots use {repo.url}; each job uses the row it picked.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -33,10 +36,17 @@ function shown(values, s) {
       : String(v);
 }
 
+/** A table's rows as the form keeps them. */
+export function rowsOf(values, s) {
+  const v = has(values, s.name) ? values[s.name] : null;
+  return Array.isArray(v) ? v : [];
+}
+
 /** Settings with no value and no default: runs that use them fail. */
 export function emptySettings(settings, values) {
   return (Array.isArray(settings) ? settings : []).filter((s) => {
     if (s.type === "boolean") return false;
+    if (s.type === "table") return rowsOf(values, s).length === 0;
     const v = has(values, s.name) ? values[s.name] : s.default;
     return v === undefined || v === null || v === "";
   });
@@ -72,6 +82,19 @@ export const TeamSettingsForm = ({
         ]
           .filter(Boolean)
           .join(" · ");
+        if (s.type === "table") {
+          return (
+            <TableSetting
+              key={s.name}
+              setting={s}
+              rows={rowsOf(values, s)}
+              usedBy={usedBy && usedBy[s.name]}
+              empty={empty.has(s.name)}
+              disabled={disabled}
+              onChange={(rows) => onChange && onChange(s.name, rows)}
+            />
+          );
+        }
         if (s.type === "boolean") {
           return (
             <div
@@ -139,6 +162,110 @@ export const TeamSettingsForm = ({
           </div>
         );
       })}
+    </div>
+  );
+};
+
+/**
+ * A table setting (DASH-84): its rows, each a key and its columns; rows can
+ * be added and removed. Controlled: rows + onChange(rows).
+ */
+export const TableSetting = ({
+  setting: s,
+  rows = [],
+  usedBy = null,
+  empty = false,
+  disabled = false,
+  onChange,
+}) => {
+  const { muted, hairline } = useConfigTokens();
+  const status = useStatusTokens();
+  const cols = Array.isArray(s.columns) ? s.columns : [];
+  const field = s.pick || s.name;
+  const sample = cols[0] ? `{${s.name}.${cols[0].name}}` : `{${s.name}.key}`;
+  const set = (i, name, v) =>
+    onChange &&
+    onChange(rows.map((r, j) => (j === i ? { ...r, [name]: v } : r)));
+  return (
+    <div className="flex flex-col gap-2" data-testid={`team-setting-${s.name}`}>
+      <span className="text-sm font-medium">{s.label || s.name}</span>
+      <span className={`text-xs ${muted}`}>
+        {[
+          s.description || null,
+          `${
+            usedBy && usedBy.length
+              ? `Used by ${usedBy.join(", ")}`
+              : "Bots use it"
+          } as ${sample} …: each job uses the row a bot names in its answer ("${field}": a row's key)`,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </span>
+      {rows.map((r, i) => (
+        <div
+          key={i}
+          className={`flex flex-col gap-2 rounded-lg border p-3 ${hairline}`}
+          data-testid={`team-setting-${s.name}-row`}
+        >
+          <div className="flex flex-row gap-2 items-center">
+            <div className="flex-1 min-w-0">
+              <InputText
+                ariaLabel={`${s.label || s.name} row ${i + 1} key`}
+                value={r.key || ""}
+                placeholder="Its key, e.g. dash-core"
+                disabled={disabled}
+                onChange={(v) => set(i, "key", v)}
+              />
+            </div>
+            <Button3
+              title="Remove"
+              size="sm"
+              disabled={disabled}
+              onClick={() =>
+                onChange && onChange(rows.filter((_r, j) => j !== i))
+              }
+            />
+          </div>
+          {cols.map((c) =>
+            c.type === "boolean" ? (
+              <Checkbox
+                key={c.name}
+                label={c.label || c.name}
+                checked={!!r[c.name]}
+                disabled={disabled}
+                onChange={(on) => set(i, c.name, !!on)}
+              />
+            ) : (
+              <div key={c.name} className="flex flex-col gap-0.5">
+                <span className="text-xs font-medium">{c.label || c.name}</span>
+                <InputText
+                  ariaLabel={`${s.label || s.name} row ${i + 1} ${c.label || c.name}`}
+                  value={
+                    r[c.name] === undefined || r[c.name] === null
+                      ? ""
+                      : String(r[c.name])
+                  }
+                  disabled={disabled}
+                  onChange={(v) => set(i, c.name, v)}
+                />
+              </div>
+            ),
+          )}
+        </div>
+      ))}
+      <div>
+        <Button3
+          title="Add a row"
+          size="sm"
+          disabled={disabled}
+          onClick={() => onChange && onChange([...rows, { key: "" }])}
+        />
+      </div>
+      {empty ? (
+        <span className={`text-xs ${status.warning.text}`}>
+          No rows yet: bots that use it can't run until it has one.
+        </span>
+      ) : null}
     </div>
   );
 };

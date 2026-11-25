@@ -45,7 +45,7 @@ const {
 const { redactArgs } = require("../issues/issueStore");
 const { missingTool, needsMessage } = require("./runEnv");
 const { signInProblem } = require("./gitSignIn");
-const { withTeamValues, missingMessage } = require("./teamValues");
+const { withTeamValues, missingMessage, pickFrom } = require("./teamValues");
 const os = require("os");
 
 const QUIT = Symbol("quit");
@@ -265,8 +265,12 @@ class BotRunner {
    * @param {{ prompt?: string, trigger?: string, emit?: (e: object) => void }} opts
    * @returns {Promise<object>} the appended run record (or a skip marker)
    */
-  /** The bot with its team's settings filled in: { bot, missing }. */
-  _withTeamValues(bot) {
+  /**
+   * The bot with its team's settings filled in: { bot, missing }. A table's
+   * row (DASH-84) is the one this run's input names ("repo": "dash-core" in
+   * its last ```json block), else the one its job picked (opts.teamPicks).
+   */
+  _withTeamValues(bot, opts = {}) {
     if (
       !bot ||
       bot.workspaceId === null ||
@@ -282,7 +286,14 @@ class BotRunner {
     } catch (_e) {
       team = null;
     }
-    return withTeamValues(bot, team, { home: os.homedir() });
+    const picks = {
+      ...((opts && opts.teamPicks) || {}),
+      ...pickFrom(
+        opts && typeof opts.prompt === "string" ? opts.prompt : "",
+        team,
+      ),
+    };
+    return withTeamValues(bot, team, { home: os.homedir(), picks });
   }
 
   async run(botId, opts = {}) {
@@ -324,7 +335,7 @@ class BotRunner {
     // Its team's settings filled in (DASH-57): {repoUrl} in its
     // instructions, folders and checks becomes this team's value. One it
     // uses with no value fails the run, saying which.
-    const filled = this._withTeamValues(stored);
+    const filled = this._withTeamValues(stored, opts);
     const bot = filled.bot;
 
     const blocked = this._startBlocker(botId);
