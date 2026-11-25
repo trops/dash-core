@@ -40,6 +40,8 @@ const { createCheckJobs } = require("../bots/checkJobs");
 const { createJobStore } = require("../jobs/jobStore");
 const { createJobTracker } = require("../jobs/jobTracker");
 const { PausedQueue, drainBot } = require("../bots/pausedQueue");
+const { BusyQueue } = require("../bots/busyQueue");
+const { startsChain, chainStartedBy } = require("../jobs/chainJobs");
 const {
   stopBotRun,
   whenIdle: waitUntilIdle,
@@ -679,7 +681,8 @@ const botController = {
         });
         // Checks waiting on the user show on the job (DASH-31).
         if (info && info.goalId && this._jobs) {
-          this._jobs.checksMoved(info.goalId, info.state);
+          if (info.handOn === false) this._nothingToHandOn(info);
+          else this._jobs.checksMoved(info.goalId, info.state);
         }
       },
     });
@@ -1022,6 +1025,12 @@ const botController = {
         this._holdEvent(bot, event);
         continue;
       }
+      // A hand-on from another bot never drops because its bot is busy
+      // (DASH-73): it waits its turn behind what's already waiting.
+      if (event.originBotId && this._mustWait(bot.id)) {
+        this._queueHandOn(bot, event);
+        continue;
+      }
       if (!this._dispatcher.shouldDispatch(bot.id)) {
         // In a job, the hand-on that didn't start is said (DASH-31).
         const jobId = this._handOnJob(event, bot);
@@ -1069,6 +1078,148 @@ const botController = {
         body: `${bot.name} didn't run: ${reason}.`,
       });
     }
+  },
+
+  /**
+   * A bot's checks passed its work with nothing to hand on (DASH-65): its
+   * step is done, saying so. A chain's job that is only that step (a
+   * scheduled Ticket Bot that found no ticket) isn't kept: nothing
+   * happened.
+   */
+  _nothingToHandOn(info) {
+    const jobId = this._jobs.jobForGoal(info.goalId);
+    this._jobs.checksMoved(
+      info.goalId,
+      "passed",
+      `Nothing to hand on${info.reason ? `: ${info.reason}` : ""}.`,
+    );
+    const job = jobId ? this._jobs.get(jobId) : null;
+    if (job && !job.leadId && (job.steps || []).length === 1) {
+      if (this._jobs.remove(job.id)) {
+        this._broadcast(BOT_JOBS_CHANGED, {
+          jobId: job.id,
+          workspaceId: job.workspaceId,
+          status: "deleted",
+        });
+      }
+    }
+  },
+
+  /** Hand-ons waiting for busy bots (DASH-73), made on first use. */
+  _busy() {
+    if (!this._busyQueue) this._busyQueue = new BusyQueue();
+    return this._busyQueue;
+  },
+
+  /**
+   * A bot is busy while it runs, and while its checks are still trying a
+   * run's work (a new run would mix with that work).
+   */
+  _isBusy(botId) {
+    if (this._runner && this._runner.listActive().includes(botId)) return true;
+    try {
+      return !!(
+        this._checkJobs &&
+        this._checkJobs.checkingFor &&
+        this._checkJobs.checkingFor(botId)
+      );
+    } catch (_e) {
+      return false;
+    }
+  },
+
+  /** Must a hand-on to this bot wait? Busy, others already waiting, or it
+   * only just ran (the cooldown would have skipped it). */
+  _mustWait(botId) {
+    return (
+      this._isBusy(botId) ||
+      this._busy().count(botId) > 0 ||
+      !this._dispatcher.shouldDispatch(botId)
+    );
+  },
+
+  /**
+   * Keep a hand-on for a busy bot: said on the job as queued and on the
+   * Activity feed, then run in order when the bot is free. Too many already
+   * waiting: refused like a chain past its limit (never silent).
+   */
+  _queueHandOn(bot, event) {
+    const queue = this._busy();
+    if (!queue.add(bot.id, event)) {
+      this._refuseHandOn(
+        bot,
+        event,
+        `${queue.max} hand-ons are already waiting for it`,
+      );
+      return;
+    }
+    const jobId = this._handOnJob(event, bot);
+    if (jobId && this._jobs.queueStep) {
+      this._jobs.queueStep(jobId, {
+        botId: bot.id,
+        botName: bot.name,
+        why: handOnWhy(this._store, event, bot),
+        summary: `${bot.name} is busy with another run; this starts when it's done.`,
+      });
+    }
+    this._broadcast(BOT_STREAM, {
+      botId: bot.id,
+      event: {
+        type: "status",
+        message: `${bot.name} is busy, so ${event.eventType} waits its turn (${queue.count(bot.id)} waiting).`,
+      },
+    });
+    this._notifyListChanged();
+    this._drainBusy(bot.id);
+  },
+
+  /**
+   * Run what waits for a bot, oldest first, each once the bot is free.
+   * One drain per bot; fire-and-forget.
+   */
+  _drainBusy(botId) {
+    if (!this._busyDraining) this._busyDraining = new Set();
+    if (this._busyDraining.has(botId)) return;
+    this._busyDraining.add(botId);
+    const pollMs = this._busyPollMs || 500;
+    const sleep = () => new Promise((r) => setTimeout(r, pollMs));
+    const queue = this._busy();
+    (async () => {
+      while (queue.count(botId)) {
+        while (this._isBusy(botId) || !this._dispatcher.shouldDispatch(botId)) {
+          await sleep();
+        }
+        const event = queue.shift(botId);
+        if (!event) break;
+        const bot = this._store.get(botId);
+        if (!bot) {
+          queue.clear(botId);
+          break;
+        }
+        // Its job was stopped meanwhile: it doesn't start.
+        if (event.jobId && this._jobs && !this._jobs.isOpen(event.jobId)) {
+          continue;
+        }
+        // Paused (or over budget) while it waited: kept for when it's back.
+        if (this._isHeld(botId)) {
+          this._holdEvent(bot, event);
+          continue;
+        }
+        this._dispatcher.note(botId);
+        const rec = await this._runEvent(bot, event);
+        if (rec && rec.skipped && /in progress/.test(rec.reason || "")) {
+          // Something else started it first: wait again.
+          queue.unshift(botId, event);
+        }
+        this._notifyListChanged();
+      }
+    })()
+      .catch(() => {})
+      .finally(() => {
+        this._busyDraining.delete(botId);
+        // Something arrived as the drain ended: go again.
+        if (queue.count(botId)) this._drainBusy(botId);
+      });
   },
 
   /** Run a bot for an event it subscribes to (live, or kept while paused). */
@@ -1600,6 +1751,8 @@ const botController = {
         "Its bot was deleted, so it didn't run.",
       );
     }
+    // Hand-ons waiting for it while it was busy (DASH-73) go too.
+    if (this._busyQueue) this._busyQueue.clear(botId);
     // Its private memory (bots with no dashboard) goes with it; team and
     // global memory are shared and stay.
     this._memory.forgetBot(botId);
@@ -4598,6 +4751,29 @@ const botController = {
         title: String(opts.jobTitle || opts.prompt || "").split("\n")[0],
         request: String(opts.jobTitle || opts.prompt || ""),
         startedBy: jobStartedBy(opts),
+        conversationId: opts.conversationId || null,
+      }).id;
+    }
+    // A chain's first run is a job too (DASH-70): a bot on a team whose
+    // runs start other bots (a scheduled Ticket Bot, say) — so one ticket
+    // is one job, all its steps on it. A check's retry joins its own.
+    if (
+      !jobId &&
+      willStart &&
+      !isLead(bot) &&
+      !isDashTeam(bot) &&
+      !opts.noTools &&
+      opts.trigger !== "flow" &&
+      startsChain(this._store, bot)
+    ) {
+      const asked = String(opts.jobTitle || opts.prompt || "").split("\n")[0];
+      jobId = this._jobs.startJob({
+        workspaceId: bot.workspaceId,
+        leadId: null,
+        leadName: bot.name,
+        title: asked ? `${bot.name}: ${asked}` : bot.name,
+        request: "",
+        startedBy: chainStartedBy(bot, opts, jobStartedBy(opts)),
         conversationId: opts.conversationId || null,
       }).id;
     }

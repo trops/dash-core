@@ -12,6 +12,7 @@
  */
 "use strict";
 
+const { redact } = require("../bots/gitSignIn");
 const { runRules } = require("./kinds/rules");
 const { runCommand } = require("./kinds/command");
 const { runScript } = require("./kinds/script");
@@ -45,6 +46,8 @@ async function runCheck(check, input, deps = {}) {
       res = await runCommand(check, input, {
         cwd: deps.cwd,
         tmpDir: deps.tmpDir,
+        // The bot's sign-in (DASH-66): git and gh, for this check only.
+        ...(deps.env ? { env: deps.env } : {}),
       });
     } else if (kind === "script") {
       // A script kept in the flow's folder (phase 6) is read fresh each run.
@@ -71,6 +74,8 @@ async function runCheck(check, input, deps = {}) {
       reason: `The check failed to run: ${(e && e.message) || e}`,
     };
   }
+  // Its token never stays in what the check keeps (DASH-66).
+  if (deps.secret) res = redact(res, deps.secret);
   return {
     pass: res.pass === true,
     reason: String(res.reason || (res.pass ? "Passed" : "Failed")).slice(
@@ -78,6 +83,8 @@ async function runCheck(check, input, deps = {}) {
       2000,
     ),
     details: res.details === undefined ? null : res.details,
+    // Passed, with nothing to hand on (DASH-65): the work ends here.
+    ...(res.pass === true && res.handOn === false ? { handOn: false } : {}),
     ...(res.output ? { output: String(res.output).slice(-4000) } : {}),
     ...(res.exitCode !== undefined ? { exitCode: res.exitCode } : {}),
     kind: kind || null,

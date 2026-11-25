@@ -671,7 +671,12 @@ function createGoalStore({
       return { error: "The task has moved on from that step." };
     }
     const step = stepById(goal.flow, task.stepId);
-    const next = afterStep(goal.flow, task, done.status);
+    // A check that passed with nothing to hand on (DASH-65) ends the work:
+    // the rest of the checks don't run, and the task is done.
+    const nothing = done.status === "passed" && done.handOn === false;
+    const next = nothing
+      ? { stepId: null, status: "done" }
+      : afterStep(goal.flow, task, done.status);
     if (next.error) return { error: next.error };
     const output = cleanOutput(done.output);
     // A bot's answer Dash records for it (a job's work, bot-checks PRD):
@@ -695,6 +700,7 @@ function createGoalStore({
       ...(done.kind ? { kind: text(done.kind, 20) } : {}),
       ...(typeof done.ms === "number" ? { ms: done.ms } : {}),
       said: bot ? "bot" : "dash",
+      ...(nothing ? { handOn: false } : {}),
       ...(next.stopped ? { stopped: true } : {}),
       at: now(),
     };

@@ -263,7 +263,7 @@ const BOT_FIELDS = {
             check: {
               type: "object",
               description:
-                "For kind 'check', as the Bots tab saves it. { kind: 'command', command, passWhen?, timeoutSec? }: runs in its first folder and gets its answer as JSON on stdin and in $DASH_INPUT; passWhen is { type: 'exit0' } (the default), { type: 'contains', text } (exit 0 and the output has it) or { type: 'matches', pattern } (the output matches the regex). { kind: 'tool', server, tool, args?, answerRules? }: a read-only provider tool. { kind: 'rules', rules }. { kind: 'script', script, timeoutSec? }.",
+                "For kind 'check', as the Bots tab saves it. { kind: 'command', command, passWhen?, timeoutSec? }: runs in its first folder and gets its answer as JSON on stdin and in $DASH_INPUT; passWhen is { type: 'exit0' } (the default), { type: 'contains', text } (exit 0 and the output has it) or { type: 'matches', pattern } (the output matches the regex). { kind: 'tool', server, tool, args?, answerRules? }: a read-only provider tool. { kind: 'rules', rules }. { kind: 'script', script, timeoutSec? }: function check(input) returns { pass, reason }. A script, or a command's last output line as JSON, may pass with handOn: false ({ pass: true, handOn: false, reason }): the work ends there, the rest of the checks don't run, and nothing is handed on (no completed or failed event) — for a bot that found nothing to do.",
             },
             bot: {
               type: "string",
@@ -616,6 +616,55 @@ function botView(bot, { workspaces, grant, paused }) {
 // ---- MCP fields → a bot definition ---------------------------------------
 
 /**
+ * The tools a bot is given that its provider doesn't have (DASH-72), said
+ * with the provider's real names and the nearest one. `known` is null when
+ * Dash can't list them (not connected): nothing is refused then.
+ */
+function unknownToolsProblem(name, chosen, known) {
+  if (!Array.isArray(known) || !known.length) return null;
+  const names = known
+    .map((t) => (t && typeof t === "object" ? t.name : t))
+    .filter((t) => typeof t === "string" && t);
+  if (!names.length) return null;
+  const have = new Set(names);
+  const missing = (chosen || []).filter((t) => !have.has(t));
+  if (!missing.length) return null;
+  const hints = missing.map((t) => {
+    const near = nearestName(t, names);
+    return near ? `${t} (did you mean ${near}?)` : t;
+  });
+  return `${name} has no tool named ${hints.join(", ")}. Its tools: ${names.join(", ")}.`;
+}
+
+/** The closest of `names` to `word`, when it's close enough to suggest. */
+function nearestName(word, names) {
+  const mine = nameWords(word);
+  let best = null;
+  let bestScore = 0;
+  for (const n of names) {
+    const theirs = nameWords(n);
+    let score = 0;
+    for (const w of mine) if (theirs.has(w)) score++;
+    if (score > bestScore) {
+      best = n;
+      bestScore = score;
+    }
+  }
+  return bestScore >= 2 ? best : null;
+}
+
+/** A tool name's words: addCommentToJiraIssue → add, comment, jira, issue. */
+function nameWords(name) {
+  return new Set(
+    String(name)
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 2),
+  );
+}
+
+/**
  * Read the fields given, as the bot form's formDefinition() would save
  * them. Only fields given come back. What runs without asking goes apart:
  * it's the bot's grant, not part of the bot.
@@ -636,6 +685,8 @@ function readFields(
   },
 ) {
   const problems = [];
+  // Said with the summary, not refused (DASH-72).
+  const notes = [];
   const fields = {};
   const access = {};
   const has = (k) => args[k] !== undefined && args[k] !== null;
@@ -685,8 +736,23 @@ function readFields(
         }
         if (mcpServers.includes(name)) continue;
         mcpServers.push(name);
-        if (Array.isArray(p.tools))
+        if (Array.isArray(p.tools)) {
           toolSelections[name] = uniq(strings(p.tools));
+          // Names the provider doesn't have are refused (DASH-72): a bot
+          // given one only finds out when its run is refused the tool.
+          const known = providerTools(name);
+          const problem = unknownToolsProblem(
+            name,
+            toolSelections[name],
+            known,
+          );
+          if (problem) problems.push(problem);
+          else if (!Array.isArray(known) && toolSelections[name].length) {
+            notes.push(
+              `${name} isn't connected, so its tool names weren't checked.`,
+            );
+          }
+        }
         const run = Array.isArray(p.runWithoutAsking)
           ? uniq(strings(p.runWithoutAsking))
           : null;
@@ -790,7 +856,7 @@ function readFields(
     if (r.problems.length) problems.push(...r.problems);
     else fields.checks = { checks: r.checks };
   }
-  return { fields, access, problems };
+  return { fields, access, problems, notes };
 }
 
 /**
@@ -2079,7 +2145,7 @@ function makeBotToolHandlers({
       if (found.reply) return found.reply;
       const ws = found.team;
       const members = visibleBots([ws]);
-      const { fields, access, problems } = readFields(args, {
+      const { fields, access, problems, notes } = readFields(args, {
         members,
         dashboard: ws,
         providerTools,
@@ -2159,14 +2225,17 @@ function makeBotToolHandlers({
         startPaused,
         from: cleanFrom(args.from),
         teamId: String(ws.id),
-        summary: describeNew(definition, {
-          teamName: ws.name || "Untitled",
-          grants,
-          ignored,
-          startPaused,
-          hasLead,
-          nameOf: nameIn(members),
-        }),
+        summary: [
+          describeNew(definition, {
+            teamName: ws.name || "Untitled",
+            grants,
+            ignored,
+            startPaused,
+            hasLead,
+            nameOf: nameIn(members),
+          }),
+          ...(notes || []),
+        ].join("\n"),
       });
     },
 
@@ -2377,7 +2446,7 @@ function makeBotToolHandlers({
         fields,
         from: cleanFrom(args.from),
         teamId: String((target && target.id) || bot.workspaceId),
-        summary,
+        summary: [summary, ...(read.notes || [])].join("\n"),
       });
     },
 

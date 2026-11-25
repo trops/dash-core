@@ -128,6 +128,8 @@ function shape(v) {
     pass: v.pass,
     reason: typeof v.reason === "string" ? v.reason.slice(0, 2000) : "",
     details,
+    // Passed with nothing to hand on (DASH-65).
+    ...(v.pass === true && v.handOn === false ? { handOn: false } : {}),
   };
 }
 

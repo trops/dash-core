@@ -37,6 +37,10 @@ export function startedByText(job) {
   const lead = (job && job.leadName) || "its team lead";
   if (by.kind === "task") return `Task from ${by.label || "MCP"}`;
   if (by.kind === "mcp") return `Asked over MCP, in ${lead}`;
+  // A chain that starts from one of the team's bots (DASH-70).
+  if (by.kind === "schedule") return `${by.label || lead} on its schedule`;
+  if (by.kind === "trigger") return `${by.label || lead}, from a trigger`;
+  if (job && !job.leadId && by.label) return `You ran ${by.label}`;
   return `You, in ${lead}`;
 }
 
@@ -48,6 +52,8 @@ export function whyText(why) {
   if (w.kind === "mcp") return "Asked over MCP";
   if (w.kind === "you") return "You asked";
   if (w.kind === "asked") return `Asked by ${w.by || "its team lead"}`;
+  if (w.kind === "schedule" || w.kind === "catch-up") return "On its schedule";
+  if (w.kind === "manual") return "You ran it";
   if (w.kind === "handon") {
     return `Started by ${w.by || "a bot"}${w.label ? ` › ${w.label}` : ""}`;
   }

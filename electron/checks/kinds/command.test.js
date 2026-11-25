@@ -127,3 +127,26 @@ describe("runCommand's environment (DASH-53)", () => {
     assert.match(r.output, /\/opt\/homebrew\/bin/);
   });
 });
+
+describe("nothing to hand on (DASH-65)", () => {
+  it("a passing command's last line can say handOn false", async () => {
+    const res = await runCommand(
+      { command: `echo '{"reason":"No ticket","handOn":false}'` },
+      {},
+      { cwd: os.tmpdir() },
+    );
+    assert.equal(res.pass, true);
+    assert.equal(res.handOn, false);
+    assert.equal(res.reason, "No ticket");
+  });
+
+  it("a failing command can't (it fails as before)", async () => {
+    const res = await runCommand(
+      { command: `echo '{"reason":"No","handOn":false}'; exit 1` },
+      {},
+      { cwd: os.tmpdir() },
+    );
+    assert.equal(res.pass, false);
+    assert.equal(res.handOn, undefined);
+  });
+});

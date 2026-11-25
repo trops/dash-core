@@ -145,6 +145,21 @@ describe("jobText", () => {
     expect(startedByText(JOBS[0])).toBe("Task from slack");
     expect(startedByText(JOBS[1])).toBe("You, in Woodworking Lead");
     expect(whyText(JOBS[0].steps[1].why)).toBe("Asked by Woodworking Lead");
+    // A chain that starts from one of the team's bots (DASH-70).
+    expect(
+      startedByText({
+        leadId: null,
+        leadName: "Ticket Bot",
+        startedBy: { kind: "schedule", label: "Ticket Bot" },
+      }),
+    ).toBe("Ticket Bot on its schedule");
+    expect(
+      startedByText({
+        leadId: null,
+        startedBy: { kind: "you", label: "Ticket Bot" },
+      }),
+    ).toBe("You ran Ticket Bot");
+    expect(whyText({ kind: "schedule" })).toBe("On its schedule");
     expect(whyText(JOBS[0].steps[2].why)).toBe(
       "Started by Designer › Completed",
     );
