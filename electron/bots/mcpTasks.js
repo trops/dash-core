@@ -4,6 +4,8 @@
  * the team starts only once the user's task passphrase checks out.
  *
  *   waiting  → given, waiting for the passphrase (expires after 10 minutes)
+ *   queued   → confirmed, waiting its turn: its team is doing another job
+ *              (one at a time, DASH-81); kept across a restart
  *   running  → confirmed; the team's lead is doing it
  *   done / failed / expired
  *
@@ -104,7 +106,10 @@ function createMcpTasks({
     let out = list;
     while (out.length > MAX_TASKS) {
       const i = out.findIndex(
-        (t) => t.status !== "waiting" && t.status !== "running",
+        (t) =>
+          t.status !== "waiting" &&
+          t.status !== "running" &&
+          t.status !== "queued",
       );
       if (i < 0) break;
       out = [...out.slice(0, i), ...out.slice(i + 1)];
@@ -239,6 +244,20 @@ function createMcpTasks({
       }
       store.saveLock({ wrong, until: null });
       return { wrong: true, triesLeft: MAX_WRONG - wrong };
+    },
+
+    /** Confirmed, waiting for its team's job before it (DASH-81). */
+    queued(id, { jobId = null } = {}) {
+      return update(id, {
+        status: "queued",
+        confirmedAt: iso(now()),
+        ...(jobId ? { jobId } : {}),
+      });
+    },
+
+    /** Queued ones, first given first: to pick up again after a restart. */
+    queuedTasks() {
+      return withExpiry(load()).filter((t) => t.status === "queued");
     },
 
     /** `jobId`: the job that follows the whole chain (DASH-28). */

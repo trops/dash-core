@@ -74,6 +74,10 @@ function setup(over = {}) {
       waitForJob: over.waitForJob,
       getJob: over.getJob,
       abandonJob: over.abandonJob,
+      // One job at a time (DASH-81).
+      jobQueue: over.jobQueue,
+      waitForJobStart: over.waitForJobStart,
+      teamQueueFull: over.teamQueueFull,
       routeTask: async (task, teams, opts) => {
         routed.push({ task, teams: teams.map((x) => x.name) });
         if (opts && opts.from) routed.from = opts.from;
@@ -809,5 +813,144 @@ describe("the real MCP adapter (DASH-28)", () => {
         name,
       );
     }
+  });
+});
+
+describe("one job at a time: a task waits its turn (DASH-81)", () => {
+  // The team's job before it ends when the test says.
+  function queuedSetup(over = {}) {
+    let letGo;
+    const turn = new Promise((r) => {
+      letGo = r;
+    });
+    const jobs = {};
+    const s = setup({
+      asks: [],
+      startTaskJob: (task) => {
+        jobs.job_q = { id: "job_q", status: "queued" };
+        return "job_q";
+      },
+      jobQueue: (id) =>
+        jobs[id] && jobs[id].status === "queued"
+          ? {
+              position: 1,
+              waitingFor: {
+                id: "job_a",
+                title: "Spool holder",
+                status: "running",
+              },
+            }
+          : null,
+      waitForJobStart: () => turn,
+      getJob: (id) => jobs[id] || null,
+      waitForJob: async () => ({ status: "done", steps: [] }),
+      taskWaitMs: 30,
+      ...over,
+    });
+    return {
+      ...s,
+      jobs,
+      letGo: (started = true) => {
+        if (jobs.job_q) jobs.job_q.status = started ? "running" : "stopped";
+        letGo(started);
+      },
+    };
+  }
+
+  it("given while the team is busy: queued with its place, and the lead isn't asked yet", async () => {
+    const { handlers, calls, letGo } = queuedSetup();
+    const r = body(
+      await handlers.give_task({
+        task: "Print a cable clip",
+        team: "room design",
+      }),
+    );
+    assert.equal(r.status, "queued");
+    assert.equal(r.position, 1);
+    assert.equal(r.waitingFor, "Spool holder");
+    assert.match(r.message, /doing another job first.*\(next\)/);
+    assert.equal(calls.length, 0);
+    const s = body(await handlers.get_task_status({ taskId: r.taskId }));
+    assert.equal(s.status, "queued");
+    assert.equal(s.position, 1);
+    const l = body(await handlers.list_tasks({}));
+    assert.equal(l.tasks[0].status, "queued");
+    letGo();
+  });
+
+  it("runs when its turn comes, and ends done", async () => {
+    const { handlers, calls, letGo, tasks } = queuedSetup();
+    const r = body(
+      await handlers.give_task({
+        task: "Print a cable clip",
+        team: "room design",
+      }),
+    );
+    letGo(true);
+    await new Promise((res) => setTimeout(res, 20));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].opts.jobId, "job_q");
+    assert.equal(tasks.get(r.taskId).status, "done");
+  });
+
+  it("taken out of the queue: it fails, saying so, and the lead is never asked", async () => {
+    const { handlers, calls, letGo, tasks } = queuedSetup();
+    const r = body(
+      await handlers.give_task({
+        task: "Print a cable clip",
+        team: "room design",
+      }),
+    );
+    letGo(false);
+    await new Promise((res) => setTimeout(res, 20));
+    assert.equal(calls.length, 0);
+    assert.equal(tasks.get(r.taskId).status, "failed");
+    assert.match(tasks.get(r.taskId).error, /taken out of the team's queue/);
+  });
+
+  it("a full queue refuses the task, saying why", async () => {
+    const { handlers, calls } = queuedSetup({ teamQueueFull: () => true });
+    const r = body(
+      await handlers.give_task({
+        task: "Print a cable clip",
+        team: "room design",
+      }),
+    );
+    assert.equal(r.status, "blocked");
+    assert.match(r.message, /20 tasks waiting/);
+    assert.equal(calls.length, 0);
+  });
+
+  it("after a restart, a queued task waits on its job again and runs when it comes", async () => {
+    const { handlers, calls, tasks, jobs, letGo } = queuedSetup();
+    const r = body(
+      await handlers.give_task({
+        task: "Print a cable clip",
+        team: "room design",
+      }),
+    );
+    assert.equal(tasks.get(r.taskId).status, "queued");
+    // The same tasks, read by the handlers of a Dash that just started.
+    assert.equal(handlers.resumeQueued(), 1);
+    letGo(true);
+    await new Promise((res) => setTimeout(res, 20));
+    // Its job ran once per waiter; the lead was asked for this task.
+    assert.ok(calls.length >= 1);
+    assert.equal(calls[0].opts.jobId, "job_q");
+    assert.ok(jobs.job_q);
+  });
+
+  it("after a restart, a queued task whose job is gone fails, saying so", async () => {
+    const { handlers, tasks, jobs, letGo } = queuedSetup();
+    const r = body(
+      await handlers.give_task({
+        task: "Print a cable clip",
+        team: "room design",
+      }),
+    );
+    delete jobs.job_q;
+    assert.equal(handlers.resumeQueued(), 0);
+    assert.equal(tasks.get(r.taskId).status, "failed");
+    letGo(false);
   });
 });

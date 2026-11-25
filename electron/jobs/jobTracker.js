@@ -12,6 +12,10 @@
  * checks are trying the work), needs-you (waiting on the user: a paused
  * bot, checks that need a look), done, failed, stopped, skipped.
  *
+ * One job at a time per team (DASH-81): a job made while its team has one
+ * going waits as `queued` (job status), in order, and starts when the one
+ * before it ends. A queued job has no steps yet.
+ *
  * A job is running while any step is queued, running or checking — and for
  * a moment after the last one ends, because hand-ons start a tick after the
  * bot that sets them off (botController defers bot→bot dispatch). Then it
@@ -28,6 +32,12 @@ const MAX_TITLE = 200;
 const MAX_SUMMARY = 600;
 // What was asked, kept so the job can be run again.
 const MAX_REQUEST = 4000;
+
+// A team's queue (DASH-81): most jobs that may wait, and how long a job let
+// out of the queue may go without a step before it's stopped (nothing ran it,
+// so it never holds the team up).
+const MAX_QUEUED = 20;
+const PICKUP_MS = 60000;
 
 const ACTIVE = new Set(["queued", "running", "checking"]);
 const WAITING = new Set(["queued", "needs-you"]);
@@ -95,6 +105,7 @@ function createJobTracker({
   setTimer = setTimeout,
   clearTimer = clearTimeout,
   settleMs = SETTLE_MS,
+  pickupMs = PICKUP_MS,
 }) {
   const iso = () => new Date(now()).toISOString();
   const newId = (prefix) =>
@@ -103,6 +114,7 @@ function createJobTracker({
       .padStart(6, "0")}`;
   const settling = new Map(); // jobId → timer
   const waiters = new Map(); // jobId → [resolve]
+  const starters = new Map(); // jobId → [resolve(started)] (DASH-81)
   // goalId → jobId: a step's checks, found without reading every job ever
   // kept (jobs are never pruned on their own).
   let byGoal = null;
@@ -119,7 +131,9 @@ function createJobTracker({
   };
 
   function commit(job) {
-    job.status = jobStatus(job.steps, settling.has(job.id));
+    job.status = job.queued
+      ? "queued"
+      : jobStatus(job.steps, settling.has(job.id));
     job.updatedAt = iso();
     if (FINAL.has(job.status)) job.endedAt = job.endedAt || job.updatedAt;
     else job.endedAt = null;
@@ -137,8 +151,127 @@ function createJobTracker({
       const list = waiters.get(job.id) || [];
       waiters.delete(job.id);
       for (const resolve of list) resolve(job);
+      // Its team's next job may start (DASH-81), once this one is written.
+      if (job.workspaceId != null) {
+        const ws = job.workspaceId;
+        setTimer(() => startNext(ws), 0);
+      }
     }
     return job;
+  }
+
+  // ---- A team's queue (DASH-81) -------------------------------------------
+
+  const sameTeam = (job, ws) =>
+    ws != null &&
+    job.workspaceId != null &&
+    String(job.workspaceId) === String(ws);
+
+  /** The team's job that's going (not queued, not ended), or null. */
+  function activeFor(workspaceId) {
+    return (
+      store
+        .list()
+        .find(
+          (j) => sameTeam(j, workspaceId) && !j.queued && !FINAL.has(j.status),
+        ) || null
+    );
+  }
+
+  /** The team's queued jobs, first in line first. */
+  function queuedFor(workspaceId) {
+    return store
+      .list()
+      .filter((j) => sameTeam(j, workspaceId) && j.queued)
+      .sort(
+        (a, b) =>
+          String(a.queuedAt || a.createdAt).localeCompare(
+            String(b.queuedAt || b.createdAt),
+          ) || String(a.id).localeCompare(String(b.id)),
+      );
+  }
+
+  /**
+   * Where a queued job is: { position (1 = next), waitingFor: { id, title,
+   * status } | null }, or null when it isn't queued.
+   */
+  function queueInfo(jobId) {
+    const job = jobOf(jobId);
+    if (!job || !job.queued) return null;
+    const line = queuedFor(job.workspaceId);
+    const active = activeFor(job.workspaceId);
+    return {
+      position: line.findIndex((j) => j.id === job.id) + 1,
+      waitingFor: active
+        ? { id: active.id, title: active.title, status: active.status }
+        : null,
+    };
+  }
+
+  /** Is the team's queue full? */
+  function queueFull(workspaceId) {
+    return queuedFor(workspaceId).length >= MAX_QUEUED;
+  }
+
+  function resolveStart(jobId, started) {
+    const list = starters.get(jobId) || [];
+    starters.delete(jobId);
+    for (const resolve of list) resolve(started);
+  }
+
+  /**
+   * Let the team's next queued job start, when nothing of the team's is
+   * going. Its starter hears (waitForStart). One that nothing picks up
+   * within a minute is stopped, so it never holds the team up.
+   */
+  function startNext(workspaceId) {
+    if (activeFor(workspaceId)) return null;
+    const next = queuedFor(workspaceId)[0];
+    if (!next) return null;
+    return releaseQueued(next.id);
+  }
+
+  /** Let a queued job start now, its turn or not (the team's queue is off). */
+  function releaseQueued(jobId) {
+    const next = jobOf(jobId);
+    if (!next || !next.queued) return null;
+    next.queued = false;
+    next.startedAt = iso();
+    commit(next);
+    const pickup = setTimer(() => {
+      const job = store.get(next.id);
+      if (!job || job.queued || FINAL.has(job.status) || job.steps.length) {
+        return;
+      }
+      const st = addStep(job, {
+        botId: job.leadId,
+        botName: job.leadName,
+        status: "stopped",
+        why: job.startedBy,
+        summary: "Its turn came, but nothing started it.",
+      });
+      if (st) st.endedAt = iso();
+      commit(job);
+    }, pickupMs);
+    // Never keeps Dash (or a test) running on its own.
+    if (pickup && typeof pickup.unref === "function") pickup.unref();
+    resolveStart(next.id, true);
+    return next;
+  }
+
+  /**
+   * Resolves true when the job may start (now, or when its turn comes), or
+   * false when it was taken out of the queue (or is gone) before then.
+   */
+  function waitForStart(jobId) {
+    const job = jobOf(jobId);
+    if (!job) return Promise.resolve(false);
+    if (!job.queued) return Promise.resolve(!FINAL.has(job.status));
+    return new Promise((resolve) => {
+      const list = starters.get(job.id) || [];
+      list.push(resolve);
+      starters.set(job.id, list);
+    });
   }
 
   function settle(job) {
@@ -171,6 +304,8 @@ function createJobTracker({
     request = "",
     startedBy = { kind: "you" },
     conversationId = null,
+    // Its team has a job going (one at a time, DASH-81): it waits its turn.
+    queued = false,
   } = {}) {
     const at = iso();
     const job = {
@@ -187,6 +322,7 @@ function createJobTracker({
       createdAt: at,
       updatedAt: at,
       endedAt: null,
+      ...(queued ? { queued: true, queuedAt: at } : {}),
     };
     return commit(job);
   }
@@ -394,6 +530,20 @@ function createJobTracker({
   function stopWaiting(jobId) {
     const job = jobOf(jobId);
     if (!job) return null;
+    // Still in its team's queue: it never starts (DASH-81).
+    if (job.queued) {
+      job.queued = false;
+      const st = addStep(job, {
+        botId: job.leadId,
+        botName: job.leadName,
+        status: "stopped",
+        why: job.startedBy,
+        summary: "Taken out of the queue before it started.",
+      });
+      if (st) st.endedAt = iso();
+      resolveStart(job.id, false);
+      return commit(job);
+    }
     for (const st of job.steps) {
       if (WAITING.has(st.status)) {
         st.status = "stopped";
@@ -424,8 +574,26 @@ function createJobTracker({
    * plainly. Runs don't survive a restart.
    */
   function interruptLeftovers() {
+    const teams = new Set();
     for (const job of store.list()) {
       if (FINAL.has(job.status)) continue;
+      // Queued (DASH-81): a task given via MCP keeps its place and runs
+      // afterwards; anything else queued only lived in Dash's memory.
+      if (job.queued) {
+        if (job.workspaceId != null) teams.add(job.workspaceId);
+        if (job.startedBy && job.startedBy.kind === "task") continue;
+        job.queued = false;
+        const st = addStep(job, {
+          botId: job.leadId,
+          botName: job.leadName,
+          status: "stopped",
+          why: job.startedBy,
+          summary: "Dash closed while it waited for its turn.",
+        });
+        if (st) st.endedAt = iso();
+        commit(job);
+        continue;
+      }
       // Made for a task whose lead never started before Dash closed.
       if (!job.steps.length) {
         const st = addStep(job, {
@@ -450,12 +618,16 @@ function createJobTracker({
       }
       if (changed || job.status !== jobStatus(job.steps)) commit(job);
     }
+    // Each team's next queued job may start now.
+    for (const ws of teams) startNext(ws);
   }
 
   function remove(jobId) {
     unsettle(jobId);
     // Anyone waiting for it (a task) hears it was stopped, never nothing.
     const job = jobOf(jobId);
+    // Taken out of its team's queue (DASH-81): it never starts.
+    resolveStart(jobId, false);
     const list = waiters.get(jobId) || [];
     waiters.delete(jobId);
     for (const resolve of list) {
@@ -464,7 +636,13 @@ function createJobTracker({
     if (byGoal) {
       for (const [g, j] of byGoal) if (j === jobId) byGoal.delete(g);
     }
-    return store.remove(jobId);
+    const removed = store.remove(jobId);
+    // It was the team's job going: the next one may start.
+    if (removed && job && job.workspaceId != null) {
+      const ws = job.workspaceId;
+      setTimer(() => startNext(ws), 0);
+    }
+    return removed;
   }
 
   /** Delete finished jobs that ended before `cutoff` (ISO); how many went. */
@@ -504,7 +682,21 @@ function createJobTracker({
     remove,
     list,
     get: (id) => store.get(id),
+    // A team's queue (DASH-81).
+    activeFor,
+    queuedFor,
+    queueInfo,
+    queueFull,
+    startNext,
+    releaseQueued,
+    waitForStart,
   };
 }
 
-module.exports = { createJobTracker, jobStatus, SETTLE_MS };
+module.exports = {
+  createJobTracker,
+  jobStatus,
+  SETTLE_MS,
+  MAX_QUEUED,
+  PICKUP_MS,
+};

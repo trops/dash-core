@@ -4,6 +4,8 @@
  */
 
 export const JOB_STATUS = {
+  // Waiting for its team's job before it (one at a time, DASH-81).
+  queued: "Queued",
   running: "Running",
   "needs-you": "Needs you",
   done: "Done",
@@ -29,6 +31,38 @@ export function statusTone(status) {
   if (status === "needs-you") return "warning";
   if (status === "running" || status === "checking") return "info";
   return null; // queued, stopped, skipped: muted
+}
+
+/** 2 → "2nd", 11 → "11th". */
+export function ordinalText(n) {
+  const v = n % 100;
+  const suffix =
+    v >= 11 && v <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th";
+  return `${n}${suffix}`;
+}
+
+/**
+ * A queued job's place (DASH-81): "Next in line · after “Spool holder”",
+ * "2nd in line · after “Spool holder”, which needs you". "" when it isn't
+ * queued.
+ */
+export function queueText(job) {
+  if (!job || job.status !== "queued") return "";
+  const q = job.queue || {};
+  const place =
+    !q.position || q.position === 1
+      ? "Next in line"
+      : `${ordinalText(q.position)} in line`;
+  const w = q.waitingFor;
+  if (!w) return place;
+  return `${place} · after “${w.title}”${w.status === "needs-you" ? ", which needs you" : ""}`;
+}
+
+/** Under a lead's answer: "Queued · 1 ahead" (the running job counts). */
+export function aheadText(job) {
+  if (!job || job.status !== "queued") return "";
+  const n = (job.queue && job.queue.position) || 1;
+  return `Queued · ${n} ahead`;
 }
 
 /** Who started the job: "Task from slack", "You, in Woodworking Lead". */
@@ -88,10 +122,18 @@ export function tookText(job, now = Date.now()) {
 
 /** How many are running and how many need you. */
 export function jobCounts(jobs) {
-  const out = { running: 0, needsYou: 0, failed: 0, done: 0, all: 0 };
+  const out = {
+    running: 0,
+    queued: 0,
+    needsYou: 0,
+    failed: 0,
+    done: 0,
+    all: 0,
+  };
   for (const j of jobs || []) {
     out.all += 1;
     if (j.status === "running") out.running += 1;
+    else if (j.status === "queued") out.queued += 1;
     else if (j.status === "needs-you") out.needsYou += 1;
     else if (j.status === "failed") out.failed += 1;
     else if (j.status === "done") out.done += 1;

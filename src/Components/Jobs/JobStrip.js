@@ -3,7 +3,7 @@ import { Button3 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useJobs } from "../../hooks/useJobs";
 import { JobBadge } from "./JobsPage";
-import { STEP_STATUS, tookText } from "./jobText";
+import { STEP_STATUS, aheadText, tookText } from "./jobText";
 
 /** The newest job asked in a conversation, or null. */
 export function jobForConversation(jobs, conversationId) {
@@ -49,7 +49,7 @@ export const JobStrip = ({ conversationId, workspaceId = null }) => {
     >
       <JobBadge status={job.status} />
       <span className={`flex-1 min-w-0 text-sm break-words ${strong}`}>
-        {stepsLine(job) || "Starting"}
+        {aheadText(job) || stepsLine(job) || "Starting"}
       </span>
       <span className={`text-xs ${muted}`}>{tookText(job)}</span>
       <Button3
