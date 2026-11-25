@@ -344,6 +344,9 @@ function createJobTracker({
             ? "stopped"
             : "checking";
     if (step.status === next) return step;
+    // Passed is final: a mark that lands after it (the reviewer's run ends
+    // a moment after its verdict passed the work) never reopens the step.
+    if (step.status === "done") return step;
     step.status = next;
     if (summary) step.summary = clip(summary, MAX_SUMMARY);
     if (FINAL.has(next)) step.endedAt = iso();
