@@ -238,8 +238,13 @@ function createFlowRunner(deps) {
       if (!fresh || keyOf(fresh) !== key) return;
       store.writeStepRecord(task.id, {
         stepId: step.id,
-        status: res.pass ? "passed" : "failed",
+        // A handoff that asks (DASH-101) waits for a person, not a retry.
+        status: res.pass ? "passed" : res.ask ? "needs-you" : "failed",
         ...(res.pass && res.handOn === false ? { handOn: false } : {}),
+        ...(res.pass && res.handOn === false && res.ended
+          ? { ended: res.ended }
+          : {}),
+        ...(!res.pass && res.ask ? { ask: res.ask } : {}),
         summary: res.reason,
         details: res.details,
         kind: res.kind,

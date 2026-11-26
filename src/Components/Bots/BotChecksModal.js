@@ -47,7 +47,6 @@ import {
 const HANDS_ON_OPTIONS = [
   { value: "answer", label: "Its whole answer" },
   { value: "summary", label: "Only the summary" },
-  { value: "files", label: "Its files" },
 ];
 
 // What a check gets: the bot's answer (electron/bots/botChecks.js workOutput).

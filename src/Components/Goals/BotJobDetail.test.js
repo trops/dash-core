@@ -248,3 +248,63 @@ describe("sent back to a paused bot (DASH-12)", () => {
     expect(screen.queryByText(/Waiting:/)).toBeNull();
   });
 });
+
+test("a bot that asked a question in its handoff gets your answer (DASH-101)", async () => {
+  const asking = {
+    ...job,
+    id: "goal_ask",
+    status: "needs-you",
+    flow: {
+      ...flow,
+      steps: [
+        flow.steps[0],
+        { id: "step_handoff", kind: "check", name: "Handoff" },
+      ],
+    },
+    tasks: [
+      {
+        ...job.tasks[0],
+        id: "task_ask",
+        goalId: "goal_ask",
+        status: "needs-you",
+        stepId: "step_handoff",
+        round: 1,
+        history: [
+          job.tasks[0].history[0],
+          {
+            stepId: "step_handoff",
+            status: "needs-you",
+            by: "dash",
+            said: "dash",
+            round: 1,
+            at: T + 61000,
+            summary: "It asks: Which repo is this for?",
+            ask: "Which repo is this for?",
+          },
+        ],
+      },
+    ],
+  };
+  delete window.mainApi;
+  mock = mockGoalsApi([asking]);
+  render(<GoalsView workspace={{ id: 7 }} />);
+  const row = await screen.findByTestId("goal-row");
+  expect(row).toHaveTextContent("asks you a question");
+  fireEvent.click(row);
+  const box = await screen.findByTestId("job-asking");
+  expect(within(box).getByTestId("job-question")).toHaveTextContent(
+    "Which repo is this for?",
+  );
+  const send = within(box).getByRole("button", { name: "Send answer" });
+  expect(send).toBeDisabled();
+  fireEvent.change(within(box).getByRole("textbox"), {
+    target: { value: "code-factory-sandbox" },
+  });
+  fireEvent.click(send);
+  await waitFor(() =>
+    expect(mock.api.taskAction).toHaveBeenCalledWith("task_ask", {
+      type: "answer",
+      reason: "code-factory-sandbox",
+    }),
+  );
+});

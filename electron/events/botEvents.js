@@ -80,6 +80,8 @@ const BOTS_SET_TAKES_MCP_TASKS = "bots-set-takes-mcp-tasks";
 const BOTS_SET_ASKS_TASK_PASSPHRASE = "bots-set-asks-task-passphrase";
 // A team runs one job at a time (DASH-81).
 const BOTS_SET_ONE_JOB_AT_A_TIME = "bots-set-one-job-at-a-time";
+// A team uses the standard handoff between its bots (DASH-101).
+const BOTS_SET_USES_HANDOFFS = "bots-set-uses-handoffs";
 // The team's "Wait for approvals up to" (DASH-32).
 const BOTS_GET_APPROVAL_WAIT_HOURS = "bots-get-approval-wait-hours";
 const BOTS_SET_APPROVAL_WAIT_HOURS = "bots-set-approval-wait-hours";
@@ -209,6 +211,7 @@ module.exports = {
   BOTS_SET_TAKES_MCP_TASKS,
   BOTS_SET_ASKS_TASK_PASSPHRASE,
   BOTS_SET_ONE_JOB_AT_A_TIME,
+  BOTS_SET_USES_HANDOFFS,
   BOTS_GET_APPROVAL_WAIT_HOURS,
   BOTS_SET_APPROVAL_WAIT_HOURS,
   BOTS_TASK_PASSPHRASE_STATE,

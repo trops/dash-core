@@ -28,7 +28,15 @@ A bot starts when another bot on its team finishes: subscriptions [{ bot: "Plann
 - A "failed" event says what broke and what the bot was working on: the error, the input the failed bot was given (the answer handed to it, so the ticket's key is in its JSON) and the job's picked table rows (e.g. repo). Tell the Reporter to take the ticket from that input, and if it can't find one, to say so rather than guess from a search.
 
 ## 4. Answers that hand on
-End every answer with one \`\`\`json block, last, and say so in the instructions with the exact keys. The next bot (and the checks) read the last JSON block. Have each bot copy forward the keys later bots need (e.g. key, dir, branch), so nobody has to dig them out of prose.
+End every answer with one \`\`\`json block, last: the **handoff**. Dash reads every answer one way: the whole answer when it's JSON, else its last \`\`\`json block (picks, the work item and the checks all read it like this). Say so in the instructions with the exact keys.
+
+**Turn on the standard handoff** for a team whose bots hand work on (set_team_settings usesHandoffs: true, or "Standard handoff" on the team's page). Then:
+- A few keys are Dash's: **status** ("ok", the default; "none"; "ask"; "split"), **item**, **workspace**, **question** (with ask), **items** (with split: the new items' ids, or { id, title }), **summary** (one line for the job and the next bot), and each table's pick ("repo"). Everything else is the bot's own data for the next bot (the Planner adds files, steps, tests).
+- Dash handles the statuses, so no bot needs a check for them. **none**: nothing to do (an empty queue): the job ends quietly and nothing is handed on. **ask**: the bot needs a person: the job waits with its question; the user's answer goes back to the same bot, which goes on, or the user closes it and its failed event carries the question. **split**: the work became other items: the job ends saying "Split into …" and nothing is handed on.
+- **Dash's Handoff check** runs first, before the bot's own checks: the block parses, the status is known, item.id is the job's, and workspace.dir is inside the bot's folders. A wrong one goes back to the bot with exactly what's wrong.
+- The next bot is told the job's work item, workspace and picks, the bot before's summary, and its own data (marked untrusted), instead of the raw event. So bots never copy key, dir or branch forward: write instructions that use {item.id} and {workspace.dir}, and have each bot add only what's new.
+
+Without it, the next bot gets the raw event (the answer as text), so have each bot copy forward the keys later bots need.
 
 **What the job is about, and where its files are.** A job carries a **work item** and a **workspace**, so no bot has to copy them forward:
 - **item**: { id, title?, url?, source? }: the one ticket, note or issue the job is about ("DASH-93", "Projects/Spool.md", "trops/app#12"). The task can name it (give_task's item), or the first bot that knows names it in its last json block: "item": { "id": "DASH-93", "title": "...", "url": "...", "source": "jira" }. Once set, its id never changes for that job.
@@ -37,7 +45,7 @@ End every answer with one \`\`\`json block, last, and say so in the instructions
 - Its completed and failed events carry item and jobId, so a bot that reports (the Reporter) comments on {item.id} and never searches for the ticket.
 
 ## 5. Checks: gates that don't trust the AI's word
-checks: { steps, onFail, maxTries, handsOn }. The bot's answer is held until every step passes, then handed on.
+checks: { steps, onFail, maxTries, handsOn }. The bot's answer is held until every step passes, then handed on. handsOn is "answer" (the default) or "summary" (its first paragraph).
 - **check, kind "command"**: a shell command, run in the job's workspace when it has one, else the bot's first folder. It gets the run as JSON in $DASH_INPUT (and on stdin): the answer is at .input.answer, and the job's item and workspace at .item and .workspace. Its environment has DASH_ITEM_ID, DASH_ITEM_TITLE, DASH_ITEM_URL, DASH_ITEM_SOURCE, DASH_WORKSPACE and DASH_BRANCH. Exit 0 passes. Make the last line of output {"reason": "..."} to say why; that line shows on the job.
 - **check, kind "script"**: function check(input) { return { pass, reason } } in a sealed runner. Use it for checks on the answer itself (keys present, a list not empty).
 - **check, kind "rules"** and **"tool"**: ready-made rules, or a read-only provider tool.
@@ -45,7 +53,7 @@ checks: { steps, onFail, maxTries, handsOn }. The bot's answer is held until eve
 - **you**: waits for the user to approve.
 - onFail: "retry" sends the work back to the bot with what failed (up to maxTries), then to the user. "stop" ends it and sends "failed" (your Reporter runs). "you" asks the user at once. Use retry where the bot can fix it (tests, review); use stop where it can't (CI on a PR).
 - when: a step that runs only when a team setting says so, e.g. { kind: "you", name: "Approve the plan", when: "{approvePlans}" }. Dash fills it in each run and leaves the step out when it reads no, so plan approval turns on and off from Team settings.
-- **Nothing to do:** when there's no work (an empty queue on a schedule), the check returns pass with handOn false: a script returns { pass: true, handOn: false, reason }, a command prints {"reason": "...", "handOn": false} last and exits 0. The run ends quietly: no completed event, nothing downstream runs, no job is kept.
+- **Nothing to do:** with the standard handoff, the bot says "status": "none". Without it, when there's no work (an empty queue on a schedule), the check returns pass with handOn false: a script returns { pass: true, handOn: false, reason }, a command prints {"reason": "...", "handOn": false} last and exits 0. The run ends quietly: no completed event, nothing downstream runs, no job is kept.
 
 Anything code can decide belongs in a check, not in the instructions: "tests pass", "the branch exists", "CI is green", "the folder is gone".
 

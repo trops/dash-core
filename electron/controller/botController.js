@@ -124,6 +124,7 @@ const {
 } = require("../registry/packageRef");
 const { validateBotDefinition, withDefaults } = require("../bots/botSchema");
 const { answerShape, resultsShape } = require("../bots/answerShape");
+const { readHandoff, handOnPrompt } = require("../bots/botHandoff");
 const { botUpdatePatch } = require("../bots/botUpdate");
 const { publishFingerprint } = require("../registry/fingerprint");
 const { remixOrigin, checkRemix, checkRemixAll } = require("../registry/remix");
@@ -681,6 +682,12 @@ const botController = {
         return r;
       },
       getRuns: (id) => this._store.getRuns(id),
+      // Its team uses the standard handoff (DASH-101): its checks start
+      // with the built-in Handoff check.
+      handoffFor: (bot) =>
+        bot && this.usesHandoffs(bot.workspaceId)
+          ? { handoff: true, tables: this._tableKeys(bot.workspaceId) }
+          : null,
       notify: (botId, info) => {
         this._broadcast(BOT_STREAM, {
           botId,
@@ -689,7 +696,13 @@ const botController = {
         // Checks waiting on the user show on the job (DASH-31).
         if (info && info.goalId && this._jobs) {
           if (info.handOn === false) this._nothingToHandOn(info);
-          else this._jobs.checksMoved(info.goalId, info.state);
+          else
+            this._jobs.checksMoved(
+              info.goalId,
+              info.state,
+              // A handoff's question shows on the job (DASH-101).
+              info.ask ? info.reason : null,
+            );
         }
       },
     });
@@ -1101,10 +1114,20 @@ const botController = {
     this._jobs.checksMoved(
       info.goalId,
       "passed",
-      `Nothing to hand on${info.reason ? `: ${info.reason}` : ""}.`,
+      // A handoff says how it ended (DASH-101): "Nothing to do: …" or
+      // "Split into DASH-97, DASH-98".
+      info.ended
+        ? info.reason
+        : `Nothing to hand on${info.reason ? `: ${info.reason}` : ""}.`,
     );
     const job = jobId ? this._jobs.get(jobId) : null;
-    if (job && !job.leadId && (job.steps || []).length === 1) {
+    // A split is kept: something happened (the job says what it became).
+    if (
+      job &&
+      info.ended !== "split" &&
+      !job.leadId &&
+      (job.steps || []).length === 1
+    ) {
       if (this._jobs.remove(job.id)) {
         this._broadcast(BOT_JOBS_CHANGED, {
           jobId: job.id,
@@ -1238,12 +1261,69 @@ const botController = {
     const sub = (bot.subscriptions || []).find(
       (s) => s && s.eventType === event.eventType,
     );
+    const note = sub && sub.note;
     return this._run(bot.id, {
-      prompt: composeEventPrompt(event, sub && sub.note),
+      // A team that uses handoffs (DASH-101) gets the job's context and the
+      // bot before's handoff, not the raw event.
+      prompt:
+        this._handOnPrompt(bot, event, note) || composeEventPrompt(event, note),
       trigger: "event",
       cause: causeFromEvent(event),
       source: sourceFromEvent(bot, event),
     });
+  },
+
+  /**
+   * The hand-on prompt (DASH-101) for a bot whose team uses handoffs, when
+   * the event is a bot's `completed` whose answer ends with a handoff; null
+   * otherwise (the raw event is given, as before).
+   */
+  _handOnPrompt(bot, event, note) {
+    try {
+      if (!bot || !this.usesHandoffs(bot.workspaceId)) return null;
+      if (!/\.completed$/.test(String(event && event.eventType))) return null;
+      const c = event.content;
+      if (!c || typeof c.output !== "string") return null;
+      const tables = this._tableKeys(bot.workspaceId);
+      const handoff = readHandoff(c.output, { tables });
+      if (!handoff.found) return null;
+      const from = event.originBotId
+        ? this._store.get(event.originBotId)
+        : null;
+      const ctx =
+        event.jobId && this._jobs && this._jobs.contextOf
+          ? this._jobs.contextOf(event.jobId)
+          : { item: c.item || null, workspace: c.workspace || null };
+      const picks = {
+        ...(event.jobId && this._jobs && this._jobs.picksOf
+          ? this._jobs.picksOf(event.jobId)
+          : {}),
+        ...handoff.picks,
+      };
+      return handOnPrompt({
+        from: (from && from.name) || c.botName || null,
+        item: ctx.item || c.item || null,
+        workspace: ctx.workspace || c.workspace || null,
+        picks,
+        handoff,
+        note,
+      });
+    } catch (_e) {
+      return null;
+    }
+  },
+
+  /** The keys a team's table picks use in a handoff ("repo"). */
+  _tableKeys(workspaceId) {
+    try {
+      const team = this._store.getTeamSettings(workspaceId) || {};
+      return (Array.isArray(team.declared) ? team.declared : [])
+        .filter((d) => d && d.type === "table")
+        .map((d) => d.pick || d.name)
+        .filter((n) => typeof n === "string");
+    } catch (_e) {
+      return [];
+    }
   },
 
   /** A bot that won't run now: paused, or over its budget. */
@@ -2540,6 +2620,25 @@ const botController = {
    * job made while one is going waits its turn (a schedule's run is
    * skipped instead).
    */
+  /**
+   * Do this team's bots use the standard handoff (DASH-101)? Off unless
+   * turned on: each bot's answer has its handoff checked (Dash's Handoff
+   * check, first), Dash handles none / ask / split, and the next bot gets
+   * the job's context and the handoff instead of the raw event.
+   */
+  usesHandoffs(workspaceId) {
+    if (workspaceId === null || workspaceId === undefined) return false;
+    const t = this._store.getTeamSettings(workspaceId);
+    return !!(t && t.usesHandoffs === true);
+  },
+
+  setUsesHandoffs(workspaceId, on) {
+    if (workspaceId === null || workspaceId === undefined) {
+      return { error: "Which team?" };
+    }
+    return this._store.setTeamSettings(workspaceId, { usesHandoffs: !!on });
+  },
+
   oneJobAtATime(workspaceId) {
     if (workspaceId === null || workspaceId === undefined) return false;
     return this._store.getTeamSettings(workspaceId).oneJobAtATime !== false;

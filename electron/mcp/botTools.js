@@ -288,8 +288,9 @@ const BOT_FIELDS = {
       maxTries: { type: "number", description: "Tries for 'retry'." },
       handsOn: {
         type: "string",
-        enum: ["answer", "summary", "files"],
-        description: "What passed work hands on to the next bots.",
+        enum: ["answer", "summary"],
+        description:
+          "What passed work hands on to the next bots: its whole answer (the default) or its first paragraph.",
       },
     },
     description:
@@ -435,6 +436,11 @@ const BOT_TOOLS = [
           type: "array",
           items: { type: "string" },
           description: "Names of settings to take away.",
+        },
+        usesHandoffs: {
+          type: "boolean",
+          description:
+            "Turn the standard handoff on or off for the team's bots (DASH-101). On: every bot's answer ends with one json block (the handoff) that Dash checks first (Dash's Handoff check: it parses, status is ok/none/ask/split, item.id is the job's, workspace.dir is inside the bot's folders; a wrong one goes back to the bot with what's wrong). Dash handles status none (the job ends: nothing to do), ask (the job waits for the user's answer, which goes back to the bot) and split (the job ends: split into its items). The next bot is told the job's work item, workspace, picks and the handoff's summary and data instead of the raw event.",
         },
         from: {
           type: "string",
@@ -2039,7 +2045,13 @@ function makeBotToolHandlers({
         message: `That team no longer lets MCP clients change its bots, so nothing was saved. ${SET_UP_TEAMS}`,
       });
     }
-    const saved = bots.setTeamValues(request.teamId, request.change);
+    if (typeof request.usesHandoffs === "boolean" && bots.setUsesHandoffs) {
+      bots.setUsesHandoffs(request.teamId, request.usesHandoffs);
+    }
+    const saved =
+      request.change && Object.keys(request.change).length
+        ? bots.setTeamValues(request.teamId, request.change)
+        : bots.teamValues(request.teamId) || { declared: [], values: {} };
     if (!saved || (saved.errors && saved.errors.length)) {
       return json({
         status: "invalid",
@@ -2109,6 +2121,9 @@ function makeBotToolHandlers({
             id: String(w.id),
             name: w.name || "Untitled",
             ...(settings ? { settings } : {}),
+            ...(bots.usesHandoffs && bots.usesHandoffs(w.id)
+              ? { usesHandoffs: true }
+              : {}),
           };
         }),
       });
@@ -2125,11 +2140,14 @@ function makeBotToolHandlers({
       if (args.declare !== undefined) change.declare = args.declare;
       if (args.values !== undefined) change.values = args.values;
       if (args.remove !== undefined) change.remove = args.remove;
-      if (!Object.keys(change).length) {
+      const handoffs =
+        typeof args.usesHandoffs === "boolean" ? args.usesHandoffs : null;
+      if (!Object.keys(change).length && handoffs === null) {
         return json(
           {
             status: "invalid",
-            message: "Give declare, values or remove: nothing to change.",
+            message:
+              "Give declare, values, remove or usesHandoffs: nothing to change.",
           },
           true,
         );
@@ -2141,17 +2159,34 @@ function makeBotToolHandlers({
         );
       }
       const before = bots.teamValues(ws.id) || { declared: [], values: {} };
-      const next = bots.setTeamValues(ws.id, change, { dryRun: true });
-      if (!next || (next.errors && next.errors.length)) {
-        return json({
-          status: "invalid",
-          reasons: (next && next.errors) || ["It couldn't be checked."],
-          message: "It wouldn't save, so nothing was saved:",
-        });
+      let lines = [];
+      let names = [];
+      let wider = [];
+      if (Object.keys(change).length) {
+        const next = bots.setTeamValues(ws.id, change, { dryRun: true });
+        if (!next || (next.errors && next.errors.length)) {
+          return json({
+            status: "invalid",
+            reasons: (next && next.errors) || ["It couldn't be checked."],
+            message: "It wouldn't save, so nothing was saved:",
+          });
+        }
+        ({ lines, names, wider } = describeSettings(before, next, {
+          usedBy: before.usedBy || {},
+        }));
       }
-      const { lines, names, wider } = describeSettings(before, next, {
-        usedBy: before.usedBy || {},
-      });
+      if (
+        handoffs !== null &&
+        bots.usesHandoffs &&
+        bots.usesHandoffs(ws.id) !== handoffs
+      ) {
+        lines = [
+          ...lines,
+          handoffs
+            ? "- Turn on the standard handoff: Dash checks each bot's handoff first, handles none / ask / split, and gives the next bot the job's context."
+            : "- Turn off the standard handoff: bots hand on their raw answers again.",
+        ];
+      }
       if (!lines.length) {
         return json({
           status: "unchanged",
@@ -2170,6 +2205,7 @@ function makeBotToolHandlers({
         teamId: String(ws.id),
         teamName: ws.name || "The team",
         change,
+        ...(handoffs !== null ? { usesHandoffs: handoffs } : {}),
         names,
         from: cleanFrom(args.from),
         summary,
@@ -2605,6 +2641,9 @@ function registerBotTools() {
       afterSave: () => botController.afterSave(),
       // A team's settings (DASH-57).
       teamValues: (id) => botController.teamValues(id),
+      // The standard handoff (DASH-101).
+      usesHandoffs: (id) => botController.usesHandoffs(id),
+      setUsesHandoffs: (id, on) => botController.setUsesHandoffs(id, on),
       setTeamValues: (id, change, opts) =>
         botController.setTeamValues(id, change, opts),
       // The user's providers and the tools each lists (null until it's

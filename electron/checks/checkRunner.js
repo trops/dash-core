@@ -17,12 +17,14 @@ const { runRules } = require("./kinds/rules");
 const { runCommand } = require("./kinds/command");
 const { runScript } = require("./kinds/script");
 const { runToolCall } = require("./kinds/toolCall");
+const { handoffCheck } = require("../bots/botHandoff");
 
 const KIND_LABELS = {
   rules: "Rules",
   command: "Command",
   script: "Script",
   tool: "Tool call",
+  handoff: "Handoff",
 };
 
 /**
@@ -65,6 +67,21 @@ async function runCheck(check, input, deps = {}) {
         callTool: deps.callTool,
         isReadOnly: deps.isReadOnly,
       });
+    } else if (kind === "handoff") {
+      // Dash's own (DASH-101): the answer's handoff, against its job.
+      const work = input && input.input;
+      const answer =
+        work && typeof work === "object" && typeof work.answer === "string"
+          ? work.answer
+          : typeof work === "string"
+            ? work
+            : "";
+      res = handoffCheck(answer, {
+        item: (input && input.item) || null,
+        folders: check.folders || [],
+        tables: check.tables || [],
+        home: deps.home || require("os").homedir(),
+      });
     } else {
       res = { pass: false, reason: "This check has no kind set" };
     }
@@ -85,6 +102,14 @@ async function runCheck(check, input, deps = {}) {
     details: res.details === undefined ? null : res.details,
     // Passed, with nothing to hand on (DASH-65): the work ends here.
     ...(res.pass === true && res.handOn === false ? { handOn: false } : {}),
+    // How a handoff ended the work (DASH-101): "none" or "split".
+    ...(res.pass === true && res.handOn === false && res.ended
+      ? { ended: res.ended }
+      : {}),
+    // A handoff that asks a person (DASH-101): the job waits for them.
+    ...(res.pass !== true && typeof res.ask === "string" && res.ask
+      ? { ask: res.ask.slice(0, 1000) }
+      : {}),
     ...(res.output ? { output: String(res.output).slice(-4000) } : {}),
     ...(res.exitCode !== undefined ? { exitCode: res.exitCode } : {}),
     kind: kind || null,
