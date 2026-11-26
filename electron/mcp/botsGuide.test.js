@@ -80,3 +80,11 @@ describe("bots guide: several repos (DASH-84)", () => {
     assert.match(g, /"repo": "dash-core"/);
   });
 });
+
+describe("bots guide: a step's when (DASH-85)", () => {
+  it("explains a check that runs only when a setting says so", () => {
+    const { BOTS_GUIDE: g } = require("./botsGuide");
+    assert.match(g, /when: "\{approvePlans\}"/);
+    assert.match(g, /leaves the step out when it reads no/);
+  });
+});

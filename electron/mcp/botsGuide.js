@@ -37,6 +37,7 @@ checks: { steps, onFail, maxTries, handsOn }. The bot's answer is held until eve
 - **reviewer**: another bot on the team judges the work. Give it read-only tools; it reads files and says pass or fail item by item.
 - **you**: waits for the user to approve.
 - onFail: "retry" sends the work back to the bot with what failed (up to maxTries), then to the user. "stop" ends it and sends "failed" (your Reporter runs). "you" asks the user at once. Use retry where the bot can fix it (tests, review); use stop where it can't (CI on a PR).
+- when: a step that runs only when a team setting says so, e.g. { kind: "you", name: "Approve the plan", when: "{approvePlans}" }. Dash fills it in each run and leaves the step out when it reads no, so plan approval turns on and off from Team settings.
 - **Nothing to do:** when there's no work (an empty queue on a schedule), the check returns pass with handOn false: a script returns { pass: true, handOn: false, reason }, a command prints {"reason": "...", "handOn": false} last and exits 0. The run ends quietly: no completed event, nothing downstream runs, no job is kept.
 
 Anything code can decide belongs in a check, not in the instructions: "tests pass", "the branch exists", "CI is green", "the folder is gone".

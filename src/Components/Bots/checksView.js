@@ -117,9 +117,16 @@ export function changeKind(step, choice) {
   };
 }
 
-/** A short line under a step: what it does. */
+/** A short line under a step: what it does (and when, DASH-85). */
 export function stepSub(step, nameOf = () => null) {
   if (!step) return "";
+  const base = stepWhat(step, nameOf);
+  return typeof step.when === "string" && step.when.trim()
+    ? `${base} · only when ${step.when.trim()}`
+    : base;
+}
+
+function stepWhat(step, nameOf) {
   if (step.kind === "you") return "Waits in Jobs · Send back asks why";
   if (step.kind === "reviewer") {
     const who = step.botId ? nameOf(step.botId) || "a bot" : null;

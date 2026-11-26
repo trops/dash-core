@@ -140,6 +140,10 @@ describe("checksView", () => {
     expect(stepSub(rev, () => "Editor")).toBe("Reviewer bot · Editor");
     expect(stepSub(cmd)).toBe("Command · npm test");
     expect(stepSub(rule)).toBe("1 rule · no AI");
+    // Only when a team setting says so (DASH-85).
+    expect(stepSub({ ...you, when: "{approvePlans}" })).toMatch(
+      /Waits in Jobs .* · only when \{approvePlans\}$/,
+    );
   });
 
   describe("what its checks are doing now", () => {
