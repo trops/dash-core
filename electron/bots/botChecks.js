@@ -29,10 +29,15 @@ const {
 
 const CHECKS_FLOW_KIND = "bot-checks";
 const ON_FAIL = ["retry", "you", "stop"];
-const HANDS_ON = ["answer", "summary", "files"];
+// What a passed job hands on: its whole answer, or its first paragraph.
+// ("files" was accepted but did nothing; DASH-101 took it out, and a bot
+// saved with it hands on its answer.)
+const HANDS_ON = ["answer", "summary"];
 const STEP_KINDS = ["check", "reviewer", "you"];
 const MAX_CHECK_STEPS = 10;
 const WORK_STEP = "step_work";
+// The built-in Handoff check (DASH-101), first after the work.
+const HANDOFF_STEP = "step_handoff";
 const MAX_TITLE = 120;
 const HELD_NOTE =
   "This command came with a package and is off, so Dash didn't run it. Approve the work yourself, or turn the check on in the bot's checks.";
@@ -92,7 +97,8 @@ function cleanBotChecks(input) {
       if (!step) return;
       let id = step.id;
       let n = 1;
-      while (ids.has(id) || id === WORK_STEP) id = `${step.id}${n++}`;
+      while (ids.has(id) || id === WORK_STEP || id === HANDOFF_STEP)
+        id = `${step.id}${n++}`;
       step.id = id;
       ids.add(id);
       steps.push(step);
@@ -146,7 +152,13 @@ function checksError(input, selfId = null) {
   if (input.onFail !== undefined && !ON_FAIL.includes(input.onFail)) {
     return `checks.onFail must be one of ${ON_FAIL.join(", ")}`;
   }
-  if (input.handsOn !== undefined && !HANDS_ON.includes(input.handsOn)) {
+  if (
+    input.handsOn !== undefined &&
+    // Taken out (DASH-101), still accepted so an app that sends it isn't
+    // refused: it's saved as "answer".
+    input.handsOn !== "files" &&
+    !HANDS_ON.includes(input.handsOn)
+  ) {
     return `checks.handsOn must be one of ${HANDS_ON.join(", ")}`;
   }
   return null;
@@ -180,9 +192,18 @@ function isChecksFlow(flow) {
  * check that fails sends the work back to the bot ("retry"), or to you;
  * a you step sends it back to the bot. Null when the bot has no checks.
  */
-function checksFlow(bot) {
-  const checks = checksOf(bot);
-  if (!checks) return null;
+function checksFlow(bot, { handoff = false, tables = [] } = {}) {
+  if (!bot) return null;
+  const own = checksOf(bot);
+  if (!own && !handoff) return null;
+  // A team that uses handoffs (DASH-101): a bot with no checks of its own
+  // still has its handoff checked.
+  const checks = own || {
+    steps: [],
+    onFail: "retry",
+    maxTries: clampRounds(undefined),
+    handsOn: "answer",
+  };
   const steps = [
     {
       id: WORK_STEP,
@@ -191,6 +212,23 @@ function checksFlow(bot) {
       botId: bot.id,
     },
   ];
+  if (handoff) {
+    steps.push({
+      id: HANDOFF_STEP,
+      kind: "check",
+      name: "Handoff",
+      note: "Dash checks the answer's handoff: it parses, its status is known, its work item is the job's, and its workspace is inside the bot's folders.",
+      check: {
+        kind: "handoff",
+        folders: (Array.isArray(bot.projects) ? bot.projects : []).filter(
+          (f) => typeof f === "string",
+        ),
+        tables: (Array.isArray(tables) ? tables : []).filter(
+          (t) => typeof t === "string",
+        ),
+      },
+    });
+  }
   for (const c of checks.steps) {
     // Its `when` reads no once the team's settings are filled in (DASH-85):
     // this job leaves it out.
@@ -242,7 +280,11 @@ function checksFlow(bot) {
   const edges = [];
   for (let i = 1; i < steps.length; i++) {
     edges.push({ from: steps[i - 1].id, to: steps[i].id, kind: "next" });
-    if (checks.onFail === "retry" && steps[i].kind !== "you") {
+    // A handoff that's wrong always goes back to the bot with what's wrong.
+    if (
+      steps[i].id === HANDOFF_STEP ||
+      (checks.onFail === "retry" && steps[i].kind !== "you")
+    ) {
       edges.push({ from: steps[i].id, to: WORK_STEP, kind: "fail" });
     }
   }
@@ -338,7 +380,22 @@ function retryPrompt({ goal, task, input }) {
       last.length > 8000 ? `${last.slice(0, 8000)}\n… (cut)` : last,
     );
   }
-  if (input && input.fix) {
+  // It asked a person in its handoff (DASH-101), and they answered.
+  const history = (task && task.history) || [];
+  const move = history[history.length - 1];
+  const asked =
+    move && move.by === "you" && move.status === "answer"
+      ? [...history].reverse().find((r) => r && r.ask)
+      : null;
+  if (asked) {
+    lines.push(
+      "",
+      `You asked: ${asked.ask}`,
+      `The user answered: ${move.summary}`,
+      "",
+      "Go on with the work using that answer, then answer again in full, ending with your handoff.",
+    );
+  } else if (input && input.fix) {
     lines.push(
       "",
       input.fix.byYou
@@ -368,6 +425,7 @@ module.exports = {
   STEP_KINDS,
   MAX_CHECK_STEPS,
   WORK_STEP,
+  HANDOFF_STEP,
   HELD_NOTE,
   cleanBotChecks,
   checksError,

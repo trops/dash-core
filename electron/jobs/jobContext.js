@@ -18,6 +18,7 @@
 "use strict";
 
 const path = require("path");
+const { lastJsonObject } = require("../bots/answerJson");
 
 const MAX_ID = 200;
 const MAX_TITLE = 200;
@@ -71,14 +72,7 @@ function cleanWorkspace(v, { home = null } = {}) {
 
 /** The last ```json block of a text (or the whole text, when it's JSON). */
 function lastJson(text) {
-  if (typeof text !== "string" || !text) return null;
-  const blocks = [...text.matchAll(/```json\s*([\s\S]*?)```/g)];
-  try {
-    const j = JSON.parse(blocks.length ? blocks[blocks.length - 1][1] : text);
-    return isObj(j) ? j : null;
-  } catch (_e) {
-    return null;
-  }
+  return lastJsonObject(text);
 }
 
 /** The item and workspace an answer names: { item?, workspace? }. */

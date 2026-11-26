@@ -255,6 +255,8 @@ export function jobTimeline(goal, { nameOf = () => null } = {}) {
     approved: history.some((r) => r.by === "you" && r.status === "done"),
     // It came to you because a check failed (not, say, a missing record).
     failed: !!(last && last.status === "failed"),
+    // Its handoff asked you a question (DASH-101).
+    asks: state === "needs-you" && last && last.ask ? last.ask : null,
     // Closed by Dash because it failed (out of tries, or "It fails"), not
     // by you; either way its Failed event went out.
     failedOut: state === "closed" && dashClosed(history),
@@ -352,9 +354,11 @@ export function jobLine(goal, nameOf = () => null) {
   const tries = rows.filter((r) => r.type === "try").length;
   const state = {
     waiting: "waiting for you",
-    "needs-you": now.failed
-      ? `didn't pass on try ${Math.max(1, tries)}`
-      : "came to you",
+    "needs-you": now.asks
+      ? "asks you a question"
+      : now.failed
+        ? `didn't pass on try ${Math.max(1, tries)}`
+        : "came to you",
     done: tries > 1 ? `passed on try ${tries}` : "passed first try",
     closed: now.failedOut ? `failed on try ${Math.max(1, tries)}` : "closed",
     working: `trying again (try ${tries + 1})`,
@@ -399,9 +403,11 @@ export function jobStateText(goal) {
   const tries = rows.filter((r) => r.type === "try").length;
   return {
     waiting: "Its work is waiting for you to approve it",
-    "needs-you": now.failed
-      ? `It didn't pass on try ${Math.max(1, tries)}: it's waiting for you`
-      : "It came to you",
+    "needs-you": now.asks
+      ? `It asks: ${now.asks}`
+      : now.failed
+        ? `It didn't pass on try ${Math.max(1, tries)}: it's waiting for you`
+        : "It came to you",
     done: now.approved ? "Approved and handed on" : "Passed and handed on",
     closed: now.failedOut
       ? `It failed on try ${Math.max(1, tries)}: nothing was handed on`

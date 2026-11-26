@@ -37,6 +37,7 @@
 "use strict";
 
 const { contextText, CONTEXT_NAMES } = require("../jobs/jobContext");
+const { lastJsonObject } = require("./answerJson");
 
 const COLUMN_TYPES = ["text", "url", "folder", "command", "boolean", "number"];
 const TYPES = [...COLUMN_TYPES, "table"];
@@ -429,7 +430,7 @@ function usedParts(bot) {
 
 /**
  * The rows of a team's tables a job picked (DASH-84), from a bot's answer:
- * the last ```json block (or the whole text, when it's JSON), each table's
+ * the last ```json block (or the whole text, when it's JSON; answerJson), each table's
  * field (its name, or its `pick`) naming a row's key. Only names; nothing
  * here is checked against the rows (withTeamValues says when one isn't
  * there). Returns { [table]: key }.
@@ -439,14 +440,8 @@ function pickFrom(textIn, team) {
     (team && Array.isArray(team.declared) && team.declared) || [];
   const tables = declared.filter((d) => d && d.type === "table");
   if (!tables.length || typeof textIn !== "string" || !textIn) return {};
-  let j = null;
-  const blocks = [...textIn.matchAll(/```json\s*([\s\S]*?)```/g)];
-  try {
-    j = JSON.parse(blocks.length ? blocks[blocks.length - 1][1] : textIn);
-  } catch (_e) {
-    return {};
-  }
-  if (!isObj(j)) return {};
+  const j = lastJsonObject(textIn);
+  if (!j) return {};
   const picks = {};
   for (const t of tables) {
     const v = j[t.pick || t.name];

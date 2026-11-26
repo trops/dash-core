@@ -10,34 +10,24 @@
  */
 "use strict";
 
+const { lastJsonBlock } = require("./answerJson");
+
 const MAX_ROWS = 40;
 const MAX_DEPTH = 3;
 
 const isPlainObject = (v) =>
   v !== null && typeof v === "object" && !Array.isArray(v);
 
-/** The JSON in an answer: the whole answer, or its one ```json block. */
+/**
+ * The JSON in an answer: the whole answer, or its last ```json block — the
+ * one rule Dash reads answers by (DASH-101, answerJson).
+ */
 function parseAnswer(text) {
-  const s = String(text == null ? "" : text).trim();
-  if (!s) return { found: false };
-  const tryParse = (t) => {
-    try {
-      const v = JSON.parse(t);
-      return isPlainObject(v) || Array.isArray(v)
-        ? { found: true, value: v }
-        : null;
-    } catch (_e) {
-      return null;
-    }
-  };
-  const whole = tryParse(s);
-  if (whole) return whole;
-  const blocks = [...s.matchAll(/```(?:json)?\s*\n([\s\S]*?)\n?```/g)];
-  if (blocks.length === 1) {
-    const inBlock = tryParse(blocks[0][1].trim());
-    if (inBlock) return { ...inBlock, fenced: true };
-  }
-  return { found: false };
+  const j = lastJsonBlock(text);
+  if (!j.found) return { found: false };
+  return j.fenced
+    ? { found: true, value: j.value, fenced: true }
+    : { found: true, value: j.value };
 }
 
 /** A value's kind, as the shape names it. */

@@ -56,9 +56,21 @@ function createCheckJobs(deps) {
     patchRun,
     getRuns,
     notify = () => {},
+    // A bot's team uses handoffs (DASH-101): { handoff: true, tables }, or
+    // null. Its checks flow starts with the built-in Handoff check.
+    handoffFor = () => null,
     setTimer = setTimeout,
     clearTimer = clearTimeout,
   } = deps;
+  const flowFor = (bot) => {
+    let opts = null;
+    try {
+      opts = bot ? handoffFor(bot) : null;
+    } catch (_e) {
+      opts = null;
+    }
+    return checksFlow(bot, opts || {});
+  };
   // goalId → what goes out when the job passes.
   const held = new Map();
   // goalIds already let go (released or stopped), so a change twice is once.
@@ -105,6 +117,8 @@ function createCheckJobs(deps) {
           state: "passed",
           handOn: false,
           reason: last.summary || "",
+          // A handoff's "none" or "split" (DASH-101).
+          ...(last.ended ? { ended: last.ended } : {}),
         };
       }
       return {
@@ -119,6 +133,16 @@ function createCheckJobs(deps) {
     if (task.status === "ready") return { ...base, state: "waiting" };
     if (task.status === "needs-you") {
       const last = (task.history || [])[task.history.length - 1];
+      // Its handoff asked a person (DASH-101): their answer is what's
+      // needed, not a judgment on the work.
+      if (last && last.ask) {
+        return {
+          ...base,
+          state: "needs-you",
+          ask: last.ask,
+          reason: `It asks: ${last.ask}`,
+        };
+      }
       return {
         ...base,
         state: "needs-you",
@@ -149,7 +173,7 @@ function createCheckJobs(deps) {
     if (opts.trigger === "flow") {
       return !!jobOf(opts.goal && opts.goal.goalId);
     }
-    return !!checksFlow(bot) && bot.workspaceId != null;
+    return !!flowFor(bot) && bot.workspaceId != null;
   }
 
   function mark(botId, record, goalId, state) {
@@ -212,7 +236,7 @@ function createCheckJobs(deps) {
       }
       return true;
     }
-    const flow = checksFlow(bot);
+    const flow = flowFor(bot);
     if (!flow || bot.workspaceId == null) return false;
     // Failed or stopped: nothing to check, it goes on as before.
     if (NOT_DONE.includes(record.status)) return false;
@@ -310,6 +334,9 @@ function createCheckJobs(deps) {
         before.summary ? `: ${before.summary}` : ""
       }`;
     }
+    if (before && before.ask) {
+      return `It asked "${before.ask}", and was closed without an answer`;
+    }
     if (before && before.status === "needs-you" && before.summary) {
       return `It couldn't finish: ${before.summary}`;
     }
@@ -349,7 +376,8 @@ function createCheckJobs(deps) {
     const info = stateOf(goal.id);
     const botId = goal.flow.botId;
     const bot = getBot(botId);
-    if (info.state === "needs-you" && goal.flow.onFail !== "you") {
+    // A question waits for its answer (DASH-101), whatever onFail says.
+    if (info.state === "needs-you" && !info.ask && goal.flow.onFail !== "you") {
       // Out of tries, or "It fails": closed — it failed (below), nothing
       // handed on. Only "It comes to you" waits for you.
       const s = store();
@@ -386,6 +414,7 @@ function createCheckJobs(deps) {
           state: "passed",
           handOn: false,
           reason: info.reason || "",
+          ...(info.ended ? { ended: info.ended } : {}),
         });
         return;
       }

@@ -26,6 +26,9 @@
 const STEP_KINDS = ["source", "bot", "check", "you"];
 const YOU_MODES = ["approve", "read", "custom"];
 const CHECK_KINDS = ["rules", "command", "script", "tool"];
+// Dash's own checks, put in a bot's checks flow by Dash, never saved on a
+// bot (DASH-101: the Handoff check).
+const BUILTIN_CHECK_KINDS = ["handoff"];
 const FIELD_KINDS = [
   "text",
   "number",
@@ -94,7 +97,12 @@ function cleanLimits(l) {
 /** A check's settings, kept as given apart from its kind (checks/ reads them). */
 function cleanCheck(check) {
   if (!check || typeof check !== "object") return null;
-  if (!CHECK_KINDS.includes(check.kind)) return null;
+  if (
+    !CHECK_KINDS.includes(check.kind) &&
+    !BUILTIN_CHECK_KINDS.includes(check.kind)
+  ) {
+    return null;
+  }
   // Settings are plain data; a round-trip through JSON drops anything else.
   let copy;
   try {
@@ -398,6 +406,7 @@ function briefLine(flow) {
 module.exports = {
   STEP_KINDS,
   CHECK_KINDS,
+  BUILTIN_CHECK_KINDS,
   FIELD_KINDS,
   FLOW_ID,
   STEP_ID,

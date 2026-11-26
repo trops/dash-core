@@ -701,6 +701,16 @@ function createGoalStore({
       ...(typeof done.ms === "number" ? { ms: done.ms } : {}),
       said: bot ? "bot" : "dash",
       ...(nothing ? { handOn: false } : {}),
+      // How a handoff ended it (DASH-101): "none" or "split".
+      ...(nothing && (done.ended === "none" || done.ended === "split")
+        ? { ended: done.ended }
+        : {}),
+      // A handoff that asks a person (DASH-101): their answer goes back.
+      ...(done.status === "needs-you" &&
+      typeof done.ask === "string" &&
+      done.ask
+        ? { ask: text(done.ask, 1000) }
+        : {}),
       ...(next.stopped ? { stopped: true } : {}),
       at: now(),
     };
@@ -742,6 +752,9 @@ function createGoalStore({
     if (action === "send-back" && !reason) {
       return { error: "Say why you're sending it back." };
     }
+    if (action === "answer" && !reason) {
+      return { error: "Type your answer." };
+    }
     const task = tasks.get(taskId);
     const goal = task && goals.get(task.goalId);
     if (!task || !goal) return { error: "No such task." };
@@ -759,7 +772,7 @@ function createGoalStore({
       to: next.status,
       round: task.round || 1,
       ...(goal.flow ? { stepId: task.stepId } : {}),
-      summary: action === "send-back" ? reason : "",
+      summary: action === "send-back" || action === "answer" ? reason : "",
       evidence: [],
       at: now(),
       // A bot's checks job that's closed failed: its Failed event goes out

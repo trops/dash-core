@@ -9,6 +9,8 @@ import {
   TeamJobSettings,
   oneJobAtATimeOf,
   ONE_JOB_HELP,
+  usesHandoffsOf,
+  HANDOFF_HELP,
 } from "./TeamJobSettings";
 
 afterEach(() => {
@@ -21,6 +23,9 @@ function withApi(settings = {}) {
     bots: {
       getTeamSettings: jest.fn(async () => settings),
       setOneJobAtATime: jest.fn(async (ws, on) => calls.push([ws, on])),
+      setUsesHandoffs: jest.fn(async (ws, on) =>
+        calls.push(["handoffs", ws, on]),
+      ),
     },
   };
   return calls;
@@ -41,5 +46,16 @@ describe("TeamJobSettings", () => {
     fireEvent.click(screen.getByRole("switch", { name: "One job at a time" }));
     await waitFor(() => expect(calls).toEqual([["7", true]]));
     expect(screen.getByText(ONE_JOB_HELP.on)).toBeInTheDocument();
+  });
+
+  it("has the standard handoff off unless turned on (DASH-101)", async () => {
+    expect(usesHandoffsOf({})).toBe(false);
+    expect(usesHandoffsOf({ usesHandoffs: true })).toBe(true);
+    const calls = withApi({});
+    render(<TeamJobSettings workspaceId="7" />);
+    expect(await screen.findByText(HANDOFF_HELP.off)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Standard handoff" }));
+    await waitFor(() => expect(calls).toEqual([["handoffs", "7", true]]));
+    expect(screen.getByText(HANDOFF_HELP.on)).toBeInTheDocument();
   });
 });

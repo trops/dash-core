@@ -115,6 +115,28 @@ function afterUserInFlow(flow, task, action) {
       maxRounds: Math.max(task.maxRounds || 3, round),
     };
   }
+  if (action === "answer") {
+    // A bot's handoff asked a person (DASH-101): their answer goes back to
+    // the step that made the work, which runs again with it.
+    const history = task.history || [];
+    const last = history[history.length - 1];
+    if (task.status !== "needs-you" || !last || !last.ask) {
+      return {
+        error: "Only a job whose bot asked a question can be answered.",
+      };
+    }
+    const target = inputStep(flow, task.stepId);
+    if (!target) {
+      return { error: "There's no bot step before this one to answer." };
+    }
+    const round = (task.round || 1) + 1;
+    return {
+      stepId: target.id,
+      status: statusEntering(flow, target),
+      round,
+      maxRounds: Math.max(task.maxRounds || 3, round),
+    };
+  }
   if (task.status === "done" || task.status === "closed") {
     return { error: "This task is finished." };
   }

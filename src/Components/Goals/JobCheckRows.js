@@ -157,7 +157,9 @@ export const JobCheckRows = ({ goalId, goal: given = null }) => {
                     ? "You closed it"
                     : r.action === "one-more-round"
                       ? "You gave it one more try"
-                      : "You moved it"}
+                      : r.action === "answer"
+                        ? "You answered its question"
+                        : "You moved it"}
             </span>
           </Line>
         );

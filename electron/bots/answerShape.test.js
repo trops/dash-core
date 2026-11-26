@@ -40,11 +40,15 @@ describe("parseAnswer", () => {
     });
   });
 
-  it("isn't JSON when there are two blocks, or a bare value", () => {
-    assert.equal(
-      parseAnswer("```json\n{}\n```\n```json\n[]\n```").found,
-      false,
+  it("reads the last block when there are two (DASH-101: one rule)", () => {
+    const r = parseAnswer(
+      '```json\n{"a":1}\n```\nThen:\n```json\n{"b":2}\n```',
     );
+    assert.equal(r.found, true);
+    assert.deepEqual(r.value, { b: 2 });
+  });
+
+  it("isn't JSON for a bare value", () => {
     assert.equal(parseAnswer("42").found, false);
     assert.equal(parseAnswer('"text"').found, false);
     assert.equal(parseAnswer("Three deals today").found, false);

@@ -17,7 +17,9 @@ import { BOT_RESULTS } from "./widgetDiagram";
 
 export const MAX_CHECKS = 10;
 export const ON_FAIL = ["retry", "you", "stop"];
-export const HANDS_ON = ["answer", "summary", "files"];
+// "files" did nothing and was taken out (DASH-101): a bot saved with it
+// hands on its answer.
+export const HANDS_ON = ["answer", "summary"];
 export const TRIES = [2, 3, 5];
 
 /**

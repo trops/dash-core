@@ -83,6 +83,7 @@ const YOU_TEXT = {
   done: "You approved it",
   close: "You closed it",
   "one-more-round": "You gave it one more try",
+  answer: "You answered",
 };
 
 /** One row: an icon on the line, then what happened. */
@@ -169,6 +170,50 @@ const Waiting = ({ row, task, bot, busy, onAction, now }) => {
             />
           </>
         )}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Its bot asked a question in its handoff (DASH-101): the question, an
+ * answer box (the answer goes back to the bot, which goes on), and Close.
+ */
+const Asking = ({ row, task, bot, busy, onAction }) => {
+  const status = useStatusTokens();
+  const [answer, setAnswer] = useState("");
+  return (
+    <div
+      data-testid="job-asking"
+      className={`flex flex-col gap-3 p-4 rounded-lg border ${status.warning.accentBorder} ${status.warning.bg}`}
+    >
+      <span className={`text-sm font-semibold ${status.warning.strongText}`}>
+        {`${bot} asks you`}
+      </span>
+      <span className="text-sm whitespace-pre-wrap" data-testid="job-question">
+        {row.asks}
+      </span>
+      <TextArea
+        label={`Your answer. ${bot} gets it and goes on.`}
+        rows={2}
+        value={answer}
+        onChange={(v) => setAnswer(v)}
+      />
+      <div className="flex flex-row items-center justify-end gap-2">
+        <Button3
+          title="Close it (it fails)"
+          size="sm"
+          disabled={busy}
+          onClick={() => onAction(task.id, "close")}
+        />
+        <Button
+          title="Send answer"
+          size="sm"
+          disabled={busy || !answer.trim()}
+          onClick={() =>
+            onAction(task.id, { type: "answer", reason: answer.trim() })
+          }
+        />
       </div>
     </div>
   );
@@ -369,6 +414,19 @@ export const BotJobDetail = ({
             busy={busy}
             onAction={onAction}
             now={now}
+          />
+        </Row>
+      );
+    }
+    if (r.state === "needs-you" && task && r.asks) {
+      return (
+        <Row icon="hand" iconClass={status.warning.icon} testId="job-now">
+          <Asking
+            row={r}
+            task={task}
+            bot={bot.name}
+            busy={busy}
+            onAction={onAction}
           />
         </Row>
       );

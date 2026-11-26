@@ -131,6 +131,7 @@ const USER_ACTION = {
   "one-more-round": "gave it one more round",
   close: "closed it",
   "send-back": "sent it back",
+  answer: "answered",
 };
 
 /** One line for a done record: "Builder: passed — Opened the PR". */
@@ -138,7 +139,8 @@ export function recordText(record) {
   if (!record) return "";
   if (record.by === "you") {
     const did = USER_ACTION[record.status] || record.status;
-    return record.status === "send-back" && record.summary
+    return (record.status === "send-back" || record.status === "answer") &&
+      record.summary
       ? `You ${did}: ${record.summary}`
       : `You ${did}`;
   }
