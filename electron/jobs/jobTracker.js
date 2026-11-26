@@ -4,7 +4,10 @@
  * every hand-on they set off, until none is still going.
  *
  *   job:  { id, workspaceId, leadId, leadName, title, startedBy,
- *           conversationId, status, steps, createdAt, updatedAt, endedAt }
+ *           conversationId, status, steps, createdAt, updatedAt, endedAt,
+ *           picks?, item?, workspace? }
+ *   item (DASH-100): { id, title?, url?, source? } what the job is about;
+ *   workspace: { dir, branch? } where its files are (jobContext.js).
  *   step: { id, botId, botName, status, why, runAt, startedAt, endedAt,
  *           summary, goalId, conversationId }
  *
@@ -25,6 +28,8 @@
  * Pure apart from the injected store, clock and timers.
  */
 "use strict";
+
+const { cleanItem, cleanWorkspace, mergeItem } = require("./jobContext");
 
 const SETTLE_MS = 2000;
 const MAX_STEPS = 100;
@@ -306,8 +311,11 @@ function createJobTracker({
     conversationId = null,
     // Its team has a job going (one at a time, DASH-81): it waits its turn.
     queued = false,
+    // What the job is about, when the task says (DASH-100).
+    item = null,
   } = {}) {
     const at = iso();
+    const named = cleanItem(item);
     const job = {
       id: newId("job"),
       workspaceId: workspaceId == null ? null : String(workspaceId),
@@ -323,6 +331,7 @@ function createJobTracker({
       updatedAt: at,
       endedAt: null,
       ...(queued ? { queued: true, queuedAt: at } : {}),
+      ...(named ? { item: named } : {}),
     };
     return commit(job);
   }
@@ -688,10 +697,67 @@ function createJobTracker({
     return (job && job.picks && { ...job.picks }) || {};
   }
 
+  // ---- What the job is about, and where its files are (DASH-100) ---------
+
+  /**
+   * Name the job's work item. Its id never changes once set: a different
+   * one is refused (`refused`), a missing title or url is filled in.
+   * @returns {{ job: object|null, item: object|null, refused?: string }}
+   */
+  function setItem(jobId, item) {
+    const job = store.get(jobId);
+    if (!job) return { job: null, item: null };
+    const m = mergeItem(job.item || null, item);
+    if (m.changed) {
+      job.item = m.item;
+      commit(job);
+    }
+    return { job, item: m.item, ...(m.refused ? { refused: m.refused } : {}) };
+  }
+
+  /** The job's work item, or null. */
+  function itemOf(jobId) {
+    const job = jobId ? store.get(jobId) : null;
+    return (job && job.item && { ...job.item }) || null;
+  }
+
+  /** Name the folder the job's work is in ({ dir, branch? }). */
+  function setWorkspace(jobId, workspace) {
+    const job = store.get(jobId);
+    const ws = cleanWorkspace(workspace);
+    if (!job || !ws) return job || null;
+    const now = job.workspace || {};
+    if (now.dir === ws.dir && (now.branch || "") === (ws.branch || "")) {
+      return job;
+    }
+    // A later answer that only names the folder keeps the branch it had.
+    job.workspace =
+      now.dir === ws.dir && !ws.branch && now.branch
+        ? { ...ws, branch: now.branch }
+        : ws;
+    return commit(job);
+  }
+
+  /** The job's workspace, or null. */
+  function workspaceOf(jobId) {
+    const job = jobId ? store.get(jobId) : null;
+    return (job && job.workspace && { ...job.workspace }) || null;
+  }
+
+  /** Both, for filling a bot's text and a check's environment. */
+  function contextOf(jobId) {
+    return { item: itemOf(jobId), workspace: workspaceOf(jobId) };
+  }
+
   return {
     startJob,
     setPicks,
     picksOf,
+    setItem,
+    itemOf,
+    setWorkspace,
+    workspaceOf,
+    contextOf,
     startStep,
     waitStep,
     queueStep,

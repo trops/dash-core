@@ -40,6 +40,8 @@ let runner;
 let botRuns;
 let writerBehaviour;
 let reviewerBehaviour;
+// The bots' runs, for a test that makes its own runner.
+let runBotFn;
 
 const GOOD = "Standup at 9 (e1), dentist at 4 (e2).";
 const MISSES = "Standup at 9 (e1).";
@@ -117,6 +119,7 @@ beforeEach(() => {
     }
     return { status: "completed" };
   };
+  runBotFn = runBot;
   runner = createFlowRunner({
     store: goals,
     runBot,
@@ -186,6 +189,36 @@ describe("a bot's checks job", () => {
     const done = goals.userAction(task.id, "done");
     assert.equal(done.task.status, "done");
     assert.equal(goals.getGoal(goal.id).status, "done");
+  });
+
+  it("a check's input has its job's work item and workspace (DASH-100)", async () => {
+    runner.stop();
+    const seen = [];
+    runner = createFlowRunner({
+      store: goals,
+      runBot: runBotFn,
+      runCheck: (check, input, c) => {
+        seen.push({ input, c });
+        return runCheck(check, input, c);
+      },
+      checkContext: () => ({
+        fetchStatus: async () => 200,
+        jobContext: {
+          item: { id: "DASH-93", title: "Slugs drop accents" },
+          workspace: { dir: "/tmp/DashFactory/DASH-93", branch: "fix/x" },
+        },
+      }),
+    });
+    const goal = jobStarts();
+    await drive(goal, (t) => t.status === "ready");
+    assert.ok(seen.length >= 1);
+    assert.deepEqual(seen[0].input.item, {
+      id: "DASH-93",
+      title: "Slugs drop accents",
+    });
+    assert.equal(seen[0].input.workspace.dir, "/tmp/DashFactory/DASH-93");
+    // The standard input is still all there.
+    assert.equal(seen[0].input.input.answer, GOOD);
   });
 
   it("a failed check sends the work back with what failed, then stops at its last try", async () => {

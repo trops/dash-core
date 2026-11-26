@@ -20,6 +20,8 @@
  */
 "use strict";
 
+const { cleanItem } = require("../jobs/jobContext");
+
 const crypto = require("crypto");
 
 const TASK_EXPIRES_MS = 10 * 60 * 1000;
@@ -160,8 +162,11 @@ function createMcpTasks({
       from = null,
       routedBy = null,
       needsPassphrase = true,
+      // What the task is about (DASH-100): its job carries it.
+      item = null,
     }) {
       const t = now();
+      const named = cleanItem(item);
       const record = {
         id: newId(),
         task: String(task || "").slice(0, MAX_TASK_CHARS),
@@ -171,6 +176,7 @@ function createMcpTasks({
         from: cleanFrom(from),
         routedBy: routedBy || null,
         needsPassphrase: needsPassphrase !== false,
+        ...(named ? { item: named } : {}),
         status: "waiting",
         createdAt: iso(t),
         expiresAt: iso(t + TASK_EXPIRES_MS),

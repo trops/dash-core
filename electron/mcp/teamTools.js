@@ -88,6 +88,18 @@ const TEAM_TOOLS = [
           description:
             "Your app's short name (e.g. 'voice-assistant'), shown next to the task in Dash.",
         },
+        item: {
+          type: "object",
+          description:
+            "What the task is about, when it's one thing: a ticket, note or issue. { id (required: its key, path or number, e.g. 'DASH-93', 'Projects/Spool.md', 'trops/app#12'), title?, url?, source? (e.g. 'jira', 'obsidian', 'github') }. The job carries it: its bots get {item.id}, its checks DASH_ITEM_ID, and its events say it.",
+          properties: {
+            id: { type: "string" },
+            title: { type: "string" },
+            url: { type: "string" },
+            source: { type: "string" },
+          },
+          required: ["id"],
+        },
       },
       required: ["task"],
     },
@@ -184,6 +196,8 @@ const taskView = (t) => ({
   task: t.task,
   team: t.teamName,
   ...(t.routedBy ? { routedBy: t.routedBy } : {}),
+  // What it's about (DASH-100): its job's item, else the one it was given.
+  ...(t.jobItem || t.item ? { item: t.jobItem || t.item } : {}),
   status: t.status,
   createdAt: t.createdAt,
   ...(t.status === "waiting" ? { expiresAt: t.expiresAt } : {}),
@@ -737,6 +751,7 @@ function makeTeamToolHandlers({
         from: args.from,
         routedBy,
         needsPassphrase,
+        item: args.item || null,
       });
       const picked = routedBy ? `The Dash team picked ${name}. ` : "";
       // No passphrase asked for: it starts now.
@@ -773,6 +788,7 @@ function makeTeamToolHandlers({
         return json({ message: "No task with that taskId." }, true);
       }
       const job = task.jobId && bots.getJob ? bots.getJob(task.jobId) : null;
+      if (job && job.item) task.jobItem = job.item;
       // Waiting on the user: reported as "needs" (the task itself is still
       // running), with what it waits on.
       // With answer_approval off, nothing can be answered from here.

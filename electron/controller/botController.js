@@ -69,6 +69,12 @@ const {
   pickFrom,
   namesUsed,
 } = require("../bots/teamValues");
+const {
+  contextFrom,
+  mergeItem,
+  insideFolders,
+  withEventContext,
+} = require("../jobs/jobContext");
 const { saveTeamFile, openTeamFile } = require("./teamFiles");
 const {
   buildBotPackage,
@@ -2393,6 +2399,75 @@ const botController = {
   },
 
   /**
+   * A job remembers what an answer says it's about and where its files are
+   * (DASH-100): "item" (once; its id never changes after) and "workspace"
+   * (only a folder inside the bot's own folders).
+   */
+  _rememberContext(jobId, botId, output) {
+    if (!jobId || !this._jobs || !this._jobs.setItem) return;
+    try {
+      const named = contextFrom(String(output), {
+        home: require("os").homedir(),
+      });
+      if (named.item) {
+        const r = this._jobs.setItem(jobId, named.item);
+        if (r && r.refused) {
+          console.warn(
+            `[jobs] ${jobId} is about ${r.item && r.item.id}; an answer named ${r.refused}, which was ignored.`,
+          );
+        }
+      }
+      if (named.workspace) {
+        const bot = this.resolvedBot(botId, { jobId });
+        const folders = (bot && bot.projects) || [];
+        if (insideFolders(named.workspace.dir, folders)) {
+          this._jobs.setWorkspace(jobId, named.workspace);
+        } else {
+          console.warn(
+            `[jobs] ${jobId}: workspace ${named.workspace.dir} is outside the bot's folders, so it was ignored.`,
+          );
+        }
+      }
+    } catch (_e) {
+      // What can't be read isn't remembered; the next run says what's missing.
+    }
+  },
+
+  /**
+   * A run's work item and workspace (DASH-100): its job's, then what its
+   * answer (ctx.output) names — the job's item id always wins.
+   */
+  _runContext(jobId, output = null) {
+    const fromJob =
+      jobId && this._jobs && this._jobs.contextOf
+        ? this._jobs.contextOf(jobId)
+        : { item: null, workspace: null };
+    if (typeof output !== "string" || !output) return fromJob;
+    const named = contextFrom(output, { home: require("os").homedir() });
+    return {
+      item: mergeItem(fromJob.item, named.item).item,
+      workspace: fromJob.workspace || named.workspace || null,
+    };
+  },
+
+  /** A bot's completed/failed event says its job and work item (DASH-100). */
+  _withJobContext(msg) {
+    try {
+      if (!msg || !msg.jobId || !msg.content || !this._jobs) return msg;
+      return withEventContext(
+        msg,
+        this._runContext(
+          msg.jobId,
+          typeof msg.content.output === "string" ? msg.content.output : null,
+        ),
+      );
+    } catch (_e) {
+      // The event still goes out, without them.
+      return msg;
+    }
+  },
+
+  /**
    * The table rows a run starts with (DASH-92): its job's, then the ones
    * its input picks. Its `failed` event carries them, so whatever reports
    * the failure knows the repo too.
@@ -2437,6 +2512,11 @@ const botController = {
     return withTeamValues(bot, team, {
       home: require("os").homedir(),
       picks,
+      // The job's work item and workspace (DASH-100).
+      context: this._runContext(
+        c.jobId,
+        typeof c.output === "string" ? c.output : null,
+      ),
     }).bot;
   },
 
@@ -2787,6 +2867,8 @@ const botController = {
       leadName: lead.name || task.teamName || "",
       title: task.task,
       request: task.task,
+      // What the task is about, when it says (DASH-100).
+      item: task.item || null,
       startedBy: {
         kind: "task",
         label: task.from || "MCP",
@@ -5015,6 +5097,8 @@ const botController = {
       // job's later runs fill {repo.*} from them.
       if (record && record.status === "completed" && record.output) {
         this._rememberPicks(jobId, bot.workspaceId, record.output);
+        // What it's about and where its files are (DASH-100).
+        this._rememberContext(jobId, botId, record.output);
       }
     };
     // A bot with checks holds the results it sends until they pass
@@ -5054,6 +5138,10 @@ const botController = {
       // The rows of its team's tables this job picked (DASH-84).
       ...(jobId && this._jobs.picksOf
         ? { teamPicks: this._jobs.picksOf(jobId) }
+        : {}),
+      // Its job's work item and workspace (DASH-100).
+      ...(jobId && this._jobs.contextOf
+        ? { teamContext: this._jobs.contextOf(jobId) }
         : {}),
       // Who asked, when not the user directly (the AI Assistant, TEAM-004).
       via: opts.via || null,
@@ -5162,6 +5250,7 @@ const botController = {
    * dispatch is deferred a tick so bot→bot chains never recurse on the stack.
    */
   _publishBotEvent(msg) {
+    this._withJobContext(msg);
     const { eventType, content, workspaceId } = msg;
     this._broadcast(
       "widget-event:broadcast",

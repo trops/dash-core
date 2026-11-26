@@ -36,6 +36,8 @@
  */
 "use strict";
 
+const { contextText, CONTEXT_NAMES } = require("../jobs/jobContext");
+
 const COLUMN_TYPES = ["text", "url", "folder", "command", "boolean", "number"];
 const TYPES = [...COLUMN_TYPES, "table"];
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
@@ -469,12 +471,22 @@ function pickFrom(textIn, team) {
  *   a setting with no value, or a table with no rows, no pick, a pick
  *   that isn't one of its rows, or an empty cell.
  */
-function withTeamValues(bot, team, { home = null, picks = null } = {}) {
+function withTeamValues(
+  bot,
+  team,
+  { home = null, picks = null, context = null } = {},
+) {
   if (!bot) return { bot, missing: [] };
   const declared =
     (team && Array.isArray(team.declared) && team.declared) || [];
-  if (!declared.length) return { bot, missing: [] };
-  const { text, empty } = settingTexts(team, { home });
+  // The job's work item and workspace (DASH-100): {item.id},
+  // {workspace.dir}… fill in whether or not the team has settings.
+  const ctxText = contextText(context || {});
+  if (!declared.length && !usesContext(bot)) return { bot, missing: [] };
+  const { text, empty } = declared.length
+    ? settingTexts(team, { home })
+    : { text: {}, empty: new Set() };
+  Object.assign(text, ctxText);
   const values = (team && isObj(team.values) && team.values) || {};
   const tables = new Map();
   for (const t of declared) {
@@ -497,7 +509,7 @@ function withTeamValues(bot, team, { home = null, picks = null } = {}) {
       text[`${t.name}.${c.name}`] = asText(c, v, home);
     }
   }
-  const tableNames = new Set(tables.keys());
+  const tableNames = new Set([...tables.keys(), ...CONTEXT_NAMES]);
   const used = new Set();
   const out = { ...bot };
   if (typeof bot.instructions === "string") {
@@ -526,6 +538,14 @@ function withTeamValues(bot, team, { home = null, picks = null } = {}) {
       (s) => s && s.type !== "table" && empty.has(s.name) && used.has(s.name),
     )
     .map((s) => ({ name: s.name, label: s.label || s.name }));
+  // {item.…} or {workspace.…} with none on the job yet: the run can't start.
+  for (const name of CONTEXT_NAMES) {
+    if (tables.has(name) || !used.has(name)) continue;
+    const field = [...used].find((u) => u.startsWith(`${name}.`));
+    if (field && !has(text, field)) {
+      missing.push({ name, label: name, reason: `no-${name}`, field });
+    }
+  }
   for (const [name, t] of tables) {
     if (!used.has(name)) continue;
     const label = t.setting.label || name;
@@ -560,6 +580,13 @@ function withTeamValues(bot, team, { home = null, picks = null } = {}) {
     }
   }
   return { bot: out, missing };
+}
+
+/** Does the bot's text use {item.…} or {workspace.…}? */
+function usesContext(bot) {
+  const texts = usedParts(bot);
+  const re = /\{(item|workspace)\.[A-Za-z_][A-Za-z0-9_]*\}/;
+  return JSON.stringify(texts).search(re) !== -1;
 }
 
 /** The run's error when settings it uses can't be filled in. */
@@ -599,6 +626,14 @@ function missingMessage(missing) {
     } else if (m.reason === "empty-cell") {
       parts.push(
         `${t}: row "${m.key}" has no ${m.fieldLabel} ({${m.name}.${m.field}}): fill it in on the dashboard (Bots › Team settings).`,
+      );
+    } else if (m.reason === "no-item") {
+      parts.push(
+        `This job has no work item yet, so {${m.field}} can't be filled in: the task names one, or a bot before this one names it in its answer's JSON ("item": {"id": "…"}).`,
+      );
+    } else if (m.reason === "no-workspace") {
+      parts.push(
+        `This job has no workspace yet, so {${m.field}} can't be filled in: a bot before this one names it in its answer's JSON ("workspace": {"dir": "…", "branch": "…"}).`,
       );
     } else if (m.reason === "no-column") {
       parts.push(`${t} has no column "${m.field}" ({${m.name}.${m.field}}).`);
