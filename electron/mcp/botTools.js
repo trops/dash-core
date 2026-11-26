@@ -256,6 +256,11 @@ const BOT_FIELDS = {
                 "'check' (Dash runs it, no AI), 'reviewer' (another bot on its team judges the work) or 'you' (waits for the user to approve or send it back).",
             },
             name: { type: "string", description: "Shown on the job." },
+            when: {
+              type: "string",
+              description:
+                "Only when a team setting says so, e.g. '{approvePlans}': filled in when the bot runs, and the step is left out when it reads no (no, false, off, 0 or empty). Leave out for always.",
+            },
             note: {
               type: "string",
               description: "What it looks for (for a reviewer or the user).",
@@ -978,6 +983,12 @@ const ON_FAIL_WORDS = {
 
 /** One check step in words. */
 function checkStepText(step, nameOf) {
+  const text = checkStepWhat(step, nameOf);
+  // Only when a team setting says so (DASH-85).
+  return step.when ? `${text} (only when ${oneLine(step.when)})` : text;
+}
+
+function checkStepWhat(step, nameOf) {
   const name = `"${oneLine(step.name)}"`;
   if (step.kind === "you") return `${name}: waits for the user to approve`;
   if (step.kind === "reviewer") {

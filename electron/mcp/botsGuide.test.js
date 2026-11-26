@@ -81,6 +81,14 @@ describe("bots guide: several repos (DASH-84)", () => {
   });
 });
 
+describe("bots guide: a step's when (DASH-85)", () => {
+  it("explains a check that runs only when a setting says so", () => {
+    const { BOTS_GUIDE: g } = require("./botsGuide");
+    assert.match(g, /when: "\{approvePlans\}"/);
+    assert.match(g, /leaves the step out when it reads no/);
+  });
+});
+
 describe("bots guide: failed events (DASH-92)", () => {
   it("says a failed event carries the input and picks, and not to guess", () => {
     const { BOTS_GUIDE: g } = require("./botsGuide");

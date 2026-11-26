@@ -52,6 +52,9 @@ function cleanCheckStep(s, i) {
         ? "Reviewer"
         : `Check ${i + 1}`);
   const step = { id, kind: s.kind, name };
+  // Only when a team setting says so (DASH-85), e.g. "{approvePlans}".
+  const when = str(s.when, 200);
+  if (when) step.when = when;
   const note = str(s.note, 300);
   if (note) step.note = note;
   if (s.kind === "check") {
@@ -136,6 +139,9 @@ function checksError(input, selfId = null) {
     if (s.kind === "reviewer" && selfId && String(s.botId) === String(selfId)) {
       return "a bot can't review its own work";
     }
+    if (s.when !== undefined && typeof s.when !== "string") {
+      return 'a check\'s when must be text, like "{approvePlans}"';
+    }
   }
   if (input.onFail !== undefined && !ON_FAIL.includes(input.onFail)) {
     return `checks.onFail must be one of ${ON_FAIL.join(", ")}`;
@@ -144,6 +150,19 @@ function checksError(input, selfId = null) {
     return `checks.handsOn must be one of ${HANDS_ON.join(", ")}`;
   }
   return null;
+}
+
+const OFF_WORDS = ["", "no", "false", "off", "0"];
+
+/**
+ * Whether a step is left out (DASH-85): its `when`, filled in with the
+ * team's settings, reads no ("no", "false", "off", "0" or empty). A
+ * `when` still unfilled (e.g. "{approvePlans}") counts as on: when in
+ * doubt, the step runs.
+ */
+function stepOff(step) {
+  if (!step || typeof step.when !== "string") return false;
+  return OFF_WORDS.includes(step.when.trim().toLowerCase());
 }
 
 /** The bot's checks, or null when its work goes straight on. */
@@ -173,6 +192,9 @@ function checksFlow(bot) {
     },
   ];
   for (const c of checks.steps) {
+    // Its `when` reads no once the team's settings are filled in (DASH-85):
+    // this job leaves it out.
+    if (stepOff(c)) continue;
     if (c.kind === "check" && c.held) {
       // Off until you turn it on: you look at the work in its place.
       steps.push({
@@ -215,6 +237,8 @@ function checksFlow(bot) {
       });
     }
   }
+  // Every check left out for this run: its work goes straight on.
+  if (steps.length === 1) return null;
   const edges = [];
   for (let i = 1; i < steps.length; i++) {
     edges.push({ from: steps[i - 1].id, to: steps[i].id, kind: "next" });
@@ -349,6 +373,7 @@ module.exports = {
   checksError,
   checksOf,
   checksFlow,
+  stepOff,
   isChecksFlow,
   jobTitle,
   jobSource,
