@@ -90,8 +90,19 @@ function completedPayload(bot, { trigger, output }) {
   return { ...identity(bot), trigger, output: truncateText(output) };
 }
 
-function failedPayload(bot, { trigger, error }) {
-  return { ...identity(bot), trigger, error: truncateText(error) };
+/**
+ * A failed run (DASH-92) also carries what it was given (`input`, cut like
+ * the error) and the table rows its job had picked (`picks`, e.g.
+ * { repo: "dash-core" }), so whatever reports the failure knows what it
+ * was working on and never has to guess. Each only when there is one.
+ */
+function failedPayload(bot, { trigger, error, input, picks }) {
+  const out = { ...identity(bot), trigger, error: truncateText(error) };
+  if (typeof input === "string" && input) out.input = truncateText(input);
+  if (picks && typeof picks === "object" && Object.keys(picks).length) {
+    out.picks = { ...picks };
+  }
+  return out;
 }
 
 function toolPayload(bot, { provider, providerType, tool, args, result }) {

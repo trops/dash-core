@@ -313,6 +313,33 @@ describe("a bot with checks", () => {
     assert.equal(notices[notices.length - 1].state, "stopped");
   });
 
+  it("its failed event says what it was given and its job's picks (DASH-92)", async () => {
+    bot("bot_w", { checks: { steps: [NO_TODOS], onFail: "stop" } });
+    // The run started with its input and picks (botController's _run).
+    publisher.startRun("bot_w", undefined, {
+      hold: jobs.holdsRun(bots.bot_w, {}),
+      input: "Write the brief for DASH-90",
+      picks: { repo: "code-factory-sandbox-2" },
+    });
+    publisher.onRunEvent("bot_w", { type: "text", text: "TODO" });
+    endRun(
+      "bot_w",
+      { prompt: "Write the brief for DASH-90" },
+      { status: "completed", output: "TODO" },
+    );
+    assert.ok(await until(() => failedEvents().length === 1));
+    const { content } = failedEvents()[0];
+    assert.equal(content.input, "Write the brief for DASH-90");
+    assert.deepEqual(content.picks, { repo: "code-factory-sandbox-2" });
+  });
+
+  it("with nothing kept, its failed event's input is the job's (DASH-92)", async () => {
+    bot("bot_w", { checks: { steps: [NO_TODOS], onFail: "stop" } });
+    userRun("bot_w", "TODO");
+    assert.ok(await until(() => failedEvents().length === 1));
+    assert.equal(failedEvents()[0].content.input, "Write the brief");
+  });
+
   it("holds the results it sent and saves them only once it passes", async () => {
     bot("bot_w", {
       checks: { steps: [NO_TODOS] },

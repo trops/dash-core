@@ -2393,6 +2393,31 @@ const botController = {
   },
 
   /**
+   * The table rows a run starts with (DASH-92): its job's, then the ones
+   * its input picks. Its `failed` event carries them, so whatever reports
+   * the failure knows the repo too.
+   */
+  _runPicks(botId, jobId, prompt) {
+    try {
+      const bot = this._store.get(botId);
+      const team =
+        bot && bot.workspaceId != null
+          ? this._store.getTeamSettings(bot.workspaceId)
+          : null;
+      return {
+        ...(jobId && this._jobs && this._jobs.picksOf
+          ? this._jobs.picksOf(jobId)
+          : {}),
+        ...(team
+          ? pickFrom(typeof prompt === "string" ? prompt : "", team)
+          : {}),
+      };
+    } catch (_e) {
+      return {};
+    }
+  },
+
+  /**
    * A bot as it runs: its team's settings filled in (DASH-57). `ctx`
    * (DASH-84): the rows of its team's tables are the ones its answer
    * (ctx.output) picks, else its input (ctx.prompt), else its job.
@@ -4997,6 +5022,13 @@ const botController = {
     if (!alreadyRunning) {
       this._events.startRun(botId, cause, {
         hold: this._checkJobs.holdsRun(this._store.get(botId), opts),
+        // What it was given (DASH-92): its `failed` event carries it, so
+        // whatever reports the failure knows what it was working on.
+        input: typeof opts.prompt === "string" ? opts.prompt : "",
+        picks:
+          typeof this._runPicks === "function"
+            ? this._runPicks(botId, jobId, opts.prompt)
+            : null,
       });
     }
     // Who started the bot's current run — a lead asked from outside Dash

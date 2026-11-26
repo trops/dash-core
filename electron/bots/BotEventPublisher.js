@@ -43,27 +43,40 @@ class BotEventPublisher {
   /**
    * A run is starting; `cause` is set when an event triggered it. `hold`:
    * the bot has checks (bot-checks PRD), so the results it sends wait with
-   * its answer until its checks pass.
+   * its answer until its checks pass. `input` and `picks` (DASH-92): what
+   * it was given and its job's table rows, carried by its `failed` event.
    */
-  startRun(botId, cause = rootCause(), { hold = false } = {}) {
+  startRun(
+    botId,
+    cause = rootCause(),
+    { hold = false, input = "", picks = null } = {},
+  ) {
     this._runs.set(botId, {
       cause,
       text: "",
       afterTool: false,
       held: hold ? [] : null,
+      input: typeof input === "string" ? input : "",
+      picks: picks && typeof picks === "object" ? picks : null,
     });
   }
 
   /**
    * The run ended and its work is held for its checks: nothing goes out
    * now. Returns what to send once they pass — the run's cause and the
-   * results it sent — or null when no run was tracked.
+   * results it sent — or null when no run was tracked. Also what it was
+   * given and its picks, for its `failed` event if its checks fail.
    */
   holdRun(botId) {
     const run = this._runs.get(botId);
     this._runs.delete(botId);
     if (!run) return null;
-    return { cause: run.cause, results: run.held || [] };
+    return {
+      cause: run.cause,
+      results: run.held || [],
+      input: run.input || "",
+      picks: run.picks || null,
+    };
   }
 
   /**
@@ -90,9 +103,23 @@ class BotEventPublisher {
    * and its `failed` event goes out with why, under the cause of the run
    * that started it — so whatever listens for its failures runs.
    */
-  fail(bot, { cause = rootCause(), trigger = null, error = "" } = {}) {
+  fail(
+    bot,
+    {
+      cause = rootCause(),
+      trigger = null,
+      error = "",
+      input = "",
+      picks = null,
+    } = {},
+  ) {
     if (!bot) return;
-    this._sendAs(bot, "failed", failedPayload(bot, { trigger, error }), cause);
+    this._sendAs(
+      bot,
+      "failed",
+      failedPayload(bot, { trigger, error, input, picks }),
+      cause,
+    );
   }
 
   /** Whether the bot's running run holds what it sends. */
@@ -156,7 +183,12 @@ class BotEventPublisher {
       this._send(
         bot,
         "failed",
-        failedPayload(bot, { trigger: record.trigger, error: record.error }),
+        failedPayload(bot, {
+          trigger: record.trigger,
+          error: record.error,
+          input: run ? run.input : "",
+          picks: run ? run.picks : null,
+        }),
       );
     } else {
       if (run) this._sendHeld(bot, run.held, run.cause);
