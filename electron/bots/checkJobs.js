@@ -260,6 +260,9 @@ function createCheckJobs(deps) {
       cause: kept.cause,
       results: kept.results,
       trigger: record.trigger || null,
+      // What it was given and its picks (DASH-92), for its `failed` event.
+      input: kept.input || prompt,
+      picks: kept.picks || null,
     });
     mark(botId, record, goalId, "checking");
     // The caller (the lead's ask) reads where its answer went.
@@ -425,6 +428,10 @@ function createCheckJobs(deps) {
           cause: entry.cause,
           trigger: entry.trigger,
           error: reason,
+          // What it was given (DASH-92): kept with the held work, else the
+          // job's body (it's the input, after a restart too).
+          input: entry.input || (goal && goal.body) || "",
+          picks: entry.picks || null,
         });
       }
       settle(goal.id, { ...info, reason });

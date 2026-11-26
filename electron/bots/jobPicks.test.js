@@ -164,4 +164,19 @@ describe("a job's picked row reaches its later runs (DASH-84)", () => {
     const none = r._withTeamValues(CODER, { prompt: "go" });
     assert.equal(none.missing[0].reason, "unpicked");
   });
+
+  it("a run starts with its job's picks, then its input's (DASH-92)", () => {
+    const c = fake();
+    const job = c._jobs.startJob({ workspaceId: WS, title: "DASH-9" });
+    c._jobs.setPicks(job.id, { repo: "dash-core" });
+    assert.deepEqual(c._runPicks("coder", job.id, "go"), { repo: "dash-core" });
+    assert.deepEqual(
+      c._runPicks("coder", job.id, answer({ repo: "dash-react" })),
+      { repo: "dash-react" },
+    );
+    assert.deepEqual(c._runPicks("coder", null, "go"), {});
+    assert.deepEqual(c._runPicks("nobody", job.id, "go"), {
+      repo: "dash-core",
+    });
+  });
 });
