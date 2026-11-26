@@ -92,9 +92,27 @@ function flowBotHooks(ctl) {
     },
     isBusy: (botId) => ctl._runner.listActive().includes(botId),
     // As it runs: its team's settings filled in (DASH-57).
-    getBot: (botId) =>
-      (ctl.resolvedBot ? ctl.resolvedBot(botId) : ctl._store.get(botId)) ||
-      null,
+    // `ctx.goalId`: a check's goal — filled from that goal's job (DASH-100),
+    // so a {repo.*} or {workspace.*} folder is the job's.
+    getBot: (botId, ctx = null) => {
+      const jobId =
+        ctx && ctx.goalId && ctl._jobs && ctl._jobs.jobForGoal
+          ? ctl._jobs.jobForGoal(ctx.goalId)
+          : null;
+      return (
+        (ctl.resolvedBot
+          ? ctl.resolvedBot(botId, jobId ? { jobId } : null)
+          : ctl._store.get(botId)) || null
+      );
+    },
+    // The work item and workspace of a check's job (DASH-100), or null.
+    jobContext: (goalId) => {
+      if (!ctl._jobs || !ctl._jobs.jobForGoal || !ctl._jobs.contextOf) {
+        return null;
+      }
+      const jobId = ctl._jobs.jobForGoal(goalId);
+      return jobId ? ctl._jobs.contextOf(jobId) : null;
+    },
     // The bot's GitHub sign-in for its command checks (DASH-66), or null.
     // Never logged.
     gitToken: async (botId) => {

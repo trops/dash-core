@@ -20,6 +20,8 @@ import {
   filterJobs,
   groupByDashboard,
   jobCounts,
+  jobTitleText,
+  workspaceText,
   ordinalText,
   queueText,
   startedByText,
@@ -181,6 +183,49 @@ describe("jobText", () => {
       ["Woodworking Projects", 2],
       ["Morning Brief", 1],
     ]);
+  });
+});
+
+describe("a job's work item (DASH-100)", () => {
+  const withItem = {
+    ...JOBS[0],
+    title: "Ask the Ticket Bot to take the next ticket",
+    item: {
+      id: "DASH-93",
+      title: "Slugs drop accented letters",
+      url: "https://example.atlassian.net/browse/DASH-93",
+    },
+    workspace: { dir: "/w/DashFactory/DASH-93", branch: "fix/DASH-93-x" },
+  };
+
+  it("names the job by its item, else what was asked", () => {
+    expect(jobTitleText(withItem)).toBe(
+      "DASH-93 · Slugs drop accented letters",
+    );
+    expect(jobTitleText({ ...withItem, item: { id: "DASH-93" } })).toBe(
+      "DASH-93 · Ask the Ticket Bot to take the next ticket",
+    );
+    expect(jobTitleText(JOBS[0])).toBe(JOBS[0].title);
+    expect(workspaceText(withItem)).toBe(
+      "/w/DashFactory/DASH-93 on fix/DASH-93-x",
+    );
+    expect(workspaceText(JOBS[0])).toBe("");
+  });
+
+  it("the Jobs page shows it, with a link and the workspace", async () => {
+    withApi([withItem, ...JOBS.slice(1)]);
+    render(<JobsPage workspaces={WORKSPACES} />);
+    const rows = await screen.findAllByTestId("job-row");
+    expect(
+      within(rows[0]).getByText("DASH-93 · Slugs drop accented letters"),
+    ).toBeInTheDocument();
+    const detail = await screen.findByTestId("job-detail");
+    expect(within(detail).getByTestId("job-item-link")).toHaveTextContent(
+      "Open DASH-93",
+    );
+    expect(within(detail).getByTestId("job-workspace")).toHaveTextContent(
+      "Workspace: /w/DashFactory/DASH-93 on fix/DASH-93-x",
+    );
   });
 });
 

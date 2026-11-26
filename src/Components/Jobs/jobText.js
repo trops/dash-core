@@ -175,13 +175,36 @@ export function groupByDashboard(jobs, dashboards = []) {
 }
 
 /** Jobs whose title, lead or bots match what's typed. */
+/**
+ * A job's title (DASH-100): "DASH-93 · Slugs drop accented letters" when it
+ * has a work item, else what was asked.
+ */
+export function jobTitleText(job) {
+  const item = job && job.item;
+  if (!item || !item.id) return (job && job.title) || "";
+  return `${item.id} · ${item.title || job.title || ""}`.replace(/ · $/, "");
+}
+
+/** Where a job's files are (DASH-100): "~/DashFactory/DASH-93 on fix/…". */
+export function workspaceText(job) {
+  const ws = job && job.workspace;
+  if (!ws || !ws.dir) return "";
+  return ws.branch ? `${ws.dir} on ${ws.branch}` : ws.dir;
+}
+
 export function searchJobs(jobs, query) {
   const q = String(query || "")
     .trim()
     .toLowerCase();
   if (!q) return jobs || [];
   return (jobs || []).filter((j) =>
-    [j.title, j.leadName, ...(j.steps || []).map((s) => s.botName)]
+    [
+      j.title,
+      j.item && j.item.id,
+      j.item && j.item.title,
+      j.leadName,
+      ...(j.steps || []).map((s) => s.botName),
+    ]
       .filter(Boolean)
       .some((t) => String(t).toLowerCase().includes(q)),
   );

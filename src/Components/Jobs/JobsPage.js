@@ -22,6 +22,8 @@ import {
   filterJobs,
   searchJobs,
   groupByDashboard,
+  jobTitleText,
+  workspaceText,
   jobCounts,
   queueText,
   startedByText,
@@ -100,7 +102,7 @@ export const JobRow = ({ job, active = false, onClick, now }) => {
         <JobDot status={job.status} className="mt-1.5" />
         <span className="flex-1 min-w-0 flex flex-col gap-1">
           <span className={`text-sm font-semibold break-words ${strong}`}>
-            {job.title}
+            {jobTitleText(job)}
           </span>
           <span className={`text-xs ${muted}`}>{startedByText(job)}</span>
           {job.status === "queued" ? (
@@ -239,10 +241,25 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
       <div className="flex flex-col gap-1">
         <span className="flex flex-row flex-wrap items-center gap-2">
           <span className={`text-base font-semibold break-words ${strong}`}>
-            {job.title}
+            {jobTitleText(job)}
           </span>
           <JobBadge status={job.status} />
         </span>
+        {job.item && job.item.url ? (
+          <button
+            type="button"
+            className={`self-start text-xs underline ${muted}`}
+            onClick={() => window.mainApi?.shell?.openExternal(job.item.url)}
+            data-testid="job-item-link"
+          >
+            Open {job.item.id}
+          </button>
+        ) : null}
+        {workspaceText(job) ? (
+          <span className={`text-xs ${muted}`} data-testid="job-workspace">
+            Workspace: {workspaceText(job)}
+          </span>
+        ) : null}
         <span className={`text-xs ${muted}`}>
           {[
             dashboardName,

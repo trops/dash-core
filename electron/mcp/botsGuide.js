@@ -30,9 +30,15 @@ A bot starts when another bot on its team finishes: subscriptions [{ bot: "Plann
 ## 4. Answers that hand on
 End every answer with one \`\`\`json block, last, and say so in the instructions with the exact keys. The next bot (and the checks) read the last JSON block. Have each bot copy forward the keys later bots need (e.g. key, dir, branch), so nobody has to dig them out of prose.
 
+**What the job is about, and where its files are.** A job carries a **work item** and a **workspace**, so no bot has to copy them forward:
+- **item**: { id, title?, url?, source? }: the one ticket, note or issue the job is about ("DASH-93", "Projects/Spool.md", "trops/app#12"). The task can name it (give_task's item), or the first bot that knows names it in its last json block: "item": { "id": "DASH-93", "title": "...", "url": "...", "source": "jira" }. Once set, its id never changes for that job.
+- **workspace**: { dir, branch? }: the folder the job's work is in, named the same way ("workspace": { "dir": "~/DashFactory/DASH-93", "branch": "fix/DASH-93-..." }) by the bot that makes it. It must be inside that bot's folders.
+- Every later bot uses {item.id}, {item.title}, {item.url}, {item.source}, {workspace.dir} and {workspace.branch} in its instructions, folders and checks; Dash fills them in from the job. A bot that uses one before the job has it fails saying so.
+- Its completed and failed events carry item and jobId, so a bot that reports (the Reporter) comments on {item.id} and never searches for the ticket.
+
 ## 5. Checks: gates that don't trust the AI's word
 checks: { steps, onFail, maxTries, handsOn }. The bot's answer is held until every step passes, then handed on.
-- **check, kind "command"**: a shell command in the bot's first folder. It gets the run as JSON in $DASH_INPUT (and on stdin): the answer is at .input.answer. Exit 0 passes. Make the last line of output {"reason": "..."} to say why; that line shows on the job.
+- **check, kind "command"**: a shell command, run in the job's workspace when it has one, else the bot's first folder. It gets the run as JSON in $DASH_INPUT (and on stdin): the answer is at .input.answer, and the job's item and workspace at .item and .workspace. Its environment has DASH_ITEM_ID, DASH_ITEM_TITLE, DASH_ITEM_URL, DASH_ITEM_SOURCE, DASH_WORKSPACE and DASH_BRANCH. Exit 0 passes. Make the last line of output {"reason": "..."} to say why; that line shows on the job.
 - **check, kind "script"**: function check(input) { return { pass, reason } } in a sealed runner. Use it for checks on the answer itself (keys present, a list not empty).
 - **check, kind "rules"** and **"tool"**: ready-made rules, or a read-only provider tool.
 - **reviewer**: another bot on the team judges the work. Give it read-only tools; it reads files and says pass or fail item by item.

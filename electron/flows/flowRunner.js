@@ -227,12 +227,13 @@ function createFlowRunner(deps) {
     inFlight.add(key);
     waiting.delete(task.id);
     try {
-      const input = inputFor(goal, task, step.id);
-      const res = await runCheck(
-        step.check || {},
-        input,
-        await checkContext(goal, step),
-      );
+      const ctx = await checkContext(goal, step);
+      // The job's work item and workspace (DASH-100) are part of its input.
+      const input = {
+        ...inputFor(goal, task, step.id),
+        ...((ctx && ctx.jobContext) || {}),
+      };
+      const res = await runCheck(step.check || {}, input, ctx);
       const fresh = store.getTask(task.id);
       if (!fresh || keyOf(fresh) !== key) return;
       store.writeStepRecord(task.id, {

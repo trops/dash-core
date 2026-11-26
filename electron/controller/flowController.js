@@ -21,6 +21,7 @@ const { fetchStatus } = require("../checks/linkStatus");
 const goalController = require("./goalController");
 const { isChecksFlow } = require("../bots/botChecks");
 const { gitSignInEnv } = require("../bots/gitSignIn");
+const { contextEnv } = require("../jobs/jobContext");
 
 let runner = null;
 let offGoals = null;
@@ -66,14 +67,34 @@ function filesOf(goalId) {
 /** What a check needs to run for a job: its folder, scripts and tools. */
 async function checkContext(goal, _step) {
   const g = goals();
-  // A bot's own checks run in its first folder, where its work is.
+  // The job's work item and workspace (DASH-100): its checks run in the
+  // workspace, and get both in their input and environment.
+  const jobContext =
+    goal && goal.id && bots.jobContext ? bots.jobContext(goal.id) : null;
+  const ctxInput = {};
+  if (jobContext && jobContext.item) ctxInput.item = jobContext.item;
+  if (jobContext && jobContext.workspace) {
+    ctxInput.workspace = jobContext.workspace;
+  }
+  const ws =
+    jobContext && jobContext.workspace && jobContext.workspace.dir
+      ? jobContext.workspace.dir
+      : null;
+  // Else a bot's own checks run in its first folder, where its work is —
+  // filled from its job (DASH-100), so a {repo.*} or {workspace.*} folder
+  // is the job's.
   let own = null;
-  if (goal && goal.flow && goal.flow.botId) {
-    const bot = bots.getBot ? bots.getBot(goal.flow.botId) : null;
+  if (ws && fs.existsSync(ws)) {
+    own = ws;
+  } else if (goal && goal.flow && goal.flow.botId) {
+    const bot = bots.getBot
+      ? bots.getBot(goal.flow.botId, { goalId: goal.id })
+      : null;
     const first = bot && Array.isArray(bot.projects) ? bot.projects[0] : null;
     if (first && fs.existsSync(first)) own = first;
   }
   const folder = own || (g && goal && goal.id ? g.paths(goal.id).work : null);
+  const ctxEnv = contextEnv(jobContext || {});
   // A bot's command checks sign git and gh in like its own commands
   // (DASH-66): its GitHub provider's token, for that check only, and taken
   // out of what the check keeps.
@@ -85,8 +106,15 @@ async function checkContext(goal, _step) {
       token = null;
     }
   }
+  const signIn = token ? gitSignInEnv(token, process.env) : null;
+  const env =
+    signIn || Object.keys(ctxEnv).length
+      ? { ...(signIn || {}), ...ctxEnv }
+      : null;
   return {
-    ...(token ? { env: gitSignInEnv(token, process.env), secret: token } : {}),
+    ...(env ? { env } : {}),
+    ...(token ? { secret: token } : {}),
+    ...(Object.keys(ctxInput).length ? { jobContext: ctxInput } : {}),
     // The job's files reach a command through its input, never through a
     // path written into the command.
     cwd: folder,

@@ -293,7 +293,12 @@ class BotRunner {
         team,
       ),
     };
-    return withTeamValues(bot, team, { home: os.homedir(), picks });
+    return withTeamValues(bot, team, {
+      home: os.homedir(),
+      picks,
+      // Its job's work item and workspace (DASH-100).
+      context: (opts && opts.teamContext) || null,
+    });
   }
 
   async run(botId, opts = {}) {
