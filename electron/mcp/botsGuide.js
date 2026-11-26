@@ -25,6 +25,7 @@ A team is a dashboard with bots on it. Bots do work with their AI model, their b
 A bot starts when another bot on its team finishes: subscriptions [{ bot: "Planner", event: "completed" }]. Use "failed" to start a bot that reports or cleans up when something breaks (e.g. one Reporter subscribed to every bot's failed).
 - The whole chain, started by a schedule, a trigger or a lead, is one job in Dash's Jobs view.
 - A bot that's still busy when work reaches it waits in a queue and runs next. Nothing is dropped.
+- A "failed" event says what broke and what the bot was working on: the error, the input the failed bot was given (the answer handed to it, so the ticket's key is in its JSON) and the job's picked table rows (e.g. repo). Tell the Reporter to take the ticket from that input, and if it can't find one, to say so rather than guess from a search.
 
 ## 4. Answers that hand on
 End every answer with one \`\`\`json block, last, and say so in the instructions with the exact keys. The next bot (and the checks) read the last JSON block. Have each bot copy forward the keys later bots need (e.g. key, dir, branch), so nobody has to dig them out of prose.

@@ -88,3 +88,15 @@ describe("bots guide: a step's when (DASH-85)", () => {
     assert.match(g, /leaves the step out when it reads no/);
   });
 });
+
+describe("bots guide: failed events (DASH-92)", () => {
+  it("says a failed event carries the input and picks, and not to guess", () => {
+    const { BOTS_GUIDE: g } = require("./botsGuide");
+    assert.match(
+      g,
+      /"failed" event says what broke and what the bot was working on/,
+    );
+    assert.match(g, /picked table rows/);
+    assert.match(g, /rather than guess/);
+  });
+});
