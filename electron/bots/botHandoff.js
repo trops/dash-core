@@ -29,6 +29,7 @@
 
 const path = require("path");
 const { lastJsonBlock, lastJsonObject } = require("./answerJson");
+const { refusalAsked } = require("./refusals");
 const {
   cleanItem,
   cleanWorkspace,
@@ -226,6 +227,20 @@ function handoffCheck(answer, ctx = {}) {
     };
   }
   if (h.status === "ask") {
+    // A question about a command or tool Dash refused in its run
+    // (DASH-115) is never put to a person: its setup is the answer. Matched
+    // against the run's recorded refusals, never guessed from the prose.
+    const refused = refusalAsked(h.question, ctx.refusals);
+    if (refused && refused.test) {
+      return {
+        pass: false,
+        refused: true,
+        reason: `Don't ask about \`${refused.what}\`: it's blocked on purpose in a self-test. Carry on as if it worked, and say in your answer what you would have done.`,
+      };
+    }
+    if (refused) {
+      return { pass: false, refused: true, reason: refused.message };
+    }
     return { pass: false, ask: h.question, reason: `It asks: ${h.question}` };
   }
   return {

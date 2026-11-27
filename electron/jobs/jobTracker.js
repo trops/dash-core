@@ -78,6 +78,26 @@ function stepStatusOf(record) {
   return "stopped";
 }
 
+/**
+ * The refusal that failed a run (DASH-115), cleaned for the job: { kind,
+ * what, why, fix, section, message } or null. A self-test's own block
+ * never fails one.
+ */
+function refusalOf(record) {
+  const list = record && Array.isArray(record.refusals) ? record.refusals : [];
+  const r = list.find((x) => x && !x.test && x.what);
+  if (!r) return null;
+  const str = (v, n) => clip(typeof v === "string" ? v : "", n);
+  return {
+    kind: r.kind === "command" ? "command" : "tool",
+    what: str(r.what, 300),
+    why: str(r.why, 300),
+    fix: str(r.fix, 300),
+    section: str(r.section, 20),
+    message: str(r.message, MAX_SUMMARY),
+  };
+}
+
 /** What a run's record says, short. */
 function summaryOf(record) {
   if (!record) return "";
@@ -489,6 +509,10 @@ function createJobTracker({
       step.summary = summaryOf(record);
       step.endedAt = iso();
     }
+    // What its setup refused (DASH-115): the failed step's Blocked card.
+    const refusal = refusalOf(record);
+    if (refusal && step.status === "failed") step.refusal = refusal;
+    else delete step.refusal;
     settle(job);
     commit(job);
     return step;

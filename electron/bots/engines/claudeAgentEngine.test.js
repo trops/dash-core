@@ -510,6 +510,50 @@ describe("claudeAgentEngine", () => {
     assert.equal(created.length, 1);
   });
 
+  // DASH-115: what its setup refuses goes to the runner (it ends the run
+  // failed); a command that needs approval still asks.
+  it("tells the runner what its setup refused; a tool needing approval still asks", async () => {
+    const created = [];
+    const refused = [];
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(
+      claudeAgentEngine.run(
+        ctx({
+          approvalPolicy: "ask",
+          commands: { allowed: ["git status"], blocked: ["git push"] },
+          onRefused: (info) => {
+            refused.push(info);
+            return { message: "PR Bot can't run it." };
+          },
+          createApproval: (req) => {
+            created.push(req);
+            return { promise: Promise.resolve({ allow: true }) };
+          },
+        }),
+      ),
+    );
+    const can = captured.options.canUseTool;
+    const blocked = await can("Bash", { command: "git push -u origin feat/x" });
+    assert.equal(blocked.behavior, "deny");
+    assert.equal(blocked.message, "PR Bot can't run it.");
+    assert.deepEqual(refused, [
+      {
+        reason: "blocked-list",
+        command: "git push -u origin feat/x",
+        rule: "git push",
+      },
+    ]);
+    const always = await can("Bash", { command: "git push --force" });
+    assert.equal(always.behavior, "deny");
+    assert.equal(refused[1].reason, "always-blocked");
+    assert.equal(refused[1].label, "git push --force");
+    // Not refused: it asks (the normal approval prompt).
+    const asked = await can("Bash", { command: "make build" });
+    assert.equal(asked.behavior, "allow");
+    assert.equal(created.length, 1);
+    assert.equal(refused.length, 2);
+  });
+
   it("passes the bot's API key per run — never via process-global env", async () => {
     const before = process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;

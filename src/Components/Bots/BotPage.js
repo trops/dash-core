@@ -60,6 +60,9 @@ const getWidgetConfig = (name) =>
 export const BotPage = ({
   botId,
   initialTab = "activity",
+  // A section of its settings to scroll to (DASH-115): "commands",
+  // "folders", "tools" or "providers".
+  focus = null,
   workspaces = EMPTY,
   onOpenInBotsView = null,
   onClose = null,
@@ -476,6 +479,7 @@ export const BotPage = ({
                 setFormKey((k) => k + 1);
               }}
               showBudget={false}
+              focus={focus}
             />
           </div>
         ) : null}

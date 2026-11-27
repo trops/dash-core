@@ -196,7 +196,10 @@ export function jobTitleText(job) {
  */
 export function skippedLines(job) {
   return ((job && job.test && job.skippedInTest) || []).map((s) =>
-    `${s.botName ? `${s.botName}: ` : ""}${s.tool} on ${s.server} ${s.args || ""}`.trim(),
+    // A command its test blocked (DASH-115).
+    s.command
+      ? `${s.botName ? `${s.botName}: ` : ""}\`${s.command}\` (blocked in a test)`
+      : `${s.botName ? `${s.botName}: ` : ""}${s.tool} on ${s.server} ${s.args || ""}`.trim(),
   );
 }
 
@@ -275,4 +278,16 @@ export function needsYouText(step, approvals = []) {
     return `${bot} asks you a question`;
   }
   return `${bot} is waiting for you`;
+}
+
+const SECTION_WORDS = {
+  commands: "Commands",
+  folders: "Folders",
+  tools: "Built-in tools",
+  providers: "Providers",
+};
+
+/** A refusal's settings section, in words: "Commands" (DASH-115). */
+export function refusalSectionText(section) {
+  return SECTION_WORDS[section] || "settings";
 }

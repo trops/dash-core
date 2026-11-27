@@ -17,6 +17,7 @@ import { openRunConversation } from "../Bots/runConversation";
 import { JobCheckRows } from "../Goals/JobCheckRows";
 import { useGoal } from "../../hooks/useGoals";
 import {
+  BlockedCard,
   BotApprovals,
   GoalNeedsYouCard,
   PausedCard,
@@ -273,6 +274,13 @@ const JobStep = ({ job, step, last, approvals = [] }) => {
           </span>
         ) : null}
         {goal ? <JobCheckRows goal={goal} /> : null}
+        {step.status === "failed" && step.refusal ? (
+          <BlockedCard
+            refusal={step.refusal}
+            botId={step.botId}
+            botName={step.botName}
+          />
+        ) : null}
         <StepNeedsYou
           step={step}
           goal={goal}

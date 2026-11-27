@@ -227,7 +227,7 @@ function createCheckJobs(deps) {
             stepId: WORK_STEP,
             status: "passed",
             summary: `Answered again (try ${task.round || 1})`,
-            output: workOutput(record.output),
+            output: workOutput(record.output, record.refusals),
             bot: { botId, botName: bot.name },
           });
         } catch (_e) {
@@ -262,7 +262,7 @@ function createCheckJobs(deps) {
           botId,
           botName: bot.name,
           summary: "Did the work",
-          output: workOutput(record.output),
+          output: workOutput(record.output, record.refusals),
         },
       });
     } catch (_e) {
