@@ -2,7 +2,9 @@
  * StepMessage.js — a job step as its bot's message (DASH-123): the bot's
  * avatar and name, its prose as Markdown in a chat bubble, and its handoff
  * as a compact card (status, work item, summary, picks, details), the
- * pretty-printed JSON behind "Show handoff JSON".
+ * pretty-printed JSON behind "Show handoff JSON". Both show, apart from
+ * what the bot wrote, what Dash carries from the job to every bot (its
+ * work item and workspace), marked "from the job".
  *
  *   StepProse      the prose as Markdown, long ones behind "Show more"
  *   HandoffCard    a handoff's card
@@ -12,7 +14,12 @@ import React, { useState } from "react";
 import { useStatusTokens } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { renderSafeMarkdown } from "../../utils/safeMarkdown";
-import { handoffJson, shortenMarkdown, shortenText } from "./stepView";
+import {
+  carriedJson,
+  handoffJson,
+  shortenMarkdown,
+  shortenText,
+} from "./stepView";
 
 const MAX_PROSE = 700;
 const MAX_DETAIL = 280;
@@ -79,15 +86,76 @@ const Detail = ({ text }) => {
   );
 };
 
-const Row = ({ label, children, testId }) => {
+const Row = ({ label, children, testId, title }) => {
   const { muted } = useConfigTokens();
   return (
     <>
       <span className={`text-xs pt-0.5 ${muted}`}>{label}</span>
-      <span className="min-w-0 text-sm break-words" data-testid={testId}>
+      <span
+        className="min-w-0 text-sm break-words"
+        data-testid={testId}
+        title={title}
+      >
         {children}
       </span>
     </>
+  );
+};
+
+/** A work item: its id (a link when it has a url) and title. */
+const ItemValue = ({ item, testId }) => (
+  <>
+    {item.url ? (
+      <button
+        type="button"
+        className="underline"
+        data-testid={testId}
+        onClick={() => openLink(item.url)}
+      >
+        {item.id}
+      </button>
+    ) : (
+      <span>{item.id}</span>
+    )}
+    {item.title ? <span>{` · ${item.title}`}</span> : null}
+  </>
+);
+
+/** " · from the job", after a carried value. */
+const FromJob = () => {
+  const { muted } = useConfigTokens();
+  return <span className={`text-xs ${muted}`}>{" · from the job"}</span>;
+};
+
+/** What the job carries to every bot, apart from the bot's own rows. */
+const CarriedRows = ({ fromJob }) => {
+  const { muted, hairline } = useConfigTokens();
+  return (
+    <div
+      data-testid="handoff-from-job"
+      className={`col-span-2 grid gap-x-3 gap-y-1.5 pt-1.5 mt-0.5 border-t border-dashed ${hairline}`}
+      style={{ gridTemplateColumns: "auto minmax(0, 1fr)" }}
+    >
+      <span className={`col-span-2 text-xs ${muted}`}>
+        From the job: Dash gives these to every bot in it
+      </span>
+      {fromJob.item ? (
+        <Row label={fromJob.item.label} testId="handoff-job-item">
+          <ItemValue item={fromJob.item} testId="handoff-job-item-link" />
+          <FromJob />
+        </Row>
+      ) : null}
+      {fromJob.workspace ? (
+        <Row
+          label="Workspace"
+          testId="handoff-job-workspace"
+          title={fromJob.workspace.dir}
+        >
+          <span className="font-mono text-xs">{fromJob.workspace.text}</span>
+          <FromJob />
+        </Row>
+      ) : null}
+    </div>
   );
 };
 
@@ -112,19 +180,16 @@ export const HandoffCard = ({ card }) => {
       </Row>
       {card.item ? (
         <Row label={card.item.label} testId="handoff-item">
-          {card.item.url ? (
-            <button
-              type="button"
-              className="underline"
-              data-testid="handoff-item-link"
-              onClick={() => openLink(card.item.url)}
-            >
-              {card.item.id}
-            </button>
-          ) : (
-            <span>{card.item.id}</span>
-          )}
-          {card.item.title ? <span>{` · ${card.item.title}`}</span> : null}
+          <ItemValue item={card.item} testId="handoff-item-link" />
+        </Row>
+      ) : null}
+      {card.workspace ? (
+        <Row
+          label="Workspace"
+          testId="handoff-workspace"
+          title={card.workspace.dir}
+        >
+          <span className="font-mono text-xs">{card.workspace.text}</span>
         </Row>
       ) : null}
       {card.summary ? (
@@ -159,19 +224,41 @@ export const HandoffCard = ({ card }) => {
           </span>
         </Row>
       ) : null}
+      {card.fromJob ? <CarriedRows fromJob={card.fromJob} /> : null}
     </div>
   );
 };
 
-/** The handoff's JSON, pretty-printed. */
-export const HandoffJson = ({ handoff }) => {
-  const { strong, hairline, fieldBg } = useConfigTokens();
+/**
+ * The handoff's JSON, pretty-printed: what the bot wrote, then (when the
+ * job has any) what Dash carries from the job, in its own block.
+ */
+export const HandoffJson = ({ handoff, job = null }) => {
+  const { muted, strong, hairline, fieldBg } = useConfigTokens();
+  const carried = carriedJson(job);
+  const pre = `w-full max-h-80 overflow-auto p-3 rounded-md border font-mono text-xs whitespace-pre-wrap break-words ${hairline} ${fieldBg} ${strong}`;
+  if (!carried) {
+    return (
+      <pre data-testid="handoff-json" className={pre}>
+        {handoffJson(handoff)}
+      </pre>
+    );
+  }
   return (
-    <pre
-      data-testid="handoff-json"
-      className={`w-full max-h-80 overflow-auto p-3 rounded-md border font-mono text-xs whitespace-pre-wrap break-words ${hairline} ${fieldBg} ${strong}`}
-    >
-      {handoffJson(handoff)}
-    </pre>
+    <div className="w-full flex flex-col gap-1.5">
+      <span className={`text-xs ${muted}`}>What the bot wrote</span>
+      <pre data-testid="handoff-json" className={pre}>
+        {handoffJson(handoff)}
+      </pre>
+      <span className={`text-xs ${muted}`}>
+        From the job: Dash gives these to every bot in it
+      </span>
+      <pre
+        data-testid="handoff-json-from-job"
+        className={`${pre} border-dashed`}
+      >
+        {carried}
+      </pre>
+    </div>
   );
 };

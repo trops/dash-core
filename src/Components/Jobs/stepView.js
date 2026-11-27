@@ -174,11 +174,61 @@ const itemOf = (v) => {
   return out;
 };
 
+const workspaceOf = (v) => {
+  const raw = typeof v === "string" ? { dir: v } : v;
+  if (!isObj(raw) || typeof raw.dir !== "string" || !raw.dir.trim()) {
+    return null;
+  }
+  const out = { dir: raw.dir.trim() };
+  if (typeof raw.branch === "string" && raw.branch.trim()) {
+    out.branch = raw.branch.trim();
+  }
+  return out;
+};
+
+/** "/a/b/c" → "…/c" (the whole path is the row's tooltip). */
+export function shortDir(dir) {
+  const parts = String(dir || "")
+    .replace(/[\\/]+$/, "")
+    .split(/[\\/]/)
+    .filter(Boolean);
+  if (parts.length <= 1) return String(dir || "");
+  return `…/${parts[parts.length - 1]}`;
+}
+
+/**
+ * What Dash carries from the job to every bot it starts, whatever its
+ * handoff says (electron/jobs/jobContext.js withEventContext: the job's
+ * item and workspace go into each completed/failed event): { item?,
+ * workspace? }, or null when the job has neither.
+ */
+export function carriedFields(job) {
+  if (!isObj(job)) return null;
+  const out = {};
+  const item = itemOf(job.item);
+  if (item) out.item = item;
+  const workspace = workspaceOf(job.workspace);
+  if (workspace) out.workspace = workspace;
+  return Object.keys(out).length ? out : null;
+}
+
+const workspaceRow = (ws) =>
+  ws && {
+    ...ws,
+    text: ws.branch ? `${shortDir(ws.dir)} on ${ws.branch}` : shortDir(ws.dir),
+  };
+
 /**
  * A handoff as its card's rows (null for none):
  * { status: { label, word, tone }, item: { id, title?, url?, label } | null,
- *   summary, question, items: string[], picks: [{ name, value }],
- *   details: [{ key, label, text }], clipped }
+ *   workspace: { dir, branch?, text } | null, summary, question,
+ *   items: string[], picks: [{ name, value }],
+ *   details: [{ key, label, text }], clipped,
+ *   fromJob: { item?, workspace? } | null }
+ *
+ * The rows up to `clipped` are what the bot wrote; `fromJob` is what Dash
+ * carries from the job (carriedFields), shown apart — a bot's own value
+ * for the same key stays in its own rows.
  *
  * `job`: its work item fills in a url the handoff lacks; its picks (the
  * team's table names) say which top-level keys are picks.
@@ -224,16 +274,36 @@ export function handoffCard(handoff, job = null) {
         .filter(Boolean)
         .map((x) => (x.title ? `${x.id} · ${x.title}` : x.id))
     : [];
+  const carried = carriedFields(job);
+  let fromJob = null;
+  if (carried) {
+    fromJob = {};
+    if (carried.item) {
+      fromJob.item = {
+        ...carried.item,
+        label: ITEM_WORDS[carried.item.source] || "Item",
+      };
+    }
+    if (carried.workspace) fromJob.workspace = workspaceRow(carried.workspace);
+  }
   return {
     status,
     item,
+    workspace: workspaceRow(workspaceOf(h.workspace)),
     summary: typeof h.summary === "string" ? h.summary.trim() : "",
     question: typeof h.question === "string" ? h.question.trim() : "",
     items,
     picks,
     details,
     clipped: !!h.clipped,
+    fromJob,
   };
+}
+
+/** What the job carries (carriedFields), pretty-printed; "" for nothing. */
+export function carriedJson(job) {
+  const c = carriedFields(job);
+  return c ? JSON.stringify(c, null, 2) : "";
 }
 
 /** The handoff, pretty-printed for "Show handoff JSON". */
