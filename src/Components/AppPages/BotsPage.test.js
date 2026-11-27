@@ -590,6 +590,47 @@ describe("BotsPage — setup status (DASH-119)", () => {
     expect(screen.getByText("bot page b2")).toBeInTheDocument();
     expect(screen.getByText("opens on settings")).toBeInTheDocument();
   });
+
+  it("asks before leaving a team page with unsaved settings (DASH-128)", () => {
+    setup();
+    fireEvent.click(within(mailRow()).getAllByRole("button")[0]);
+    const card = screen.getByTestId("setup-bot-card-b2");
+    fireEvent.change(within(card).getByLabelText("Inbox to read"), {
+      target: { value: "Primary" },
+    });
+    expect(screen.getByTestId("setup-unsaved-bar")).toHaveTextContent(
+      "You have unsaved changes. Leaving this team asks before discarding them.",
+    );
+    fireEvent.click(teamButton("Kitchen Sink"));
+    const modal = screen.getByTestId("confirmation-modal");
+    expect(
+      within(modal).getByText("Discard unsaved changes?"),
+    ).toBeInTheDocument();
+    expect(modal).toHaveTextContent(
+      "Your changes to this team's settings haven't been saved.",
+    );
+    // Still on Mail until the edits are discarded.
+    expect(screen.getByTestId("setup-bot-card-b2")).toBeInTheDocument();
+    fireEvent.click(within(modal).getByText("Discard"));
+    expect(screen.queryByTestId("setup-bot-card-b2")).toBeNull();
+    expect(screen.getByTestId("team-overview")).toHaveTextContent(
+      "Kitchen Sink",
+    );
+  });
+
+  it("asks before a bot's Settings replaces the team page (DASH-128)", () => {
+    setup();
+    fireEvent.click(within(mailRow()).getAllByRole("button")[0]);
+    const card = screen.getByTestId("setup-bot-card-b2");
+    fireEvent.change(within(card).getByLabelText("Inbox to read"), {
+      target: { value: "Primary" },
+    });
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Open Digest's settings ›" }),
+    );
+    expect(screen.getByTestId("confirmation-modal")).toBeInTheDocument();
+    expect(screen.queryByText("bot page b2")).toBeNull();
+  });
 });
 
 describe("BotsPage — a team's setup from elsewhere (DASH-118)", () => {

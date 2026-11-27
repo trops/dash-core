@@ -19,7 +19,14 @@
  * A tracker (DASH-135) is where a bot's tickets come from: a source, then
  * pickers (TrackerSetting.js).
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   Button,
   Button3,
@@ -330,8 +337,16 @@ export const TableSetting = ({
 /**
  * A dashboard's team settings, loaded and saved (Bots › Team settings).
  * Nothing shows when the team declares none.
+ *
+ * On the team page's Set up checklist (DASH-128) it joins the page's one
+ * save model: `onDirtyChange(dirty)` says when it has unsaved edits, and
+ * with `hideSave` its own Save button is left out and the page's unsaved
+ * bar saves or discards it through the ref ({ save() → ok, discard() }).
  */
-export const TeamSettingsPanel = ({ workspaceId }) => {
+export const TeamSettingsPanel = forwardRef(function TeamSettingsPanel(
+  { workspaceId, onDirtyChange = null, hideSave = false },
+  ref,
+) {
   const { hairline, muted } = useConfigTokens();
   const status = useStatusTokens();
   const [team, setTeam] = useState(null);
@@ -361,16 +376,29 @@ export const TeamSettingsPanel = ({ workspaceId }) => {
     load();
   }, [load]);
 
-  if (!team || !team.declared.length) return null;
-
-  const changed = team.declared.some(
-    (s) =>
-      JSON.stringify(draft[s.name]) !== JSON.stringify(team.values[s.name]),
+  const changed =
+    !!team &&
+    team.declared.some(
+      (s) =>
+        JSON.stringify(draft[s.name]) !== JSON.stringify(team.values[s.name]),
+    );
+  const onDirtyRef = useRef(onDirtyChange);
+  onDirtyRef.current = onDirtyChange;
+  useEffect(() => {
+    if (onDirtyRef.current) onDirtyRef.current(changed);
+  }, [changed]);
+  useEffect(
+    () => () => {
+      if (onDirtyRef.current) onDirtyRef.current(false);
+    },
+    [],
   );
+
   const save = async () => {
+    if (!team || !changed) return true;
     if (!api || !api.setTeamValues) {
       setErrors(["Changing team settings needs a newer Dash."]);
-      return;
+      return false;
     }
     setSaving(true);
     setErrors([]);
@@ -381,18 +409,30 @@ export const TeamSettingsPanel = ({ workspaceId }) => {
     }
     try {
       const r = await api.setTeamValues(workspaceId, { values: patch });
-      if (r && r.errors && r.errors.length) setErrors(r.errors);
-      else {
-        setSaved(true);
-        noteSetupChanged(workspaceId);
-        await load();
+      if (r && r.errors && r.errors.length) {
+        setErrors(r.errors);
+        return false;
       }
+      setSaved(true);
+      noteSetupChanged(workspaceId);
+      await load();
+      return true;
     } catch (e) {
       setErrors([(e && e.message) || String(e)]);
+      return false;
     } finally {
       setSaving(false);
     }
   };
+  const discard = () => {
+    setErrors([]);
+    setSaved(false);
+    setDraft((team && team.values) || {});
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useImperativeHandle(ref, () => ({ save, discard }), [team, draft, changed]);
+
+  if (!team || !team.declared.length) return null;
 
   return (
     <section
@@ -429,19 +469,24 @@ export const TeamSettingsPanel = ({ workspaceId }) => {
           ))}
         </div>
       ) : null}
-      <div className="flex flex-row gap-2 items-center">
-        <Button
-          title={saving ? "Saving…" : "Save settings"}
-          size="sm"
-          disabled={saving || !changed}
-          onClick={save}
-        />
-        {saved && !changed ? (
-          <span className={`text-xs ${status.success.text}`}>Saved.</span>
-        ) : null}
-      </div>
+      {hideSave ? null : (
+        <div className="flex flex-row gap-2 items-center">
+          <Button
+            title={saving ? "Saving…" : "Save settings"}
+            size="sm"
+            disabled={saving || !changed}
+            onClick={save}
+          />
+          {saved && !changed ? (
+            <span className={`text-xs ${status.success.text}`}>Saved.</span>
+          ) : null}
+        </div>
+      )}
+      {hideSave && saved && !changed ? (
+        <span className={`text-xs ${status.success.text}`}>Saved.</span>
+      ) : null}
     </section>
   );
-};
+});
 
 export default TeamSettingsForm;
