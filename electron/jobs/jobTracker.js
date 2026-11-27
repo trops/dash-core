@@ -313,6 +313,8 @@ function createJobTracker({
     queued = false,
     // What the job is about, when the task says (DASH-100).
     item = null,
+    // A team's self-test (DASH-109): outward actions off.
+    test = false,
   } = {}) {
     const at = iso();
     const named = cleanItem(item);
@@ -332,8 +334,26 @@ function createJobTracker({
       endedAt: null,
       ...(queued ? { queued: true, queuedAt: at } : {}),
       ...(named ? { item: named } : {}),
+      ...(test ? { test: true, skippedInTest: [] } : {}),
     };
     return commit(job);
+  }
+
+  /** A test job (DASH-109): what an outward tool would have done. */
+  function noteSkipped(jobId, note) {
+    const job = jobOf(jobId);
+    if (!job || !job.test) return null;
+    job.skippedInTest = [
+      ...(job.skippedInTest || []),
+      { ...note, at: iso() },
+    ].slice(-50);
+    commit(job);
+    return job.skippedInTest.length;
+  }
+
+  function isTest(jobId) {
+    const job = jobOf(jobId);
+    return !!(job && job.test);
   }
 
   function addStep(job, step) {
@@ -751,6 +771,8 @@ function createJobTracker({
 
   return {
     startJob,
+    noteSkipped,
+    isTest,
     setPicks,
     picksOf,
     setItem,

@@ -127,6 +127,8 @@ async function checkContext(goal, step) {
     isReadOnly: (server, tool) => bots.isReadOnlyTool(server, tool),
     readScript: (ref) => readScriptRef(ref),
     // A package step (DASH-106): the package, and a provider of its type.
+    // A team's self-test (DASH-109): checks that reach out are skipped.
+    selfTest: !!(goal && goal.id && bots.isTestJob && bots.isTestJob(goal.id)),
     // A repo check's team copy (DASH-110), from the job's team.
     teamCheck: (name) =>
       goal && goal.workspaceId != null && bots.teamCheck

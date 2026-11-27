@@ -11,6 +11,7 @@ import {
   ONE_JOB_HELP,
   usesHandoffsOf,
   setupView,
+  selfTestLine,
   HANDOFF_HELP,
 } from "./TeamJobSettings";
 
@@ -73,5 +74,17 @@ describe("Check setup (DASH-108)", () => {
       setupView({ ok: false, problems: [{ message: "A" }, { message: "B" }] }),
     ).toEqual({ ok: false, title: "2 problems to fix:", lines: ["A", "B"] });
     expect(setupView({ error: "Nope" }).title).toBe("Nope");
+  });
+});
+
+describe("Self-test (DASH-109)", () => {
+  it("says the untested change, or when it was tested", () => {
+    expect(selfTestLine({ untested: { what: "Reporter changed" } })).toBe(
+      "Untested change: Reporter changed. Run a self-test before real work.",
+    );
+    expect(selfTestLine({})).toBe("Not tested yet.");
+    expect(selfTestLine({ lastTest: { at: "2026-11-27T00:00:00Z" } })).toMatch(
+      /^Tested /,
+    );
   });
 });

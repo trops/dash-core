@@ -143,6 +143,13 @@ function flowBotHooks(ctl) {
     },
     isReadOnlyTool,
     // Check packages (DASH-106): one by ref, and a provider of a type.
+    // A check's job is a team's self-test (DASH-109)?
+    isTestJob: (goalId) => {
+      if (!ctl._jobs || !ctl._jobs.jobForGoal || !ctl._jobs.isTest)
+        return false;
+      const jobId = ctl._jobs.jobForGoal(goalId);
+      return !!(jobId && ctl._jobs.isTest(jobId));
+    },
     teamCheck: (workspaceId, name) =>
       ctl.teamCheck ? ctl.teamCheck(workspaceId, name) : null,
     getCheckPackage: (ref) =>

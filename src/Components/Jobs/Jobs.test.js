@@ -448,3 +448,27 @@ describe("Queued jobs (DASH-81)", () => {
     ).toBeNull();
   });
 });
+
+describe("a team's self-test job (DASH-109)", () => {
+  it("is marked in its title, and lists what it skipped", () => {
+    const { jobTitleText, skippedLines } = require("./jobText");
+    const job = {
+      test: true,
+      title: "Test: Ticket Bot on DASH-97",
+      item: { id: "DASH-97", title: "Slugs" },
+      skippedInTest: [
+        {
+          botName: "Reporter",
+          tool: "addOrEditJiraIssueComment",
+          server: "Atlassian MCP",
+          args: '{"x":1}',
+        },
+      ],
+    };
+    expect(jobTitleText(job)).toBe("Test · DASH-97 · Slugs");
+    expect(skippedLines(job)).toEqual([
+      'Reporter: addOrEditJiraIssueComment on Atlassian MCP {"x":1}',
+    ]);
+    expect(skippedLines({ ...job, test: false })).toEqual([]);
+  });
+});

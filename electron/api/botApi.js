@@ -82,6 +82,8 @@ const {
   BOTS_CHECK_PACKAGE_INSTALL,
   BOTS_CHECK_PACKAGE_REMOVE,
   BOTS_SUGGEST_CHECKS,
+  BOTS_TEST_TEAM,
+  BOTS_SET_TEST_ITEM,
   BOTS_DRAFT_CHECK,
   BOTS_TRY_CHECK,
   BOTS_SAVE_CHECK,
@@ -438,6 +440,11 @@ const botApi = {
     ipcRenderer.invoke(BOTS_CHECK_PACKAGE_INSTALL, { ref, version }),
   removeCheckPackage: (ref) =>
     ipcRenderer.invoke(BOTS_CHECK_PACKAGE_REMOVE, { ref }),
+  /** Self-tests (DASH-109): the team's test item, and Test team. */
+  testTeam: (workspaceId) =>
+    ipcRenderer.invoke(BOTS_TEST_TEAM, { workspaceId }),
+  setTestItem: (workspaceId, item) =>
+    ipcRenderer.invoke(BOTS_SET_TEST_ITEM, { workspaceId, item }),
   /** The Add check screen and Set up checks (DASH-110). */
   suggestChecks: (botId) => ipcRenderer.invoke(BOTS_SUGGEST_CHECKS, { botId }),
   draftCheck: (botId, ask) =>

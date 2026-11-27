@@ -23,6 +23,7 @@ import {
   searchJobs,
   groupByDashboard,
   jobTitleText,
+  skippedLines,
   workspaceText,
   jobCounts,
   queueText,
@@ -259,6 +260,25 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
           <span className={`text-xs ${muted}`} data-testid="job-workspace">
             Workspace: {workspaceText(job)}
           </span>
+        ) : null}
+        {job.test ? (
+          <div
+            className="flex flex-col gap-1 text-xs"
+            data-testid="job-self-test"
+          >
+            <span className="font-semibold">
+              A self-test: nothing outward happened. What it would have done:
+            </span>
+            {skippedLines(job).length ? (
+              skippedLines(job).map((l, i) => (
+                <span key={i} className={`font-mono break-all ${muted}`}>
+                  {l}
+                </span>
+              ))
+            ) : (
+              <span className={muted}>Nothing outward yet.</span>
+            )}
+          </div>
         ) : null}
         <span className={`text-xs ${muted}`}>
           {[

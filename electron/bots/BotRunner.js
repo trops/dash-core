@@ -24,6 +24,7 @@
  *   makeRequestPermission? / gate?  — test seams (default: real PermissionGate)
  */
 "use strict";
+const { withTestBlocks } = require("./selfTest");
 
 const { createRequestPermission } = require("./PermissionGate");
 const { deletesOrSends } = require("./riskyTools");
@@ -341,7 +342,8 @@ class BotRunner {
     // instructions, folders and checks becomes this team's value. One it
     // uses with no value fails the run, saying which.
     const filled = this._withTeamValues(stored, opts);
-    const bot = filled.bot;
+    // A team's self-test (DASH-109): its outward commands are blocked.
+    const bot = opts.selfTest ? withTestBlocks(filled.bot) : filled.bot;
 
     const blocked = this._startBlocker(botId);
     if (blocked) {
