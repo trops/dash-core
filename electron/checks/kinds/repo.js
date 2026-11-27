@@ -29,7 +29,22 @@ const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
 const { runCommand } = require("./command");
-const { readCheckFiles, inputValues } = require("../checkPackage");
+const { readCheckFiles, inputValues, inputEnv } = require("../checkPackage");
+
+/** A plain repo check's step inputs as DASH_CHECK_<NAME> (names it can use). */
+function stepInputEnv(inputs) {
+  if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return {};
+  const ok = {};
+  for (const [k, v] of Object.entries(inputs)) {
+    if (
+      /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(k) &&
+      v != null &&
+      typeof v !== "object"
+    )
+      ok[k] = v;
+  }
+  return inputEnv(ok);
+}
 const { runPackageFiles } = require("./package");
 
 const CHECKS_DIR = ".dash/checks";
@@ -355,7 +370,8 @@ async function runRepoCheck(check, input, opts = {}) {
         cwd,
         tmpDir: opts.tmpDir,
         ...(opts.spawn ? { spawn: opts.spawn } : {}),
-        ...(opts.env ? { env: opts.env } : {}),
+        // The step's inputs (DASH-107), as for a package: DASH_CHECK_<NAME>.
+        env: { ...(opts.env || {}), ...stepInputEnv(check.inputs) },
       },
     );
     const said = /^(Passed|Failed) \(exit/.test(String(res.reason || ""));
