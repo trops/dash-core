@@ -1181,6 +1181,23 @@ const botController = {
     }
   },
 
+  /** The job's workspace folder a run starts in, or null (DASH-140). */
+  _jobWorkingDir(botId, jobId) {
+    if (!jobId || !this._jobs || typeof this._jobs.get !== "function") {
+      return null;
+    }
+    try {
+      const job = this._jobs.get(jobId);
+      const dir = job && job.workspace && job.workspace.dir;
+      if (typeof dir !== "string" || !dir) return null;
+      const bot = this.resolvedBot(botId, { jobId });
+      if (!insideFolders(dir, (bot && bot.projects) || [])) return null;
+      return require("fs").statSync(dir).isDirectory() ? dir : null;
+    } catch (_e) {
+      return null;
+    }
+  },
+
   /** Hand-ons waiting for busy bots (DASH-73), made on first use. */
   _busy() {
     if (!this._busyQueue) this._busyQueue = new BusyQueue();
@@ -5893,6 +5910,12 @@ const botController = {
     let viaEntry = null;
     // A run in a team's self-test (DASH-109): outward tools are skipped.
     const selfTest = !!(jobId && this._jobs.isTest && this._jobs.isTest(jobId));
+    // A job's bots start in its workspace (DASH-140), so none needs to cd
+    // there first: only a folder that exists, inside the bot's folders.
+    const jobDir =
+      typeof this._jobWorkingDir === "function"
+        ? this._jobWorkingDir(botId, jobId)
+        : null;
     if (selfTest) {
       if (!this._selfTestRuns) this._selfTestRuns = new Map();
       this._selfTestRuns.set(botId, jobId);
@@ -5960,7 +5983,11 @@ const botController = {
       goal,
       // A flow task's own copy of the bot's folder, and its step's limits
       // (flows PRD, phase 5).
-      ...(opts.workingDir ? { workingDir: String(opts.workingDir) } : {}),
+      ...(opts.workingDir
+        ? { workingDir: String(opts.workingDir) }
+        : jobDir
+          ? { workingDir: jobDir }
+          : {}),
       ...(opts.limits ? { limits: opts.limits } : {}),
       emit: (event) => {
         if (!alreadyRunning) this._events.onRunEvent(botId, event);

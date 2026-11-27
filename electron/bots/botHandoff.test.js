@@ -628,6 +628,27 @@ describe("botController._handOnPrompt", () => {
   const botController = require("../controller/botController");
   Module._resolveFilename = originalResolve;
 
+  // DASH-140: a job's bots start in its workspace, so none needs to cd.
+  it("a job's run starts in its workspace, only when it exists inside the bot's folders", () => {
+    const os = require("os");
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "jobdir-"));
+    try {
+      const me = (dir, projects) => ({
+        _jobs: { get: () => ({ workspace: dir ? { dir } : null }) },
+        resolvedBot: () => ({ projects }),
+      });
+      const call = (dir, projects, jobId = "job_1") =>
+        botController._jobWorkingDir.call(me(dir, projects), "b", jobId);
+      assert.equal(call(ws, [path.dirname(ws)]), ws);
+      assert.equal(call(ws, ["/somewhere/else"]), null, "outside its folders");
+      assert.equal(call(path.join(ws, "gone"), [ws]), null, "not there yet");
+      assert.equal(call(null, [ws]), null, "no workspace yet");
+      assert.equal(call(ws, [path.dirname(ws)], null), null, "not a job");
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
   const self = (uses) => ({
     usesHandoffs: () => uses,
     _tableKeys: () => ["repo"],
