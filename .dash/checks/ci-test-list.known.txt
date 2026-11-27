@@ -1,0 +1,28 @@
+# node:test files that weren't in scripts/ci.sh when the ci-test-list
+# check was added (DASH-111). They never run in CI. Each passes on its
+# own unless noted. Wire them into ci.sh and take them off this list.
+electron/bots/BotRunnerLimits.test.js
+electron/bots/aiDefaults.test.js
+electron/bots/coalesce.test.js
+electron/bots/planBuildSettings.test.js
+electron/bots/teamDirectory.test.js
+electron/bots/userRun.test.js
+electron/controller/cliController.test.js
+electron/controller/dashboardConfigController.test.js
+electron/controller/dashboardRatingsController.test.js
+electron/controller/extractionCacheController.test.js
+electron/controller/mcpStartErrorWiring.test.js
+electron/controller/paletteToThemeMapper.test.js
+electron/controller/themeFromUrlController.test.js
+electron/controller/webSocketController.test.js   # FAILS: 30 of 30
+electron/errors/themeFromUrlErrors.test.js
+electron/mcp/jsonSchemaToZod.test.js
+electron/mcp/resourceHandlers.test.js   # FAILS: 5 of 28, and hangs
+electron/migrations/index.test.js
+electron/schema/dashboardConfigUtils.test.js
+electron/schema/dashboardConfigValidator.test.js
+electron/schema/widgetPublishManifest.test.js
+electron/security/resolveSiblings.test.js
+electron/utils/dashConfigParser.test.js
+electron/utils/upsertMenuItem.test.js
+electron/utils/widgetManifest.test.js
