@@ -25,6 +25,9 @@
  */
 "use strict";
 const { withTestBlocks, TEST_BLOCKED } = require("./selfTest");
+
+// Chained commands a strict bot may be told to split before its run fails.
+const MAX_CHAINED = 3;
 const { makeRefusal, keepRefusal, refusalAsked } = require("./refusals");
 const { readHandoff } = require("./botHandoff");
 const { isStrict, capabilitiesBlock } = require("./strictMode");
@@ -482,6 +485,7 @@ class BotRunner {
         : [];
     // A strict bot's refusals fail its run too (DASH-116).
     const failOnRefusal = !!opts.failOnRefusal || this._isStrict(bot);
+    let chained = 0;
     const onRefused = (info) => {
       const testBlock =
         !!opts.selfTest &&
@@ -508,6 +512,16 @@ class BotRunner {
         };
       }
       emit({ type: "refused", refusal: r });
+      // A chained command (DASH-140) ran nothing and only needs splitting:
+      // the bot is told so and goes on, up to MAX_CHAINED times in a run.
+      if (info && info.reason === "chained") {
+        chained += 1;
+        if (chained <= MAX_CHAINED) {
+          return {
+            message: `Not run: ${r.why}. Nothing ran. Run the same steps again one command per call (cd first if you need to; the shell keeps its folder between calls).`,
+          };
+        }
+      }
       // Only a job's run on a team with the standard handoff fails on it
       // (opts.failOnRefusal): any other run is told no, as before, and the
       // refusal is still kept on it.
