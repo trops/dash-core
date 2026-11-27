@@ -73,3 +73,60 @@ export function needsTeamSetup(result) {
     (Array.isArray(bots.botsNeedSettings) && bots.botsNeedSettings.length > 0)
   );
 }
+
+/**
+ * After an install from the options dialog (DASH-130): "Install and open
+ * Set up" lands on the team's setup whenever a team came with it; "Install,
+ * fill in later" never does. With no choice made (an install that didn't
+ * come from the dialog, like the retry after signing in), it lands there
+ * only when something still needs filling in (DASH-118).
+ */
+export function opensTeamSetup(result, openSetup) {
+  if (openSetup === false) return false;
+  if (openSetup !== true) return needsTeamSetup(result);
+  const bots = result && result.summary && result.summary.bots;
+  return !!(
+    bots &&
+    !bots.error &&
+    result.workspace &&
+    result.workspace.id != null
+  );
+}
+
+/**
+ * The install dialog's buttons (mockup 8), after Cancel: with a team, a
+ * plain install ("Install, fill in later" while a required setting is
+ * still empty) and "Install and open Set up" (the main one).
+ * @returns {Array<{ title: string, openSetup: boolean|undefined, primary: boolean }>}
+ */
+export function installButtons({ hasTeam = false, missing = false } = {}) {
+  if (!hasTeam)
+    return [{ title: "Install", openSetup: undefined, primary: true }];
+  return [
+    {
+      title: missing ? "Install, fill in later" : "Install",
+      openSetup: false,
+      primary: false,
+    },
+    { title: "Install and open Set up", openSetup: true, primary: true },
+  ];
+}
+
+/**
+ * The install dialog's note while required settings are empty: the
+ * dashboard installs anyway, and what waits until they're filled in.
+ * `teamMissing` counts empty team settings, `botsWaiting` the bots with one
+ * of their own still empty. Null when nothing is missing.
+ */
+export function installWaitingText({ teamMissing = 0, botsWaiting = 0 } = {}) {
+  if (!teamMissing && !botsWaiting) return null;
+  const tail = "The team's Set up shows what's left.";
+  if (!teamMissing) {
+    const n = botsWaiting;
+    return `${n} bot${n === 1 ? "" : "s"} still need${n === 1 ? "s" : ""} settings. The dashboard installs, and ${n === 1 ? "that bot waits" : "those bots wait"} until ${n === 1 ? "it's" : "they're"} filled in. ${tail}`;
+  }
+  const what = botsWaiting
+    ? `Team settings and ${botsWaiting} bot${botsWaiting === 1 ? "" : "s"} still need filling in.`
+    : `${teamMissing} required team setting${teamMissing === 1 ? " is" : "s are"} still empty.`;
+  return `${what} The dashboard installs, but its team won't take work until they're filled in. ${tail}`;
+}

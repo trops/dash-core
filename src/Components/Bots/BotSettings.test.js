@@ -7,6 +7,9 @@ import {
   botsWithSettings,
   settingFromDraft,
   withBotInstallValues,
+  botInitials,
+  botsWaiting,
+  botsWaitingText,
 } from "./BotSettings";
 import { TeamImportReview } from "./TeamImportReview";
 import { DashboardInstallOptionsModal } from "../Settings/details/DashboardInstallOptionsModal";
@@ -256,6 +259,104 @@ describe("the install form's per-bot section", () => {
       name: "Factory",
       menuId: "1",
       teamValues: { "@bots": { "workspace-bot": { workFolder: "~/Factory" } } },
+      openSetup: false,
     });
+  });
+});
+
+describe("install cards and buttons (DASH-130)", () => {
+  const members = [
+    {
+      role: "workspace-bot",
+      name: "Workspace Bot",
+      settings: [WORK_FOLDER],
+    },
+    {
+      role: "notes",
+      name: "Notes",
+      settings: [{ name: "tag", label: "Tag", type: "text" }],
+    },
+  ];
+
+  it("initials, and how many bots still wait", () => {
+    expect(botInitials("Ticket Bot")).toBe("TB");
+    expect(botInitials("triage")).toBe("TR");
+    expect(botInitials("pr-bot")).toBe("PB");
+    expect(botInitials("")).toBe("?");
+    expect(botsWaiting(members, {})).toBe(1);
+    expect(
+      botsWaiting(members, { "workspace-bot": { workFolder: "~/F" } }),
+    ).toBe(0);
+    expect(botsWaitingText(0)).toBeNull();
+    expect(botsWaitingText(3)).toMatch(
+      /^3 bots still need settings\. The dashboard installs, and those bots wait/,
+    );
+  });
+
+  it("each card has the bot's initials and Required only when it has one", () => {
+    render(
+      <BotSettingsInstall bots={members} values={{}} onChange={() => {}} />,
+    );
+    expect(
+      screen.getAllByTestId("bot-settings-install-initials")[0],
+    ).toHaveTextContent("WB");
+    expect(
+      screen.getByTestId("bot-settings-install-workspace-bot-required"),
+    ).toHaveTextContent("Required");
+    expect(
+      screen.queryByTestId("bot-settings-install-notes-required"),
+    ).toBeNull();
+    expect(screen.getByText(/later on the team's Set up/)).toBeInTheDocument();
+  });
+
+  const renderModal = (onConfirm) =>
+    render(
+      <DashboardInstallOptionsModal
+        isOpen
+        setIsOpen={() => {}}
+        pkg={{ name: "factory", displayName: "Factory" }}
+        menuItems={[{ id: 1, name: "Work" }]}
+        onConfirm={onConfirm}
+        teamBots={members}
+      />,
+    );
+
+  it("installs with a required setting empty, saying what waits", () => {
+    const onConfirm = jest.fn();
+    renderModal(onConfirm);
+    expect(screen.getByTestId("install-waiting")).toHaveTextContent(
+      "1 bot still needs settings.",
+    );
+    // The form says it once, not twice.
+    expect(screen.queryByTestId("bot-settings-install-waiting")).toBeNull();
+    fireEvent.click(screen.getByText("Install, fill in later"));
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Factory", openSetup: false }),
+    );
+  });
+
+  it("Install and open Set up says so", () => {
+    const onConfirm = jest.fn();
+    renderModal(onConfirm);
+    fireEvent.click(screen.getByText("Install and open Set up"));
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ openSetup: true }),
+    );
+  });
+
+  it("a dashboard with no team has one Install button", () => {
+    const onConfirm = jest.fn();
+    render(
+      <DashboardInstallOptionsModal
+        isOpen
+        setIsOpen={() => {}}
+        pkg={{ name: "plain" }}
+        menuItems={[]}
+        onConfirm={onConfirm}
+      />,
+    );
+    expect(screen.queryByText("Install and open Set up")).toBeNull();
+    fireEvent.click(screen.getByText("Install"));
+    expect(onConfirm).toHaveBeenCalledWith({ name: "plain", menuId: null });
   });
 });

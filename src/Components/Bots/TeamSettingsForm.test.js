@@ -177,6 +177,7 @@ describe("installing a dashboard from the registry", () => {
       name: "Code Factory",
       menuId: "1",
       teamValues: { workFolder: "~/Factory" },
+      openSetup: false,
     });
   });
 

@@ -15,6 +15,8 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
  *   useRepoChecks(workspaceId)  the data and its actions
  *   RepoChecksRows              the rows, given useRepoChecks' result
  *   repoChecksSummary(data)     { shown, missing, closed } for the step
+ *
+ * PR links open in the browser (DASH-130).
  */
 
 const botsApi = () =>
@@ -26,6 +28,25 @@ export const STATE_TEXT = {
   "pr-closed": "Its PR was closed without merging",
   team: "This team only",
 };
+
+const openUrl = (url) => {
+  const shell = typeof window !== "undefined" && window.mainApi?.shell;
+  if (shell && shell.openExternal) shell.openExternal(url);
+};
+
+/** A PR's address as a link that opens in the browser (DASH-130). */
+export const PrLink = ({ url, className = "" }) => (
+  <a
+    href={url}
+    className={`underline ${className}`}
+    onClick={(e) => {
+      e.preventDefault();
+      openUrl(url);
+    }}
+  >
+    {url}
+  </a>
+);
 
 /** What the checklist's step needs: shown when the team has repos. */
 export function repoChecksSummary(data) {
@@ -96,9 +117,10 @@ export function useRepoChecks(workspaceId) {
     act(`setup:${key}`, async () => {
       const r = await botsApi().setUpRepoChecks(workspaceId, key);
       if (r && r.pr)
-        setNote(
-          `Opened ${r.pr.url}: setup and validate, tried in a fresh clone.`,
-        );
+        setNote({
+          url: r.pr.url,
+          text: ": setup and validate, tried in a fresh clone.",
+        });
       load();
       return r;
     });
@@ -114,7 +136,7 @@ export function useRepoChecks(workspaceId) {
 }
 
 export const RepoChecksRows = ({ data }) => {
-  const { muted } = useConfigTokens();
+  const { muted, accent } = useConfigTokens();
   if (!data) return null;
   const { repos, withChecks, checks, busy, note, setUp, resolve } = data;
   return (
@@ -156,7 +178,12 @@ export const RepoChecksRows = ({ data }) => {
             <span className="text-sm">{`.dash/checks/${c.file}`}</span>
             <span className={`text-xs ${muted}`}>
               {STATE_TEXT[c.state] || c.state}
-              {c.pr && c.pr.url ? ` · ${c.pr.url}` : ""}
+              {c.pr && c.pr.url ? (
+                <>
+                  {" · "}
+                  <PrLink url={c.pr.url} className={accent} />
+                </>
+              ) : null}
             </span>
           </span>
           {c.state === "pr-closed" ? (
@@ -175,7 +202,19 @@ export const RepoChecksRows = ({ data }) => {
           ) : null}
         </div>
       ))}
-      {note ? <span className="text-xs">{note}</span> : null}
+      {note ? (
+        <span className="text-xs" data-testid="team-checks-note">
+          {typeof note === "string" ? (
+            note
+          ) : (
+            <>
+              {"Opened "}
+              <PrLink url={note.url} className={accent} />
+              {note.text}
+            </>
+          )}
+        </span>
+      ) : null}
     </div>
   );
 };

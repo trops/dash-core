@@ -6,14 +6,19 @@ import {
   Button2,
   Button3,
   InputText,
+  SelectInput,
   getStylesForItem,
   themeObjects,
+  useStatusTokens,
 } from "@trops/dash-react";
-import { TeamSettingsForm } from "../../Bots/TeamSettingsForm";
+import { useConfigTokens } from "../../Dashboard/ConfigListRow";
+import { TeamSettingsForm, emptySettings } from "../../Bots/TeamSettingsForm";
 import {
   BotSettingsInstall,
+  botsWaiting,
   withBotInstallValues,
 } from "../../Bots/BotSettings";
+import { installButtons, installWaitingText } from "./dashboardBots";
 
 /**
  * DashboardInstallOptionsModal
@@ -53,8 +58,13 @@ import {
  *   Called when the user creates a new folder inline. Should persist
  *   via the existing `saveMenuItem` IPC. Returns the saved record so
  *   the modal can pick its id.
- * @param {({ name: string, menuId: any, teamValues?: object }) => void} onConfirm
- *   Called with the user's choices when they click Install.
+ * @param {({ name: string, menuId: any, teamValues?: object,
+ *            openSetup?: boolean }) => void} onConfirm
+ *   Called with the user's choices when they click Install. With a team
+ *   (DASH-130), `openSetup` says which button: true for "Install and open
+ *   Set up", false for "Install, fill in later". Required settings may be
+ *   left empty: the dialog says the team won't take work until they're
+ *   filled in, and the team's Set up shows what's left.
  * @param {object[]} [teamSettings]  the settings its team declares
  *   (DASH-57): filled in here, used by its bots as {name}.
  * @param {Array<{role, name, settings}>} [teamBots]  its bots that declare
@@ -72,6 +82,8 @@ export const DashboardInstallOptionsModal = ({
   teamBots = [],
 }) => {
   const { currentTheme } = useContext(ThemeContext);
+  const { muted, hairline } = useConfigTokens();
+  const status = useStatusTokens();
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
     grow: false,
   });
@@ -111,7 +123,24 @@ export const DashboardInstallOptionsModal = ({
     [menuItems],
   );
 
-  async function handleConfirm() {
+  const hasTeam = !!(
+    (teamSettings && teamSettings.length) ||
+    (teamBots && teamBots.length)
+  );
+  const teamMissing = emptySettings(teamSettings, teamValues).filter(
+    (s) => s && s.required,
+  ).length;
+  const waitingBots = botsWaiting(teamBots, botValues);
+  const waitingText = installWaitingText({
+    teamMissing,
+    botsWaiting: waitingBots,
+  });
+  const buttons = installButtons({
+    hasTeam,
+    missing: !!waitingText,
+  });
+
+  async function handleConfirm(openSetup) {
     setError(null);
     let menuId = selectedMenuId ? selectedMenuId : null;
 
@@ -149,8 +178,8 @@ export const DashboardInstallOptionsModal = ({
     onConfirm({
       name: (name || "").trim() || defaultName,
       menuId,
-      ...((teamSettings && teamSettings.length) || (teamBots && teamBots.length)
-        ? { teamValues: withBotInstallValues(teamValues, botValues) }
+      ...(hasTeam
+        ? { teamValues: withBotInstallValues(teamValues, botValues), openSetup }
         : {}),
     });
   }
@@ -161,7 +190,7 @@ export const DashboardInstallOptionsModal = ({
     <Modal
       isOpen={isOpen}
       setIsOpen={setIsOpen}
-      width="w-full max-w-md"
+      width="w-full max-w-xl"
       height="h-auto"
     >
       <div
@@ -169,7 +198,9 @@ export const DashboardInstallOptionsModal = ({
           panelStyles.backgroundColor || ""
         } ${panelStyles.borderColor || ""} ${panelStyles.textColor || ""}`}
       >
-        <div className="flex flex-row items-center justify-between p-4 border-b border-white/10">
+        <div
+          className={`flex flex-row items-center justify-between p-4 border-b ${hairline}`}
+        >
           <div className="flex items-center gap-3">
             <FontAwesomeIcon icon="download" className="h-4 w-4 opacity-70" />
             <span className="text-lg font-semibold">Install dashboard</span>
@@ -193,7 +224,7 @@ export const DashboardInstallOptionsModal = ({
               onChange={(v) => setName(v)}
               placeholder={defaultName}
             />
-            <span className="text-[10px] opacity-50">
+            <span className={`text-xs ${muted}`}>
               The local display name only. Doesn't change the published scope or
               package id.
             </span>
@@ -204,27 +235,26 @@ export const DashboardInstallOptionsModal = ({
             <label className="text-sm font-medium">Folder</label>
             {!newFolderMode ? (
               <div className="flex flex-row gap-2 items-center">
-                <select
-                  value={selectedMenuId}
-                  onChange={(e) => setSelectedMenuId(e.target.value)}
-                  className="flex-1 px-3 py-2 bg-gray-900 border border-white/10 rounded text-sm text-gray-200"
-                >
-                  {sortedFolders.length === 0 && (
-                    <option value="">— No folders yet —</option>
-                  )}
-                  {sortedFolders.map((m) => (
-                    <option key={m.id} value={String(m.id)}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
+                <div className="flex-1 min-w-0">
+                  <SelectInput
+                    ariaLabel="Folder"
+                    value={selectedMenuId}
+                    onChange={(v) => setSelectedMenuId(v)}
+                    options={
+                      sortedFolders.length
+                        ? sortedFolders.map((m) => ({
+                            value: String(m.id),
+                            label: m.name,
+                          }))
+                        : [{ value: "", label: "No folders yet" }]
+                    }
+                  />
+                </div>
+                <Button3
+                  title="+ New folder"
+                  size="sm"
                   onClick={() => setNewFolderMode(true)}
-                  className="px-3 py-2 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded transition-colors"
-                >
-                  + New
-                </button>
+                />
               </div>
             ) : (
               <div className="flex flex-row gap-2 items-center">
@@ -234,17 +264,15 @@ export const DashboardInstallOptionsModal = ({
                   placeholder="New folder name"
                   autoFocus
                 />
-                <button
-                  type="button"
+                <Button3
+                  title="Cancel"
+                  size="sm"
                   onClick={() => {
                     setNewFolderMode(false);
                     setNewFolderName("");
                     setError(null);
                   }}
-                  className="px-3 py-2 text-xs bg-gray-700 hover:bg-gray-600 text-gray-100 rounded transition-colors"
-                >
-                  Cancel
-                </button>
+                />
               </div>
             )}
           </div>
@@ -255,9 +283,9 @@ export const DashboardInstallOptionsModal = ({
               data-testid="install-team-settings"
             >
               <label className="text-sm font-medium">Team settings</label>
-              <span className="text-[10px] opacity-50">
+              <span className={`text-xs ${muted}`}>
                 Its bots use these in their instructions, checks and folders.
-                You can change them later in the team&apos;s setup: Team setup
+                Fill them in now or later on the team&apos;s Set up: Team setup
                 in the dashboard&apos;s Bots view, or Manage › Bots.
               </span>
               <TeamSettingsForm
@@ -272,6 +300,7 @@ export const DashboardInstallOptionsModal = ({
 
           <BotSettingsInstall
             bots={teamBots}
+            showWaiting={false}
             values={botValues}
             onChange={(role, n, v) =>
               setBotValues((prev) => ({
@@ -281,20 +310,40 @@ export const DashboardInstallOptionsModal = ({
             }
           />
 
+          {waitingText ? (
+            <div
+              className={`rounded-lg border px-3 py-2 text-sm ${status.info.border} ${status.info.bg} ${status.info.text}`}
+              data-testid="install-waiting"
+            >
+              {waitingText}
+            </div>
+          ) : null}
+
           {error && (
-            <div className="text-xs text-red-300 bg-red-900/30 border border-red-700/40 rounded px-3 py-2">
+            <div
+              role="alert"
+              className={`text-xs rounded-lg border px-3 py-2 ${status.error.border} ${status.error.bg} ${status.error.text}`}
+            >
               {error}
             </div>
           )}
         </div>
 
-        <div className="flex flex-row justify-end gap-2 p-4 border-t border-white/10">
+        <div
+          className={`flex flex-row flex-wrap justify-end gap-2 p-4 border-t ${hairline}`}
+        >
           <Button3 title="Cancel" onClick={() => setIsOpen(false)} />
-          <Button2
-            title={creating ? "Creating folder…" : "Install"}
-            onClick={handleConfirm}
-            disabled={creating || !name.trim()}
-          />
+          {buttons.map((b) => {
+            const Btn = b.primary ? Button2 : Button3;
+            return (
+              <Btn
+                key={b.title}
+                title={creating ? "Creating folder…" : b.title}
+                onClick={() => handleConfirm(b.openSetup)}
+                disabled={creating || !name.trim()}
+              />
+            );
+          })}
         </div>
       </div>
     </Modal>

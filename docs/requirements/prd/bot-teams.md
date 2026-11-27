@@ -1259,6 +1259,16 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 - [x] Leaving with unsaved settings asks first, the same way a bot's page does: picking another team or bot in the tree, a bot's "Open … settings ›", or switching to Log (BotsPage `guard`, TeamOverview `onDirtyChange` → `pageDirty`). The dialog says "Discard unsaved changes?" / "Your changes to this team's settings haven't been saved."; Discard drops them and goes on.
 - [x] A bot's own page keeps its existing guard (NAV-016); its Settings tab isn't changed here.
 
+## DASH-130: Install dialog and Checks panel polish (2026-11-27)
+
+**Status:** Implemented (mockup 8).
+
+- [x] The registry dashboard install (`Settings/details/DashboardInstallOptionsModal.js`) uses theme tokens throughout (`useConfigTokens`, `useStatusTokens`, dash-react `SelectInput` / `Button3`); no hard-coded grays or reds.
+- [x] Required settings are marked: team settings by `TeamSettingsForm`, and each bot's card in "Bots that need something from you" (`Bots/BotSettings.js` `BotSettingsInstall`) has the bot's initials (`botInitials`), its first setting's label and a **Required** mark. TeamImportReview shows the same cards.
+- [x] An install with required settings empty is allowed. The dialog says what waits ("3 bots still need settings. The dashboard installs, and those bots wait until they're filled in." or, for team settings, "…its team won't take work until they're filled in."), with `dashboardBots.installWaitingText`.
+- [x] With a team, the buttons are **Install, fill in later** (plain "Install" once nothing required is empty) and **Install and open Set up** (`dashboardBots.installButtons`). `onConfirm` gets `openSetup`; RegistryDashboardDetail lands on the team's setup per `dashboardBots.opensTeamSetup(result, openSetup)`: never for fill in later, always (when a team installed) for open Set up, and DASH-118's `needsTeamSetup` rule when no choice was made. A dashboard with no team keeps one Install button.
+- [x] Checks (DASH-120's Repo checks step, `Bots/TeamChecksPanel.js` `RepoChecksRows`): PR links, on a team check and in the "Opened …" note after Set up checks, open in the browser (`PrLink`, `mainApi.shell.openExternal`). "Always shown, a line per repo" came with DASH-120 (`withChecks`).
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams
@@ -1390,6 +1400,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.33    | 2026-11-27 | John   | DASH-120: "Set up this team" checklist at the top of the team page (bots' required settings edited in cards, Check setup with Go to it, repo checks, self-test); "How jobs run" with its two switches |
 | 1.34    | 2026-11-27 | John   | DASH-121: Run self-test waits for a passing Check setup, checks again, then opens its job; the item field's hint comes from the package; the setup status counts an untested change |
 | 1.35    | 2026-11-27 | John   | DASH-128: one save model on the team page (one unsaved bar for the bots' cards and the team's settings); leaving with unsaved settings asks "Discard unsaved changes?" |
+| 1.36    | 2026-11-27 | John   | DASH-130: install dialog in theme colours, Required marks and bot initials, "Install, fill in later" / "Install and open Set up"; clickable PR links in the repo checks |
 
 ---
 
