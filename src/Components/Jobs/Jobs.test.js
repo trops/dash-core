@@ -558,6 +558,19 @@ describe("what a step needs from you, on the job page (DASH-113)", () => {
           return { ok: true };
         }),
         resumeBot: jest.fn(async (id) => calls.resume.push(id)),
+        get: jest.fn(async (id) => ({
+          id,
+          name: "PR Bot",
+          workspaceId: "1",
+          checks: {
+            steps: [{ id: "step_you", kind: "you", name: "You approve" }],
+          },
+        })),
+        list: jest.fn(async () => []),
+        save: jest.fn(async (d) => {
+          calls.save = (calls.save || []).concat([d]);
+          return d;
+        }),
         onJobsChanged: jest.fn((fn) => {
           jobFns.push(fn);
           return "j";
@@ -695,7 +708,7 @@ describe("what a step needs from you, on the job page (DASH-113)", () => {
     expect(within(card).getByTestId("job-work")).toHaveTextContent(
       "Opened the plan.",
     );
-    fireEvent.click(within(card).getByRole("button", { name: "Send back…" }));
+    expect(card).toHaveTextContent("Your check: is PR Bot's work right?");
     fireEvent.change(within(card).getByRole("textbox"), {
       target: { value: "Smaller." },
     });
@@ -704,6 +717,71 @@ describe("what a step needs from you, on the job page (DASH-113)", () => {
       expect(calls.taskAction).toEqual([
         ["t1", { type: "send-back", reason: "Smaller." }],
       ]),
+    );
+  });
+
+  it("Edit <bot>'s checks opens its checks window over the job; Save returns to the same step (DASH-124)", async () => {
+    const { calls } = liveApi({
+      job: jobWith({ status: "needs-you", goalId: "g1" }),
+      goal: goalFor("ready"),
+    });
+    render(<JobsPage workspaces={WORKSPACES} />);
+    const card = await screen.findByTestId("job-waiting");
+    // The check it waits at, by name, in its step's checks too.
+    expect(card).toHaveTextContent('PR Bot\'s check "You approve"');
+    expect(screen.getByTestId("check-yours")).toHaveTextContent(
+      "You approve: waiting on you",
+    );
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Edit PR Bot's checks ›" }),
+    );
+    const modal = await screen.findByTestId("bot-checks-modal");
+    expect(within(modal).getByTestId("checks-footer-note")).toHaveTextContent(
+      "Changes apply from PR Bot's next run.",
+    );
+    // Only its checks change here.
+    expect(within(modal).queryByTestId("hands-on")).toBeNull();
+    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(screen.queryByTestId("bot-checks-modal")).toBeNull(),
+    );
+    expect(calls.save[0].id).toBe("pr");
+    expect(calls.save[0].checks).toBeTruthy();
+    // Still on the same step, still waiting on you.
+    expect(screen.getByTestId("job-waiting")).toBeInTheDocument();
+  });
+
+  it("the team page shows the same card, answered there (DASH-124)", async () => {
+    const { calls } = liveApi({
+      job: jobWith({ status: "needs-you", goalId: "g1" }),
+      goal: goalFor("ready"),
+      approvals: [
+        {
+          id: "a9",
+          request: { botId: "rev", toolName: "send", serverName: "Slack" },
+        },
+      ],
+    });
+    const { TeamNeedsYouCards } = require("./NeedsYouCards");
+    render(
+      <TeamNeedsYouCards
+        workspaceId="1"
+        bots={[
+          { id: "pr", name: "PR Bot" },
+          { id: "rev", name: "Reviewer" },
+        ]}
+      />,
+    );
+    const card = await screen.findByTestId("job-waiting");
+    expect(screen.getByTestId("needs-you-job")).toHaveTextContent("PR Bot");
+    fireEvent.click(within(card).getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(calls.taskAction).toEqual([["t1", "done"]]));
+    // A bot's tool approval outside a waiting step: its own card.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Always allow for Reviewer" }),
+    );
+    await waitFor(() =>
+      expect(calls.approve).toEqual([["a9", { allow: true, remember: true }]]),
     );
   });
 

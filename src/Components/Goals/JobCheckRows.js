@@ -11,6 +11,7 @@ import { Button3, FontAwesomeIcon, useStatusTokens } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useGoal } from "../../hooks/useGoals";
 import { jobBot, jobTimeline } from "./jobTimeline";
+import { youCheckOf } from "../Jobs/needsYouView";
 
 /** A check's output (its last lines) behind Show output. */
 export const CheckOutput = ({ output, exitCode = null, label = null }) => {
@@ -89,6 +90,8 @@ export const JobCheckRows = ({ goalId, goal: given = null, title = null }) => {
   const rows = goal ? checkRows(goal) : [];
   if (!rows.length) return null;
   const botName = jobBot(goal).name;
+  // The "You approve" check it waits at (DASH-124): its card is below.
+  const yours = youCheckOf(goal);
   return (
     <div className="flex flex-col gap-1.5 pt-1" data-testid="job-step-checks">
       {title ? (
@@ -194,6 +197,14 @@ export const JobCheckRows = ({ goalId, goal: given = null, title = null }) => {
           </Line>
         );
       })}
+      {yours ? (
+        <Line icon="hand" iconClass={status.warning.icon} testId="check-yours">
+          <span className={`text-xs ${strong}`}>
+            <span className="font-semibold">{yours.name}</span>
+            <span className={status.warning.text}>: waiting on you</span>
+          </span>
+        </Line>
+      ) : null}
     </div>
   );
 };

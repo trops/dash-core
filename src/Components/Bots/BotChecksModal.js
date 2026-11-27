@@ -78,6 +78,10 @@ const ToneIcon = ({ step }) => {
  * @param {object[]} wEdges    widgetEdges()
  * @param {(save) => Promise} onSave  { checks, adds, removes }
  * @param {() => void} onClose
+ * @param {boolean} [handsOn]  show "Hands on" (off when opened over a job:
+ *   only its checks change there, DASH-124)
+ * @param {string} [footerNote]  a line by the buttons ("Changes apply from
+ *   Planner's next run.")
  */
 export const BotChecksModal = ({
   bot,
@@ -86,6 +90,8 @@ export const BotChecksModal = ({
   wEdges = [],
   onSave,
   onClose,
+  handsOn = true,
+  footerNote = null,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
   const { muted, strong, hairline, fieldBg, selectedBg, selectedBorder } =
@@ -356,59 +362,61 @@ export const BotChecksModal = ({
               ) : null}
             </PanelSection>
 
-            <PanelSection label="Hands on" testId="hands-on">
-              <div className="flex flex-col gap-2">
-                <SegmentedControl
-                  ariaLabel="What it hands on"
-                  size="sm"
-                  value={draft.handsOn}
-                  onChange={(handsOn) => setDraft((d) => ({ ...d, handsOn }))}
-                  options={HANDS_ON_OPTIONS}
-                />
-                <div className="flex flex-row flex-wrap items-center gap-2">
-                  <span className={`text-sm ${muted}`}>to</span>
-                  {targets.map((t) => (
-                    <span
-                      key={t.key}
-                      className={`flex flex-row items-center gap-1 rounded-full border pl-3 pr-1 py-0.5 text-sm ${hairline}`}
-                    >
-                      <span>{t.name}</span>
-                      <ButtonIcon
-                        icon="xmark"
-                        size="xs"
-                        ariaLabel={`Stop handing on to ${t.name}`}
-                        onClick={() =>
-                          setTargets((list) =>
-                            list.filter((x) => x.key !== t.key),
-                          )
-                        }
-                      />
-                    </span>
-                  ))}
-                  {choices.length ? (
-                    <div className="w-56">
-                      <SelectInput
-                        ariaLabel="Hand on to"
-                        placeholder="+ Add"
-                        value=""
-                        options={choices.map((c) => ({
-                          value: c.key,
-                          label:
-                            c.type === "bot" ? c.name : `${c.name} (widget)`,
-                        }))}
-                        onChange={(key) => {
-                          const c = choices.find((x) => x.key === key);
-                          if (c) setTargets((list) => [...list, c]);
-                        }}
-                      />
-                    </div>
-                  ) : null}
+            {handsOn ? (
+              <PanelSection label="Hands on" testId="hands-on">
+                <div className="flex flex-col gap-2">
+                  <SegmentedControl
+                    ariaLabel="What it hands on"
+                    size="sm"
+                    value={draft.handsOn}
+                    onChange={(handsOn) => setDraft((d) => ({ ...d, handsOn }))}
+                    options={HANDS_ON_OPTIONS}
+                  />
+                  <div className="flex flex-row flex-wrap items-center gap-2">
+                    <span className={`text-sm ${muted}`}>to</span>
+                    {targets.map((t) => (
+                      <span
+                        key={t.key}
+                        className={`flex flex-row items-center gap-1 rounded-full border pl-3 pr-1 py-0.5 text-sm ${hairline}`}
+                      >
+                        <span>{t.name}</span>
+                        <ButtonIcon
+                          icon="xmark"
+                          size="xs"
+                          ariaLabel={`Stop handing on to ${t.name}`}
+                          onClick={() =>
+                            setTargets((list) =>
+                              list.filter((x) => x.key !== t.key),
+                            )
+                          }
+                        />
+                      </span>
+                    ))}
+                    {choices.length ? (
+                      <div className="w-56">
+                        <SelectInput
+                          ariaLabel="Hand on to"
+                          placeholder="+ Add"
+                          value=""
+                          options={choices.map((c) => ({
+                            value: c.key,
+                            label:
+                              c.type === "bot" ? c.name : `${c.name} (widget)`,
+                          }))}
+                          onChange={(key) => {
+                            const c = choices.find((x) => x.key === key);
+                            if (c) setTargets((list) => [...list, c]);
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                  <span className={`text-xs ${muted}`}>
+                    {`Nothing here is fine: then the checks only prove ${bot.name}'s own work. To send it to another widget, drag ${bot.name} onto it on the diagram.`}
+                  </span>
                 </div>
-                <span className={`text-xs ${muted}`}>
-                  {`Nothing here is fine: then the checks only prove ${bot.name}'s own work. To send it to another widget, drag ${bot.name} onto it on the diagram.`}
-                </span>
-              </div>
-            </PanelSection>
+              </PanelSection>
+            ) : null}
           </div>
 
           <aside
@@ -551,6 +559,13 @@ export const BotChecksModal = ({
               role="alert"
             >
               {error}
+            </span>
+          ) : footerNote ? (
+            <span
+              className={`flex-1 text-sm ${muted}`}
+              data-testid="checks-footer-note"
+            >
+              {footerNote}
             </span>
           ) : (
             <span className="flex-1" />

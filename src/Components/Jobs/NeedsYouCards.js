@@ -4,10 +4,11 @@
  * step timeline (JobsPage) and a bot's job opened from its activity
  * (BotJobDetail) — so they can't drift apart:
  *
- *   ApproveCard       a "you" check: its work, Approve / Send back (a note)
+ *   ApproveCard       a "You approve" check: its work, Approve / Send back
+ *                     (a note), Edit <bot>'s checks (DASH-124)
  *   AskCard           a handoff "ask": the question and an answer box
  *   CameCard          checks that need a look: Send it back / Close
- *   ToolApprovalCard  a tool approval: Allow once / Deny
+ *   ToolApprovalCard  a tool approval: Allow once / Always allow / Deny
  *   PausedCard        a paused bot: Resume
  *   GoalNeedsYouCard  a bot's checks job (a goal): whichever of the first
  *                     three it waits on, or nothing
@@ -15,6 +16,9 @@
  *   BlockedCard       a run its setup refused a command or tool: what,
  *                     why, the fix, and its settings at that section
  *                     (DASH-115)
+ *   BotPassedLine     another bot passed the check: a green line, no card
+ *   StepNeedsYou      a job step's cards (DASH-124: job, team, conversation)
+ *   TeamNeedsYouCards a team's waiting jobs and tool approvals as cards
  *
  *   useApprovals()    every pending tool approval, kept fresh on
  *                     onApprovalsChanged (no leaving or refreshing)
@@ -32,7 +36,20 @@ import { whenText } from "../Issues/issueText";
 import { ApprovalPreview } from "../Bots/ApprovalPreview";
 import { approvalText } from "../Bots/DashTeamApprovals";
 import { jobBot, jobTimeline } from "../Goals/jobTimeline";
-import { refusalSectionText } from "./jobText";
+import { jobTitleText, refusalSectionText } from "./jobText";
+import { useGoal } from "../../hooks/useGoals";
+import { useJobs } from "../../hooks/useJobs";
+import { JobChecksWindow } from "./JobChecksWindow";
+import {
+  botPassText,
+  botPassesOf,
+  canAlwaysAllow,
+  jobsNeedingYou,
+  looseApprovals,
+  youCheckLine,
+  youCheckOf,
+  youCheckTitle,
+} from "./needsYouView";
 
 const botsApi = () =>
   (typeof window !== "undefined" && window.mainApi && window.mainApi.bots) ||
@@ -60,76 +77,103 @@ const Head = ({ children }) => {
   );
 };
 
-/** A "you" check: the work being approved, Approve or Send back (a note). */
+/**
+ * A "you" check (DASH-124): there's no separate approver — the bot's
+ * check whose Who decides is "You approve" waits here. Its work, a note for
+ * the bot if you send it back, Approve / Send back, and "Edit <bot>'s
+ * checks ›" (the checks window over this page).
+ */
 export const ApproveCard = ({
   botName,
   work,
   since,
   now,
+  checkName = null,
   busy = false,
   onApprove,
   onSendBack,
+  onEditChecks = null,
 }) => {
   const { muted, strong, hairline, fieldBg } = useConfigTokens();
-  const [sending, setSending] = useState(false);
   const [reason, setReason] = useState("");
+  const line = [
+    youCheckLine(botName, checkName),
+    since ? `waiting since ${whenText(since, now)}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <Box testId="job-waiting">
-      <Head>
-        {`Waiting for you to approve${since ? ` · since ${whenText(since, now)}` : ""}`}
-      </Head>
-      {sending ? (
-        <TextArea
-          label={`Why? ${botName} gets this with its next try.`}
-          rows={2}
-          value={reason}
-          onChange={(v) => setReason(v)}
+      <div className="flex flex-col gap-0.5">
+        <Head>{youCheckTitle(botName)}</Head>
+        {line ? (
+          <span className={`text-xs ${muted}`} data-testid="job-waiting-check">
+            {line}
+          </span>
+        ) : null}
+      </div>
+      <div
+        data-testid="job-work"
+        className={`max-h-72 overflow-y-auto p-3 rounded-md border text-sm whitespace-pre-wrap ${hairline} ${fieldBg} ${strong}`}
+      >
+        {work || <span className={muted}>Its answer was empty.</span>}
+      </div>
+      <TextArea
+        label={`Note for ${botName} if you send it back`}
+        rows={2}
+        value={reason}
+        onChange={(v) => setReason(v)}
+      />
+      <div className="flex flex-row flex-wrap items-center gap-2">
+        {onEditChecks ? (
+          <Button3
+            title={`Edit ${botName}'s checks ›`}
+            size="sm"
+            onClick={() => onEditChecks()}
+          />
+        ) : null}
+        <span className="flex-1" />
+        <Button3
+          title="Send back"
+          size="sm"
+          disabled={busy || !reason.trim()}
+          onClick={() => onSendBack(reason.trim())}
         />
-      ) : (
-        <div
-          data-testid="job-work"
-          className={`max-h-72 overflow-y-auto p-3 rounded-md border text-sm whitespace-pre-wrap ${hairline} ${fieldBg} ${strong}`}
-        >
-          {work || <span className={muted}>Its answer was empty.</span>}
-        </div>
-      )}
-      <div className="flex flex-row items-center justify-end gap-2">
-        {sending ? (
-          <>
-            <Button3
-              title="Cancel"
-              size="sm"
-              onClick={() => {
-                setSending(false);
-                setReason("");
-              }}
-            />
-            <Button2
-              title="Send back"
-              size="sm"
-              danger
-              disabled={busy || !reason.trim()}
-              onClick={() => onSendBack(reason.trim())}
-            />
-          </>
-        ) : (
-          <>
-            <Button3
-              title="Send back…"
-              size="sm"
-              disabled={busy}
-              onClick={() => setSending(true)}
-            />
-            <Button
-              title="Approve"
-              size="sm"
-              disabled={busy}
-              onClick={() => onApprove()}
-            />
-          </>
-        )}
+        <Button
+          title="Approve"
+          size="sm"
+          disabled={busy}
+          onClick={() => onApprove()}
+        />
       </div>
     </Box>
+  );
+};
+
+/**
+ * Another bot passed the check ("A bot reviews"): a compact green line in
+ * place of a card — nothing needed from you.
+ */
+export const BotPassedLine = ({ goal }) => {
+  const { muted } = useConfigTokens();
+  const status = useStatusTokens();
+  const passes = botPassesOf(goal);
+  if (!passes.length) return null;
+  const botName = jobBot(goal).name;
+  return (
+    <div className="flex flex-col gap-1" data-testid="job-bot-passed">
+      {passes.map((p, i) => (
+        <div
+          key={i}
+          className={`flex flex-col gap-0.5 px-3 py-2 rounded-md border ${status.success.border} ${status.success.bg}`}
+        >
+          <span className={`text-sm ${status.success.text}`}>
+            {`✓ ${botPassText(p, botName)}`}
+          </span>
+          {p.said ? <span className={`text-xs ${muted}`}>{p.said}</span> : null}
+        </div>
+      ))}
+    </div>
   );
 };
 
@@ -202,21 +246,27 @@ export const CameCard = ({
   </Box>
 );
 
-/** A bot waiting on a tool approval: what it wants, Allow once or Deny. */
+/**
+ * A bot waiting on a tool approval: what it wants, Allow once, Always allow
+ * for <bot> (when it can be remembered), or Deny.
+ */
 export const ToolApprovalCard = ({
   approval,
   botName,
   busy = false,
+  allowAlways = true,
   onAnswer,
 }) => {
   const { muted } = useConfigTokens();
   const request = (approval && approval.request) || {};
+  const always = allowAlways && canAlwaysAllow(request);
+  const who = botName || "it";
   return (
     <Box testId="job-approval">
       <Head>{approvalText(request, botName)}</Head>
       <ApprovalPreview request={request} />
-      <span className={`text-xs ${muted}`}>
-        {`Its run waits for your answer. Allow once lets ${botName || "it"} do this now; Deny and it's told no.`}
+      <span className={`text-xs ${muted}`} data-testid="approval-means">
+        {`Its run waits for your answer. Allow once lets ${who} do this now${always ? `; Always allow lets ${who} do it again without asking` : ""}; Deny and it's told no.`}
       </span>
       <div className="flex flex-row flex-wrap items-center justify-end gap-2">
         <Button3
@@ -225,6 +275,14 @@ export const ToolApprovalCard = ({
           disabled={busy}
           onClick={() => onAnswer({ allow: false })}
         />
+        {always ? (
+          <Button3
+            title={`Always allow for ${botName || "this bot"}`}
+            size="sm"
+            disabled={busy}
+            onClick={() => onAnswer({ allow: true, remember: true })}
+          />
+        ) : null}
         <Button
           title="Allow once"
           size="sm"
@@ -264,7 +322,7 @@ export function goalNeedsYou(goal) {
   const tries = rows.filter((r) => r.type === "try").length;
   const bot = jobBot(goal);
   if (now.state === "waiting")
-    return { kind: "approve", now, task, bot, tries };
+    return { kind: "approve", now, task, bot, tries, check: youCheckOf(goal) };
   if (now.state === "needs-you" && now.asks)
     return { kind: "ask", now, task, bot, tries };
   if (now.state === "needs-you") return { kind: "came", now, task, bot, tries };
@@ -275,23 +333,38 @@ export function goalNeedsYou(goal) {
  * The card a bot's checks job waits on you with, or nothing. `onAction`
  * (taskId, action) is the goals' task move (goals.taskAction).
  */
-export const GoalNeedsYouCard = ({ goal, busy = false, onAction, now }) => {
+export const GoalNeedsYouCard = ({
+  goal,
+  busy = false,
+  onAction,
+  now,
+  editChecks = true,
+}) => {
+  const [editing, setEditing] = useState(false);
   const need = goalNeedsYou(goal);
   if (!need) return null;
   const { task, bot, tries } = need;
   if (need.kind === "approve") {
     return (
-      <ApproveCard
-        botName={bot.name}
-        work={need.now.work}
-        since={need.now.since}
-        now={now}
-        busy={busy}
-        onApprove={() => onAction(task.id, "done")}
-        onSendBack={(reason) =>
-          onAction(task.id, { type: "send-back", reason })
-        }
-      />
+      <>
+        <ApproveCard
+          botName={bot.name}
+          work={need.now.work}
+          since={need.now.since}
+          now={now}
+          checkName={need.check ? need.check.name : null}
+          busy={busy}
+          onApprove={() => onAction(task.id, "done")}
+          onSendBack={(reason) =>
+            onAction(task.id, { type: "send-back", reason })
+          }
+          onEditChecks={editChecks && bot.id ? () => setEditing(true) : null}
+        />
+        {/* Over this page; closing leaves you on the same step (4b). */}
+        {editing ? (
+          <JobChecksWindow botId={bot.id} onClose={() => setEditing(false)} />
+        ) : null}
+      </>
     );
   }
   if (need.kind === "ask") {
@@ -463,6 +536,211 @@ export const BlockedCard = ({ refusal, botId, botName }) => {
           onClick={() => openBotSettings(botId, refusal.section)}
         />
       </div>
+    </div>
+  );
+};
+
+const goalsApi = () =>
+  (typeof window !== "undefined" && window.mainApi && window.mainApi.goals) ||
+  null;
+
+const resume = (botId) => {
+  const api = botsApi();
+  if (api && api.resumeBot) return api.resumeBot(botId);
+  return null;
+};
+
+const ACTIVE_STEP = new Set(["running", "checking"]);
+
+/**
+ * What a job's step waits on you for, with its action (DASH-113/124): a
+ * "you" check, a handoff's question or checks that need a look (its goal,
+ * read live), a tool approval, or a paused bot. The same cards on the job,
+ * the team page and the conversation. `withApprovals`: false when the
+ * caller shows the tool approvals itself.
+ */
+export const StepNeedsYou = ({
+  step,
+  goal,
+  approvals,
+  refreshGoal,
+  withApprovals = true,
+}) => {
+  const { muted } = useConfigTokens();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const act = async (fn) => {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fn();
+      if (r && r.error) setError(r.error);
+    } catch (e) {
+      setError((e && e.message) || "That didn't work.");
+    } finally {
+      setBusy(false);
+      // It updates in place: read its goal again (its change also comes
+      // over goals:changed and the job's own change).
+      if (refreshGoal) refreshGoal();
+    }
+  };
+  const cards = [];
+  if (step.status === "needs-you" && step.waiting === "paused") {
+    cards.push(
+      <PausedCard
+        key="paused"
+        title={`${step.botName} is paused, so it hasn't started`}
+        resumeTitle={`Resume ${step.botName}`}
+        busy={busy}
+        onResume={() => act(() => resume(step.botId))}
+      />,
+    );
+  }
+  if (goal && goalNeedsYou(goal)) {
+    cards.push(
+      <GoalNeedsYouCard
+        key="goal"
+        goal={goal}
+        busy={busy}
+        onAction={(taskId, action) =>
+          act(() => {
+            const api = goalsApi();
+            return api && api.taskAction
+              ? api.taskAction(taskId, action)
+              : null;
+          })
+        }
+      />,
+    );
+  }
+  if (
+    withApprovals &&
+    (ACTIVE_STEP.has(step.status) || step.status === "needs-you")
+  ) {
+    cards.push(
+      <BotApprovals
+        key="approvals"
+        botId={step.botId}
+        botName={step.botName}
+        approvals={approvals}
+      />,
+    );
+  }
+  if (!cards.length) return null;
+  return (
+    <div className="flex flex-col gap-2 pt-1" data-testid="job-step-needs-you">
+      {cards}
+      {error ? (
+        <span className={`text-xs ${muted}`} role="alert">
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
+/** One job's needs-you step, away from the job: its title, then its cards. */
+const JobNeedsYouCard = ({ job, step, approvals, withApprovals }) => {
+  const { muted } = useConfigTokens();
+  const { goal, refresh } = useGoal(step.goalId || null);
+  useEffect(() => {
+    if (step.goalId) refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.status, step.summary]);
+  return (
+    <div className="flex flex-col gap-1" data-testid="needs-you-job">
+      <span className="flex flex-row flex-wrap items-center gap-2 text-xs">
+        <span
+          className={muted}
+        >{`${jobTitleText(job)} · ${step.botName}`}</span>
+        <Button3
+          title="Open the job"
+          size="sm"
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent("dash:open-page", {
+                detail: { page: "jobs", jobId: job.id },
+              }),
+            )
+          }
+        />
+      </span>
+      <StepNeedsYou
+        step={step}
+        goal={goal}
+        approvals={approvals}
+        refreshGoal={refresh}
+        withApprovals={withApprovals}
+      />
+    </div>
+  );
+};
+
+/**
+ * Everything a team waits on you for, as cards with their buttons
+ * (DASH-124): its jobs' needs-you steps (a "You approve" check, a
+ * question, a paused bot) and its bots' tool approvals. Renders nothing
+ * when nothing waits. Used by the team page banner and a lead's
+ * conversation.
+ *
+ * @param {string|number} [workspaceId]  the team's dashboard (its jobs)
+ * @param {string} [leadId]  only this lead's jobs
+ * @param {object[]} bots   the team's bots ({ id, name }), for approvals
+ * @param {object[]} [approvals]  every pending tool approval, when the
+ *   caller already reads them (else this reads them, live)
+ */
+export const TeamNeedsYouCards = ({
+  workspaceId = null,
+  leadId = null,
+  bots = [],
+  approvals: given = null,
+  testId = "team-needs-you",
+}) => {
+  const { jobs } = useJobs(workspaceId, {
+    open: true,
+    skip: workspaceId == null,
+  });
+  const own = useApprovals({ skip: !!given });
+  const approvals = given || own.approvals;
+  const reload = given ? () => {} : own.reload;
+  const [busy, setBusy] = useState(null);
+  const waiting = jobsNeedingYou(jobs, { leadId });
+  const loose = looseApprovals(
+    approvals,
+    (bots || []).map((b) => b && b.id),
+    waiting.map((w) => w.step.botId),
+  );
+  if (!waiting.length && !loose.length) return null;
+  const nameOf = (id) =>
+    ((bots || []).find((b) => b && String(b.id) === String(id)) || {}).name;
+  return (
+    <div className="flex flex-col gap-3" data-testid={testId}>
+      {waiting.map(({ job, step }) => (
+        <JobNeedsYouCard
+          key={job.id}
+          job={job}
+          step={step}
+          approvals={approvals}
+          withApprovals
+        />
+      ))}
+      {loose.map((a) => (
+        <ToolApprovalCard
+          key={a.id}
+          approval={a}
+          botName={nameOf(a.request.botId)}
+          busy={busy === a.id}
+          onAnswer={async (decision) => {
+            setBusy(a.id);
+            try {
+              await answerApproval(a.id, decision);
+            } finally {
+              setBusy(null);
+              reload();
+            }
+          }}
+        />
+      ))}
     </div>
   );
 };

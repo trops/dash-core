@@ -151,7 +151,7 @@ export const DashTeamApprovals = ({
               a.request.serverName &&
               a.request.serverName !== "dash-team-build" ? (
                 <Button3
-                  title="Always allow"
+                  title={`Always allow for ${(bot && bot.name) || "this bot"}`}
                   size="sm"
                   onClick={() => answer(a.id, { allow: true, remember: true })}
                 />

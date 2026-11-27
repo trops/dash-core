@@ -77,7 +77,9 @@ test("a Dash team bot's shell command shows before it's allowed", async () => {
 test("the team's build tools: Allow once or Deny — never a saved grant", async () => {
   mount([builderAsks]);
   await screen.findByTestId("dash-team-approval");
-  expect(screen.queryByRole("button", { name: "Always allow" })).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: /^Always allow for / }),
+  ).toBeNull();
 });
 
 test("Always allow and Deny send their answers", async () => {
@@ -87,7 +89,9 @@ test("Always allow and Deny send their answers", async () => {
       request: { ...builderAsks.request, serverName: "some-provider" },
     },
   ]);
-  fireEvent.click(await screen.findByRole("button", { name: "Always allow" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /^Always allow for / }),
+  );
   await waitFor(() =>
     expect(window.mainApi.bots.approve).toHaveBeenLastCalledWith("ap1", {
       allow: true,

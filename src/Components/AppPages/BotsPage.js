@@ -277,7 +277,7 @@ export const BotsPage = ({
         team={selTeam}
         statusOf={all.statusOf}
         spentOf={spentOf}
-        need={needs.find((n) => n.teamKey === selTeam.key) || null}
+        approvals={all.approvals}
         onPickBot={(id) => pickBot(id, selTeam.key)}
         onOpenConversation={() =>
           openWorkspace(
