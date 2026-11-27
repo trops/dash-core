@@ -228,6 +228,32 @@ describe("botController: Test team and the untested marker", () => {
     assert.match(ran[0].o.prompt, /^Self-test: work on DASH-97/);
   });
 
+  it("a bad setup (an expired AI login) fails the test job with a Setup check step (DASH-114)", async () => {
+    const { self, ran } = fake();
+    self.setTestItem("w", { id: "DASH-97", title: "Slugs" });
+    const steps = [];
+    self._jobs.startStep = (id, st) => steps.push({ id, ...st });
+    self._jobs.endStep = (id, { record }) =>
+      Object.assign(steps[steps.length - 1], record);
+    self._setupBeforeJob = async () => ({
+      ok: false,
+      problems: [
+        {
+          kind: "ai-login",
+          message:
+            "Ticket Bot runs on Claude Code, which isn't logged in: run `claude auth login` in a terminal, then try again",
+        },
+      ],
+    });
+    const r = await self.testTeam("w");
+    assert.equal(r.jobId, "job_1");
+    await new Promise((res) => setImmediate(res));
+    assert.equal(ran.length, 0);
+    assert.equal(steps[0].botName, "Setup check");
+    assert.equal(steps[0].status, "failed");
+    assert.match(steps[0].error, /claude auth login/);
+  });
+
   it("a change marks the team untested", () => {
     const { self, teams } = fake();
     assert.equal(self.untested("w"), null);

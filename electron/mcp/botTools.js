@@ -325,7 +325,7 @@ const BOT_TOOLS = [
     name: "check_team_setup",
     defaultOff: true,
     description:
-      "Check a team's setup without running anything (DASH-108): every provider its bots use starts and answers, every setting they use has a value, each repo in its tables can be read (and pushed to, when a bot pushes) with the GitHub provider's token, and every repo check a step names is on the repo's base branch. Returns ok and each problem with its fix. A team with the standard handoff runs this before each new job, and doesn't start one that fails. Run it after changing a team.",
+      "Check a team's setup without running anything (DASH-108): every provider its bots use starts and answers, the AI each bot runs on (and the default) is signed in (an expired Claude login says to run `claude auth login`), every setting they use has a value, each repo in its tables can be read (and pushed to, when a bot pushes) with the GitHub provider's token, and every repo check a step names is on the repo's base branch. Returns ok and each problem with its fix. A team with the standard handoff runs this before each new job, and doesn't start one that fails. Run it after changing a team.",
     inputSchema: {
       type: "object",
       properties: {
