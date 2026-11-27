@@ -1,17 +1,17 @@
 import React, { useEffect, useState } from "react";
-import {
-  Button,
-  Button2,
-  Button3,
-  FontAwesomeIcon,
-  TextArea,
-  useStatusTokens,
-} from "@trops/dash-react";
+import { Button3, FontAwesomeIcon, useStatusTokens } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { whenText } from "../Issues/issueText";
 import { diagramWidgets, widgetEdges } from "../Bots/widgetDiagram";
 import { handsOnTargets } from "../Bots/checksView";
 import { CheckOutput } from "./JobCheckRows";
+import {
+  BotApprovals,
+  GoalNeedsYouCard,
+  PausedCard,
+  approvalsOf,
+  useApprovals,
+} from "../Jobs/NeedsYouCards";
 import {
   durationText,
   eventText,
@@ -104,121 +104,6 @@ const Row = ({ icon, iconClass, testId, children, last = false }) => {
   );
 };
 
-/** The work being approved, with Approve and Send back (with a reason). */
-const Waiting = ({ row, task, bot, busy, onAction, now }) => {
-  const { muted, strong, hairline, fieldBg } = useConfigTokens();
-  const status = useStatusTokens();
-  const [sending, setSending] = useState(false);
-  const [reason, setReason] = useState("");
-  return (
-    <div
-      data-testid="job-waiting"
-      className={`flex flex-col gap-3 p-4 rounded-lg border ${status.warning.accentBorder} ${status.warning.bg}`}
-    >
-      <span className={`text-sm font-semibold ${status.warning.strongText}`}>
-        {`Waiting for you to approve · since ${whenText(row.since, now)}`}
-      </span>
-      {sending ? (
-        <TextArea
-          label={`Why? ${bot} gets this with its next try.`}
-          rows={2}
-          value={reason}
-          onChange={(v) => setReason(v)}
-        />
-      ) : (
-        <div
-          data-testid="job-work"
-          className={`max-h-72 overflow-y-auto p-3 rounded-md border text-sm whitespace-pre-wrap ${hairline} ${fieldBg} ${strong}`}
-        >
-          {row.work || <span className={muted}>Its answer was empty.</span>}
-        </div>
-      )}
-      <div className="flex flex-row items-center justify-end gap-2">
-        {sending ? (
-          <>
-            <Button3
-              title="Cancel"
-              size="sm"
-              onClick={() => {
-                setSending(false);
-                setReason("");
-              }}
-            />
-            <Button2
-              title="Send back"
-              size="sm"
-              danger
-              disabled={busy || !reason.trim()}
-              onClick={() =>
-                onAction(task.id, { type: "send-back", reason: reason.trim() })
-              }
-            />
-          </>
-        ) : (
-          <>
-            <Button3
-              title="Send back…"
-              size="sm"
-              disabled={busy}
-              onClick={() => setSending(true)}
-            />
-            <Button
-              title="Approve"
-              size="sm"
-              disabled={busy}
-              onClick={() => onAction(task.id, "done")}
-            />
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-
-/**
- * Its bot asked a question in its handoff (DASH-101): the question, an
- * answer box (the answer goes back to the bot, which goes on), and Close.
- */
-const Asking = ({ row, task, bot, busy, onAction }) => {
-  const status = useStatusTokens();
-  const [answer, setAnswer] = useState("");
-  return (
-    <div
-      data-testid="job-asking"
-      className={`flex flex-col gap-3 p-4 rounded-lg border ${status.warning.accentBorder} ${status.warning.bg}`}
-    >
-      <span className={`text-sm font-semibold ${status.warning.strongText}`}>
-        {`${bot} asks you`}
-      </span>
-      <span className="text-sm whitespace-pre-wrap" data-testid="job-question">
-        {row.asks}
-      </span>
-      <TextArea
-        label={`Your answer. ${bot} gets it and goes on.`}
-        rows={2}
-        value={answer}
-        onChange={(v) => setAnswer(v)}
-      />
-      <div className="flex flex-row items-center justify-end gap-2">
-        <Button3
-          title="Close it (it fails)"
-          size="sm"
-          disabled={busy}
-          onClick={() => onAction(task.id, "close")}
-        />
-        <Button
-          title="Send answer"
-          size="sm"
-          disabled={busy || !answer.trim()}
-          onClick={() =>
-            onAction(task.id, { type: "answer", reason: answer.trim() })
-          }
-        />
-      </div>
-    </div>
-  );
-};
-
 /**
  * BotJobDetail — a bot's job in Jobs (bot-checks PRD CHK-003, frame 4),
  * read top to bottom like a pull request: who asked, each try with its
@@ -237,6 +122,7 @@ export const BotJobDetail = ({
   const [openTry, setOpenTry] = useState(null);
   const bots = useDashboardBots(goal && goal.workspaceId);
   const pause = useBotPaused(jobBot(goal).id, goal);
+  const { approvals } = useApprovals();
   if (!goal) return null;
   const nameOf = (id) => (bots.find((b) => b.id === id) || {}).name || null;
   const rows = jobTimeline(goal, { nameOf });
@@ -404,61 +290,20 @@ export const BotJobDetail = ({
 
   const current = (() => {
     const r = nowRow;
-    if (r.state === "waiting" && task) {
+    // What it waits on you for: the same cards as the Jobs page (DASH-113).
+    if ((r.state === "waiting" || r.state === "needs-you") && task) {
       return (
-        <Row icon="user-check" iconClass={status.warning.icon} testId="job-now">
-          <Waiting
-            row={r}
-            task={task}
-            bot={bot.name}
+        <Row
+          icon={r.state === "waiting" ? "user-check" : "hand"}
+          iconClass={status.warning.icon}
+          testId="job-now"
+        >
+          <GoalNeedsYouCard
+            goal={goal}
             busy={busy}
             onAction={onAction}
             now={now}
           />
-        </Row>
-      );
-    }
-    if (r.state === "needs-you" && task && r.asks) {
-      return (
-        <Row icon="hand" iconClass={status.warning.icon} testId="job-now">
-          <Asking
-            row={r}
-            task={task}
-            bot={bot.name}
-            busy={busy}
-            onAction={onAction}
-          />
-        </Row>
-      );
-    }
-    if (r.state === "needs-you" && task) {
-      return (
-        <Row icon="hand" iconClass={status.warning.icon} testId="job-now">
-          <div
-            className={`flex flex-col gap-2 p-4 rounded-lg border ${status.warning.accentBorder} ${status.warning.bg}`}
-          >
-            <span
-              className={`text-sm font-semibold ${status.warning.strongText}`}
-            >
-              {r.failed
-                ? `Waiting for you · it didn't pass on try ${Math.max(1, tries)}`
-                : "Waiting for you"}
-            </span>
-            <div className="flex flex-row flex-wrap gap-2">
-              <Button2
-                title={`Send it back to ${bot.name}`}
-                size="sm"
-                disabled={busy}
-                onClick={() => onAction(task.id, "one-more-round")}
-              />
-              <Button3
-                title="Close it (it fails)"
-                size="sm"
-                disabled={busy}
-                onClick={() => onAction(task.id, "close")}
-              />
-            </div>
-          </div>
         </Row>
       );
     }
@@ -471,20 +316,28 @@ export const BotJobDetail = ({
           testId="job-now"
           last={false}
         >
-          <div className="flex flex-col gap-2">
-            <span className={`text-sm font-semibold ${strong}`}>
-              {`Waiting: ${
-                pause.all ? "all bots are" : `${bot.name} is`
-              } paused, so try ${tries + 1} hasn't started`}
-            </span>
-            <div>
-              <Button2
-                title={pause.all ? "Resume all bots" : `Resume ${bot.name}`}
-                size="sm"
-                onClick={() => pause.resume()}
-              />
-            </div>
-          </div>
+          <PausedCard
+            title={`Waiting: ${
+              pause.all ? "all bots are" : `${bot.name} is`
+            } paused, so try ${tries + 1} hasn't started`}
+            resumeTitle={pause.all ? "Resume all bots" : `Resume ${bot.name}`}
+            onResume={() => pause.resume()}
+          />
+        </Row>
+      );
+    }
+    // A tool its run asks you to allow (DASH-113).
+    if (
+      (r.state === "working" || r.state === "checking") &&
+      approvalsOf(approvals, bot.id).length
+    ) {
+      return (
+        <Row icon="hand" iconClass={status.warning.icon} testId="job-now">
+          <BotApprovals
+            botId={bot.id}
+            botName={bot.name}
+            approvals={approvals}
+          />
         </Row>
       );
     }

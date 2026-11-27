@@ -15,6 +15,14 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useJob, useJobs } from "../../hooks/useJobs";
 import { openRunConversation } from "../Bots/runConversation";
 import { JobCheckRows } from "../Goals/JobCheckRows";
+import { useGoal } from "../../hooks/useGoals";
+import {
+  BotApprovals,
+  GoalNeedsYouCard,
+  PausedCard,
+  goalNeedsYou,
+  useApprovals,
+} from "./NeedsYouCards";
 import {
   JOB_STATUS,
   STEP_STATUS,
@@ -26,6 +34,8 @@ import {
   skippedLines,
   workspaceText,
   jobCounts,
+  needsYouStep,
+  needsYouText,
   queueText,
   startedByText,
   statusTone,
@@ -131,17 +141,114 @@ export const JobRow = ({ job, active = false, onClick, now }) => {
 
 const resume = (botId) => {
   const api = botsApi();
-  if (api && api.resumeBot) api.resumeBot(botId);
+  if (api && api.resumeBot) return api.resumeBot(botId);
+  return null;
 };
 
+const goalsApi = () =>
+  (typeof window !== "undefined" && window.mainApi && window.mainApi.goals) ||
+  null;
+
+/** The DOM id of a step, for the header's link to it. */
+export const stepAnchor = (step) => `job-step-${step.id}`;
+
+/**
+ * What a step waits on you for, with its action (DASH-113): a "you" check,
+ * a handoff's question or checks that need a look (its goal, read live),
+ * a tool approval, or a paused bot. The same cards as a bot's job view.
+ */
+const StepNeedsYou = ({ step, goal, approvals, refreshGoal }) => {
+  const { muted } = useConfigTokens();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const act = async (fn) => {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fn();
+      if (r && r.error) setError(r.error);
+    } catch (e) {
+      setError((e && e.message) || "That didn't work.");
+    } finally {
+      setBusy(false);
+      // It updates in place: read its goal again (its change also comes
+      // over goals:changed and the job's own change).
+      if (refreshGoal) refreshGoal();
+    }
+  };
+  const cards = [];
+  if (step.status === "needs-you" && step.waiting === "paused") {
+    cards.push(
+      <PausedCard
+        key="paused"
+        title={`${step.botName} is paused, so it hasn't started`}
+        resumeTitle={`Resume ${step.botName}`}
+        busy={busy}
+        onResume={() => act(() => resume(step.botId))}
+      />,
+    );
+  }
+  if (goal && goalNeedsYou(goal)) {
+    cards.push(
+      <GoalNeedsYouCard
+        key="goal"
+        goal={goal}
+        busy={busy}
+        onAction={(taskId, action) =>
+          act(() => {
+            const api = goalsApi();
+            return api && api.taskAction
+              ? api.taskAction(taskId, action)
+              : null;
+          })
+        }
+      />,
+    );
+  }
+  if (ACTIVE_STEP.has(step.status) || step.status === "needs-you") {
+    cards.push(
+      <BotApprovals
+        key="approvals"
+        botId={step.botId}
+        botName={step.botName}
+        approvals={approvals}
+      />,
+    );
+  }
+  if (!cards.length) return null;
+  return (
+    <div className="flex flex-col gap-2 pt-1" data-testid="job-step-needs-you">
+      {cards}
+      {error ? (
+        <span className={`text-xs ${muted}`} role="alert">
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
+const ACTIVE_STEP = new Set(["running", "checking"]);
+
 /** One step of a job's timeline, with what can be done about it. */
-const JobStep = ({ job, step, last }) => {
+const JobStep = ({ job, step, last, approvals = [] }) => {
   const { muted, strong, hairline, fieldBg } = useConfigTokens();
+  // Its checks job, read live (goals:changed), and again whenever the
+  // job's step moves — so a step that starts waiting shows its action.
+  const { goal, refresh: refreshGoal } = useGoal(step.goalId || null);
+  useEffect(() => {
+    if (step.goalId) refreshGoal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.status, step.summary]);
   const why = whyText(step.why);
   const inLead =
     step.botId === job.leadId || (step.why && step.why.kind === "asked");
   return (
-    <div className="flex flex-row gap-3" data-testid="job-step">
+    <div
+      className="flex flex-row gap-3"
+      data-testid="job-step"
+      id={stepAnchor(step)}
+    >
       <span className="flex flex-col items-center">
         <JobDot status={step.status} className="mt-1.5" />
         {last ? null : <span className={`flex-1 border-l ${hairline} mt-1`} />}
@@ -165,15 +272,14 @@ const JobStep = ({ job, step, last }) => {
             {step.summary}
           </span>
         ) : null}
-        {step.goalId ? <JobCheckRows goalId={step.goalId} /> : null}
+        {goal ? <JobCheckRows goal={goal} /> : null}
+        <StepNeedsYou
+          step={step}
+          goal={goal}
+          approvals={approvals}
+          refreshGoal={refreshGoal}
+        />
         <span className="flex flex-row flex-wrap gap-2">
-          {step.status === "needs-you" && step.waiting === "paused" ? (
-            <Button
-              title={`Turn on ${step.botName}`}
-              size="sm"
-              onClick={() => resume(step.botId)}
-            />
-          ) : null}
           {step.goalId ? (
             <Button3
               title="See checks"
@@ -222,12 +328,39 @@ const JobStep = ({ job, step, last }) => {
   );
 };
 
+/** Scroll to a step of the open job. */
+function goToStep(step) {
+  if (typeof document === "undefined") return;
+  const el = document.getElementById(stepAnchor(step));
+  if (el && typeof el.scrollIntoView === "function") {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+/** "Needs you · Drafter asks you a question", and a link to that step. */
+const NeedsYouHeader = ({ text, onGo }) => {
+  const status = useStatusTokens();
+  return (
+    <div
+      data-testid="job-needs-you"
+      className={`self-start flex flex-row flex-wrap items-center gap-2 px-3 py-1.5 rounded-md border text-sm ${status.warning.accentBorder} ${status.warning.bg}`}
+    >
+      <span className={`font-semibold ${status.warning.strongText}`}>
+        {`Needs you · ${text}`}
+      </span>
+      <Button3 title="Go to it" size="sm" onClick={onGo} />
+    </div>
+  );
+};
+
 /** A job's detail: who started it, each step, Stop and Delete. */
 export const JobDetail = ({ job: listed, dashboardName = null }) => {
   const { muted, strong } = useConfigTokens();
   // The list's copy has no step summaries; this one does.
   const { job: full } = useJob(listed && listed.id);
   const job = full && full.id === listed.id ? full : listed;
+  // Tool approvals its bots wait on, live (DASH-113).
+  const { approvals } = useApprovals();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [note, setNote] = useState("");
   useEffect(() => {
@@ -237,6 +370,7 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
   if (!job) return null;
   const going = job.status === "running" || job.status === "needs-you";
   const steps = job.steps || [];
+  const needs = needsYouStep(job, approvals);
   return (
     <div className="flex flex-col gap-4" data-testid="job-detail">
       <div className="flex flex-col gap-1">
@@ -246,6 +380,12 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
           </span>
           <JobBadge status={job.status} />
         </span>
+        {needs ? (
+          <NeedsYouHeader
+            text={needsYouText(needs, approvals)}
+            onGo={() => goToStep(needs)}
+          />
+        ) : null}
         {job.item && job.item.url ? (
           <button
             type="button"
@@ -299,6 +439,7 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
               job={job}
               step={s}
               last={i === steps.length - 1}
+              approvals={approvals}
             />
           ))
         ) : job.status === "queued" ? (
