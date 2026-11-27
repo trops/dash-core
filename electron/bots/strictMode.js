@@ -24,7 +24,7 @@
  */
 "use strict";
 
-const { commandDecision } = require("../checks/commandRules");
+const { BASICS, commandDecision } = require("../checks/commandRules");
 
 const REFUSED_LINE =
   "Anything else is refused. If your task needs something not listed, stop and end your answer failed with what you needed. Don't try another way and don't ask.";
@@ -70,6 +70,12 @@ function capabilitiesBlock({
     "Shell commands (each covers the command and anything after it):",
     ...(cmds.length ? cmds.map((c) => `- ${c}`) : ["- none"]),
   );
+  if (cmds.length) {
+    lines.push(
+      `Also inside your folders: ${BASICS.join(", ")}, and 2>/dev/null or 2>&1.`,
+      "Run one command per call: no &&, ;, || or |. The shell keeps its folder between calls.",
+    );
+  }
   const dirs = builtins === "none" ? [] : strings(folders);
   lines.push(
     "Folders (its file tools and commands work only inside these):",

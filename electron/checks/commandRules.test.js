@@ -95,3 +95,75 @@ describe("commandDecision", () => {
     );
   });
 });
+
+describe("a strict bot's basics (DASH-140)", () => {
+  const lists = { allowed: ["mkdir -p", "git clone", "npm"] };
+  const strict = (c) => commandDecision(c, lists, { basics: true });
+
+  it("runs the basics and quiet redirects with its own list", () => {
+    for (const c of [
+      "cd /Users/x/DashFactory",
+      "ls DASH-97 2>/dev/null",
+      "ls -la",
+      "pwd",
+      "test -d DASH-97",
+      "[ -e DASH-97 ]",
+      "head -5 package.json",
+      "npm ci 2>&1",
+      "npm test >/dev/null",
+      "mkdir -p /Users/x/DashFactory",
+    ]) {
+      assert.equal(strict(c).decision, "allowed", c);
+    }
+  });
+
+  it("refuses a chained command, even of allowed parts", () => {
+    for (const c of [
+      "mkdir -p ~/DashFactory && cd ~/DashFactory && ls DASH-97 2>/dev/null | head -1",
+      "cd x && npm ci",
+      "ls; pwd",
+      "ls | head",
+      "npm test || true",
+    ]) {
+      const d = strict(c);
+      assert.equal(d.decision, "ask", c);
+      assert.equal(d.chained, true, c);
+    }
+  });
+
+  it("still can't see into other redirection or substitution", () => {
+    for (const c of [
+      "echo x > file",
+      "ls >> out.txt",
+      "echo $(cat ~/.ssh/id_rsa)",
+      "cat < secrets",
+      "ls 2>/dev/nullx",
+    ]) {
+      assert.equal(strict(c).decision, "ask", c);
+      assert.notEqual(strict(c).chained, true, c);
+    }
+  });
+
+  it("refuses .. in the basics", () => {
+    assert.equal(strict("ls ../..").decision, "ask");
+    assert.equal(strict("head ../../.ssh/config").decision, "ask");
+  });
+
+  it("is off for other bots: they work exactly as before", () => {
+    assert.equal(commandDecision("ls", lists).decision, "ask");
+    assert.equal(commandDecision("npm ci 2>&1", lists).decision, "ask");
+    assert.equal(
+      commandDecision("mkdir -p x && npm ci", lists).decision,
+      "allowed",
+    );
+    assert.equal(
+      commandDecision("mkdir -p x && npm ci", lists).chained,
+      undefined,
+    );
+  });
+
+  it("never lets an always-blocked command through", () => {
+    assert.equal(strict("rm -rf x").decision, "blocked");
+    assert.equal(strict("git push --force").decision, "blocked");
+  });
+});

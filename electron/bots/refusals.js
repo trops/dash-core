@@ -64,7 +64,7 @@ const SECTION_WORDS = {
  *   reason: "always-blocked" | "blocked-list" | "not-allowed" |
  *           "outside-folders" | "no-folders" | "no-builtins" | "read-only" |
  *           "not-available" | "not-its-tool" | "not-its-provider" |
- *           "provider-missing"
+ *           "provider-missing" | "chained"
  */
 function makeRefusal(r = {}) {
   const bot = r.botName || "This bot";
@@ -94,6 +94,12 @@ function makeRefusal(r = {}) {
       fix =
         "Add it on the bot's Commands, or give it a provider tool that does this.";
       section = "commands";
+      break;
+    case "chained":
+      why = "a strict bot runs one command per call (no &&, ;, || or |)";
+      fix =
+        "Change the bot's instructions so it runs each step as its own command.";
+      section = "instructions";
       break;
     case "outside-folders":
       why = `${r.detail ? `${r.detail} is` : "it's"} outside the bot's folders (${r.folders || "none"})`;

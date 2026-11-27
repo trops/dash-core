@@ -118,15 +118,51 @@ function blockedBy(command) {
 // What the split can't see into: never allowed without asking.
 const OPAQUE = /(^|[^&])&([^&]|$)|\n|\$\(|`|[<>]|\$\{/;
 
+// A strict bot's basics (DASH-140): steps that only look around, allowed
+// with its own list. Paths stay fenced: the folder fence still refuses an
+// absolute or home path outside its folders, and a ".." here is refused.
+const BASICS = [
+  "cd",
+  "pwd",
+  "ls",
+  "test",
+  "[",
+  "head",
+  "tail",
+  "wc",
+  "echo",
+  "true",
+];
+// Output thrown away (2>/dev/null, &>/dev/null) or joined (2>&1): taken out
+// before the opaque test. Any other redirection still can't run.
+const QUIET =
+  /\s*(?:\d?>>?|&>>?)\s*\/dev\/null(?=\s|$|[;&|)])|\s*\d?>&\d(?=\s|$|[;&|)])/g;
+
+/** A command with its quiet redirects taken out (DASH-140). */
+function withoutQuiet(command) {
+  return String(command || "").replace(QUIET, "");
+}
+
+/** One of the basics, with no ".." in its words. */
+function isBasic(part) {
+  const w = words(part);
+  if (!BASICS.includes(w[0] || "")) return false;
+  return !w.slice(1).some((x) => x.split(/[\\/]/).includes(".."));
+}
+
 /**
  * A command against a bot's own lists: blocked (always, or the bot's own
  * blocked list), allowed (every part on its allowed list), or ask.
  * @param {string} command
  * @param {{ allowed?: string[], blocked?: string[] }} lists  prefixes
+ * @param {{ basics?: boolean }} [opts]  basics: a strict bot's (DASH-140):
+ *   cd, ls, head… and quiet redirects pass with its allowed list, and a
+ *   chained command (&&, ||, ;, |) comes back { decision: "ask", chained }
  * @returns {{ decision: "blocked"|"allowed"|"ask", reason?: string,
  *            always?: string, rule?: string }}
  */
-function commandDecision(command, lists = {}) {
+function commandDecision(command, lists = {}, opts = {}) {
+  const basics = !!(opts && opts.basics);
   const c = String(command || "").trim();
   const always = blockedBy(c);
   if (always) {
@@ -155,9 +191,15 @@ function commandDecision(command, lists = {}) {
   const allowed = (lists.allowed || [])
     .map((x) => String(x).trim())
     .filter(Boolean);
-  if (!allowed.length || !parts.length || OPAQUE.test(c))
+  const seen = basics ? withoutQuiet(c).trim() : c;
+  const seenParts = basics ? partsOf(seen) : parts;
+  if (!allowed.length || !seenParts.length || OPAQUE.test(seen))
     return { decision: "ask" };
-  const all = parts.every((p) => {
+  // A strict bot runs one command per call (DASH-140): each step is seen
+  // and checked on its own.
+  if (basics && seenParts.length > 1) return { decision: "ask", chained: true };
+  const all = seenParts.every((p) => {
+    if (basics && isBasic(p)) return true;
     const w = words(p);
     // git's own config options can run anything: never on an allowed list.
     if (
@@ -173,4 +215,4 @@ function commandDecision(command, lists = {}) {
   return all ? { decision: "allowed" } : { decision: "ask" };
 }
 
-module.exports = { blockedBy, commandDecision, partsOf };
+module.exports = { BASICS, blockedBy, commandDecision, partsOf };

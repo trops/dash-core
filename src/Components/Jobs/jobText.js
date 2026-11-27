@@ -285,6 +285,7 @@ const SECTION_WORDS = {
   folders: "Folders",
   tools: "Built-in tools",
   providers: "Providers",
+  instructions: "Instructions",
 };
 
 /** A refusal's settings section, in words: "Commands" (DASH-115). */

@@ -356,7 +356,10 @@ function _makeCanUseTool(runCtx) {
       if (!ctx.strict && unattended && rmInside(fence, input.command)) {
         return { behavior: "allow", updatedInput: input };
       }
-      const d = commandDecision(input.command, ctx.commands || {});
+      // A strict bot's basics (DASH-140): cd, ls, head… and quiet redirects.
+      const d = commandDecision(input.command, ctx.commands || {}, {
+        basics: !!ctx.strict,
+      });
       if (d.decision === "blocked") {
         return refuse(
           {
@@ -373,6 +376,12 @@ function _makeCanUseTool(runCtx) {
       // on the allowed list ("cat" is; "cat ~/.ssh/config" isn't).
       // A strict bot (DASH-116): only its allowed commands, whatever the
       // policy — even unattended, inside its folders.
+      if (ctx.strict && d.chained) {
+        return refuse(
+          { reason: "chained", command: input.command, strict: true },
+          "Not run: a strict bot runs one command per call, with no &&, ;, || or |. Run each step on its own; the shell keeps its folder between calls.",
+        );
+      }
       if (ctx.strict && d.decision !== "allowed") {
         return refuse(
           { reason: "not-allowed", command: input.command, strict: true },
