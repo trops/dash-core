@@ -54,6 +54,8 @@ export const STEP_CHOICES = [
   { value: "rules", label: "A rule" },
   { value: "command", label: "A command or test" },
   { value: "repo", label: "A check in the repo" },
+  // A check package (DASH-106): Dash's, or installed from the registry.
+  { value: "package", label: "A check package" },
   // Built in (DASH-103): about the factory, not the code.
   { value: "git-on-branch", label: "Built in: on the job's branch" },
   { value: "git-committed", label: "Built in: the work is committed" },
@@ -89,6 +91,12 @@ export function newCheck(choice, { field = "input.answer" } = {}) {
           timeoutSec: 120,
           passWhen: { type: "exit0" },
         },
+      };
+    case "package":
+      return {
+        kind: "check",
+        name: "A check package passes",
+        check: { kind: "package", package: "", inputs: {} },
       };
     case "repo":
       return {
@@ -178,6 +186,9 @@ function stepWhat(step, nameOf) {
   }
   if (c.kind === "command") {
     return c.command ? `Command · ${c.command}` : "Command · not set yet";
+  }
+  if (c.kind === "package") {
+    return `${step.held ? "Off · came with the package · " : ""}Package · ${c.package || "pick one"} · no AI`;
   }
   if (c.kind === "repo") {
     const file = c.name ? `.dash/checks/${c.name}` : "pick its file";
@@ -312,6 +323,11 @@ export function draftError(draft, selfId) {
     if (s.kind === "check" && s.check && s.check.kind === "command") {
       if (!String(s.check.command || "").trim()) {
         return `"${s.name || "Command"}" needs a command to run.`;
+      }
+    }
+    if (s.kind === "check" && s.check && s.check.kind === "package") {
+      if (!String(s.check.package || "").trim()) {
+        return `"${s.name || "Check package"}" needs a package.`;
       }
     }
     if (s.kind === "check" && s.check && s.check.kind === "repo") {

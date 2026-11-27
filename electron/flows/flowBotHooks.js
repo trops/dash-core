@@ -142,6 +142,11 @@ function flowBotHooks(ctl) {
       return normalizeMcpResult(result);
     },
     isReadOnlyTool,
+    // Check packages (DASH-106): one by ref, and a provider of a type.
+    getCheckPackage: (ref) =>
+      ctl.getCheckPackage ? ctl.getCheckPackage(ref) : null,
+    serverForType: (botId, type) =>
+      ctl.serverForType ? ctl.serverForType(botId, type) : null,
 
     /** Per provider, the tools a tool call check may use. */
     readOnlyTools: async (workspaceId) => {

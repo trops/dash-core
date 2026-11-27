@@ -28,6 +28,29 @@ function registryBaseUrl() {
  *                   { error: string, authRequired?: boolean }>}
  */
 async function downloadBotPackage(packageRef, opts = {}) {
+  return downloadPackageFiles(packageRef, {
+    ...opts,
+    types: ["bot", "bot-team"],
+    notType: "isn't a bot or a team",
+    // Bots and teams are JSON only.
+    keep: (name) => /\.json$/i.test(name),
+  });
+}
+
+/**
+ * A check package (DASH-106): check.json and its file, flat names only.
+ * What the files may contain is decided by checks/checkPackage.js.
+ */
+async function downloadCheckPackage(packageRef, opts = {}) {
+  return downloadPackageFiles(packageRef, {
+    ...opts,
+    types: ["check"],
+    notType: "isn't a check package",
+    keep: (name) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(name),
+  });
+}
+
+async function downloadPackageFiles(packageRef, opts = {}) {
   const { resolveForInstall } = require("../registry/registryPackages");
   const {
     registryDownloadFetch,
@@ -39,8 +62,8 @@ async function downloadBotPackage(packageRef, opts = {}) {
   });
   if (resolved.error) return { error: resolved.error };
   const pkg = resolved.pkg;
-  if (!["bot", "bot-team"].includes(pkg.type)) {
-    return { error: `"${packageRef}" isn't a bot or a team.` };
+  if (!opts.types.includes(pkg.type)) {
+    return { error: `"${packageRef}" ${opts.notType}.` };
   }
   const version = pkg.version;
   const scopePath = pkg.scope ? `${encodeURIComponent(pkg.scope)}/` : "";
@@ -86,7 +109,7 @@ async function downloadBotPackage(packageRef, opts = {}) {
   const zipBuffer = Buffer.from(await zipResponse.arrayBuffer());
   if (!zipBuffer.length) return { error: "The package download was empty." };
   if (zipBuffer.length > MAX_PACKAGE_BYTES) {
-    return { error: "That package is too large to be a bot or team." };
+    return { error: "That package is too large." };
   }
 
   // Verify before opening (strict mode throws; warn mode logs and continues,
@@ -116,8 +139,7 @@ async function downloadBotPackage(packageRef, opts = {}) {
   try {
     for (const entry of new AdmZip(zipBuffer).getEntries()) {
       if (entry.isDirectory) continue;
-      // Bots and teams are JSON only.
-      if (!/\.json$/i.test(entry.entryName)) continue;
+      if (!opts.keep(entry.entryName)) continue;
       files[entry.entryName] = entry.getData().toString("utf8");
     }
   } catch (_e) {
@@ -137,4 +159,4 @@ async function downloadBotPackage(packageRef, opts = {}) {
   };
 }
 
-module.exports = { downloadBotPackage };
+module.exports = { downloadBotPackage, downloadCheckPackage };

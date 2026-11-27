@@ -126,6 +126,13 @@ async function checkContext(goal, step) {
       bots.callTool(server, tool, args, goal ? goal.workspaceId : null),
     isReadOnly: (server, tool) => bots.isReadOnlyTool(server, tool),
     readScript: (ref) => readScriptRef(ref),
+    // A package step (DASH-106): the package, and a provider of its type.
+    getPackage: (ref) =>
+      bots.getCheckPackage ? bots.getCheckPackage(ref) : null,
+    serverForType: (type) =>
+      goal && goal.flow && goal.flow.botId && bots.serverForType
+        ? bots.serverForType(goal.flow.botId, type)
+        : null,
   };
 }
 

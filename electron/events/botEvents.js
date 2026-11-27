@@ -82,6 +82,11 @@ const BOTS_SET_ASKS_TASK_PASSPHRASE = "bots-set-asks-task-passphrase";
 const BOTS_SET_ONE_JOB_AT_A_TIME = "bots-set-one-job-at-a-time";
 // A team uses the standard handoff between its bots (DASH-101).
 const BOTS_SET_USES_HANDOFFS = "bots-set-uses-handoffs";
+// Check packages (DASH-106).
+const BOTS_CHECK_PACKAGES_LIST = "bots-check-packages-list";
+const BOTS_CHECK_PACKAGES_SEARCH = "bots-check-packages-search";
+const BOTS_CHECK_PACKAGE_INSTALL = "bots-check-package-install";
+const BOTS_CHECK_PACKAGE_REMOVE = "bots-check-package-remove";
 // The team's setup, checked (DASH-108).
 const BOTS_CHECK_SETUP = "bots-check-setup";
 // The team's "Wait for approvals up to" (DASH-32).
@@ -214,6 +219,10 @@ module.exports = {
   BOTS_SET_ASKS_TASK_PASSPHRASE,
   BOTS_SET_ONE_JOB_AT_A_TIME,
   BOTS_SET_USES_HANDOFFS,
+  BOTS_CHECK_PACKAGES_LIST,
+  BOTS_CHECK_PACKAGES_SEARCH,
+  BOTS_CHECK_PACKAGE_INSTALL,
+  BOTS_CHECK_PACKAGE_REMOVE,
   BOTS_CHECK_SETUP,
   BOTS_GET_APPROVAL_WAIT_HOURS,
   BOTS_SET_APPROVAL_WAIT_HOURS,

@@ -29,6 +29,8 @@ const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
 const { runCommand } = require("./command");
+const { readCheckFiles, inputValues } = require("../checkPackage");
+const { runPackageFiles } = require("./package");
 
 const CHECKS_DIR = ".dash/checks";
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -149,6 +151,15 @@ async function findCheck(check, opts) {
     const file = pickFile(names, name);
     if (!file) return { missing: true };
     const src = path.join(dir, file);
+    // A check package vendored as a folder (DASH-106).
+    if (fs.statSync(src).isDirectory()) {
+      const files = {};
+      for (const f of fs.readdirSync(src)) {
+        const p = path.join(src, f);
+        if (fs.statSync(p).isFile()) files[f] = fs.readFileSync(p, "utf8");
+      }
+      return { pkgFiles: files, shown: `${CHECKS_DIR}/${file}` };
+    }
     const body = fs.readFileSync(src);
     if (body.length > MAX_FILE)
       return { error: `${CHECKS_DIR}/${file} is too big to run` };
@@ -178,6 +189,28 @@ async function findCheck(check, opts) {
   if (!listing) return { missing: true, ref };
   const file = pickFile(listing.toString().split("\n").filter(Boolean), name);
   if (!file) return { missing: true, ref };
+  // A check package vendored as a folder (DASH-106): its files from there.
+  const type = await git(
+    ["cat-file", "-t", `${ref}:${CHECKS_DIR}/${file}`],
+    opts,
+  );
+  if (type && type.toString().trim() === "tree") {
+    const inside = await git(
+      ["ls-tree", "--name-only", `${ref}:${CHECKS_DIR}/${file}`],
+      opts,
+    );
+    const files = {};
+    for (const f of (inside ? inside.toString().split("\n") : []).filter(
+      Boolean,
+    )) {
+      const body = await git(
+        ["show", `${ref}:${CHECKS_DIR}/${file}/${f}`],
+        opts,
+      );
+      if (body != null) files[f] = body.toString("utf8");
+    }
+    return { pkgFiles: files, shown: `${CHECKS_DIR}/${file} on ${ref}`, ref };
+  }
   const body = await git(["show", `${ref}:${CHECKS_DIR}/${file}`], opts);
   if (body == null)
     return { error: `Dash couldn't read ${CHECKS_DIR}/${file} on ${ref}` };
@@ -216,6 +249,37 @@ async function runRepoCheck(check, input, opts = {}) {
     exec: opts.exec,
   });
   if (found.error) return { pass: false, reason: found.error };
+  if (found.pkgFiles) {
+    const read = readCheckFiles(found.pkgFiles);
+    if (read.error) {
+      return { pass: false, reason: `${found.shown}: ${read.error}` };
+    }
+    if (read.manifest.kind !== "file") {
+      return {
+        pass: false,
+        reason: `${found.shown} is a tool check: use it as a package step, not a repo check`,
+      };
+    }
+    const { values, missing } = inputValues(read.manifest, check.inputs || {});
+    if (missing.length) {
+      return {
+        pass: false,
+        reason: `${found.shown} needs ${missing.join(", ")}: set it in the step's inputs`,
+      };
+    }
+    return runPackageFiles(
+      { manifest: read.manifest, files: read.files, label: found.shown },
+      input,
+      values,
+      {
+        cwd,
+        env: opts.env,
+        tmpDir: opts.tmpDir,
+        spawn: opts.spawn,
+        timeoutSec: check.timeoutSec,
+      },
+    );
+  }
   if (found.missing) {
     const where =
       check.from === "workspace"
