@@ -181,8 +181,23 @@ export function groupByDashboard(jobs, dashboards = []) {
  */
 export function jobTitleText(job) {
   const item = job && job.item;
-  if (!item || !item.id) return (job && job.title) || "";
-  return `${item.id} · ${item.title || job.title || ""}`.replace(/ · $/, "");
+  // A team's self-test (DASH-109) says so first.
+  const test = job && job.test ? "Test · " : "";
+  if (!item || !item.id) return `${test}${(job && job.title) || ""}`;
+  return `${test}${item.id} · ${item.title || job.title || ""}`.replace(
+    / · $/,
+    "",
+  );
+}
+
+/**
+ * A self-test's skipped outward actions (DASH-109), one line each:
+ * "Reporter: addOrEditJiraIssueComment on Atlassian MCP {…}".
+ */
+export function skippedLines(job) {
+  return ((job && job.test && job.skippedInTest) || []).map((s) =>
+    `${s.botName ? `${s.botName}: ` : ""}${s.tool} on ${s.server} ${s.args || ""}`.trim(),
+  );
 }
 
 /** Where a job's files are (DASH-100): "~/DashFactory/DASH-93 on fix/…". */

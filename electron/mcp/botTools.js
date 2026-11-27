@@ -29,6 +29,7 @@
  * dependencies so they're testable without Electron.
  */
 "use strict";
+const { UNTESTED_NOTE } = require("../bots/selfTest");
 
 const crypto = require("crypto");
 const fs = require("fs");
@@ -331,6 +332,27 @@ const BOT_TOOLS = [
         team: {
           type: "string",
           description: "The team's dashboard name or id.",
+        },
+      },
+      required: ["team"],
+    },
+  },
+  {
+    name: "test_team",
+    defaultOff: true,
+    description:
+      "Run a team's self-test (DASH-109): its chain's first bot works on the team's test item (a sandbox ticket, note or issue), the whole chain runs, and nothing outward happens: provider tools that could change something are skipped and logged on the job with what they would have sent, and git push / gh pr / gh issue are blocked. Set the test item with testItem. Returns the job's id: follow it with get_task_status or the Jobs page. Run one after changing a team's bots or settings; the team shows 'untested change' until one ends done.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        team: {
+          type: "string",
+          description: "The team's dashboard name or id.",
+        },
+        testItem: {
+          type: "object",
+          description:
+            "Set the test item first: { id (e.g. 'DASH-97'), title?, url?, source? }.",
         },
       },
       required: ["team"],
@@ -1909,7 +1931,29 @@ function makeBotToolHandlers({
   };
 
   /** Save it: the bot, what runs without asking, on or paused, audit, notice. */
+  // A saved change leaves the team untested (DASH-109): the answer says to
+  // run a self-test.
   const commit = async (request) => {
+    const res = await commitChange(request);
+    try {
+      const text = res && res.content && res.content[0] && res.content[0].text;
+      const body = text ? JSON.parse(text) : null;
+      if (
+        body &&
+        !body.error &&
+        body.status !== "failed" &&
+        request.teamId != null &&
+        bots.untested &&
+        bots.untested(request.teamId)
+      ) {
+        return json({ ...body, selfTest: UNTESTED_NOTE });
+      }
+    } catch (_e) {
+      // Not JSON: as it is.
+    }
+    return res;
+  };
+  const commitChange = async (request) => {
     if (request.kind === "settings") return commitSettings(request);
     const { kind, from } = request;
     const tool = kind === "create" ? "create_bot" : "update_bot";
@@ -2140,9 +2184,36 @@ function makeBotToolHandlers({
             ...(bots.usesHandoffs && bots.usesHandoffs(w.id)
               ? { usesHandoffs: true }
               : {}),
+            ...(bots.untested && bots.untested(w.id)
+              ? { untestedChange: bots.untested(w.id) }
+              : {}),
           };
         }),
       });
+    },
+
+    async test_team(args = {}) {
+      if (!isOn("test_team")) return off("test_team");
+      const workspaces = getWorkspaces();
+      const found = findTeam(workspaces, (args || {}).team);
+      if (found.reply) return found.reply;
+      if (!bots.testTeam)
+        return json({ error: "This version of Dash can't run a self-test." });
+      if (args.testItem && bots.setTestItem) {
+        const set = bots.setTestItem(found.team.id, args.testItem);
+        if (set && set.error) return json({ error: set.error });
+      }
+      const res = await bots.testTeam(found.team.id);
+      return json(
+        res.error
+          ? { error: res.error }
+          : {
+              team: found.team.name || "Untitled",
+              jobId: res.jobId,
+              testItem: res.item,
+              message: `The self-test started on ${res.item.id}. Outward actions are skipped and logged on the job; it marks the team tested when it ends done.`,
+            },
+      );
     },
 
     async check_team_setup(args = {}) {
@@ -2684,6 +2755,10 @@ function registerBotTools() {
       setUsesHandoffs: (id, on) => botController.setUsesHandoffs(id, on),
       // The team's setup, checked (DASH-108).
       checkSetup: (id) => botController.checkSetup(id),
+      // Self-tests (DASH-109).
+      testTeam: (id) => botController.testTeam(id),
+      setTestItem: (id, item) => botController.setTestItem(id, item),
+      untested: (id) => botController.untested(id),
       setTeamValues: (id, change, opts) =>
         botController.setTeamValues(id, change, opts),
       // The user's providers and the tools each lists (null until it's

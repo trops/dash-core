@@ -87,6 +87,9 @@ const BOTS_CHECK_PACKAGES_LIST = "bots-check-packages-list";
 const BOTS_CHECK_PACKAGES_SEARCH = "bots-check-packages-search";
 const BOTS_CHECK_PACKAGE_INSTALL = "bots-check-package-install";
 const BOTS_CHECK_PACKAGE_REMOVE = "bots-check-package-remove";
+// Self-tests (DASH-109).
+const BOTS_TEST_TEAM = "bots-test-team";
+const BOTS_SET_TEST_ITEM = "bots-set-test-item";
 // The Add check screen and Set up checks (DASH-110).
 const BOTS_SUGGEST_CHECKS = "bots-suggest-checks";
 const BOTS_DRAFT_CHECK = "bots-draft-check";
@@ -233,6 +236,8 @@ module.exports = {
   BOTS_CHECK_PACKAGE_INSTALL,
   BOTS_CHECK_PACKAGE_REMOVE,
   BOTS_SUGGEST_CHECKS,
+  BOTS_TEST_TEAM,
+  BOTS_SET_TEST_ITEM,
   BOTS_DRAFT_CHECK,
   BOTS_TRY_CHECK,
   BOTS_SAVE_CHECK,

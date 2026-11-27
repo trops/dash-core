@@ -23,6 +23,7 @@ const TOOL_GROUPS = [
     tools: [
       "list_bots",
       "check_team_setup",
+      "test_team",
       "create_bot",
       "update_bot",
       "set_team_settings",

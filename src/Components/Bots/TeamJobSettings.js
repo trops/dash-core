@@ -34,6 +34,19 @@ export const HANDOFF_HELP = {
   off: "Off: each bot gets the raw answer of the bot before it, and its own instructions say what to copy forward.",
 };
 
+export const SELF_TEST_HELP =
+  "Runs the whole chain on a test item (a sandbox ticket) with outward actions off: comments, transitions, merges and pushes are skipped and logged on the job.";
+
+/** What the self-test row says: tested, or the untested change. */
+export function selfTestLine(settings) {
+  const u = settings && settings.untested;
+  if (u) return `Untested change: ${u.what}. Run a self-test before real work.`;
+  const t = settings && settings.lastTest;
+  return t && t.at
+    ? `Tested ${new Date(t.at).toLocaleString()}.`
+    : "Not tested yet.";
+}
+
 export const SETUP_HELP =
   "Dash checks that every provider starts, every setting has a value, each repo can be read (and pushed to) with the GitHub token, and every repo check is on its repo. With the standard handoff on, it does this before each job, and a job with a bad setup doesn't start.";
 
@@ -57,6 +70,9 @@ export const TeamJobSettings = ({ workspaceId }) => {
   const [handoffs, setHandoffs] = useState(false);
   const [error, setError] = useState(null);
   const [setup, setSetup] = useState(null);
+  const [settings, setSettings] = useState(null);
+  const [testId, setTestId] = useState("");
+  const [testNote, setTestNote] = useState(null);
   const [checking, setChecking] = useState(false);
   const current = useRef(workspaceId);
   current.current = workspaceId;
@@ -70,6 +86,8 @@ export const TeamJobSettings = ({ workspaceId }) => {
       .then((s) => {
         if (current.current === workspaceId) {
           setOn(oneJobAtATimeOf(s));
+          setSettings(s || null);
+          setTestId((s && s.testItem && s.testItem.id) || "");
           setHandoffs(usesHandoffsOf(s));
         }
       })
@@ -123,6 +141,33 @@ export const TeamJobSettings = ({ workspaceId }) => {
   };
   const shown = setupView(setup);
 
+  const runTest = async () => {
+    const api = botsApi();
+    if (!api || !api.testTeam) {
+      setTestNote("This version of Dash can't run a self-test yet.");
+      return;
+    }
+    setTestNote(null);
+    try {
+      const want = testId.trim();
+      if (
+        want &&
+        (!settings || !settings.testItem || settings.testItem.id !== want)
+      ) {
+        const s = await api.setTestItem(workspaceId, { id: want });
+        if (s && s.error) throw new Error(s.error);
+        setSettings(s);
+      }
+      const r = await api.testTeam(workspaceId);
+      if (r && r.error) throw new Error(r.error);
+      setTestNote(
+        `The self-test started on ${r.item.id}: follow it on the Jobs page.`,
+      );
+    } catch (e) {
+      setTestNote((e && e.message) || "Couldn't start it.");
+    }
+  };
+
   return (
     <section
       aria-label="Jobs"
@@ -154,6 +199,29 @@ export const TeamJobSettings = ({ workspaceId }) => {
           onChange={changeHandoffs}
           ariaLabel="Standard handoff"
         />
+      </div>
+      <div
+        className={`flex flex-col gap-2 px-4 py-3 border-t ${hairline}`}
+        data-testid="team-self-test"
+      >
+        <div className="flex flex-row items-center gap-4">
+          <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+            <span className="text-sm font-semibold">Self-test</span>
+            <span className={`text-xs ${muted}`}>{SELF_TEST_HELP}</span>
+            <span className="text-xs" data-testid="self-test-line">
+              {selfTestLine(settings)}
+            </span>
+          </span>
+          <input
+            aria-label="Test item"
+            className={`w-32 text-sm px-2 py-1 rounded border bg-transparent ${hairline}`}
+            placeholder="DASH-97"
+            value={testId}
+            onChange={(e) => setTestId(e.target.value)}
+          />
+          <Button title="Test team" size="sm" onClick={runTest} />
+        </div>
+        {testNote ? <span className="text-xs">{testNote}</span> : null}
       </div>
       <div
         className={`flex flex-col gap-2 px-4 py-3 border-t ${hairline}`}

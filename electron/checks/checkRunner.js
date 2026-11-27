@@ -90,6 +90,13 @@ async function runCheck(check, input, deps = {}) {
           return r;
         },
       });
+    } else if (kind === "pr-ci" && deps.selfTest) {
+      // A self-test (DASH-109) opens no PR, so there's no CI to wait for.
+      res = {
+        pass: true,
+        reason:
+          "Skipped in a test: no PR was opened, so there's no CI to wait for",
+      };
     } else if (FACTORY_KINDS.includes(kind)) {
       // Built in (DASH-103): git, the PR's CI and the handoff's keys.
       res = await runFactoryCheck(check, input, {

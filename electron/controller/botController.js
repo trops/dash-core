@@ -131,6 +131,13 @@ const { publishFingerprint } = require("../registry/fingerprint");
 const { remixOrigin, checkRemix, checkRemixAll } = require("../registry/remix");
 const { unassignTeam, isOnTeam } = require("../bots/teams");
 const { createPackageStore } = require("../checks/packageStore");
+const {
+  skipsInTest,
+  skippedAnswer,
+  testPrompt,
+  cleanTestItem,
+  untestedMark,
+} = require("../bots/selfTest");
 const { preflight, preflightText } = require("../bots/preflight");
 const {
   TEAM_SERVER,
@@ -718,12 +725,27 @@ const botController = {
         root: path.join(path.dirname(this._botsRoot), "jobs"),
         box: host.secretBox || null,
       }),
-      onChange: (job) =>
+      onChange: (job) => {
+        // A self-test that ended done (DASH-109): the team is tested.
+        if (job.test && job.status === "done" && job.workspaceId != null) {
+          const t = this._store.getTeamSettings(job.workspaceId) || {};
+          if (t.untested) {
+            this._store.setTeamSettings(job.workspaceId, {
+              untested: null,
+              lastTest: {
+                jobId: job.id,
+                at: new Date().toISOString(),
+                passed: true,
+              },
+            });
+          }
+        }
         this._broadcast(BOT_JOBS_CHANGED, {
           jobId: job.id,
           workspaceId: job.workspaceId,
           status: job.status,
-        }),
+        });
+      },
     });
     this._jobs.interruptLeftovers();
     // Check packages installed on this computer (DASH-106).
@@ -1646,6 +1668,19 @@ const botController = {
           .join("\n")}`,
       );
     }
+    // A change to a team's bot (DASH-109): untested until a self-test.
+    if (
+      whole &&
+      whole.workspaceId != null &&
+      !isDashTeam(whole) &&
+      !(opts && opts.notAChange)
+    ) {
+      if (typeof this._markUntested === "function")
+        this._markUntested(
+          whole.workspaceId,
+          `${whole.name || "A bot"} ${isNew ? "was added" : "changed"}`,
+        );
+    }
     // A lead or Dash team bot keeps only the user's own words (TEAM-017): a
     // copy of its built-in text — from a profile an older Dash saved — is
     // taken out here, whatever marker the copy came with.
@@ -2453,6 +2488,9 @@ const botController = {
    * @returns {{ declared, values, usedBy } | { errors: string[] }}
    */
   setTeamValues(workspaceId, change = {}, opts = {}) {
+    // A change to the team's settings (DASH-109): untested until a self-test.
+    if (typeof this._markUntested === "function")
+      this._markUntested(workspaceId, "the team's settings changed");
     if (workspaceId === null || workspaceId === undefined) {
       return { errors: ["Team settings belong to a dashboard's team."] };
     }
@@ -2832,10 +2870,91 @@ const botController = {
     }
   },
 
+  /** A team's test item (DASH-109): a sandbox ticket, note or issue. */
+  testItem(workspaceId) {
+    const t = this._store.getTeamSettings(workspaceId) || {};
+    return t.testItem || null;
+  },
+
+  setTestItem(workspaceId, item) {
+    if (workspaceId === null || workspaceId === undefined)
+      return { error: "Which team?" };
+    const clean = item ? cleanTestItem(item) : null;
+    if (item && !clean)
+      return { error: "A test item needs an id (e.g. DASH-97)." };
+    return this._store.setTeamSettings(workspaceId, { testItem: clean });
+  },
+
+  /** The team's "untested change" marker, or null. */
+  untested(workspaceId) {
+    const t = this._store.getTeamSettings(workspaceId) || {};
+    return t.untested || null;
+  },
+
+  /** A change to a team's bots or settings: untested until a self-test. */
+  _markUntested(workspaceId, what) {
+    if (workspaceId === null || workspaceId === undefined) return;
+    try {
+      this._store.setTeamSettings(workspaceId, {
+        untested: untestedMark(what),
+      });
+    } catch (_e) {
+      // The marker is a reminder; a change never fails over it.
+    }
+  },
+
+  /**
+   * Test team (DASH-109): the chain's first bot runs on the test item, in
+   * a job marked as a test, with outward actions off.
+   * @returns {Promise<{ jobId, botId } | { error }>}
+   */
+  async testTeam(workspaceId) {
+    const item = this.testItem(workspaceId);
+    if (!item)
+      return {
+        error:
+          "Set the team's test item first (a sandbox ticket, note or issue).",
+      };
+    const bots = this._store
+      .list()
+      .filter((b) => isOnTeam(b, workspaceId) && !isLead(b) && !isDashTeam(b));
+    const first = bots.find((b) => startsChain(this._store, b));
+    if (!first)
+      return {
+        error: "This team has no chain to test: no bot hands work to another.",
+      };
+    const job = this._jobs.startJob({
+      workspaceId,
+      leadId: null,
+      leadName: first.name,
+      title: `Test: ${first.name} on ${item.id}`,
+      request: "",
+      startedBy: { kind: "you", label: "Test team" },
+      item,
+      test: true,
+    });
+    // Its setup is checked as for any job (DASH-108); it runs in the
+    // background, and the Jobs page shows it.
+    Promise.resolve(
+      this._run(first.id, {
+        prompt: testPrompt(item),
+        trigger: "you",
+        jobId: job.id,
+        preflighted: true,
+      }),
+    ).catch(() => {});
+    return { jobId: job.id, botId: first.id, item };
+  },
+
   setUsesHandoffs(workspaceId, on) {
     if (workspaceId === null || workspaceId === undefined) {
       return { error: "Which team?" };
     }
+    if (typeof this._markUntested === "function")
+      this._markUntested(
+        workspaceId,
+        `the standard handoff was turned ${on ? "on" : "off"}`,
+      );
     return this._store.setTeamSettings(workspaceId, { usesHandoffs: !!on });
   },
 
@@ -5499,6 +5618,12 @@ const botController = {
       if (!this._runGoals) this._runGoals = new Map();
       this._runGoals.set(botId, goal);
     }
+    // A run in a team's self-test (DASH-109): outward tools are skipped.
+    const selfTest = !!(jobId && this._jobs.isTest && this._jobs.isTest(jobId));
+    if (selfTest) {
+      if (!this._selfTestRuns) this._selfTestRuns = new Map();
+      this._selfTestRuns.set(botId, jobId);
+    }
     const p = this._runner.run(botId, {
       prompt: opts.prompt,
       trigger: opts.trigger,
@@ -5514,6 +5639,8 @@ const botController = {
         : {}),
       // Who asked, when not the user directly (the AI Assistant, TEAM-004).
       via: opts.via || null,
+      // A team's self-test (DASH-109): its outward commands are blocked.
+      ...(selfTest ? { selfTest: true } : {}),
       // The conversation it came from (release 5).
       ...(opts.conversationId
         ? { conversationId: String(opts.conversationId) }
@@ -5551,6 +5678,13 @@ const botController = {
         }
       },
     });
+    if (selfTest && p && typeof p.finally === "function") {
+      p.finally(() => {
+        if (this._selfTestRuns && this._selfTestRuns.get(botId) === jobId) {
+          this._selfTestRuns.delete(botId);
+        }
+      }).catch(() => {});
+    }
     // The runner marks the bot active synchronously, so the active count is
     // already updated here. Broadcast on start and again on completion so the
     // tray/powerSaveBlocker can react (US-018).
@@ -8636,6 +8770,20 @@ const botController = {
     );
     if (!check.ok) return { text: check.message, isError: true };
     const { allowed } = check;
+    // A team's self-test (DASH-109): a tool that could change something
+    // isn't called; the job keeps what it would have sent.
+    const testJob = this._selfTestRuns && this._selfTestRuns.get(opts.botId);
+    if (testJob && skipsInTest(toolName)) {
+      const { result, note } = skippedAnswer(serverName, toolName, args);
+      const bot = this._store.get(opts.botId) || {};
+      if (this._jobs.noteSkipped) {
+        this._jobs.noteSkipped(testJob, {
+          ...note,
+          botName: bot.name || opts.botId,
+        });
+      }
+      return result;
+    }
     // widgetId + token are null → the widget permission gate is bypassed; bot
     // tool calls are gated upstream by the bot PermissionGate. `allowed` is
     // also passed as callTool's whitelist (defense in depth).
