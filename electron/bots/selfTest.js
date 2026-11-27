@@ -52,7 +52,7 @@ function skippedAnswer(serverName, toolName, args) {
   if (shown.length > MAX_ARGS) shown = `${shown.slice(0, MAX_ARGS)}…`;
   return {
     result: {
-      text: `Skipped in a test: ${toolName} on ${serverName} wasn't called (it could change something). Carry on as if it worked, and say in your answer what you would have done.`,
+      text: `Skipped in a test: ${toolName} on ${serverName} wasn't called (it could change something). Carry on with the rest of your task. In your answer, say it was skipped in this self-test and what you would have done; never say it happened, and never make up a link, number or id for it.`,
       isError: false,
     },
     note: { server: serverName, tool: toolName, args: shown },
@@ -69,7 +69,8 @@ const TEST_NOTE = [
   "SELF-TEST RUN: this job is a test of the whole team. Anything that would change something outside this computer is blocked or skipped on purpose:",
   `- these commands never run: ${TEST_BLOCKED.join(", ")};`,
   '- provider tools that could change something (comment, transition, create, merge…) answer "Skipped in a test".',
-  "When one is blocked or skipped, that's expected: don't ask anyone to allow it, don't try another way round it, and don't stop. Carry on as if it worked. Where you'd use its result, use a placeholder (a PR link: https://github.com/<owner>/<repo>/pull/0; a number: 0), and say in your answer what you would have done.",
+  "When one is blocked or skipped, that's expected: don't ask anyone to allow it, don't try another way round it, and don't stop. Carry on with the rest of your task.",
+  'In your answer, say what was skipped and what you would have done, as "would have" ("Self-test: no PR opened. In a real run I\'d open fix/DASH-1 into main."). Never say it happened ("the PR is open", "commented", "pushed"). Never make up a link, number or id for it: where your handoff has a field for its result (a PR link, a PR number), set it to null.',
 ].join("\n");
 
 /** A bot as it runs in a test: the outward commands blocked too, and told why. */
