@@ -15,6 +15,9 @@
  * The same form shows one bot's own settings (DASH-136) when `botName` is
  * given: "Workspace Bot uses it as {workFolder}". A required setting is
  * marked Required.
+ *
+ * A tracker (DASH-135) is where a bot's tickets come from: a source, then
+ * pickers (TrackerSetting.js).
  */
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -27,6 +30,8 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { noteSetupChanged } from "./teamSetupStore";
+import { TrackerSetting } from "./TrackerSetting";
+import { trackerEmpty } from "../../utils/trackerSetting";
 
 const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 
@@ -53,6 +58,8 @@ export function emptySettings(settings, values) {
     if (s.type === "boolean") return false;
     if (s.type === "table") return rowsOf(values, s).length === 0;
     const v = has(values, s.name) ? values[s.name] : s.default;
+    // "None" is filled in on purpose; a tracker needs its project too.
+    if (s.type === "tracker") return trackerEmpty(v);
     return v === undefined || v === null || v === "";
   });
 }
@@ -73,6 +80,8 @@ export const TeamSettingsForm = ({
   disabled = false,
   // One bot's own settings (DASH-136): whose they are.
   botName = null,
+  // Its team's dashboard, for the providers a tracker lists from.
+  workspaceId = null,
 }) => {
   const { muted } = useConfigTokens();
   const status = useStatusTokens();
@@ -124,6 +133,20 @@ export const TeamSettingsForm = ({
               title={title(s)}
               disabled={disabled}
               onChange={(rows) => onChange && onChange(s.name, rows)}
+            />
+          );
+        }
+        if (s.type === "tracker") {
+          return (
+            <TrackerSetting
+              key={s.name}
+              setting={s}
+              value={has(values, s.name) ? values[s.name] : s.default || null}
+              botName={botName}
+              workspaceId={workspaceId}
+              title={title(s)}
+              disabled={disabled}
+              onChange={(v) => onChange && onChange(s.name, v)}
             />
           );
         }

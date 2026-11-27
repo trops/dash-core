@@ -31,6 +31,11 @@
  * {repo.rows} (DASH-104) is every row, one line each ("key: its first
  * url or text column"), for the bot that picks a row: it needs no pick.
  *
+ * A tracker (DASH-135, src/utils/trackerSetting.js) is where a bot's
+ * tickets come from: { source, project, status, assignee, label, query? }.
+ * {tickets} is it in words (with the search to run), {tickets.project} …
+ * its parts.
+ *
  * Kept on the dashboard's team settings (BotStore teams[workspaceId]):
  *   declared  the settings, as above
  *   values    { [name]: value } (a value left out uses the default)
@@ -41,9 +46,17 @@
 
 const { contextText, CONTEXT_NAMES } = require("../jobs/jobContext");
 const { lastJsonObject } = require("./answerJson");
+// The "tracker" type (DASH-135): where a bot's tickets come from.
+const {
+  TRACKER_TYPE,
+  cleanTracker,
+  trackerEmpty,
+  trackerText,
+  trackerFieldTexts,
+} = require("../../src/utils/trackerSetting");
 
 const COLUMN_TYPES = ["text", "url", "folder", "command", "boolean", "number"];
-const TYPES = [...COLUMN_TYPES, "table"];
+const TYPES = [...COLUMN_TYPES, "table", TRACKER_TYPE];
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
 // A table row's key: "dash-core", "web_app", "v2.api".
 const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -65,6 +78,7 @@ const TYPE_WORDS = {
   command: "a command",
   boolean: "yes or no",
   number: "a number",
+  tracker: "a ticket source",
 };
 
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
@@ -155,6 +169,19 @@ function cleanSettings(input, { of = "a team" } = {}) {
           return;
         }
         if (s.pick !== s.name) out.pick = s.pick;
+      }
+      seen.add(s.name);
+      settings.push(out);
+      return;
+    }
+    if (type === TRACKER_TYPE) {
+      if (s.default !== undefined && s.default !== null && s.default !== "") {
+        const d = cleanTracker(s.default, `${where} (${s.name})'s default`);
+        if (d.error) {
+          errors.push(d.error);
+          return;
+        }
+        out.default = d.value;
       }
       seen.add(s.name);
       settings.push(out);
@@ -332,6 +359,15 @@ function cleanValues(settings, input, current = {}, { of = "this team" } = {}) {
       else delete values[name];
       continue;
     }
+    if (s.type === TRACKER_TYPE) {
+      const read = cleanTracker(raw, s.label);
+      if (read.error) {
+        errors.push(read.error);
+        continue;
+      }
+      values[name] = read.value;
+      continue;
+    }
     const v = coerce(s.type, raw);
     if (v === undefined || v === "") {
       errors.push(`${s.label}: must be ${TYPE_WORDS[s.type]}`);
@@ -371,6 +407,18 @@ function settingTexts(team, { home = null } = {}) {
     if (!s || !NAME_RE.test(String(s.name || ""))) continue;
     if (s.type === "table") continue; // filled from the job's pick
     const v = has(values, s.name) ? values[s.name] : s.default;
+    if (s.type === TRACKER_TYPE) {
+      // In words as {name}, its parts as {name.project} … (DASH-135).
+      if (trackerEmpty(v)) {
+        empty.add(s.name);
+        continue;
+      }
+      text[s.name] = trackerText(v);
+      for (const [f, t] of Object.entries(trackerFieldTexts(v))) {
+        text[`${s.name}.${f}`] = t;
+      }
+      continue;
+    }
     if (v === undefined || v === null || v === "") {
       if (s.type === "boolean") text[s.name] = "no";
       else empty.add(s.name);
@@ -521,6 +569,10 @@ function withTeamValues(
     }
   }
   const tableNames = new Set([...tables.keys(), ...CONTEXT_NAMES]);
+  // A tracker's parts ({tickets.project}) fill in like a table's cells.
+  for (const s of declared) {
+    if (s && s.type === TRACKER_TYPE) tableNames.add(s.name);
+  }
   const used = new Set();
   const out = { ...bot };
   if (typeof bot.instructions === "string") {

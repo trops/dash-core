@@ -11,6 +11,9 @@
  *   repo-push   …or can't be pushed to, when a bot on the team pushes
  *   repo-check  a repo check a step names isn't on a repo's base branch
  *               (and the step has no fallback, and doesn't skip)
+ *   tracker     a bot's ticket source (a "tracker" setting, DASH-135) is a
+ *               tracker that isn't connected in Dash, or one the bot has no
+ *               provider for; "no project chosen" is a setting problem
  *
  * And warnings, which don't stop a job (strictWarnings, DASH-116):
  *   strict-command  a strict bot's instructions name a shell command that
@@ -26,7 +29,13 @@ const { withTeamValues } = require("./teamValues");
 const {
   withBotSettings,
   botMissingSettings,
+  missingWords,
 } = require("../../src/utils/botSettings");
+const {
+  TRACKER_TYPE,
+  trackerEmpty,
+  sourceLabel,
+} = require("../../src/utils/trackerSetting");
 const { pickFile, CHECKS_DIR } = require("../checks/kinds/repo");
 const { aiLabel } = require("./aiLogin");
 const { strictCommandWarnings } = require("./strictMode");
@@ -154,6 +163,15 @@ function settingProblems(bot, team, home) {
   });
   const out = [];
   const said = new Set();
+  // What each one lacks, in words ("has no value", a tracker's "is Jira,
+  // but no project is chosen").
+  const detail = new Map(
+    botMissingSettings(bot, team).map((m) => [`${m.owner}|${m.name}`, m]),
+  );
+  const words = (m, owner) =>
+    m.reason === "no-rows"
+      ? "has no rows"
+      : missingWords(detail.get(`${owner}|${m.name}`) || m);
   const where = (m) =>
     m.owner === "bot" ? "fill it in on its Settings tab" : null;
   for (const m of missing || []) {
@@ -169,7 +187,7 @@ function settingProblems(bot, team, home) {
         botId: bot.id,
         owner,
         setting: m.name,
-        message: `${bot.name}: ${m.label} ${m.reason === "no-rows" ? "has no rows" : "has no value"}: ${where(m)}`,
+        message: `${bot.name}: ${m.label} ${words(m, "bot")}: ${where(m)}`,
       });
     } else if (m.reason === "no-rows") {
       out.push({
@@ -200,8 +218,73 @@ function settingProblems(bot, team, home) {
       botId: bot.id,
       owner: "bot",
       setting: m.name,
-      message: `${bot.name}: ${m.label} ${m.type === "table" ? "has no rows" : "has no value"}: fill it in on its Settings tab`,
+      message: `${bot.name}: ${m.label} ${missingWords(m)}: fill it in on its Settings tab`,
     });
+  }
+  return out;
+}
+
+/**
+ * A bot's ticket sources (its own "tracker" settings that are filled in
+ * with Jira, GitHub or Linear): [{ name, label, source }].
+ */
+function trackersOf(bot) {
+  const own = Array.isArray(bot && bot.settings) ? bot.settings : [];
+  const values = isObj(bot && bot.settingValues) ? bot.settingValues : {};
+  const out = [];
+  for (const s of own) {
+    if (!s || s.type !== TRACKER_TYPE) continue;
+    const v = Object.prototype.hasOwnProperty.call(values, s.name)
+      ? values[s.name]
+      : s.default;
+    if (trackerEmpty(v) || v.source === "none") continue;
+    out.push({
+      name: s.name,
+      label: s.label || s.name,
+      source: v.source,
+      value: v,
+    });
+  }
+  return out;
+}
+
+/**
+ * Is each of a bot's ticket sources connected (DASH-135)? `trackerStatus`
+ * (dep) says, per bot and source, { connected, granted }: a provider of
+ * that tracker exists in Dash, and the bot has one.
+ */
+function trackerProblems(bot, trackerStatus) {
+  if (typeof trackerStatus !== "function") return [];
+  const out = [];
+  for (const t of trackersOf(bot)) {
+    let st = null;
+    try {
+      st = trackerStatus(bot, t.source, t.value);
+    } catch (_e) {
+      st = null;
+    }
+    if (!st) continue;
+    const label = sourceLabel(t.source);
+    const base = {
+      kind: "tracker",
+      bot: bot.name,
+      botId: bot.id,
+      setting: t.name,
+      source: t.source,
+    };
+    if (st.connected === false) {
+      out.push({
+        ...base,
+        reason: "not-connected",
+        message: `${bot.name}: ${label} isn't connected (${t.label}): add ${label} on the Providers page, or choose another source on its Settings tab`,
+      });
+    } else if (st.granted === false) {
+      out.push({
+        ...base,
+        reason: "not-granted",
+        message: `${bot.name}: ${t.label} is ${label}, but it has no ${label} provider: pick one under Providers on its Settings tab`,
+      });
+    }
   }
   return out;
 }
@@ -235,6 +318,7 @@ async function gh(fetch, token, path) {
  *           defaultAiProvider?: string|null,
  *           aiLogin?: (providerId) => Promise<{ ok, problem?, fix? }>,
  *           gitToken?: (bot) => Promise<string|null>,
+ *           trackerStatus?: (bot, source) => { connected, granted }|null,
  *           fetch?: Function }} deps
  * @returns {Promise<{ ok: boolean, problems: object[], checked: object }>}
  */
@@ -255,6 +339,10 @@ async function preflight(
   // Settings.
   for (const bot of list)
     for (const p of settingProblems(bot, team, home)) add(p);
+
+  // Ticket sources (DASH-135): the tracker is connected, and the bot has it.
+  for (const bot of list)
+    for (const p of trackerProblems(bot, deps.trackerStatus)) add(p);
 
   // Providers.
   if (deps.providerFailures) {
@@ -444,4 +532,6 @@ module.exports = {
   pushes,
   repoChecksOf,
   strictWarnings,
+  trackersOf,
+  trackerProblems,
 };

@@ -240,6 +240,7 @@ const {
 } = require("../bots/planBuild");
 // Pure JS, main-process safe (see its header): a plan's new theme.
 const { generateCustomTheme } = require("../../src/utils/themeGenerator");
+const { trackerProviders } = require("../../src/utils/trackerSetting");
 // Whose a saved theme is (theme change round) — pure, shared with the app.
 const {
   hasEditorChanges,
@@ -2923,6 +2924,23 @@ const botController = {
           return failed;
         },
         gitToken: (bot) => this._gitTokenFor(bot),
+        // A bot's ticket source (DASH-135): a provider of that tracker is
+        // in Dash, and the bot has one.
+        trackerStatus: (bot, source) => {
+          let sources = null;
+          try {
+            sources = this.listToolSources(bot.workspaceId);
+          } catch (_e) {
+            return null; // not known: say nothing
+          }
+          if (!Array.isArray(sources)) return null;
+          const found = trackerProviders(source, sources);
+          const mine = new Set(bot.mcpServers || []);
+          return {
+            connected: found.length > 0,
+            granted: found.some((p) => mine.has(p.name)),
+          };
+        },
         ...(this._preflightFetch ? { fetch: this._preflightFetch } : {}),
         // The AI logins the bots (and the user's default) run on (DASH-114).
         ...(typeof this._aiLogin === "function"

@@ -27,7 +27,7 @@ import { BOT_VALUES_KEY } from "../../utils/botSettings";
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
 const COLUMN_TYPES = ["text", "url", "folder", "command", "boolean", "number"];
-const TYPES = [...COLUMN_TYPES, "table"];
+const TYPES = [...COLUMN_TYPES, "table", "tracker"];
 const TYPE_LABELS = {
   text: "Text",
   url: "Web or git address",
@@ -36,6 +36,7 @@ const TYPE_LABELS = {
   boolean: "Yes / no",
   number: "Number",
   table: "Table (rows)",
+  tracker: "Where tickets come from (Jira, GitHub Issues, Linear or none)",
 };
 
 /** Required settings of these that are still empty. */
@@ -87,6 +88,8 @@ export function settingFromDraft(draft, existing = []) {
       };
     }
     setting.columns = columns;
+  } else if (type === "tracker") {
+    // Picked on the form, never a typed default (DASH-135).
   } else {
     const d = String(draft.default || "").trim();
     if (d)
@@ -115,6 +118,8 @@ export const BotOwnSettings = ({
   values = {},
   onChange,
   disabled = false,
+  // Its dashboard, for the providers a tracker setting lists from.
+  workspaceId = null,
 }) => {
   const { muted, hairline } = useConfigTokens();
   const status = useStatusTokens();
@@ -154,6 +159,7 @@ export const BotOwnSettings = ({
           settings={settings}
           values={values}
           botName={who}
+          workspaceId={workspaceId}
           disabled={disabled}
           onChange={(name, v) => change({ values: { ...values, [name]: v } })}
         />
@@ -213,7 +219,7 @@ export const BotOwnSettings = ({
               placeholder="url:url, baseBranch:text"
               onChange={(v) => setDraft((d) => ({ ...d, columns: v }))}
             />
-          ) : (
+          ) : draft.type === "tracker" ? null : (
             <InputText
               label="Default (optional)"
               value={draft.default}
