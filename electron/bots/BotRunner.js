@@ -50,6 +50,7 @@ const { redactArgs } = require("../issues/issueStore");
 const { missingTool, needsMessage } = require("./runEnv");
 const { signInProblem } = require("./gitSignIn");
 const { withTeamValues, missingMessage, pickFrom } = require("./teamValues");
+const { withBotSettings } = require("../../src/utils/botSettings");
 const os = require("os");
 
 const QUIT = Symbol("quit");
@@ -318,21 +319,25 @@ class BotRunner {
    * its last ```json block), else the one its job picked (opts.teamPicks).
    */
   _withTeamValues(bot, opts = {}) {
-    if (
-      !bot ||
-      bot.workspaceId === null ||
-      bot.workspaceId === undefined ||
-      !this._store ||
-      typeof this._store.getTeamSettings !== "function"
-    ) {
-      return { bot, missing: [] };
-    }
+    if (!bot) return { bot, missing: [] };
+    const onTeam =
+      bot.workspaceId !== null &&
+      bot.workspaceId !== undefined &&
+      !!this._store &&
+      typeof this._store.getTeamSettings === "function";
+    // A bot's own settings (DASH-136) work on a team or off one.
+    const ownSettings = Array.isArray(bot.settings) && bot.settings.length;
+    if (!onTeam && !ownSettings) return { bot, missing: [] };
     let team = null;
-    try {
-      team = this._store.getTeamSettings(bot.workspaceId);
-    } catch (_e) {
-      team = null;
+    if (onTeam) {
+      try {
+        team = this._store.getTeamSettings(bot.workspaceId);
+      } catch (_e) {
+        team = null;
+      }
     }
+    // Its own settings on top of its team's.
+    team = withBotSettings(team, bot);
     const picks = {
       ...((opts && opts.teamPicks) || {}),
       ...pickFrom(

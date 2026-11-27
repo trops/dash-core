@@ -10,6 +10,10 @@ import {
   themeObjects,
 } from "@trops/dash-react";
 import { TeamSettingsForm } from "../../Bots/TeamSettingsForm";
+import {
+  BotSettingsInstall,
+  withBotInstallValues,
+} from "../../Bots/BotSettings";
 
 /**
  * DashboardInstallOptionsModal
@@ -53,6 +57,9 @@ import { TeamSettingsForm } from "../../Bots/TeamSettingsForm";
  *   Called with the user's choices when they click Install.
  * @param {object[]} [teamSettings]  the settings its team declares
  *   (DASH-57): filled in here, used by its bots as {name}.
+ * @param {Array<{role, name, settings}>} [teamBots]  its bots that declare
+ *   settings of their own (DASH-136): one section per bot; their values go
+ *   in teamValues["@bots"][role].
  */
 export const DashboardInstallOptionsModal = ({
   isOpen,
@@ -62,6 +69,7 @@ export const DashboardInstallOptionsModal = ({
   onCreateFolder,
   onConfirm,
   teamSettings = [],
+  teamBots = [],
 }) => {
   const { currentTheme } = useContext(ThemeContext);
   const panelStyles = getStylesForItem(themeObjects.PANEL, currentTheme, {
@@ -78,6 +86,7 @@ export const DashboardInstallOptionsModal = ({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
   const [teamValues, setTeamValues] = useState({});
+  const [botValues, setBotValues] = useState({});
 
   // Reset state every time the modal opens with a new package.
   useEffect(() => {
@@ -88,6 +97,7 @@ export const DashboardInstallOptionsModal = ({
     setNewFolderName("");
     setError(null);
     setTeamValues({});
+    setBotValues({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, pkg?.name]);
 
@@ -139,7 +149,9 @@ export const DashboardInstallOptionsModal = ({
     onConfirm({
       name: (name || "").trim() || defaultName,
       menuId,
-      ...(teamSettings && teamSettings.length ? { teamValues } : {}),
+      ...((teamSettings && teamSettings.length) || (teamBots && teamBots.length)
+        ? { teamValues: withBotInstallValues(teamValues, botValues) }
+        : {}),
     });
   }
 
@@ -256,6 +268,17 @@ export const DashboardInstallOptionsModal = ({
               />
             </div>
           ) : null}
+
+          <BotSettingsInstall
+            bots={teamBots}
+            values={botValues}
+            onChange={(role, n, v) =>
+              setBotValues((prev) => ({
+                ...prev,
+                [role]: { ...(prev[role] || {}), [n]: v },
+              }))
+            }
+          />
 
           {error && (
             <div className="text-xs text-red-300 bg-red-900/30 border border-red-700/40 rounded px-3 py-2">

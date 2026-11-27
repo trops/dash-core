@@ -11,6 +11,10 @@
  *
  * A table (DASH-84) is rows of the same fields, each with a key: one row
  * per repo. Bots use {repo.url}; each job uses the row it picked.
+ *
+ * The same form shows one bot's own settings (DASH-136) when `botName` is
+ * given: "Workspace Bot uses it as {workFolder}". A required setting is
+ * marked Required.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -66,18 +70,43 @@ export const TeamSettingsForm = ({
   onChange,
   usedBy = null,
   disabled = false,
+  // One bot's own settings (DASH-136): whose they are.
+  botName = null,
 }) => {
   const { muted } = useConfigTokens();
   const status = useStatusTokens();
   if (!settings.length) return null;
   const empty = new Set(emptySettings(settings, values).map((s) => s.name));
+  const users = (s) =>
+    botName
+      ? [botName]
+      : usedBy && usedBy[s.name] && usedBy[s.name].length
+        ? usedBy[s.name]
+        : null;
+  const title = (s) => (
+    <span className="flex flex-row gap-2 items-baseline">
+      <span className="text-sm font-medium">{s.label || s.name}</span>
+      {s.required ? (
+        <span
+          className={`text-xs ${status.warning.text}`}
+          data-testid={`team-setting-${s.name}-required`}
+        >
+          Required
+        </span>
+      ) : null}
+    </span>
+  );
+  const emptyText = (what) =>
+    botName
+      ? `No ${what} yet: ${botName} can't do its job until it has one.`
+      : `No ${what} yet: bots that use it can't run until it has one.`;
   return (
     <div className="flex flex-col gap-3" data-testid="team-settings-form">
       {settings.map((s) => {
         const hint = [
           s.description || null,
-          usedBy && usedBy[s.name] && usedBy[s.name].length
-            ? `Used by ${usedBy[s.name].join(", ")} as {${s.name}}`
+          users(s)
+            ? `${botName ? `${botName} uses it` : `Used by ${users(s).join(", ")}`} as {${s.name}}`
             : `Bots use it as {${s.name}}`,
         ]
           .filter(Boolean)
@@ -88,8 +117,10 @@ export const TeamSettingsForm = ({
               key={s.name}
               setting={s}
               rows={rowsOf(values, s)}
-              usedBy={usedBy && usedBy[s.name]}
+              usedBy={users(s)}
               empty={empty.has(s.name)}
+              emptyText={emptyText("rows")}
+              title={title(s)}
               disabled={disabled}
               onChange={(rows) => onChange && onChange(s.name, rows)}
             />
@@ -126,7 +157,7 @@ export const TeamSettingsForm = ({
             className="flex flex-col gap-1 max-w-xl"
             data-testid={`team-setting-${s.name}`}
           >
-            <span className="text-sm font-medium">{s.label || s.name}</span>
+            {title(s)}
             <div className="flex flex-row gap-2 items-center">
               <div className="flex-1 min-w-0">
                 <InputText
@@ -156,7 +187,7 @@ export const TeamSettingsForm = ({
             <span className={`text-xs ${muted}`}>{hint}</span>
             {empty.has(s.name) ? (
               <span className={`text-xs ${status.warning.text}`}>
-                No value yet: bots that use it can't run until it has one.
+                {emptyText("value")}
               </span>
             ) : null}
           </div>
@@ -177,6 +208,8 @@ export const TableSetting = ({
   empty = false,
   disabled = false,
   onChange,
+  emptyText = "No rows yet: bots that use it can't run until it has one.",
+  title = null,
 }) => {
   const { muted, hairline } = useConfigTokens();
   const status = useStatusTokens();
@@ -188,7 +221,9 @@ export const TableSetting = ({
     onChange(rows.map((r, j) => (j === i ? { ...r, [name]: v } : r)));
   return (
     <div className="flex flex-col gap-2" data-testid={`team-setting-${s.name}`}>
-      <span className="text-sm font-medium">{s.label || s.name}</span>
+      {title || (
+        <span className="text-sm font-medium">{s.label || s.name}</span>
+      )}
       <span className={`text-xs ${muted}`}>
         {[
           s.description || null,
@@ -262,9 +297,7 @@ export const TableSetting = ({
         />
       </div>
       {empty ? (
-        <span className={`text-xs ${status.warning.text}`}>
-          No rows yet: bots that use it can't run until it has one.
-        </span>
+        <span className={`text-xs ${status.warning.text}`}>{emptyText}</span>
       ) : null}
     </div>
   );

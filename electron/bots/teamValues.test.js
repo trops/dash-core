@@ -358,7 +358,7 @@ describe("a Code Factory package installed twice", () => {
     assert.equal(r.valid, false);
     assert.match(
       r.errors.join("\n"),
-      /a folder must start with one of the team's settings/,
+      /a folder must start with one of the team's or the bot's settings/,
     );
     assert.match(r.errors.join("\n"), /can't review its own work/);
   });
