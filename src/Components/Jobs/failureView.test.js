@@ -3,10 +3,13 @@
  * offers the button that fixes it — one test per kind of failure.
  */
 import {
+  failedSteps,
   failureStep,
+  failureThenText,
   failureTitle,
   failureView,
   plainReason,
+  quoted,
   settingLabel,
 } from "./failureView";
 
@@ -292,7 +295,7 @@ describe("failureView", () => {
       { goal: checksGoal() },
     );
     expect(failureTitle(v)).toBe(
-      "Failed at Coder: its validate check still fails after 2 tries",
+      "Failed at Coder: its check “validate” still fails after 2 tries",
     );
     expect(v.detail).toBe("2 tests fail");
     expect(v.output).toEqual({
@@ -317,7 +320,8 @@ describe("failureView", () => {
       ]),
     );
     expect(v.kind).toBe("checks");
-    expect(v.reason).toBe('didn\'t pass "validate" on try 1: 3 tests fail');
+    expect(v.reason).toBe("its check “validate” failed");
+    expect(v.detail).toBe("3 tests fail");
   });
 
   it("a package command that's off: Waiting at, and Turn on <check>", () => {
@@ -337,11 +341,11 @@ describe("failureView", () => {
       { goal: checksGoal({ held: true }) },
     );
     expect(failureTitle(v)).toBe(
-      "Waiting at Coder: its npm test check came with the package and is off",
+      "Waiting at Coder: its check “npm test” came with the package and is off",
     );
     expect(v.action).toEqual({
       type: "turn-on",
-      label: "Turn on npm test",
+      label: "Turn on “npm test”",
       botId: "c",
       check: "npm test",
     });
@@ -372,7 +376,7 @@ describe("failureView", () => {
       { goal },
     );
     expect(failureTitle(v)).toBe(
-      "Waiting at Coder: its Tests pass check (npm test) came with the package and is off",
+      "Waiting at Coder: its check “Tests pass” (npm test) came with the package and is off",
     );
     expect(v.action).toEqual({
       type: "turn-on",
@@ -466,5 +470,127 @@ describe("plain words", () => {
     expect(plainReason("It failed.")).toBe("It failed");
     expect(plainReason("")).toBe("");
     expect(plainReason("x".repeat(300))).toHaveLength(200);
+  });
+});
+
+// John's Code Factory self-test (dash-electron 0.0.1153): the Coder's
+// chained command was refused, then the Reporter ran On Failure and its own
+// check failed too. The header must lead with the Coder.
+const selfTest = () =>
+  job([
+    {
+      id: "s1",
+      botId: "lead",
+      botName: "Planner",
+      status: "done",
+      startedAt: "2026-11-27T10:00:00.000Z",
+      endedAt: "2026-11-27T10:01:00.000Z",
+    },
+    {
+      id: "s2",
+      botId: "coder",
+      botName: "Coder",
+      status: "failed",
+      why: { kind: "handon", by: "Planner", label: "Planned" },
+      startedAt: "2026-11-27T10:01:00.000Z",
+      endedAt: "2026-11-27T10:03:00.000Z",
+      summary: "Coder can't run `cd repo && npm test`…",
+      refusal: {
+        kind: "command",
+        what: "cd repo && npm test",
+        why: "a strict bot runs one command per call (no &&, ;, || or |)",
+        fix: "Change the bot's instructions so it runs each step as its own command.",
+        section: "instructions",
+      },
+    },
+    {
+      id: "s3",
+      botId: "reporter",
+      botName: "Reporter",
+      status: "failed",
+      why: { kind: "handon", by: "Coder", label: "Failed" },
+      goalId: "goal_r",
+      startedAt: "2026-11-27T10:03:01.000Z",
+      endedAt: "2026-11-27T10:05:00.000Z",
+      summary: "Posted the failure.",
+      failed:
+        'Didn\'t pass "The ticket got its comment" on try 2: No comment on the ticket',
+    },
+  ]);
+
+describe("the first failure leads (an On Failure bot that failed too)", () => {
+  it("leads with the Coder's refusal and its fix; the Reporter is a line", () => {
+    const j = selfTest();
+    expect(failureStep(j).id).toBe("s2");
+    const v = failureView(j);
+    expect(failureTitle(v)).toBe(
+      "Failed at Coder: it can't run `cd repo && npm test`: a strict bot runs one command per call (no &&, ;, || or |)",
+    );
+    expect(v.detail).toBe(
+      "Change the bot's instructions so it runs each step as its own command.",
+    );
+    expect(v.action).toEqual({
+      type: "settings",
+      label: "Open Coder's Instructions",
+      botId: "coder",
+      section: "instructions",
+    });
+    expect(v.rerun).toBe(true);
+    expect(v.then).toHaveLength(1);
+    expect(failureThenText(v.then[0])).toBe(
+      "Then Reporter failed too: its check “The ticket got its comment” still fails after 2 tries",
+    );
+    expect(v.then[0].botName).toBe("Reporter");
+  });
+
+  it("the Reporter's checks job doesn't take the header either", () => {
+    // The page reads the first failure's goal; the Coder has none.
+    const v = failureView(selfTest(), { goal: null });
+    expect(v.botName).toBe("Coder");
+    expect(v.kind).toBe("blocked");
+  });
+
+  it("never reads 'its The … check'", () => {
+    const v = failureView(selfTest());
+    const all = [failureTitle(v), ...v.then.map(failureThenText)].join("\n");
+    expect(all).not.toMatch(/its The /);
+    expect(all).not.toMatch(/ check still fails/);
+  });
+
+  it("a step run again starts a new try: failures from before it drop off", () => {
+    const j = selfTest();
+    // Run again from Coder: it ran fine; then the Tester failed.
+    j.steps[1] = {
+      ...j.steps[1],
+      status: "done",
+      retries: 1,
+      refusal: undefined,
+      startedAt: "2026-11-27T11:00:00.000Z",
+      endedAt: "2026-11-27T11:02:00.000Z",
+    };
+    j.steps.push({
+      id: "s4",
+      botId: "tester",
+      botName: "Tester",
+      status: "failed",
+      startedAt: "2026-11-27T11:02:01.000Z",
+      endedAt: "2026-11-27T11:03:00.000Z",
+      failed: 'Didn\'t pass "Tests pass" on try 1: 3 tests fail',
+    });
+    const { first, then } = failedSteps(j);
+    expect(first.id).toBe("s4");
+    expect(then).toEqual([]);
+    expect(failureTitle(failureView(j))).toBe(
+      "Failed at Tester: its check “Tests pass” failed",
+    );
+  });
+
+  it("check names are quoted, and their full stops don't end a sentence", () => {
+    expect(quoted("Tests pass")).toBe("“Tests pass”");
+    expect(quoted('"Tests pass"')).toBe("“Tests pass”");
+    expect(quoted("")).toBe("");
+    expect(plainReason('Didn\'t pass "v1.2 builds" on try 1. More.')).toBe(
+      'Didn\'t pass "v1.2 builds" on try 1',
+    );
   });
 });

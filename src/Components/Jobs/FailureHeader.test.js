@@ -132,7 +132,7 @@ describe("FailureHeader on the Jobs page", () => {
     const header = await screen.findByTestId("job-failure");
     await waitFor(() =>
       expect(within(header).getByTestId("job-failure-title")).toHaveTextContent(
-        "Failed at Coder: its validate check still fails after 2 tries",
+        "Failed at Coder: its check “validate” still fails after 2 tries",
       ),
     );
     expect(within(header).getByText("2 tests fail")).toBeInTheDocument();
@@ -182,7 +182,9 @@ describe("FailureHeader on the Jobs page", () => {
     );
     await waitFor(() => expect(calls.run).toHaveLength(1));
     expect(calls.run[0][0]).toBe("coder");
-    expect(calls.run[0][1]).toMatch(/Your last try failed: didn't pass/);
+    expect(calls.run[0][1]).toMatch(
+      /Your last try failed: its check “validate” still fails after 2 tries/,
+    );
     expect(await screen.findByText(/shows as a new job/)).toBeInTheDocument();
   });
 
@@ -319,5 +321,48 @@ describe("FailureHeader on the Jobs page", () => {
       within(header).getByRole("button", { name: "Open Coder's Commands" }),
     ).toBeInTheDocument();
     expect(screen.getByTestId("job-blocked")).toBeInTheDocument();
+  });
+
+  it("leads with the first failure; an On Failure bot that failed too is a line (John's self-test)", async () => {
+    const reporter = {
+      id: "s3",
+      botId: "reporter",
+      botName: "Reporter",
+      status: "failed",
+      why: { kind: "handon", by: "Coder", label: "Failed" },
+      goalId: "goal_r",
+      summary: "Posted the failure.",
+      failed:
+        'Didn\'t pass "The ticket got its comment" on try 2: No comment on the ticket',
+    };
+    const coder = {
+      id: "s2",
+      botId: "coder",
+      botName: "Coder",
+      status: "failed",
+      summary: "Coder can't run `cd repo && npm test`…",
+      refusal: {
+        kind: "command",
+        what: "cd repo && npm test",
+        why: "a strict bot runs one command per call (no &&, ;, || or |)",
+        fix: "Change the bot's instructions so it runs each step as its own command.",
+        section: "instructions",
+      },
+    };
+    withApi(base([coder, reporter]));
+    render(<JobsPage workspaceId="1" />);
+    const header = await screen.findByTestId("job-failure");
+    await waitFor(() =>
+      expect(within(header).getByTestId("job-failure-title")).toHaveTextContent(
+        "Failed at Coder: it can't run `cd repo && npm test`",
+      ),
+    );
+    expect(within(header).getByTestId("job-failure-then")).toHaveTextContent(
+      "Then Reporter failed too: its check “The ticket got its comment” still fails after 2 tries",
+    );
+    expect(
+      within(header).getByRole("button", { name: "Open Coder's Instructions" }),
+    ).toBeInTheDocument();
+    expect(header).not.toHaveTextContent(/Failed at Reporter/);
   });
 });

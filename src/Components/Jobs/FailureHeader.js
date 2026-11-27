@@ -4,6 +4,8 @@
  * the kind of failure (failureView.js): that bot's settings, Check setup,
  * Turn on a package's check, Raise budget, or Run again from that step /
  * Send back to its bot with a note. A failing check's output on request.
+ * The header is the first failure; bots that failed after it (an On
+ * Failure listener, say) get a line each: "Then Reporter failed too: …".
  */
 import React, { useState } from "react";
 import {
@@ -17,7 +19,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { CheckOutput } from "../Goals/JobCheckRows";
 import { setupView } from "../Bots/TeamJobSettings";
 import { openBotSettings } from "./NeedsYouCards";
-import { failureTitle } from "./failureView";
+import { failureThenText, failureTitle } from "./failureView";
 
 const botsApi = () =>
   (typeof window !== "undefined" && window.mainApi && window.mainApi.bots) ||
@@ -148,6 +150,15 @@ export const FailureHeader = ({ job, view, onGo }) => {
           {view.detail}
         </span>
       ) : null}
+      {(view.then || []).map((t) => (
+        <span
+          key={t.stepId}
+          className={`text-xs break-words ${muted}`}
+          data-testid="job-failure-then"
+        >
+          {failureThenText(t)}
+        </span>
+      ))}
       {view.lines.length > 1 ? (
         <ul className={`text-xs list-disc pl-4 ${muted}`}>
           {view.lines.map((l, i) => (
