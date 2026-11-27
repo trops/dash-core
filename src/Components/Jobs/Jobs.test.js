@@ -921,9 +921,73 @@ describe("a refused command or tool on the job page (DASH-115)", () => {
     ]);
     render(<JobsPage workspaces={WORKSPACES} />);
     const test = await screen.findByTestId("job-self-test");
-    expect(test).toHaveTextContent(
-      "PR Bot: `git push -u origin feat/DASH-1` (blocked in a test)",
-    );
+    expect(test).toHaveTextContent("Push feat/DASH-1");
     expect(screen.queryByTestId("job-blocked")).toBeNull();
+  });
+
+  it("a passed self-test says what it skipped, per step too, and shows no made-up PR link (DASH-121)", async () => {
+    withApi([
+      {
+        id: "job_t2",
+        workspaceId: "1",
+        leadId: "lead1",
+        title: "DASH-97",
+        test: true,
+        startedBy: { kind: "you" },
+        status: "done",
+        createdAt: T,
+        updatedAt: T,
+        skippedInTest: [
+          {
+            command:
+              'gh pr create --base main --head fix/DASH-97 --title "Fix slugs"',
+            botName: "PR Bot",
+          },
+          {
+            tool: "addOrEditJiraIssueComment",
+            server: "Atlassian MCP",
+            args: '{"issueIdOrKey":"DASH-97","body":"PR opened"}',
+            botName: "Reporter",
+          },
+        ],
+        steps: [
+          {
+            id: "s1",
+            botId: "pr",
+            botName: "PR Bot",
+            status: "done",
+            summary:
+              "The PR is open, not merged: [PR](https://github.com///pull/0)",
+            handoff: { status: "ok", prUrl: "https://github.com///pull/0" },
+          },
+          { id: "s2", botId: "rep", botName: "Reporter", status: "done" },
+        ],
+      },
+    ]);
+    render(<JobsPage workspaces={WORKSPACES} />);
+    const title = await screen.findByTestId("job-self-test-title");
+    expect(title).toHaveTextContent(
+      "Self-test passed · 2 outward actions were skipped",
+    );
+    const test = screen.getByTestId("job-self-test");
+    expect(test).toHaveTextContent("Open a PR (fix/DASH-97 → main)");
+    expect(test).toHaveTextContent("Comment on DASH-97");
+    expect(test).toHaveTextContent(
+      "To do it for real, run the team on a ticket.",
+    );
+    expect(screen.getAllByTestId("job-step-self-test")).toHaveLength(2);
+    const skipped = screen.getAllByTestId("job-step-skipped");
+    expect(skipped[0]).toHaveTextContent(
+      "Skipped in this test: Open a PR (fix/DASH-97 → main)",
+    );
+    expect(skipped[1]).toHaveTextContent(
+      "Skipped in this test: Comment on DASH-97",
+    );
+    const prose = screen.getAllByTestId("job-step-prose")[0];
+    expect(prose).toHaveTextContent("No PR — skipped in a test");
+    expect(prose.querySelector("a")).toBeNull();
+    expect(screen.getByTestId("handoff-detail")).toHaveTextContent(
+      "No PR — skipped in a test",
+    );
   });
 });

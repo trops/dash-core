@@ -20,6 +20,8 @@ import { useGoal } from "../../hooks/useGoals";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { HandoffCard, HandoffJson, StepProse } from "./StepMessage";
 import { FailureHeader } from "./FailureHeader";
+import { SelfTestMarker, SelfTestSummary, StepSkips } from "./SelfTestSummary";
+import { testCard, withoutPlaceholderPrs } from "./selfTestView";
 import { failureStep, failureView } from "./failureView";
 import { handoffCard, stepParts } from "./stepView";
 import { BlockedCard, StepNeedsYou, useApprovals } from "./NeedsYouCards";
@@ -31,7 +33,6 @@ import {
   searchJobs,
   groupByDashboard,
   jobTitleText,
-  skippedLines,
   workspaceText,
   jobCounts,
   needsYouStep,
@@ -162,12 +163,16 @@ const JobStep = ({ job, step, approvals = [] }) => {
   const why = whyText(step.why, job);
   const inLead =
     step.botId === job.leadId || (step.why && step.why.kind === "asked");
-  const { prose, handoff, cut } = stepParts(step);
-  const card = handoffCard(handoff, job);
+  const parts = stepParts(step);
+  const { handoff, cut } = parts;
+  // A self-test opens no PR: a made-up PR link isn't shown as one (DASH-121).
+  const prose = job.test ? withoutPlaceholderPrs(parts.prose) : parts.prose;
+  const card = testCard(handoffCard(handoff, job), job);
   const running = step.status === "running";
   const meta = (
     <span className="inline-flex flex-row flex-wrap items-center gap-2">
       <JobBadge status={step.status} step />
+      {job.test ? <SelfTestMarker /> : null}
       <span data-testid="job-step-why">
         {[why, step.startedAt ? whenText(step.startedAt) : null]
           .filter(Boolean)
@@ -186,6 +191,7 @@ const JobStep = ({ job, step, approvals = [] }) => {
         testId="job-step-message"
         footer={
           <div className="flex flex-col gap-2 pt-1">
+            {job.test ? <StepSkips job={job} step={step} /> : null}
             {card ? <HandoffCard card={card} /> : null}
             {cut ? (
               <span className={`text-xs ${muted}`} data-testid="handoff-cut">
@@ -350,6 +356,8 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
             onGo={() => goToStep(needs)}
           />
         ) : null}
+        {/* A self-test's summary (DASH-121): what it skipped. */}
+        <SelfTestSummary job={job} />
         {job.item && job.item.url ? (
           <button
             type="button"
@@ -364,25 +372,6 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
           <span className={`text-xs ${muted}`} data-testid="job-workspace">
             Workspace: {workspaceText(job)}
           </span>
-        ) : null}
-        {job.test ? (
-          <div
-            className="flex flex-col gap-1 text-xs"
-            data-testid="job-self-test"
-          >
-            <span className="font-semibold">
-              A self-test: nothing outward happened. What it would have done:
-            </span>
-            {skippedLines(job).length ? (
-              skippedLines(job).map((l, i) => (
-                <span key={i} className={`font-mono break-all ${muted}`}>
-                  {l}
-                </span>
-              ))
-            ) : (
-              <span className={muted}>Nothing outward yet.</span>
-            )}
-          </div>
         ) : null}
         <span className={`text-xs ${muted}`} data-testid="job-start-line">
           {[dashboardName, startLineText(job)].filter(Boolean).join(" · ")}
