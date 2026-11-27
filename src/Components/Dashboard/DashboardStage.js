@@ -311,6 +311,9 @@ const DashboardStageInner = ({
   // Issues page deep link { issueId, nonce } (a widget's problems chip).
   const [issueLink, setIssueLink] = useState(null);
   const [jobLink, setJobLink] = useState(null);
+  // Bots page deep link { workspaceId, setup, nonce }: a team's setup
+  // (DASH-118).
+  const [botsLink, setBotsLink] = useState(null);
   // The widget panel's "apply what's typed" — Save calls it first.
   const panelFlushRef = useRef(null);
   // The widget panel's settings check: Save waits while one fails.
@@ -905,6 +908,16 @@ const DashboardStageInner = ({
       setWorkspaceRequest(null);
       handleOpenPageGuarded("jobs", {
         jobLink: d.jobId ? { jobId: d.jobId, nonce: Date.now() } : null,
+      });
+    } else if (d.page === "bots" && d.teamId != null) {
+      // A team's setup (DASH-118): from a lead's conversation too.
+      setWorkspaceRequest(null);
+      handleOpenPageGuarded("bots", {
+        botsLink: {
+          workspaceId: d.teamId,
+          setup: !!d.setup,
+          nonce: Date.now(),
+        },
       });
     } else if (d.page) handleOpenPageGuarded(d.page);
   };
@@ -1690,6 +1703,7 @@ const DashboardStageInner = ({
     if (opts.widgetLink) setWidgetLink(opts.widgetLink);
     if (opts.issueLink) setIssueLink(opts.issueLink);
     if (opts.jobLink) setJobLink(opts.jobLink);
+    if (opts.botsLink) setBotsLink(opts.botsLink);
   }
 
   function handleOpenPageGuarded(key, opts = {}) {
@@ -3577,6 +3591,7 @@ const DashboardStageInner = ({
                   widgetLink={widgetLink}
                   issueLink={issueLink}
                   jobLink={jobLink}
+                  botsLink={botsLink}
                   workspaces={workspaceConfig}
                   menuItems={menuItems}
                   dashApi={dashApi}

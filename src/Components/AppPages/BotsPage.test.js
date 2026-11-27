@@ -591,3 +591,22 @@ describe("BotsPage — setup status (DASH-119)", () => {
     expect(screen.getByText("opens on settings")).toBeInTheDocument();
   });
 });
+
+describe("BotsPage — a team's setup from elsewhere (DASH-118)", () => {
+  it("picks the team and scrolls to its setup sections", () => {
+    const scroll = jest.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      setup({ teamLink: { workspaceId: 9, setup: true, nonce: 1 } });
+      const overview = screen.getByTestId("team-overview");
+      expect(
+        within(overview).getByRole("heading", { name: "Mail" }),
+      ).toBeInTheDocument();
+      expect(within(overview).getByTestId("team-setup")).toBeInTheDocument();
+      expect(scroll).toHaveBeenCalled();
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+});

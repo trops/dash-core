@@ -257,7 +257,8 @@ export const DashboardInstallOptionsModal = ({
               <label className="text-sm font-medium">Team settings</label>
               <span className="text-[10px] opacity-50">
                 Its bots use these in their instructions, checks and folders.
-                You can change them later on the dashboard.
+                You can change them later in the team&apos;s setup: Team setup
+                in the dashboard&apos;s Bots view, or Manage › Bots.
               </span>
               <TeamSettingsForm
                 settings={teamSettings}

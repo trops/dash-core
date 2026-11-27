@@ -139,6 +139,17 @@ afterEach(() => {
 });
 
 const teamList = () => screen.getByRole("navigation", { name: "Team" });
+// The team's ⋯ menu (DASH-118): opened, then one of its items.
+const teamMenuItem = (name) => {
+  if (!screen.queryByText(name)) {
+    const nav = screen.queryByRole("navigation", { name: "Team" });
+    const scope = nav ? within(nav) : screen;
+    fireEvent.click(
+      scope.getAllByRole("button", { name: "More team actions" })[0],
+    );
+  }
+  return screen.getByText(name);
+};
 
 describe("BotsView — team diagram (TEAM-014, DASH-139)", () => {
   const panelOf = (name) =>
@@ -467,7 +478,7 @@ describe("BotsView — tabs and actions", () => {
     setup();
     expect(screen.queryByText("Find in registry")).toBeNull();
     expect(screen.queryByText("Import team")).toBeNull();
-    expect(screen.getByText("Export team")).toBeInTheDocument();
+    expect(teamMenuItem("Export team")).toBeInTheDocument();
   });
 
   it("a deleted bot refreshes the team (the lead is shown again)", () => {
@@ -695,7 +706,7 @@ describe("BotsView — team export/import (TEAM-006/007 slice 1)", () => {
       ],
     });
     setup({ apiOver: { exportTeam } });
-    fireEvent.click(within(teamList()).getByText("Export team"));
+    fireEvent.click(teamMenuItem("Export team"));
     await waitFor(() =>
       expect(exportTeam).toHaveBeenCalledWith(7, { name: "Kitchen Sink" }),
     );
@@ -756,7 +767,7 @@ describe("BotsView — publish to the registry (TEAM-006 slice 3a)", () => {
       visibility: "private",
     });
     setup({ apiOver: { previewPublish, publish } });
-    fireEvent.click(within(teamList()).getByText("Publish team…"));
+    fireEvent.click(teamMenuItem("Publish team…"));
     expect(
       await screen.findByText("Publish team to the registry"),
     ).toBeInTheDocument();
@@ -804,7 +815,7 @@ describe("BotsView — publish to the registry (TEAM-006 slice 3a)", () => {
     mockEnsureAuthed.mockResolvedValueOnce(false);
     const previewPublish = jest.fn();
     setup({ apiOver: { previewPublish } });
-    fireEvent.click(within(teamList()).getByText("Publish team…"));
+    fireEvent.click(teamMenuItem("Publish team…"));
     await waitFor(() => expect(mockEnsureAuthed).toHaveBeenCalled());
     expect(previewPublish).not.toHaveBeenCalled();
   });
@@ -816,7 +827,7 @@ describe("BotsView — publish to the registry (TEAM-006 slice 3a)", () => {
       error: "Version 1.0.0 already exists",
     });
     setup({ apiOver: { previewPublish, publish } });
-    fireEvent.click(within(teamList()).getByText("Publish team…"));
+    fireEvent.click(teamMenuItem("Publish team…"));
     fireEvent.click(await screen.findByText("Publish"));
     expect(
       await screen.findByText("Version 1.0.0 already exists"),
@@ -849,7 +860,7 @@ describe("BotsView — show bots on the dashboard (TEAM-012)", () => {
       .fn()
       .mockResolvedValue({ added: true, widgetId: 6 });
     setup({ apiOver: { addBotWidget } });
-    fireEvent.click(within(teamList()).getByText("Show team activity"));
+    fireEvent.click(teamMenuItem("Show team activity"));
     await waitFor(() =>
       expect(addBotWidget).toHaveBeenCalledWith(7, { kind: "activity" }),
     );
@@ -863,7 +874,7 @@ describe("BotsView — show bots on the dashboard (TEAM-012)", () => {
       error: "Save the dashboard first, then try again.",
     });
     setup({ apiOver: { addBotWidget } });
-    fireEvent.click(within(teamList()).getByText("Show team activity"));
+    fireEvent.click(teamMenuItem("Show team activity"));
     expect(
       await screen.findByText("Save the dashboard first, then try again."),
     ).toBeInTheDocument();
@@ -1033,5 +1044,66 @@ describe("BotsView — setup status (DASH-119)", () => {
     fireEvent.click(within(teamList()).getByText("Inbox Watch"));
     act(() => mockPageProps.onOpenBot("b2", "settings"));
     expect(pageShows()).toBe("b2 on settings");
+  });
+});
+
+describe("BotsView — Team setup and the ⋯ menu (DASH-118)", () => {
+  const opened = () => {
+    const seen = [];
+    const fn = (e) => seen.push(e.detail);
+    window.addEventListener("dash:open-page", fn);
+    return {
+      seen,
+      off: () => window.removeEventListener("dash:open-page", fn),
+    };
+  };
+
+  it("the diagram header has Team setup next to Add bot; it opens the team's setup", () => {
+    setup({ mode: null });
+    const ev = opened();
+    fireEvent.click(screen.getByRole("button", { name: "Team setup" }));
+    ev.off();
+    expect(ev.seen).toEqual([{ page: "bots", teamId: 7, setup: true }]);
+  });
+
+  it("budget, export, activity and publish are under ⋯, not on the page", () => {
+    setup({ mode: null });
+    expect(screen.queryByText("Export team")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "More team actions" }));
+    for (const label of [
+      "Team budget…",
+      "Export team",
+      "Show team activity",
+      "Publish team…",
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+
+  it("the list view has Team setup too", () => {
+    setup({ mode: "list" });
+    const ev = opened();
+    fireEvent.click(
+      within(teamList()).getByRole("button", { name: "Team setup" }),
+    );
+    ev.off();
+    expect(ev.seen[0]).toMatchObject({ page: "bots", teamId: 7 });
+  });
+
+  it("a banner with no one bot to fix opens the team's setup", () => {
+    // Only Check setup's other problems: no bot to open.
+    const { rememberSetupCheck } = require("./teamSetupStore");
+    rememberSetupCheck("7", {
+      ok: false,
+      problems: [
+        { kind: "ai-login", message: "Your default AI can't sign in" },
+      ],
+    });
+    setup({ mode: null });
+    const ev = opened();
+    fireEvent.click(screen.getByRole("button", { name: "Finish setup ›" }));
+    ev.off();
+    rememberSetupCheck("7", null);
+    expect(ev.seen[0]).toMatchObject({ page: "bots", teamId: 7, setup: true });
   });
 });

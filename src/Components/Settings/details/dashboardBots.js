@@ -58,3 +58,18 @@ export function installedText(result, fallbackName) {
   }
   return text;
 }
+
+/**
+ * Does a fresh install's team still need setting up (DASH-118)? Its team
+ * settings or its bots' own settings with no value yet: then the install
+ * lands on the team's setup.
+ */
+export function needsTeamSetup(result) {
+  const bots = result && result.summary && result.summary.bots;
+  if (!bots || bots.error || !(result.workspace && result.workspace.id != null))
+    return false;
+  return (
+    (Array.isArray(bots.needsSettings) && bots.needsSettings.length > 0) ||
+    (Array.isArray(bots.botsNeedSettings) && bots.botsNeedSettings.length > 0)
+  );
+}

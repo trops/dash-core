@@ -35,6 +35,8 @@ export const TeamConnectionsPanel = ({
   onOpenPage,
   onOpenConversation = null,
   onOpenChecks = null,
+  // Its Settings tab: "What it can do"'s Edit (DASH-126).
+  onOpenSettings = null,
   onAdd,
   onRemove,
   children = null,
@@ -202,7 +204,7 @@ export const TeamConnectionsPanel = ({
       </div>
 
       {/* DASH-126 fills this slot. */}
-      <WhatItCanDo bot={bot} />
+      <WhatItCanDo bot={bot} onEdit={onOpenSettings} />
 
       {isLead || !connections ? null : (
         <>

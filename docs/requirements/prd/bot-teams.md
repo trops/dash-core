@@ -1208,6 +1208,21 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 
 **Not done here:** the "untested change" marker isn't counted (DASH-121's self-test owns it); MCP `give_task` isn't refused on an un-set-up team (its bots' runs still fail with the missing setting).
 
+## DASH-118: Team setup reachable from the Bots view; install copy (2026-11-27)
+
+**Status:** Implemented (mockups 1 and 8).
+
+**Why:** a team's settings, Check setup, self-test and checks were only on its page under Manage › Bots, which nothing on the dashboard linked to, and the install dialog said "You can change them later on the dashboard".
+
+- [x] The Bots view's team header has **Team setup** next to Add bot (diagram, list and narrow windows). It opens the team's page under Manage › Bots, scrolled to its setup sections (`Bots/openTeamSetup.js`: a `dash:open-page` event `{ page: "bots", teamId, setup: true }` → DashboardStage `botsLink` → AppPage → BotsPage `teamLink` → TeamOverview `setupFocus`). A team that isn't set up opens at the top, where its banner (DASH-119) says what's missing.
+- [x] Team budget, Export team, Show team activity and Publish team moved under a ⋯ menu beside them (no longer at the bottom of the diagram). What an export or publish says still shows below the team.
+- [x] The setup banner with no one bot to fix (only Check setup's other problems) opens Team setup, in the Bots view and a lead's conversation.
+- [x] Install copy (DashboardInstallOptionsModal and TeamImportReview): "You can change them later in the team's setup: Team setup in the dashboard's Bots view, or Manage › Bots."
+- [x] A registry dashboard install whose team or bots still need settings (`needsSettings` / `botsNeedSettings`, `dashboardBots.needsTeamSetup`) lands on that team's setup after the new dashboard opens.
+- [x] DASH-126 leftover: "What it can do"'s Edit opens the selected bot's Settings (TeamConnectionsPanel `onOpenSettings`).
+
+**Not done here (DASH-130):** the install dialog's "Install, fill in later" / "Install and open Set up" buttons and its visual polish.
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams
@@ -1335,6 +1350,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.29    | 2026-11-27 | John   | DASH-126: "What it can do" in the selected bot's panel — files and shell with its folders, what it asks you before, commands, each provider's allowed tools, the always-blocked list (`canDoView`)                                                                                                                                                                                                  |
 | 1.30    | 2026-11-27 | John   | DASH-135: the tracker setting type — where a bot's tickets come from (Jira / GitHub Issues / Linear / None) with pickers, a connection row, a preview and Jira's Advanced JQL; checked by setup |
 | 1.31    | 2026-11-27 | John   | DASH-119: a team's setup status — badge on the tree row and Bots view header, "This team can't take work yet" banner, "Needs setup" on cards, Run now says why it can't start |
+| 1.32    | 2026-11-27 | John   | DASH-118: Team setup in the Bots view header (opens the team page at its setup), team actions under ⋯, install copy names where settings are, a fresh install lands on the team's setup |
 
 ---
 

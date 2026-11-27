@@ -53,6 +53,8 @@ export const AppPage = ({
   issueLink = null,
   // Jobs deep link { jobId, nonce } (a lead's strip, DASH-31).
   jobLink = null,
+  // Bots deep link { workspaceId, setup, nonce } (a team's setup, DASH-118).
+  botsLink = null,
   workspaces = [],
   menuItems = [],
   dashApi = null,
@@ -110,6 +112,7 @@ export const AppPage = ({
       <BotsPage
         workspaces={workspaces}
         dashApi={dashApi}
+        teamLink={botsLink}
         onOpenBotInBotsView={onOpenBotInBotsView}
         onOpenAppSettings={onOpenAppSettings}
         // A team's Open dashboard (lead-workspace release 5).
