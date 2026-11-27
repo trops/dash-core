@@ -435,7 +435,11 @@ export const BotChecksModal = ({
                       message="This command came with the package, so it's off: Dash won't run it on this computer until you turn it on. Until then, its jobs wait for you to approve the work."
                     />
                     <code className="font-mono text-xs break-all">
-                      {(step.check && step.check.command) || ""}
+                      {(step.check &&
+                        (step.check.command ||
+                          (step.check.fallback &&
+                            step.check.fallback.command))) ||
+                        ""}
                     </code>
                     <div>
                       <Button

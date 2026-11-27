@@ -26,6 +26,7 @@ const {
   CHECK_KINDS,
   clampRounds,
 } = require("../flows/flowModel");
+const { repoCheckError } = require("../checks/kinds/repo");
 
 const CHECKS_FLOW_KIND = "bot-checks";
 const ON_FAIL = ["retry", "you", "stop"];
@@ -72,7 +73,9 @@ function cleanCheckStep(s, i) {
     }
     // A command that came with a package stays off until you turn it on
     // (DASH-57): nothing it says runs on this computer before then.
-    if (s.held === true && check.kind === "command") step.held = true;
+    // So does a repo check (DASH-102): it runs the repo's own code.
+    if (s.held === true && (check.kind === "command" || check.kind === "repo"))
+      step.held = true;
   }
   if (s.kind === "reviewer") {
     // A reviewer with no bot could never answer: left out.
@@ -138,6 +141,10 @@ function checksError(input, selfId = null) {
       !(s.check && CHECK_KINDS.includes(s.check.kind))
     ) {
       return `a check needs settings of a known kind (${CHECK_KINDS.join(", ")})`;
+    }
+    if (s.kind === "check" && s.check.kind === "repo") {
+      const bad = repoCheckError(s.check);
+      if (bad) return bad;
     }
     if (s.kind === "reviewer" && !s.botId) {
       return "a reviewer check needs the bot that reviews";

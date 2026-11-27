@@ -22,6 +22,7 @@ export const KINDS = [
   { value: "command", label: "Command" },
   { value: "script", label: "Script" },
   { value: "tool", label: "Tool call" },
+  { value: "repo", label: "Repo check" },
 ];
 
 export const KIND_INTRO = {
@@ -31,7 +32,17 @@ export const KIND_INTRO = {
   script:
     "Write a short function, or have AI write it once. You read it before it's saved; it runs without AI.",
   tool: "Ask a provider for a fact and check the answer. Only tools that can't change anything are offered.",
+  repo: "Run a check the repo keeps in .dash/checks, like CI. It's read from the base branch, so the work being checked can't change it.",
 };
+
+const IF_MISSING_OPTIONS = [
+  { value: "fail", label: "Fail, saying it's missing" },
+  { value: "skip", label: "Skip it (passes)" },
+];
+const FROM_OPTIONS = [
+  { value: "base", label: "The base branch (e.g. main)" },
+  { value: "workspace", label: "The workspace's own copy" },
+];
 
 // Each rule's settings, as the setup screen asks for them.
 const RULE_PARAMS = {
@@ -145,6 +156,7 @@ export function checkOfKind(kind, rows) {
   if (kind === "command")
     return { kind, command: "", timeoutSec: 120, passWhen: { type: "exit0" } };
   if (kind === "script") return { kind, script: SCRIPT_START, timeoutSec: 10 };
+  if (kind === "repo") return { kind, name: "validate", ifMissing: "fail" };
   return { kind, server: "", tool: "", args: {}, answerRules: [] };
 }
 
@@ -385,6 +397,54 @@ export const CheckKindEditor = ({
               className={`m-0 p-3 rounded-md text-xs font-mono whitespace-pre-wrap ${fieldBg} ${muted}`}
             >
               {`const input = JSON.parse(fs.readFileSync(\n  process.env.DASH_INPUT, "utf8"));\n// Print {"reason", "details"} as JSON to\n// add them to the proof.`}
+            </pre>
+          </PanelSection>
+        </>
+      ) : null}
+
+      {check.kind === "repo" ? (
+        <>
+          <InputText
+            label="Its file in .dash/checks"
+            value={check.name || ""}
+            inputClassName="font-mono"
+            placeholder="validate"
+            onChange={(v) => patch({ name: v.trim() })}
+          />
+          <span className={`text-xs ${muted}`}>
+            {`Dash runs .dash/checks/${check.name || "<name>"} (any extension: .sh, .js, .py…) in ${runsIn}.`}
+          </span>
+          <div className="flex flex-row gap-2">
+            <div className="flex-1">
+              <SelectInput
+                label="Read from"
+                value={check.from || "base"}
+                options={FROM_OPTIONS}
+                onChange={(v) => patch({ from: v === "base" ? undefined : v })}
+              />
+            </div>
+            <div className="flex-1">
+              <SelectInput
+                label="When the repo has none"
+                value={check.ifMissing || "fail"}
+                options={IF_MISSING_OPTIONS}
+                onChange={(v) => patch({ ifMissing: v })}
+              />
+            </div>
+            <div className="w-32">
+              <SelectInput
+                label="Time limit"
+                value={String(check.timeoutSec || 120)}
+                options={TIME_LIMITS}
+                onChange={(v) => patch({ timeoutSec: Number(v) })}
+              />
+            </div>
+          </div>
+          <PanelSection label="Writing the check">
+            <pre
+              className={`m-0 p-3 rounded-md text-xs font-mono whitespace-pre-wrap ${fieldBg} ${muted}`}
+            >
+              {`# .dash/checks/${check.name || "validate"}.sh\n# Runs in the workspace; exit 0 passes.\nnpm test\n# Optional last line, shown on the job:\necho '{"reason": "Tests pass"}'`}
             </pre>
           </PanelSection>
         </>

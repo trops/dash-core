@@ -17,6 +17,7 @@ const { runRules } = require("./kinds/rules");
 const { runCommand } = require("./kinds/command");
 const { runScript } = require("./kinds/script");
 const { runToolCall } = require("./kinds/toolCall");
+const { runRepoCheck } = require("./kinds/repo");
 const { handoffCheck } = require("../bots/botHandoff");
 
 const KIND_LABELS = {
@@ -24,6 +25,7 @@ const KIND_LABELS = {
   command: "Command",
   script: "Script",
   tool: "Tool call",
+  repo: "Repo check",
   handoff: "Handoff",
 };
 
@@ -66,6 +68,18 @@ async function runCheck(check, input, deps = {}) {
       res = await runToolCall(check, input, {
         callTool: deps.callTool,
         isReadOnly: deps.isReadOnly,
+      });
+    } else if (kind === "repo") {
+      // Kept in the repo like CI (DASH-102): .dash/checks/<name>.
+      res = await runRepoCheck(check, input, {
+        cwd: deps.cwd,
+        tmpDir: deps.tmpDir,
+        ...(deps.env ? { env: deps.env } : {}),
+        // When the repo has none: its fallback, run as any check is.
+        runFallback: async (fb, inp) => {
+          const r = await runCheck(fb, inp, { ...deps, secret: null });
+          return r;
+        },
       });
     } else if (kind === "handoff") {
       // Dash's own (DASH-101): the answer's handoff, against its job.
