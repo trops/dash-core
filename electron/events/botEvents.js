@@ -74,6 +74,8 @@ const BOTS_LIST_JOBS = "bots-list-jobs";
 const BOTS_GET_JOB = "bots-get-job";
 const BOTS_STOP_JOB = "bots-stop-job";
 const BOTS_DELETE_JOB = "bots-delete-job";
+// Run a failed job again from one of its steps (DASH-122).
+const BOTS_RERUN_STEP = "bots-rerun-step";
 const BOTS_LIST_MCP_ROUTES = "bots-list-mcp-routes";
 const BOTS_LIST_MCP_TASK_TEAMS = "bots-list-mcp-task-teams";
 const BOTS_SET_TAKES_MCP_TASKS = "bots-set-takes-mcp-tasks";
@@ -225,6 +227,7 @@ module.exports = {
   BOTS_GET_JOB,
   BOTS_STOP_JOB,
   BOTS_DELETE_JOB,
+  BOTS_RERUN_STEP,
   BOTS_LIST_MCP_ROUTES,
   BOTS_LIST_MCP_TASK_TEAMS,
   BOTS_SET_TAKES_MCP_TASKS,

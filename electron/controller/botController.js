@@ -42,6 +42,7 @@ const { createJobTracker } = require("../jobs/jobTracker");
 const { PausedQueue, drainBot } = require("../bots/pausedQueue");
 const { BusyQueue } = require("../bots/busyQueue");
 const { startsChain, chainStartedBy } = require("../jobs/chainJobs");
+const { rerunPrompt } = require("../jobs/rerunStep");
 const {
   stopBotRun,
   whenIdle: waitUntilIdle,
@@ -715,6 +716,9 @@ const botController = {
         // Checks waiting on the user show on the job (DASH-31).
         if (info && info.goalId && this._jobs) {
           if (info.handOn === false) this._nothingToHandOn(info);
+          // Its checks failed it out (DASH-122): the step fails, with why.
+          else if (info.failed)
+            this._jobs.checksMoved(info.goalId, "failed", info.reason || null);
           else
             this._jobs.checksMoved(
               info.goalId,
@@ -3080,6 +3084,7 @@ const botController = {
               record: {
                 status: "failed",
                 error: preflightText(setup.problems),
+                problems: setup.problems,
               },
             });
             return null;
@@ -3156,7 +3161,7 @@ const botController = {
         });
         this._jobs.endStep(job.id, {
           botId,
-          record: { status: "failed", error: text },
+          record: { status: "failed", error: text, problems: setup.problems },
         });
       }
       return { botId, skipped: true, reason: text, setup };
@@ -3546,6 +3551,70 @@ const botController = {
       }
     }
     this._jobs.stopWaiting(job.id);
+    return { ok: true };
+  },
+
+  /**
+   * Run a failed job again from one of its steps (DASH-122): that step's
+   * bot runs again in the same job, told what it was handed, why its last
+   * try failed and the user's note. A Setup check step can't: its fix is
+   * the setup.
+   * @returns {{ ok: true } | { ok: false, error: string }}
+   */
+  rerunStep(jobId, stepId, note = "") {
+    const job = this.getJob(jobId);
+    if (!job) return { ok: false, error: "That job is gone." };
+    if (job.status !== "failed" && job.status !== "stopped") {
+      return { ok: false, error: "Only a job that ended can be run again." };
+    }
+    const step = (job.steps || []).find((s) => s.id === stepId);
+    if (!step || (step.status !== "failed" && step.status !== "stopped")) {
+      return { ok: false, error: "That step didn't fail." };
+    }
+    if (step.problems) {
+      return {
+        ok: false,
+        error: "Fix the team's setup, then run the job again.",
+      };
+    }
+    const bot = this._store.get(step.botId);
+    if (!bot) {
+      return { ok: false, error: `${step.botName || "That bot"} is gone.` };
+    }
+    if (this._runner.listActive().includes(bot.id)) {
+      return {
+        ok: false,
+        error: `${bot.name} is busy with another run: try again when it finishes.`,
+      };
+    }
+    if (job.workspaceId != null && this._teamBusy(job.workspaceId)) {
+      return {
+        ok: false,
+        error: "Its team has another job going: run this again when it ends.",
+      };
+    }
+    const prompt = rerunPrompt({
+      job,
+      step,
+      note: typeof note === "string" ? note.slice(0, 2000) : "",
+    });
+    if (!this._jobs.retryStep(job.id, step.id)) {
+      return { ok: false, error: "That step can't be run again." };
+    }
+    Promise.resolve(
+      this._asUserRun(bot.id, () =>
+        this._run(bot.id, {
+          ...userRunOptions(bot, { prompt }),
+          jobId: job.id,
+        }),
+      ),
+    ).catch((err) => {
+      console.warn(
+        `[jobs] ${job.id}: running ${bot.name} again failed: ${
+          (err && err.message) || err
+        }`,
+      );
+    });
     return { ok: true };
   },
 

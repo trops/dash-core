@@ -71,6 +71,7 @@ const {
   BOTS_GET_JOB,
   BOTS_STOP_JOB,
   BOTS_DELETE_JOB,
+  BOTS_RERUN_STEP,
   BOTS_LIST_MCP_ROUTES,
   BOTS_LIST_MCP_TASK_TEAMS,
   BOTS_SET_TAKES_MCP_TASKS,
@@ -418,6 +419,9 @@ const botApi = {
   stopJob: (jobId) => ipcRenderer.invoke(BOTS_STOP_JOB, { jobId }),
   /** Delete a finished job (only the user deletes jobs). */
   deleteJob: (jobId) => ipcRenderer.invoke(BOTS_DELETE_JOB, { jobId }),
+  // Run a failed job again from a step, with a note (DASH-122).
+  rerunStep: (jobId, stepId, note = "") =>
+    ipcRenderer.invoke(BOTS_RERUN_STEP, { jobId, stepId, note }),
   /** The Dash Lead's routing log, newest first. */
   listMcpRoutes: (limit = 20) =>
     ipcRenderer.invoke(BOTS_LIST_MCP_ROUTES, { limit }),
