@@ -46,7 +46,18 @@ import {
   checklistLine,
   checklistSteps,
   draftChanged,
+  selfTestBlock,
+  testItemField,
 } from "../../utils/teamChecklist";
+import { onJobsChanged } from "../../hooks/useJobs";
+
+/** The Jobs page, open on a job (DashboardStage's `dash:open-page`). */
+export function openJob(jobId) {
+  if (typeof window === "undefined" || !jobId) return;
+  window.dispatchEvent(
+    new CustomEvent("dash:open-page", { detail: { page: "jobs", jobId } }),
+  );
+}
 
 const botsApi = () =>
   (typeof window !== "undefined" && window.mainApi && window.mainApi.bots) ||
@@ -242,6 +253,7 @@ export const TeamSetupChecklist = ({
 
   // The team's old settings (DASH-57): how many are empty.
   const [teamEmpty, setTeamEmpty] = useState(0);
+  const [teamDeclared, setTeamDeclared] = useState([]);
   // The team's settings: its test item, last self-test, untested change.
   const [teamSettings, setTeamSettings] = useState(null);
   const [check, setCheck] = useState(() => lastSetupCheck(workspaceId));
@@ -265,6 +277,7 @@ export const TeamSetupChecklist = ({
             if (!alive) return;
             const declared =
               (t && Array.isArray(t.declared) && t.declared) || [];
+            setTeamDeclared(declared);
             setTeamEmpty(emptySettings(declared, (t && t.values) || {}).length);
           })
           .catch(() => {});
@@ -276,9 +289,15 @@ export const TeamSetupChecklist = ({
       setCheck(lastSetupCheck(workspaceId));
       load();
     });
+    // A self-test that ended done: tested now (DASH-121).
+    const offJobs = onJobsChanged((msg) => {
+      if (!alive || String(msg.workspaceId) !== String(workspaceId)) return;
+      if (msg.status === "done" || msg.status === "failed") load();
+    });
     return () => {
       alive = false;
       off();
+      offJobs();
     };
   }, [workspaceId]);
 
@@ -324,15 +343,26 @@ export const TeamSetupChecklist = ({
   const repoData = useRepoChecks(workspaceId);
   const repos = repoChecksSummary(repoData);
 
-  // --- Step 4: the self-test ---
+  // --- Step 4: the self-test (DASH-121) ---
+  // It checks the setup first and, when that passes, starts the test and
+  // opens its job on the Jobs page.
   const [testId, setTestId] = useState("");
   const [testNote, setTestNote] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const [started, setStarted] = useState(null);
   useEffect(() => {
-    setTestNote(null);
     setTestId(
       (teamSettings && teamSettings.testItem && teamSettings.testItem.id) || "",
     );
-  }, [teamSettings]);
+  }, [teamSettings && teamSettings.testItem && teamSettings.testItem.id]);
+  const field = testItemField({ bots, team: { declared: teamDeclared } });
+  const blocked = selfTestBlock({
+    waiting: savedCards.filter((c) => !c.ready).length,
+    teamEmpty,
+    dirty,
+    check,
+    item: testId,
+  });
   const runTest = async () => {
     const api = botsApi();
     if (!api || !api.testTeam) {
@@ -340,7 +370,20 @@ export const TeamSetupChecklist = ({
       return;
     }
     setTestNote(null);
+    setStarted(null);
+    setTesting(true);
     try {
+      // The setup as it is now, not as it was at the last check.
+      const r0 = await checkSetup();
+      if (!r0 || r0.error || r0.ok === false) {
+        const n = (r0 && Array.isArray(r0.problems) && r0.problems.length) || 0;
+        setTestNote(
+          n
+            ? `Not started: fix the ${n} problem${n === 1 ? "" : "s"} in step 2 first.`
+            : "Not started: Check setup didn't pass.",
+        );
+        return;
+      }
       const want = testId.trim();
       const saved = teamSettings && teamSettings.testItem;
       if (want && (!saved || saved.id !== want)) {
@@ -350,11 +393,13 @@ export const TeamSetupChecklist = ({
       }
       const r = await api.testTeam(workspaceId);
       if (r && r.error) throw new Error(r.error);
-      setTestNote(
-        `The self-test started on ${r.item.id}: follow it on the Jobs page.`,
-      );
+      setStarted(r || null);
+      setTestNote(`The self-test started on ${r.item.id}.`);
+      if (r && r.jobId) openJob(r.jobId);
     } catch (e) {
       setTestNote((e && e.message) || "Couldn't start it.");
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -526,17 +571,47 @@ export const TeamSetupChecklist = ({
             <span className="text-xs" data-testid="self-test-line">
               {selfTestLine(teamSettings)}
             </span>
-            <div className="flex flex-row flex-wrap items-center gap-2">
-              <input
-                aria-label="Test item"
-                className={`w-48 text-sm px-2 py-1 rounded border bg-transparent ${hairline}`}
-                placeholder="DASH-97"
-                value={testId}
-                onChange={(e) => setTestId(e.target.value)}
+            <div className="flex flex-row flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium">{field.label}</span>
+                <input
+                  aria-label={field.label}
+                  className={`w-64 text-sm px-2 py-1 rounded border bg-transparent ${hairline}`}
+                  placeholder={field.placeholder}
+                  value={testId}
+                  onChange={(e) => setTestId(e.target.value)}
+                />
+              </label>
+              <Button
+                title={testing ? "Checking setup…" : "Run self-test"}
+                size="sm"
+                disabled={!!blocked || testing}
+                onClick={blocked || testing ? undefined : runTest}
               />
-              <Button title="Test team" size="sm" onClick={runTest} />
             </div>
-            {testNote ? <span className="text-xs">{testNote}</span> : null}
+            {blocked && !testNote ? (
+              <span
+                className={`text-xs ${muted}`}
+                data-testid="self-test-blocked"
+              >
+                {blocked}
+              </span>
+            ) : null}
+            {testNote ? (
+              <span
+                className="flex flex-row flex-wrap items-center gap-2 text-xs"
+                data-testid="self-test-note"
+              >
+                <span>{testNote}</span>
+                {started && started.jobId ? (
+                  <Button3
+                    title="Open the job ›"
+                    size="sm"
+                    onClick={() => openJob(started.jobId)}
+                  />
+                ) : null}
+              </span>
+            ) : null}
           </Step>
         </div>
       )}

@@ -12,16 +12,24 @@ import { setupSentence } from "../../utils/teamSetupStatus";
  *
  * TeamSetupBanner: "This team can't take work yet", the bots and what each
  * needs, and "Finish setup ›", which opens the first bot's Settings tab
- * (`onFinish(first)`, first = { botId, name }). When no one bot needs
+ * (`onFinish(first)`, first = { botId, name }). A ready team with an
+ * untested change (DASH-121) shows only the badge ("Setup · untested
+ * change"), with what changed as its tooltip. When no one bot needs
  * anything (only Check setup's other problems), first is null and the
  * button shows only with `finishWithoutBot` (somewhere else to go).
  */
 export const TeamSetupBadge = ({ status, compact = false }) => {
-  if (!status || status.ready) return null;
+  // Ready but changed since its last self-test (DASH-121): still a badge.
+  if (!status || !status.badge || (status.ready && !status.untested))
+    return null;
   return (
     <span
       className="flex-shrink-0"
-      title={status.badge}
+      title={
+        status.ready && status.untested
+          ? `Untested change: ${status.untested}. Run a self-test.`
+          : status.badge
+      }
       data-testid="team-setup-badge"
     >
       <StatusBadge

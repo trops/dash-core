@@ -1,6 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { teamSetupStatus } from "../../utils/teamSetupStatus";
-import { lastSetupCheck, onSetupChanged } from "./teamSetupStore";
+import {
+  lastSetupCheck,
+  noteSetupChanged,
+  onSetupChanged,
+} from "./teamSetupStore";
+import { onJobsChanged } from "../../hooks/useJobs";
 
 /**
  * useTeamSetups / useTeamSetup — each team's setup status (DASH-119):
@@ -67,11 +72,41 @@ export function useTeamSetups(entries) {
       setSeq((n) => n + 1);
       if (id && ids.includes(id)) load(id);
     });
+    // A self-test that ended done clears the team's untested change
+    // (DASH-121): read its settings again.
+    const offJobs = onJobsChanged((msg) => {
+      const id = keyOf(msg.workspaceId);
+      if (!alive || !id || !ids.includes(id)) return;
+      if (msg.status === "done") load(id);
+    });
     return () => {
       alive = false;
       off();
+      offJobs();
     };
   }, [idsKey]);
+
+  // A bot of the team saved (from its page too) marks it untested in the
+  // main process: read that team's settings again.
+  const savedKey = list
+    .map(
+      (e) =>
+        `${keyOf(e.workspaceId)}:${(e.bots || [])
+          .map((x) => (x && x.updatedAt) || "")
+          .join(",")}`,
+    )
+    .join("|");
+  const lastSaved = useRef(null);
+  useEffect(() => {
+    const before = lastSaved.current;
+    lastSaved.current = savedKey;
+    if (before === null || before === savedKey) return;
+    const was = new Map(before.split("|").map((x) => [x.split(":")[0], x]));
+    for (const part of savedKey.split("|")) {
+      const id = part.split(":")[0];
+      if (id && was.get(id) !== part) noteSetupChanged(id);
+    }
+  }, [savedKey]);
 
   // Worked out each render: cheap, and always the bots as saved now.
   void seq;

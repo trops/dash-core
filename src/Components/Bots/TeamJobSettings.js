@@ -40,7 +40,7 @@ export const HANDOFF_HELP = {
 };
 
 export const SELF_TEST_HELP =
-  "Runs the whole chain on a test item (a sandbox ticket) with outward actions off: comments, transitions, merges and pushes are skipped and logged on the job.";
+  "Runs the whole team on a test item with outward actions off: no comments, transitions, pushes or merges. It checks setup first, then opens the job so you can follow it.";
 
 /** What the self-test row says: tested, or the untested change. */
 export function selfTestLine(settings) {
