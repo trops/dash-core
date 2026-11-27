@@ -178,3 +178,19 @@ describe("bot widgets on the dashboard — wiring (TEAM-012)", () => {
     );
   });
 });
+
+describe("the standard handoff from a package (DASH-129)", () => {
+  it("an install of a package that declares it turns the team's switch on", () => {
+    assert.match(
+      ctrl,
+      /if \(plan\.usesHandoffs === true && dashboardOf != null\) \{\s*this\._store\.setTeamSettings\(dashboardOf, \{ usesHandoffs: true \}\);/,
+    );
+  });
+
+  it("export, publish and a dashboard package carry the team's switch", () => {
+    const n = (
+      ctrl.match(/usesHandoffs: this\.usesHandoffs\(workspaceId\),/g) || []
+    ).length;
+    assert.equal(n, 3);
+  });
+});

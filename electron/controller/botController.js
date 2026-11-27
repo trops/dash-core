@@ -4024,6 +4024,7 @@ const botController = {
       workspace: this._loadWorkspace(workspaceId),
       // Its settings travel, never their values (DASH-57).
       settings: this.teamValues(workspaceId).declared,
+      usesHandoffs: this.usesHandoffs(workspaceId),
     });
     if (!manifest.members.length) {
       return { saved: false, error: "This dashboard has no bots to export." };
@@ -4053,6 +4054,7 @@ const botController = {
       dashboardId: workspaceId,
       workspace,
       settings: this.teamValues(workspaceId).declared,
+      usesHandoffs: this.usesHandoffs(workspaceId),
     });
     return {
       team: manifest,
@@ -4366,6 +4368,11 @@ const botController = {
         created[role] = this.save({ ...created[role], ...patch });
       }
     }
+    // A package whose bots pass work in the standard format (DASH-129):
+    // the team's switch starts on.
+    if (plan.usesHandoffs === true && dashboardOf != null) {
+      this._store.setTeamSettings(dashboardOf, { usesHandoffs: true });
+    }
     // Settings left with no value: its bots that use them can't run yet.
     const needsSettings = [];
     if (teamValues) {
@@ -4647,6 +4654,7 @@ const botController = {
         bots,
         providers: this._providerList(),
         settings: this.teamValues(workspaceId).declared,
+        usesHandoffs: this.usesHandoffs(workspaceId),
       });
       if (!manifest.members.length) {
         return { error: "This dashboard has no bots to publish." };

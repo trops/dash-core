@@ -4,7 +4,13 @@
  */
 import React from "react";
 import "@testing-library/jest-dom";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import {
   TeamJobSettings,
   oneJobAtATimeOf,
@@ -123,5 +129,25 @@ describe("How jobs run (DASH-120)", () => {
     expect(err).toHaveTextContent("No can do.");
     expect(screen.getByTestId("team-handoff-setting")).toContainElement(err);
     expect(screen.queryByTestId("one-job-error")).toBeNull();
+  });
+
+  it("says what the handoff is for; its format is under Learn more (DASH-129)", async () => {
+    window.mainApi = {
+      bots: {
+        getTeamSettings: jest.fn(async () => ({ usesHandoffs: true })),
+      },
+    };
+    render(<TeamJobSettings workspaceId="7" />);
+    const row = screen.getByTestId("team-handoff-setting");
+    expect(
+      await within(row).findByText(
+        "Dash checks each handoff, stops when there's nothing to do, and brings a bot's question to you as a card.",
+      ),
+    ).toBeInTheDocument();
+    expect(row).not.toHaveTextContent("JSON");
+    fireEvent.click(within(row).getByText("Learn more"));
+    expect(row).toHaveTextContent("one JSON block");
+    fireEvent.click(within(row).getByText("Show less"));
+    expect(row).not.toHaveTextContent("JSON");
   });
 });

@@ -197,7 +197,7 @@ export function handoffCard(handoff, job = null) {
   if (item && jobItem && jobItem.id === item.id) {
     item = { ...jobItem, ...item };
   }
-  if (item) item.label = ITEM_WORDS[item.source] || "Work item";
+  if (item) item.label = ITEM_WORDS[item.source] || "Item";
   const tables = new Set(Object.keys((job && job.picks) || {}));
   const picks = [];
   if (isObj(h.picks)) {

@@ -49,7 +49,16 @@ describe("TeamSettingsForm", () => {
       "main (the default)",
     );
     const folder = screen.getByTestId("team-setting-workFolder");
-    expect(folder).toHaveTextContent("Used by Coder, Reviewer as {workFolder}");
+    // What it's for and who uses it; how bots use it waits behind a toggle
+    // (DASH-129).
+    expect(folder).toHaveTextContent("Used by Coder, Reviewer.");
+    expect(screen.getByTestId("team-settings-form")).not.toHaveTextContent("{");
+    fireEvent.click(screen.getByText("Show how bots use it"));
+    expect(folder).toHaveTextContent(
+      "Coder, Reviewer use it as {workFolder} in instructions, folders and checks",
+    );
+    fireEvent.click(screen.getByText("Hide how bots use it"));
+    expect(folder).not.toHaveTextContent("{workFolder}");
     expect(folder).toHaveTextContent("No value yet");
     expect(screen.getByTestId("team-setting-repoUrl")).not.toHaveTextContent(
       "No value yet",
@@ -337,6 +346,12 @@ describe("a table setting", () => {
     expect(screen.getByLabelText("Repos row 1 Repository")).toHaveValue(
       "https://x/core",
     );
+    // What it's for; the row keys only behind "Show how bots use it".
+    expect(
+      screen.getByText(/One row each\. Each job uses the row a bot picks/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\{repo\.url\}/)).toBeNull();
+    fireEvent.click(screen.getByText("Show how bots use it"));
     expect(screen.getByText(/\{repo\.url\}/)).toBeInTheDocument();
   });
 

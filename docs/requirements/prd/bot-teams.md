@@ -1280,6 +1280,18 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 - [x] A job waiting on one says what it would run: its checks flow's You step keeps `offCommand` (`botChecks.checksFlow`, kept by `flowModel`), so the failed-job header says "Waiting at Coder: its Tests pass check (npm test) came with the package and is off" with **Turn on npm test** (opens the bot's checks, `failureView`).
 - [x] The checks window keeps its per-check notice with Turn on (DASH-57).
 
+## DASH-129: Copy for the person installing a team (2026-11-27)
+
+**Status:** Implemented (mockups 2 and 4c).
+
+**Why:** the team page's copy explained how Dash fills in values and passes JSON, not what to enter or choose.
+
+- [x] Settings say what they're for (`TeamSettingsForm`): a field's hint is its description, then who uses it ("Used by Coder, Reviewer."). How bots use it ("Coder, Reviewer use it as {workFolder} in instructions, folders and checks…", a table's `{repo.url}` and row keys, a tracker's `{name}`) shows only after **Show how bots use it**, one toggle under each form (`Bots/MoreDetail.js`, `howText`). A table with no description says "One row each. Each job uses the row a bot picks for it." The Team settings panel says "Settings this team's bots share."; a bot's "Settings for its job" intro drops its `{name}` sentence.
+- [x] "Bots pass work in a standard format (recommended)" (named in DASH-120) says what it does: "Dash checks each handoff, stops when there's nothing to do, and brings a bot's question to you as a card." The handoff's format (one JSON block…) is under **Learn more** (`HANDOFF_DETAIL`).
+- [x] On for packages that declare it: a team manifest's `usesHandoffs: true` travels with export, publish and a dashboard package (`buildTeamManifest`, kept by `validateTeamManifest`), and its install turns the team's switch on (`planTeamInstall` → `usesHandoffs`, `_installTeamPlan`).
+- [x] Jargon: a handoff card's item with no known source is an "Item", not a "Work item". The job's why line keeps "Handed on by <bot>" (approved on mockups 4 and 5); no "hand-on" is left in the UI.
+- [x] Who decides (mockup 4c) was already "Automatic: a rule or command (no AI)" / "A bot reviews" / "You approve" with a line each, and the six kinds as cards (DASH-127, `checksView.WHO`, `AUTO_KINDS`); nothing to change.
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams
@@ -1413,6 +1425,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.35    | 2026-11-27 | John   | DASH-128: one save model on the team page (one unsaved bar for the bots' cards and the team's settings); leaving with unsaved settings asks "Discard unsaved changes?" |
 | 1.36    | 2026-11-27 | John   | DASH-130: install dialog in theme colours, Required marks and bot initials, "Install, fill in later" / "Install and open Set up"; clickable PR links in the repo checks |
 | 1.37    | 2026-11-27 | John   | DASH-125: Check setup lists the commands that came with a package and are off, with one "Review and turn on"; a job waiting on one says its command ("Turn on npm test") |
+| 1.38    | 2026-11-27 | John   | DASH-129: copy for installers — settings say what they're for, "Show how bots use it" hides {name}; the standard handoff's format under Learn more, and on at install for packages that declare it |
 
 ---
 
