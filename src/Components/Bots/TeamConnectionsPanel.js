@@ -28,11 +28,14 @@ import { SelectedMarker } from "./TeamChartLegend";
  * @param {(event, value) => Promise} onAdd  value: "bot:<id>" | "widget:<key>"
  * @param {(event, listener) => Promise} onRemove
  * @param {boolean} canEdit  listeners can be added/removed now
+ * @param {boolean} scroll  be its own scroll container (fills the height)
  */
 export const TeamConnectionsPanel = ({
   bot,
   connections = null,
   canEdit = true,
+  // Side by side with the diagram: as tall as the view, scrolling alone.
+  scroll = false,
   onClose,
   onOpenPage,
   onOpenConversation = null,
@@ -138,161 +141,179 @@ export const TeamConnectionsPanel = ({
   return (
     <aside
       aria-label={`${bot.name}'s connections`}
-      className={`relative flex flex-col gap-4 p-4 border-l min-w-0 ${hairline}`}
-      style={{ flex: "1 1 300px", maxWidth: 360 }}
+      data-testid="connections-panel"
+      className={`relative border-l min-w-0 ${
+        scroll ? "h-full min-h-0" : ""
+      } ${hairline}`}
+      style={{
+        flex: "1 1 300px",
+        maxWidth: 360,
+        // Its own scroll container: the wheel over it never scrolls the
+        // diagram or the page.
+        ...(scroll ? { overflowY: "auto", overscrollBehavior: "contain" } : {}),
+      }}
     >
-      <div className="flex flex-row items-center gap-3">
-        <BotAvatar bot={bot} large />
-        <div className="flex-1 min-w-0 flex flex-col">
-          <span className="flex flex-row items-center gap-2 min-w-0">
-            <h3
-              data-testid="connections-heading"
-              className={`text-base font-semibold truncate ${strong}`}
-            >
-              {bot.name}
-            </h3>
-            <SelectedMarker className="flex-shrink-0" />
-          </span>
-          <span className={`text-xs ${muted}`}>
-            {isLead ? "Team lead" : "Its connections"}
-          </span>
-        </div>
-        <span title="Open full page">
-          <ButtonIcon
-            icon="up-right-and-down-left-from-center"
-            size="xs"
-            ariaLabel={`Open ${bot.name}'s full page`}
-            onClick={onOpenPage}
-          />
-        </span>
-        <ButtonIcon
-          icon="xmark"
-          size="xs"
-          ariaLabel="Close panel"
-          onClick={onClose}
-        />
-      </div>
-
-      {isLead && onOpenConversation ? (
-        <Button3
-          title="Open conversation"
-          size="sm"
-          onClick={onOpenConversation}
-        />
-      ) : null}
-
-      {error ? (
-        <AlertBanner variant="danger" size="compact" message={error} />
-      ) : null}
-
-      <div className="flex flex-col gap-1.5" data-testid="gets-work-from">
-        <SectionLabel text="Gets work from" />
-        {isLead ? (
-          <div className={rowCls}>
-            <span className={`flex-1 ${strong}`}>You</span>
+      <div className="flex flex-col gap-4 p-4">
+        <div className="flex flex-row items-center gap-3">
+          <BotAvatar bot={bot} large />
+          <div className="flex-1 min-w-0 flex flex-col">
+            <span className="flex flex-row items-center gap-2 min-w-0">
+              <h3
+                data-testid="connections-heading"
+                className={`text-base font-semibold truncate ${strong}`}
+              >
+                {bot.name}
+              </h3>
+              <SelectedMarker className="flex-shrink-0" />
+            </span>
             <span className={`text-xs ${muted}`}>
-              it can ask any bot on the team
+              {isLead ? "Team lead" : "Its connections"}
             </span>
           </div>
-        ) : connections && connections.getsWorkFrom.length ? (
-          connections.getsWorkFrom.map((a, i) => (
-            <div key={`${a.botId}-${i}`} className={rowCls}>
-              <BotAvatar bot={{ id: a.botId, name: a.name }} />
-              <span className={`flex-1 min-w-0 truncate ${strong}`}>
-                {`${a.name}${a.offTeam ? " (other dashboard)" : ""}`}
-              </span>
-              <span className={`text-xs ${muted}`}>{a.when}</span>
-            </div>
-          ))
-        ) : (
-          <span className={`text-sm ${muted}`}>
-            Nothing — it runs manually or on its schedule.
+          <span title="Open full page">
+            <ButtonIcon
+              icon="up-right-and-down-left-from-center"
+              size="xs"
+              ariaLabel={`Open ${bot.name}'s full page`}
+              onClick={onOpenPage}
+            />
           </span>
-        )}
-      </div>
+          <ButtonIcon
+            icon="xmark"
+            size="xs"
+            ariaLabel="Close panel"
+            onClick={onClose}
+          />
+        </div>
 
-      {/* DASH-126 fills this slot. */}
-      <WhatItCanDo bot={bot} onEdit={onOpenSettings} />
+        {isLead && onOpenConversation ? (
+          <Button3
+            title="Open conversation"
+            size="sm"
+            onClick={onOpenConversation}
+          />
+        ) : null}
 
-      {isLead || !connections ? null : (
-        <>
-          <div className="flex flex-col gap-1.5" data-testid="its-checks">
-            <div className="flex flex-row items-center justify-between gap-2">
-              <SectionLabel text={`Its checks · ${steps.length}`} />
-              {onOpenChecks ? (
-                <Button3 title="Edit checks" size="sm" onClick={onOpenChecks} />
-              ) : null}
-            </div>
-            {steps.length ? (
-              steps.map((s, i) => {
-                const tone = TONE[stepTone(s)];
-                return (
-                  <div
-                    key={s.id || `s${i}`}
-                    className={`${rowCls} items-start`}
-                  >
-                    <span
-                      className={`flex-shrink-0 h-4 rounded px-1 flex items-center justify-center text-white font-bold ${tone.bg}`}
-                      style={{ minWidth: 16, fontSize: 9, marginTop: 2 }}
-                      title={tone.label}
-                    >
-                      {tone.short}
-                    </span>
-                    <span className={`flex-1 min-w-0 ${strong}`}>
-                      {s.name || tone.label}
-                    </span>
-                    <span className={`text-xs ${muted}`}>{checkCost(s)}</span>
-                  </div>
-                );
-              })
-            ) : (
-              <span className={`text-sm ${muted}`}>
-                None — its work goes straight on.
+        {error ? (
+          <AlertBanner variant="danger" size="compact" message={error} />
+        ) : null}
+
+        <div className="flex flex-col gap-1.5" data-testid="gets-work-from">
+          <SectionLabel text="Gets work from" />
+          {isLead ? (
+            <div className={rowCls}>
+              <span className={`flex-1 ${strong}`}>You</span>
+              <span className={`text-xs ${muted}`}>
+                it can ask any bot on the team
               </span>
-            )}
-          </div>
-
-          {connections.events.map((box) => eventBox(box))}
-
-          {connections.toolEvents.length ? (
-            <details
-              className={`rounded-xl border px-3 py-2 ${hairline}`}
-              data-testid="tool-events"
-            >
-              <summary className={`cursor-pointer text-xs ${muted}`}>
-                {`Tool events · ${connections.toolEvents.length}${
-                  connections.toolEvents.some((b) => b.listeners.length)
-                    ? ""
-                    : " (nothing listens)"
-                }`}
-              </summary>
-              <div className="flex flex-col gap-3 mt-2">
-                {connections.toolEvents.map((box) => eventBox(box))}
+            </div>
+          ) : connections && connections.getsWorkFrom.length ? (
+            connections.getsWorkFrom.map((a, i) => (
+              <div key={`${a.botId}-${i}`} className={rowCls}>
+                <BotAvatar bot={{ id: a.botId, name: a.name }} />
+                <span className={`flex-1 min-w-0 truncate ${strong}`}>
+                  {`${a.name}${a.offTeam ? " (other dashboard)" : ""}`}
+                </span>
+                <span className={`text-xs ${muted}`}>{a.when}</span>
               </div>
-            </details>
-          ) : null}
+            ))
+          ) : (
+            <span className={`text-sm ${muted}`}>
+              Nothing — it runs manually or on its schedule.
+            </span>
+          )}
+        </div>
 
-          <div className="flex flex-col gap-1.5" data-testid="helpers-it-uses">
-            <SectionLabel text="Helpers it uses" />
-            {connections.helpers.length ? (
-              connections.helpers.map((h, i) => (
-                <div key={`${h.botId}-${i}`} className={rowCls}>
-                  <BotAvatar bot={{ id: h.botId, name: h.name }} />
-                  <span className={`flex-1 min-w-0 truncate ${strong}`}>
-                    {h.name}
-                  </span>
-                  <span className={`text-xs ${muted}`}>
-                    {`check "${h.check}"`}
-                  </span>
+        {/* DASH-126 fills this slot. */}
+        <WhatItCanDo bot={bot} onEdit={onOpenSettings} />
+
+        {isLead || !connections ? null : (
+          <>
+            <div className="flex flex-col gap-1.5" data-testid="its-checks">
+              <div className="flex flex-row items-center justify-between gap-2">
+                <SectionLabel text={`Its checks · ${steps.length}`} />
+                {onOpenChecks ? (
+                  <Button3
+                    title="Edit checks"
+                    size="sm"
+                    onClick={onOpenChecks}
+                  />
+                ) : null}
+              </div>
+              {steps.length ? (
+                steps.map((s, i) => {
+                  const tone = TONE[stepTone(s)];
+                  return (
+                    <div
+                      key={s.id || `s${i}`}
+                      className={`${rowCls} items-start`}
+                    >
+                      <span
+                        className={`flex-shrink-0 h-4 rounded px-1 flex items-center justify-center text-white font-bold ${tone.bg}`}
+                        style={{ minWidth: 16, fontSize: 9, marginTop: 2 }}
+                        title={tone.label}
+                      >
+                        {tone.short}
+                      </span>
+                      <span className={`flex-1 min-w-0 ${strong}`}>
+                        {s.name || tone.label}
+                      </span>
+                      <span className={`text-xs ${muted}`}>{checkCost(s)}</span>
+                    </div>
+                  );
+                })
+              ) : (
+                <span className={`text-sm ${muted}`}>
+                  None — its work goes straight on.
+                </span>
+              )}
+            </div>
+
+            {connections.events.map((box) => eventBox(box))}
+
+            {connections.toolEvents.length ? (
+              <details
+                className={`rounded-xl border px-3 py-2 ${hairline}`}
+                data-testid="tool-events"
+              >
+                <summary className={`cursor-pointer text-xs ${muted}`}>
+                  {`Tool events · ${connections.toolEvents.length}${
+                    connections.toolEvents.some((b) => b.listeners.length)
+                      ? ""
+                      : " (nothing listens)"
+                  }`}
+                </summary>
+                <div className="flex flex-col gap-3 mt-2">
+                  {connections.toolEvents.map((box) => eventBox(box))}
                 </div>
-              ))
-            ) : (
-              <span className={`text-sm ${muted}`}>None.</span>
-            )}
-          </div>
-        </>
-      )}
-      {children}
+              </details>
+            ) : null}
+
+            <div
+              className="flex flex-col gap-1.5"
+              data-testid="helpers-it-uses"
+            >
+              <SectionLabel text="Helpers it uses" />
+              {connections.helpers.length ? (
+                connections.helpers.map((h, i) => (
+                  <div key={`${h.botId}-${i}`} className={rowCls}>
+                    <BotAvatar bot={{ id: h.botId, name: h.name }} />
+                    <span className={`flex-1 min-w-0 truncate ${strong}`}>
+                      {h.name}
+                    </span>
+                    <span className={`text-xs ${muted}`}>
+                      {`check "${h.check}"`}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <span className={`text-sm ${muted}`}>None.</span>
+              )}
+            </div>
+          </>
+        )}
+        {children}
+      </div>
     </aside>
   );
 };

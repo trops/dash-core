@@ -689,3 +689,49 @@ describe("TeamChart — the selected bot stands out (DASH-139 follow-up)", () =>
     expect(screen.queryAllByTestId("selected-marker")).toHaveLength(0);
   });
 });
+
+describe("TeamChart — the panel and the diagram scroll on their own", () => {
+  const scrollsAlone = (el) => {
+    expect(el.style.overflowY).toBe("auto");
+    expect(el.style.overscrollBehavior).toBe("contain");
+  };
+
+  it("side by side: the diagram and the panel are each their own scroll container", () => {
+    setup({ selectedId: "reader", fill: true });
+    scrollsAlone(screen.getByTestId("team-diagram-scroll"));
+    scrollsAlone(screen.getByTestId("connections-panel"));
+    expect(screen.getByTestId("connections-panel").className).toContain(
+      "h-full",
+    );
+  });
+
+  it("the host's banners scroll with the diagram", () => {
+    setup({ fill: true, before: <div>Set up this team</div> });
+    expect(screen.getByTestId("team-diagram-scroll")).toHaveTextContent(
+      "Set up this team",
+    );
+  });
+
+  it("narrow: the panel goes under the diagram and they scroll as one", () => {
+    const spy = jest
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(600);
+    try {
+      const { container } = setup({ selectedId: "reader", fill: true });
+      const root = container.firstChild;
+      expect(root).toHaveAttribute("data-layout", "stacked");
+      scrollsAlone(root);
+      expect(screen.getByTestId("connections-panel").style.overflowY).not.toBe(
+        "auto",
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("not filling (other hosts): no scroll containers", () => {
+    setup({ selectedId: "reader" });
+    expect(screen.getByTestId("team-diagram-scroll").style.overflowY).toBe("");
+    expect(screen.getByTestId("connections-panel").style.overflowY).toBe("");
+  });
+});

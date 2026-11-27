@@ -1049,17 +1049,25 @@ export const BotsView = ({
         <Button title="Add bot" size="sm" onClick={addBot} />
         {teamMenu}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {setup.ready ? null : <div className="px-4 pt-3">{setupBanner}</div>}
-        {lead ? null : (
-          <div
-            className={`flex flex-row items-center gap-3 px-3 py-2 text-xs ${muted}`}
-          >
-            <span>Team lead is off</span>
-            <Button3 title="Turn on" size="sm" onClick={turnOnLead} />
-          </div>
-        )}
+      {/* The diagram and its panel scroll on their own (DASH-139). */}
+      <div className="flex-1 min-h-0 flex flex-col">
         <TeamChart
+          fill
+          before={
+            <>
+              {setup.ready ? null : (
+                <div className="px-4 pt-3">{setupBanner}</div>
+              )}
+              {lead ? null : (
+                <div
+                  className={`flex flex-row items-center gap-3 px-3 py-2 text-xs ${muted}`}
+                >
+                  <span>Team lead is off</span>
+                  <Button3 title="Turn on" size="sm" onClick={turnOnLead} />
+                </div>
+              )}
+            </>
+          }
           lead={lead}
           members={members}
           selectedId={diagramSelected}
