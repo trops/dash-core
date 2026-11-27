@@ -246,6 +246,17 @@ describe("BotsPage — teams first (frame 23)", () => {
     );
   });
 
+  it("the team page's boxes aren't squeezed when it's taller than the window (DASH-105)", () => {
+    setup();
+    // The scroll area isn't a flex box: its one column grows with its
+    // content, so bordered boxes (overflow-hidden) keep their height.
+    const scroll = screen.getByTestId("team-overview-scroll");
+    expect(scroll.className.split(/\s+/)).not.toContain("flex");
+    expect(scroll.children).toHaveLength(1);
+    expect(scroll.children[0].className).toMatch(/flex-col/);
+    expect(scroll.children[0]).toHaveTextContent("Bots on this team");
+  });
+
   it("a team row opens and closes, and picks the team", () => {
     setup();
     fireEvent.click(teamButton("Mail"));

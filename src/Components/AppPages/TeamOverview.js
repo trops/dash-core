@@ -151,57 +151,65 @@ export const TeamOverview = ({
           ) : null}
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-4">
-        {need ? (
-          <div
-            data-testid="team-needs"
-            className={`flex flex-row flex-wrap items-center gap-3 rounded-lg border px-4 py-3 ${statusTokens.warning.border}`}
-          >
-            <span className="flex-1 min-w-0 text-sm">{need.text}.</span>
-            {lead ? (
-              <button
-                type="button"
-                onClick={onOpenConversation}
-                className={`text-sm ${link}`}
-              >
-                Answer in the conversation ›
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onPickBot(need.botId)}
-                className={`text-sm ${link}`}
-              >
-                Answer on its page ›
-              </button>
-            )}
-          </div>
-        ) : null}
-        <span className="text-sm font-semibold">
-          {isEmpty ? "Dashboards" : "Bots on this team"}
-        </span>
-        <Table
-          columns={columns}
-          data={data}
-          sortable={false}
-          compact
-          onRowClick={isEmpty ? null : (row) => onPickBot(row.id)}
-        />
-        <span className={`text-xs ${muted}`}>{note}</span>
-        {/* One job at a time (DASH-81): a team's, whatever its bots. */}
-        {team.kind === "team" && team.workspace && !isEmpty ? (
-          <>
-            <TeamJobSettings workspaceId={team.workspace.id} />
-            <TeamChecksPanel workspaceId={team.workspace.id} />
-          </>
-        ) : null}
-        {/* Its settings (DASH-57), when its bots declare some. */}
-        {team.kind === "team" && team.workspace ? (
-          <TeamSettingsPanel
-            key={String(team.workspace.id)}
-            workspaceId={team.workspace.id}
+      {/* The scroll area holds one column that isn't squeezed: as flex items
+          of a fixed-height box, bordered boxes (overflow-hidden) shrank to
+          nothing once the page was taller than the window (DASH-105). */}
+      <div
+        className="flex-1 min-h-0 overflow-y-auto px-5 py-4"
+        data-testid="team-overview-scroll"
+      >
+        <div className="flex flex-col gap-4">
+          {need ? (
+            <div
+              data-testid="team-needs"
+              className={`flex flex-row flex-wrap items-center gap-3 rounded-lg border px-4 py-3 ${statusTokens.warning.border}`}
+            >
+              <span className="flex-1 min-w-0 text-sm">{need.text}.</span>
+              {lead ? (
+                <button
+                  type="button"
+                  onClick={onOpenConversation}
+                  className={`text-sm ${link}`}
+                >
+                  Answer in the conversation ›
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onPickBot(need.botId)}
+                  className={`text-sm ${link}`}
+                >
+                  Answer on its page ›
+                </button>
+              )}
+            </div>
+          ) : null}
+          <span className="text-sm font-semibold">
+            {isEmpty ? "Dashboards" : "Bots on this team"}
+          </span>
+          <Table
+            columns={columns}
+            data={data}
+            sortable={false}
+            compact
+            onRowClick={isEmpty ? null : (row) => onPickBot(row.id)}
           />
-        ) : null}
+          <span className={`text-xs ${muted}`}>{note}</span>
+          {/* One job at a time (DASH-81): a team's, whatever its bots. */}
+          {team.kind === "team" && team.workspace && !isEmpty ? (
+            <>
+              <TeamJobSettings workspaceId={team.workspace.id} />
+              <TeamChecksPanel workspaceId={team.workspace.id} />
+            </>
+          ) : null}
+          {/* Its settings (DASH-57), when its bots declare some. */}
+          {team.kind === "team" && team.workspace ? (
+            <TeamSettingsPanel
+              key={String(team.workspace.id)}
+              workspaceId={team.workspace.id}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );
