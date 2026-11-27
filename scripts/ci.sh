@@ -93,9 +93,44 @@ fi
 echo "Node version: $(node -v)"
 echo "npm version: $(npm -v)"
 
-# 2. Prettify
-step "Running Prettier"
-npx prettier --write "src/**/*.{js,jsx,ts,tsx}" "electron/**/*.js"
+# 1a. What was changed before validation ran (DASH-153). The release step
+# commits these files and no others, so nothing a validation step rewrites
+# can slip into a commit. Every tracked file changed against HEAD, staged or
+# not, plus new files not yet added.
+CHANGED_LIST="$(mktemp "${TMPDIR:-/tmp}/dash-ci-changed.XXXXXX")"
+trap 'rm -f "$CHANGED_LIST"' EXIT
+git diff --name-only --no-renames HEAD > "$CHANGED_LIST"
+CHANGED_NEW="$(git ls-files --others --exclude-standard)"
+
+# 2. Prettier (DASH-153): validation never rewrites a file you didn't change.
+# On GitHub Actions and in the Code Factory's validate (.dash/checks/
+# validate.sh sets DASH_CI_PRETTIER=check) it only checks. Run by hand, it
+# formats just the files you changed (and new ones), then checks everything.
+PRETTIER_GLOBS=("src/**/*.{js,jsx,ts,tsx}" "electron/**/*.js")
+PRETTIER_FILES_RE='^(src/.*\.(js|jsx|ts|tsx)|electron/.*\.js)$'
+if [[ -n "${GITHUB_ACTIONS:-}" || "${DASH_CI_PRETTIER:-}" == "check" ]]; then
+    step "Checking Prettier formatting"
+else
+    step "Running Prettier on the files you changed"
+    MINE=()
+    while IFS= read -r f; do
+        if [[ -n "$f" && -f "$f" && "$f" =~ $PRETTIER_FILES_RE ]]; then
+            MINE+=("$f")
+        fi
+    done < <(cat "$CHANGED_LIST"; printf '%s\n' "$CHANGED_NEW")
+    if [[ ${#MINE[@]} -gt 0 ]]; then
+        npx prettier --write "${MINE[@]}"
+    else
+        echo "No changed files to format."
+    fi
+    step "Checking Prettier formatting"
+fi
+if ! npx prettier --check "${PRETTIER_GLOBS[@]}"; then
+    echo ""
+    echo "Error: the files above aren't formatted. Format the ones you changed:"
+    echo "  npx prettier --write <file> ..."
+    exit 1
+fi
 
 # 3. Build renderer
 step "Building renderer (Rollup)"
@@ -239,9 +274,11 @@ fi
 # GIT WORKFLOW (DASH-48: scripts/release.js)
 # ============================================================================
 # Resumable: after --pr, run --release on the same branch to merge, tag and
-# clean up. Safe to run again. Works in a git worktree. Before committing it
-# runs `npm run check:untracked`: `git add -u` only stages tracked files, and
-# a brand-new file left out broke the v0.1.484 publish (safeJsExecutor.js).
+# clean up. Safe to run again. Works in a git worktree. It commits only the
+# files in $CHANGED_LIST (changed before validation ran), and stops if
+# validation changed any other (DASH-153). Before committing it runs
+# `npm run check:untracked`: only tracked (or staged) files are committed,
+# and a brand-new file left out broke the v0.1.484 publish (safeJsExecutor.js).
 
 export RELEASE_PR_BODY="## Summary
 $COMMIT_MSG
@@ -249,7 +286,7 @@ $COMMIT_MSG
 Version: {{VERSION}}
 
 ## Validation
-- Prettier: passed
+- Prettier (check): passed
 - Renderer build (Rollup): passed
 - Electron build (Rollup + MCP catalog): passed
 - Jest tests: passed
@@ -257,4 +294,4 @@ Version: {{VERSION}}
 - Output verification: passed"
 
 node scripts/release.js --mode "$MODE" -m "$COMMIT_MSG" --main master \
-    --pre-commit "npm run check:untracked"
+    --pre-commit "npm run check:untracked" --files-from "$CHANGED_LIST"
