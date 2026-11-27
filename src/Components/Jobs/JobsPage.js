@@ -22,14 +22,7 @@ import { HandoffCard, HandoffJson, StepProse } from "./StepMessage";
 import { FailureHeader } from "./FailureHeader";
 import { failureStep, failureView } from "./failureView";
 import { handoffCard, stepParts } from "./stepView";
-import {
-  BlockedCard,
-  BotApprovals,
-  GoalNeedsYouCard,
-  PausedCard,
-  goalNeedsYou,
-  useApprovals,
-} from "./NeedsYouCards";
+import { BlockedCard, StepNeedsYou, useApprovals } from "./NeedsYouCards";
 import {
   JOB_STATUS,
   STEP_STATUS,
@@ -147,96 +140,8 @@ export const JobRow = ({ job, active = false, onClick, now }) => {
   );
 };
 
-const resume = (botId) => {
-  const api = botsApi();
-  if (api && api.resumeBot) return api.resumeBot(botId);
-  return null;
-};
-
-const goalsApi = () =>
-  (typeof window !== "undefined" && window.mainApi && window.mainApi.goals) ||
-  null;
-
 /** The DOM id of a step, for the header's link to it. */
 export const stepAnchor = (step) => `job-step-${step.id}`;
-
-/**
- * What a step waits on you for, with its action (DASH-113): a "you" check,
- * a handoff's question or checks that need a look (its goal, read live),
- * a tool approval, or a paused bot. The same cards as a bot's job view.
- */
-const StepNeedsYou = ({ step, goal, approvals, refreshGoal }) => {
-  const { muted } = useConfigTokens();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const act = async (fn) => {
-    setBusy(true);
-    setError("");
-    try {
-      const r = await fn();
-      if (r && r.error) setError(r.error);
-    } catch (e) {
-      setError((e && e.message) || "That didn't work.");
-    } finally {
-      setBusy(false);
-      // It updates in place: read its goal again (its change also comes
-      // over goals:changed and the job's own change).
-      if (refreshGoal) refreshGoal();
-    }
-  };
-  const cards = [];
-  if (step.status === "needs-you" && step.waiting === "paused") {
-    cards.push(
-      <PausedCard
-        key="paused"
-        title={`${step.botName} is paused, so it hasn't started`}
-        resumeTitle={`Resume ${step.botName}`}
-        busy={busy}
-        onResume={() => act(() => resume(step.botId))}
-      />,
-    );
-  }
-  if (goal && goalNeedsYou(goal)) {
-    cards.push(
-      <GoalNeedsYouCard
-        key="goal"
-        goal={goal}
-        busy={busy}
-        onAction={(taskId, action) =>
-          act(() => {
-            const api = goalsApi();
-            return api && api.taskAction
-              ? api.taskAction(taskId, action)
-              : null;
-          })
-        }
-      />,
-    );
-  }
-  if (ACTIVE_STEP.has(step.status) || step.status === "needs-you") {
-    cards.push(
-      <BotApprovals
-        key="approvals"
-        botId={step.botId}
-        botName={step.botName}
-        approvals={approvals}
-      />,
-    );
-  }
-  if (!cards.length) return null;
-  return (
-    <div className="flex flex-col gap-2 pt-1" data-testid="job-step-needs-you">
-      {cards}
-      {error ? (
-        <span className={`text-xs ${muted}`} role="alert">
-          {error}
-        </span>
-      ) : null}
-    </div>
-  );
-};
-
-const ACTIVE_STEP = new Set(["running", "checking"]);
 
 /**
  * One step of a job's timeline (DASH-123): its bot's message — avatar,

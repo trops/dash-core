@@ -236,12 +236,13 @@ describe("BotChat — approvals inline", () => {
     id: "a1",
     request: { botId: "b1", serverName: "Slack", toolName: "send_message" },
   };
+  // The shared card (DASH-124): "<bot> wants to use …".
+  const head = /wants to use/;
 
   it("shows the bot's pending approval with Allow once / Always allow / Deny", async () => {
     const { onApprove } = setup({ approvals: [approval] });
-    expect(await screen.findByText(/Needs your approval/)).toBeInTheDocument();
-    expect(screen.getByText(/send_message/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Always allow"));
+    expect(await screen.findByText(head)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/^Always allow for /));
     expect(onApprove).toHaveBeenCalledWith("a1", {
       allow: true,
       remember: true,
@@ -254,8 +255,8 @@ describe("BotChat — approvals inline", () => {
     setup({
       approvals: [{ id: "a2", request: { botId: "b1", toolName: "Bash" } }],
     });
-    await screen.findByText(/Needs your approval/);
-    expect(screen.queryByText("Always allow")).toBeNull();
+    await screen.findByText(head);
+    expect(screen.queryByText(/^Always allow for /)).toBeNull();
     expect(screen.getByText("Allow once")).toBeInTheDocument();
   });
 });

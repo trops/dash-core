@@ -1,11 +1,5 @@
-import React, { useContext } from "react";
-import {
-  Button,
-  Button3,
-  Table,
-  ThemeContext,
-  useStatusTokens,
-} from "@trops/dash-react";
+import React from "react";
+import { Button, Button3, Table } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { DASH_TEAM_CONTACT } from "../Bots/dashTeamContact";
@@ -13,6 +7,7 @@ import { triggerSummary } from "../Bots/teamUtils";
 import { TeamSettingsPanel } from "../Bots/TeamSettingsForm";
 import { TeamJobSettings } from "../Bots/TeamJobSettings";
 import { TeamChecksPanel } from "../Bots/TeamChecksPanel";
+import { TeamNeedsYouCards } from "../Jobs/NeedsYouCards";
 
 const howItRuns = (bot) =>
   bot && bot.system === "dash-team" ? bot.summary || "" : triggerSummary(bot);
@@ -27,7 +22,7 @@ const howItRuns = (bot) =>
  * @param {object} team  a botsTree() team
  * @param {(id) => string} statusOf
  * @param {(id) => string} spentOf   this month, e.g. "$1.20"
- * @param {object|null} need         the first waiting approval on the team
+ * @param {object[]} [approvals]  pending tool approvals (else read live)
  * @param {(botId) => void} onPickBot
  * @param {() => void} onOpenConversation
  * @param {(workspace) => void} [onOpenDashboard]
@@ -37,16 +32,13 @@ export const TeamOverview = ({
   team,
   statusOf = () => "Idle",
   spentOf = () => "",
-  need = null,
+  approvals = null,
   onPickBot = () => {},
   onOpenConversation = () => {},
   onOpenDashboard = null,
   onDashTeamSettings = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
-  const { currentTheme } = useContext(ThemeContext) || {};
-  const link = `${(currentTheme && currentTheme["text-primary-medium"]) || ""} dr-role-accent`;
-  const statusTokens = useStatusTokens();
   if (!team) return null;
   const isEmpty = team.kind === "empty";
   const isDash = team.kind === "dash";
@@ -159,31 +151,16 @@ export const TeamOverview = ({
         data-testid="team-overview-scroll"
       >
         <div className="flex flex-col gap-4">
-          {need ? (
-            <div
-              data-testid="team-needs"
-              className={`flex flex-row flex-wrap items-center gap-3 rounded-lg border px-4 py-3 ${statusTokens.warning.border}`}
-            >
-              <span className="flex-1 min-w-0 text-sm">{need.text}.</span>
-              {lead ? (
-                <button
-                  type="button"
-                  onClick={onOpenConversation}
-                  className={`text-sm ${link}`}
-                >
-                  Answer in the conversation ›
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onPickBot(need.botId)}
-                  className={`text-sm ${link}`}
-                >
-                  Answer on its page ›
-                </button>
-              )}
-            </div>
-          ) : null}
+          {/* What needs you, as cards with their buttons (DASH-124):
+              answered here, never "in the conversation". */}
+          {isEmpty ? null : (
+            <TeamNeedsYouCards
+              workspaceId={team.workspace ? team.workspace.id : null}
+              bots={[...(lead ? [lead] : []), ...(team.allMembers || [])]}
+              approvals={approvals}
+              testId="team-needs"
+            />
+          )}
           <span className="text-sm font-semibold">
             {isEmpty ? "Dashboards" : "Bots on this team"}
           </span>

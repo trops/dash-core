@@ -171,6 +171,59 @@ describe("JobCheckCard", () => {
     });
   });
 
+  it("its 'You approve' check is answered right in the conversation (DASH-124)", async () => {
+    const mock = mockGoalsApi([job]);
+    render(<HandoffStep step={step} />);
+    const card = await screen.findByTestId("job-waiting");
+    expect(card).toHaveTextContent("Your check: is Coordinator's work right?");
+    expect(card).toHaveTextContent('Coordinator\'s check "You approve"');
+    expect(
+      screen.getByRole("button", { name: "Edit Coordinator's checks ›" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await act(async () => {});
+    expect(mock.api.taskAction).toHaveBeenCalledWith("task_job", "done");
+    expect(screen.queryByTestId("job-waiting")).toBeNull();
+  });
+
+  it("a bot passing the check is a green line, not a card (DASH-124)", async () => {
+    const reviewed = {
+      ...job,
+      flow: {
+        ...job.flow,
+        steps: [
+          job.flow.steps[0],
+          { id: "step_c2", kind: "bot", name: "Plan approved", botId: "rv" },
+        ],
+      },
+      tasks: [
+        {
+          id: "task_job",
+          status: "done",
+          stepId: "step_c2",
+          history: [
+            { stepId: "step_work", status: "passed", at: 2 },
+            {
+              stepId: "step_c2",
+              status: "passed",
+              botName: "Reviewer",
+              summary: "Covers every item.",
+              at: 3,
+            },
+          ],
+        },
+      ],
+    };
+    mockGoalsApi([reviewed]);
+    render(<HandoffStep step={step} />);
+    const line = await screen.findByTestId("job-bot-passed");
+    expect(line).toHaveTextContent(
+      "✓ Plan approved: Reviewer passed Coordinator's check",
+    );
+    expect(line).toHaveTextContent("Covers every item.");
+    expect(screen.queryByTestId("job-waiting")).toBeNull();
+  });
+
   it("no job, no card", () => {
     render(<HandoffStep step={{ ...step, jobId: undefined }} />);
     expect(screen.queryByTestId("job-check-card")).toBeNull();
