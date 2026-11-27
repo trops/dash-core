@@ -140,44 +140,78 @@ afterEach(() => {
 
 const teamList = () => screen.getByRole("navigation", { name: "Team" });
 
-describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
-  it("opens on the diagram by default, with the lead's summary beside it", () => {
+describe("BotsView — team diagram (TEAM-014, DASH-139)", () => {
+  const panelOf = (name) =>
+    screen.getByRole("complementary", { name: `${name}'s connections` });
+  const openPanel = (name) =>
+    fireEvent.click(screen.getByRole("button", { name }));
+  const fullPage = (name) =>
+    fireEvent.click(
+      screen.getByRole("button", { name: `Open ${name}'s full page` }),
+    );
+
+  it("opens on the diagram by default, with nothing selected and no panel", () => {
     setup({ mode: null });
     expect(screen.getByTestId("diagram-card-lead_7")).toBeInTheDocument();
     expect(screen.getByTestId("diagram-card-b1")).toBeInTheDocument();
-    const side = screen.getByRole("complementary", { name: "Selected bot" });
-    expect(within(side).getByText("Kitchen Lead")).toBeInTheDocument();
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(screen.queryByTestId("bot-page")).toBeNull();
+    const lines = screen.getByRole("radiogroup", { name: "Lines" });
     expect(
-      within(side).getByRole("button", { name: "Ask the lead" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("tab")).toBeNull();
+      within(lines).getByRole("radio", { name: "Selected bot" }),
+    ).toHaveAttribute("aria-checked", "true");
   });
 
-  it("clicking a bot opens its conversation beside the diagram; × goes back to its summary", () => {
+  it("clicking a bot opens its connections panel; ✕ closes it", () => {
     setup({ mode: null });
-    fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
-    // The bot page, on its conversation (QA 2026-10-28); the diagram stays.
+    openPanel("Inbox Watch");
+    expect(panelOf("Inbox Watch")).toBeInTheDocument();
+    expect(screen.queryByTestId("bot-page")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("the panel's full page opens the bot's page beside the diagram; × goes back to the panel", () => {
+    setup({ mode: null });
+    openPanel("Inbox Watch");
+    fullPage("Inbox Watch");
     expect(pageShows()).toBe("b1 on activity");
     expect(screen.getByTestId("diagram-card-b1")).toBeInTheDocument();
+    // The page takes the panel's place.
+    expect(screen.queryByRole("complementary")).toBeNull();
     fireEvent.click(screen.getByText("page-close"));
     expect(screen.queryByTestId("bot-page")).toBeNull();
-    const side = screen.getByRole("complementary", { name: "Selected bot" });
-    expect(within(side).getByText("Inbox Watch")).toBeInTheDocument();
-    fireEvent.click(within(side).getByRole("button", { name: "Activity" }));
-    expect(pageShows()).toBe("b1 on activity");
+    expect(panelOf("Inbox Watch")).toBeInTheDocument();
   });
 
-  it("the summary's Run now runs it and opens its Activity", () => {
-    const { api } = setup({ mode: null });
-    fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
-    fireEvent.click(screen.getByText("page-close"));
+  it("with a bot's page open, clicking another bot switches the page on the same tab", () => {
+    setup({ mode: null });
+    openPanel("Inbox Watch");
+    fullPage("Inbox Watch");
+    fireEvent.click(screen.getByText("page-tab-settings"));
+    fireEvent.click(screen.getByRole("button", { name: "CRM Sync" }));
+    expect(pageShows()).toBe("b2 on settings");
+  });
+
+  it("the lead's panel opens its conversation in the lead workspace", () => {
+    setup({ mode: null });
+    const seen = [];
+    const on = (e) => seen.push(e.detail);
+    window.addEventListener("dash:open-workspace", on);
+    openPanel("Kitchen Lead");
     fireEvent.click(
-      within(
-        screen.getByRole("complementary", { name: "Selected bot" }),
-      ).getByRole("button", { name: "Run now" }),
+      within(panelOf("Kitchen Lead")).getByRole("button", {
+        name: "Open conversation",
+      }),
     );
-    expect(api.run).toHaveBeenCalledWith("b1", "", false);
-    expect(pageShows()).toBe("b1 on activity");
+    window.removeEventListener("dash:open-workspace", on);
+    expect(seen).toEqual([{ key: "lead:lead_7" }]);
+  });
+
+  it("the Lines choice is remembered", () => {
+    setup({ mode: null });
+    fireEvent.click(screen.getByRole("radio", { name: "Work flow" }));
+    expect(window.localStorage.getItem("dash:botsView:lines")).toBe("flow");
   });
 
   it("a just-created bot shows Loading, not the empty form, until the team has it", async () => {
@@ -194,30 +228,6 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
     await waitFor(() => expect(api.save).toHaveBeenCalled());
     expect(await screen.findByTestId("bots-view-loading")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
-  });
-
-  it("a card's Settings icon opens that bot's Settings", () => {
-    setup({ mode: null });
-    fireEvent.mouseEnter(screen.getByTestId("diagram-card-b2"));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Settings — CRM Sync" }),
-    );
-    expect(pageShows()).toBe("b2 on settings");
-  });
-
-  it("the same bot on another tab reopens the page on it", () => {
-    setup({ mode: null });
-    fireEvent.mouseEnter(screen.getByTestId("diagram-card-b2"));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Settings — CRM Sync" }),
-    );
-    fireEvent.click(screen.getByText("page-close"));
-    fireEvent.click(
-      within(
-        screen.getByRole("complementary", { name: "Selected bot" }),
-      ).getByRole("button", { name: "Activity" }),
-    );
-    expect(pageShows()).toBe("b2 on activity");
   });
 
   describe("the bot panel beside the diagram is resizable", () => {
@@ -241,7 +251,8 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
     });
 
     const openActivity = () => {
-      fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
+      openPanel("Inbox Watch");
+      fullPage("Inbox Watch");
       fireEvent.click(screen.getByText("page-tab-activity"));
     };
     const panel = () => screen.getByRole("region", { name: "Selected bot" });
@@ -304,7 +315,7 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
     expect(window.localStorage.getItem("dash:botsView:mode")).toBe("list");
   });
 
-  it("dragging one bot onto another saves a trigger on the second (with the note)", async () => {
+  it("+ Add a bot or widget in the panel saves a trigger on that bot", async () => {
     // The saved bot is newer than the view's copy (a trigger added elsewhere).
     const get = jest.fn().mockResolvedValue({
       ...crm,
@@ -312,17 +323,13 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
       subscriptions: [{ eventType: "Notepad[1].saved" }],
     });
     const { api } = setup({ mode: null, apiOver: { get } });
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Drag to wire Inbox Watch" }),
+    openPanel("Inbox Watch");
+    const done = within(panelOf("Inbox Watch")).getByTestId(
+      "event-box-completed",
     );
-    fireEvent.pointerUp(screen.getByTestId("diagram-card-b2"));
-    const dialog = screen.getByRole("dialog", { name: "Trigger for CRM Sync" });
-    fireEvent.change(within(dialog).getByRole("textbox"), {
-      target: { value: "Sync what it found." },
+    fireEvent.change(within(done).getByRole("combobox"), {
+      target: { value: "bot:b2" },
     });
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Add trigger" }),
-    );
     await waitFor(() => expect(api.save).toHaveBeenCalled());
     const saved = api.save.mock.calls[0][0];
     expect(saved.id).toBe("b2");
@@ -333,21 +340,16 @@ describe("BotsView — team diagram (TEAM-014 slice 1)", () => {
       { eventType: "Notepad[1].saved" },
       expect.objectContaining({
         eventType: "bot:local/inbox-watch[b1].completed",
-        note: "Sync what it found.",
         source: expect.objectContaining({ kind: "bot", instanceId: "b1" }),
       }),
     ]);
   });
 
-  it("wiring is off while a bot's Settings is open", () => {
+  it("the panel's Edit checks opens the checks window", () => {
     setup({ mode: null });
-    fireEvent.mouseEnter(screen.getByTestId("diagram-card-b2"));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Settings — CRM Sync" }),
-    );
-    expect(
-      screen.queryByRole("button", { name: "Drag to wire Inbox Watch" }),
-    ).toBeNull();
+    openPanel("Inbox Watch");
+    fireEvent.click(screen.getByRole("button", { name: "Edit checks" }));
+    expect(screen.getByTestId("modal")).toBeInTheDocument();
   });
 
   it("narrow windows keep the bot picker (no diagram)", () => {
@@ -490,16 +492,18 @@ describe("BotsView — unsaved changes", () => {
     expect(pageShows()).toBe("b2 on activity");
   });
 
-  it("the page's tab is the view's: wiring is off on Settings", () => {
+  it("with a bot's page open the panel steps aside; closing the page brings it back", () => {
     setup({ mode: null });
     fireEvent.click(screen.getByRole("button", { name: "Inbox Watch" }));
-    expect(
-      screen.getByRole("button", { name: "Drag to wire Inbox Watch" }),
-    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Inbox Watch's full page" }),
+    );
     fireEvent.click(screen.getByText("page-tab-settings"));
+    expect(screen.queryByRole("complementary")).toBeNull();
+    fireEvent.click(screen.getByText("page-close"));
     expect(
-      screen.queryByRole("button", { name: "Drag to wire Inbox Watch" }),
-    ).toBeNull();
+      screen.getByRole("complementary", { name: "Inbox Watch's connections" }),
+    ).toBeInTheDocument();
   });
 });
 
