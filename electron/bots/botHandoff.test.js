@@ -682,3 +682,71 @@ describe("botController._handOnPrompt", () => {
     );
   });
 });
+
+// DASH-115: a question about something Dash refused is never put to a
+// person — matched against the run's recorded refusals, not the prose.
+describe("an ask about a refusal (DASH-115)", () => {
+  const { makeRefusal, refusalAsked } = require("./refusals");
+  const push = makeRefusal({
+    reason: "blocked-list",
+    botName: "PR Bot",
+    command: "git push -u origin feat/DASH-1",
+    rule: "git push",
+  });
+  const askOf = (q) =>
+    "```json\n" + JSON.stringify({ status: "ask", question: q }) + "\n```";
+
+  it("is rejected with the refusal's reason, not sent to you", () => {
+    const r = handoffCheck(
+      askOf("Can you allow `git push` for this bot, or push it yourself?"),
+      { refusals: [push] },
+    );
+    assert.equal(r.pass, false);
+    assert.equal(r.ask, undefined);
+    assert.equal(r.refused, true);
+    assert.equal(r.reason, push.message);
+  });
+
+  it("a question that isn't about a recorded refusal still asks", () => {
+    const r = handoffCheck(askOf("Which branch should this go on?"), {
+      refusals: [push],
+    });
+    assert.equal(r.ask, "Which branch should this go on?");
+  });
+
+  it("matches only what was recorded: the command, its rule, or its first two words", () => {
+    assert.equal(refusalAsked("may I run git push?", [push]), push);
+    assert.equal(refusalAsked("please let me push the branch", [push]), null);
+    assert.equal(refusalAsked("anything", []), null);
+    const tool = makeRefusal({
+      reason: "not-its-tool",
+      tool: "merge_pull_request",
+      server: "GitHub",
+      input: { number: 4 },
+    });
+    assert.equal(refusalAsked("Can I use merge_pull_request?", [tool]), tool);
+  });
+
+  it("a self-test's own block: told to carry on", () => {
+    const test = { ...push, test: true };
+    const r = handoffCheck(askOf("Can you allow git push?"), {
+      refusals: [test],
+    });
+    assert.equal(r.pass, false);
+    assert.equal(r.ask, undefined);
+    assert.match(r.reason, /blocked on purpose in a self-test\. Carry on/);
+  });
+
+  it("the reason is exact and its secrets are hidden", () => {
+    const r = makeRefusal({
+      reason: "not-allowed",
+      botName: "PR Bot",
+      command:
+        "git push https://x:ghp_abcdefghijklmnop1234@github.com/o/r feat/x",
+    });
+    assert.equal(
+      r.message,
+      "PR Bot can't run `git push https://•••@github.com/o/r feat/x`: it isn't in the bot's allowed commands. Add it on the bot's Commands, or give it a provider tool that does this.",
+    );
+  });
+});

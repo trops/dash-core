@@ -12,6 +12,9 @@
  *   GoalNeedsYouCard  a bot's checks job (a goal): whichever of the first
  *                     three it waits on, or nothing
  *   BotApprovals      a bot's pending tool approvals, live
+ *   BlockedCard       a run its setup refused a command or tool: what,
+ *                     why, the fix, and its settings at that section
+ *                     (DASH-115)
  *
  *   useApprovals()    every pending tool approval, kept fresh on
  *                     onApprovalsChanged (no leaving or refreshing)
@@ -29,6 +32,7 @@ import { whenText } from "../Issues/issueText";
 import { ApprovalPreview } from "../Bots/ApprovalPreview";
 import { approvalText } from "../Bots/DashTeamApprovals";
 import { jobBot, jobTimeline } from "../Goals/jobTimeline";
+import { refusalSectionText } from "./jobText";
 
 const botsApi = () =>
   (typeof window !== "undefined" && window.mainApi && window.mainApi.bots) ||
@@ -405,6 +409,60 @@ export const BotApprovals = ({ botId, botName, approvals = null }) => {
           }}
         />
       ))}
+    </div>
+  );
+};
+
+/** Open a bot's settings at a section ("commands", "folders", …). */
+export function openBotSettings(botId, section = null) {
+  if (typeof window === "undefined" || !botId) return;
+  window.dispatchEvent(
+    new CustomEvent("dash:open-bot", {
+      detail: {
+        botId,
+        tab: "settings",
+        ...(section ? { focus: section } : {}),
+      },
+    }),
+  );
+}
+
+/**
+ * Its setup refused a command or tool, so the run failed (DASH-115): the
+ * exact command or tool, why, the fix, and a way to the bot's settings at
+ * that section. Nothing to approve: the bot's setup is the answer.
+ */
+export const BlockedCard = ({ refusal, botId, botName }) => {
+  const { muted, strong, hairline, fieldBg } = useConfigTokens();
+  const status = useStatusTokens();
+  if (!refusal) return null;
+  return (
+    <div
+      data-testid="job-blocked"
+      className={`flex flex-col gap-2 p-4 rounded-lg border ${status.error.accentBorder} ${status.error.bg}`}
+    >
+      <span className={`text-sm font-semibold ${status.error.text}`}>
+        {`Blocked: ${botName || "the bot"} can't ${refusal.kind === "command" ? "run this command" : "use this tool"}`}
+      </span>
+      <div
+        data-testid="job-blocked-what"
+        className={`rounded-md border px-2 py-1.5 font-mono text-xs whitespace-pre-wrap break-all select-text ${hairline} ${fieldBg} ${strong}`}
+      >
+        {refusal.what}
+      </div>
+      <span className={`text-sm ${strong}`} data-testid="job-blocked-why">
+        {`Why: ${refusal.why}.`}
+      </span>
+      <span className={`text-sm ${muted}`} data-testid="job-blocked-fix">
+        {refusal.fix}
+      </span>
+      <div>
+        <Button2
+          title={`Open ${botName || "the bot"}'s ${refusalSectionText(refusal.section)}`}
+          size="sm"
+          onClick={() => openBotSettings(botId, refusal.section)}
+        />
+      </div>
     </div>
   );
 };

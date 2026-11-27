@@ -281,3 +281,74 @@ describe("jobStatus", () => {
     assert.equal(jobStatus([{ status: "skipped" }]), "stopped");
   });
 });
+
+describe("a refused run on its job (DASH-115)", () => {
+  it("the failed step keeps what was refused, why and the fix; a test's own block doesn't", () => {
+    const t = make();
+    const job = t.startJob({ workspaceId: "ws1", leadId: "l", title: "PR" });
+    t.startStep(job.id, { botId: "pr", botName: "PR Bot" });
+    const refusal = {
+      kind: "command",
+      what: "git push -u origin feat/x",
+      why: "it isn't in the bot's allowed commands",
+      fix: "Add it on the bot's Commands, or give it a provider tool that does this.",
+      section: "commands",
+      message: "PR Bot can't run `git push -u origin feat/x`: …",
+    };
+    t.endStep(job.id, {
+      botId: "pr",
+      record: {
+        status: "failed",
+        error: refusal.message,
+        // As the run keeps them: JSON, sealed at rest.
+        refusals: JSON.stringify([
+          { ...refusal, what: "ls", test: true },
+          refusal,
+        ]),
+      },
+    });
+    const step = t.get(job.id).steps[0];
+    assert.equal(step.status, "failed");
+    assert.deepEqual(step.refusal, refusal);
+    t.startStep(job.id, { botId: "pr2", botName: "Other" });
+    t.endStep(job.id, {
+      botId: "pr2",
+      record: { status: "completed", refusals: [{ ...refusal, test: true }] },
+    });
+    assert.equal(t.get(job.id).steps[1].refusal, undefined);
+  });
+});
+
+describe("a refusal on a job is sealed at rest (DASH-115)", () => {
+  it("the job file holds no plain command", () => {
+    const box = {
+      seal: (s) => `enc:${Buffer.from(s).toString("base64")}`,
+      open: (s) => Buffer.from(String(s).slice(4), "base64").toString(),
+    };
+    const t = createJobTracker({
+      store: createJobStore({ root: dir, box }),
+      now: () => clock,
+      setTimer: () => ({}),
+      clearTimer: () => {},
+    });
+    const job = t.startJob({ workspaceId: "ws1", leadId: "l", title: "PR" });
+    t.startStep(job.id, { botId: "pr", botName: "PR Bot" });
+    t.endStep(job.id, {
+      botId: "pr",
+      record: {
+        status: "failed",
+        error: "x",
+        refusals: JSON.stringify([
+          { kind: "command", what: "git push origin secret-branch", why: "w" },
+        ]),
+      },
+    });
+    assert.equal(
+      t.get(job.id).steps[0].refusal.what,
+      "git push origin secret-branch",
+    );
+    const files = fs.readdirSync(dir);
+    const raw = files.map((f) => fs.readFileSync(path.join(dir, f), "utf8"));
+    assert.ok(raw.length && raw.every((r) => !r.includes("secret-branch")));
+  });
+});

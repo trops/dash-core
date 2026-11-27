@@ -705,7 +705,12 @@ const DashboardStageInner = ({
     const handler = (e) => {
       const d = (e && e.detail) || {};
       if (!d.botId) return;
-      setBotPageRequest({ botId: d.botId, tab: d.tab || "activity" });
+      setBotPageRequest({
+        botId: d.botId,
+        tab: d.tab || "activity",
+        // A section of its settings to show (DASH-115: a Blocked card's fix).
+        ...(typeof d.focus === "string" ? { focus: d.focus } : {}),
+      });
     };
     // The Dash team's page — its settings (Phase 4a; talking to it opens
     // the Dash Lead's conversations, release 6b).

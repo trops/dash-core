@@ -100,6 +100,7 @@ export const BotPageModal = ({
             key={`${shown.botId}-${shown.tab || "activity"}`}
             botId={shown.botId}
             initialTab={shown.tab || "activity"}
+            focus={shown.focus || null}
             workspaces={workspaces}
             onOpenInBotsView={
               onOpenInBotsView

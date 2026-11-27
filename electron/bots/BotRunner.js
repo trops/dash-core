@@ -24,7 +24,9 @@
  *   makeRequestPermission? / gate?  — test seams (default: real PermissionGate)
  */
 "use strict";
-const { withTestBlocks } = require("./selfTest");
+const { withTestBlocks, TEST_BLOCKED } = require("./selfTest");
+const { makeRefusal, keepRefusal, refusalAsked } = require("./refusals");
+const { readHandoff } = require("./botHandoff");
 
 const { createRequestPermission } = require("./PermissionGate");
 const { deletesOrSends } = require("./riskyTools");
@@ -418,6 +420,53 @@ class BotRunner {
     };
     const controller = new AbortController();
     this._active.set(botId, controller);
+
+    // What its setup refused in this run (DASH-115): the exact command or
+    // tool, why, and the fix. A refusal ends the run failed with that
+    // reason — a bot never asks the user to grant it something. A
+    // self-test's own block (DASH-109) is expected: it's listed with what
+    // the test skipped, and the bot carries on.
+    const refusals = [];
+    const ownBlocked =
+      stored && stored.commands && Array.isArray(stored.commands.blocked)
+        ? stored.commands.blocked
+        : [];
+    const failOnRefusal = !!opts.failOnRefusal;
+    const onRefused = (info) => {
+      const testBlock =
+        !!opts.selfTest &&
+        info &&
+        info.reason === "blocked-list" &&
+        TEST_BLOCKED.includes(info.rule) &&
+        !ownBlocked.includes(info.rule);
+      const r = makeRefusal({
+        ...(info || {}),
+        botName: bot.name || null,
+        ...(testBlock ? { test: true } : {}),
+      });
+      keepRefusal(refusals, r);
+      if (testBlock) {
+        if (typeof opts.onTestSkip === "function") {
+          try {
+            opts.onTestSkip({ command: r.what, botName: bot.name || botId });
+          } catch (_e) {
+            // Listing it never stops the run.
+          }
+        }
+        return {
+          message: `Skipped in a test: \`${r.what}\` wasn't run (outward commands are blocked in a self-test, on purpose). Carry on as if it worked, and say in your answer what you would have done.`,
+        };
+      }
+      emit({ type: "refused", refusal: r });
+      // Only a job's run on a team with the standard handoff fails on it
+      // (opts.failOnRefusal): any other run is told no, as before, and the
+      // refusal is still kept on it.
+      if (!failOnRefusal) return null;
+      if (!controller.signal.aborted) {
+        controller.abort({ fail: r.message, code: "REFUSED" });
+      }
+      return { message: r.message };
+    };
     this._startedAt.set(botId, startedAt);
 
     let status = "completed";
@@ -551,6 +600,16 @@ class BotRunner {
               decision: "read-only",
             });
           }
+          // A tool on no provider it's set up with (DASH-115).
+          if (entry && entry.outcome === "denied-unconfigured") {
+            onRefused({
+              reason: entry.serverName
+                ? "not-its-provider"
+                : "provider-missing",
+              tool: entry.toolName,
+              server: entry.serverName || null,
+            });
+          }
           this._audit({ ...entry, runStartedAt: startedAt });
         },
         isPaused: () => this._isPaused(botId),
@@ -560,12 +619,13 @@ class BotRunner {
       const executeTool = async (toolName, input) => {
         const serverName = resolveServer(toolName);
         if (!serverName) {
+          onRefused({ reason: "provider-missing", tool: toolName });
           return {
             text: `No MCP server for tool "${toolName}".`,
             isError: true,
           };
         }
-        return this._callTool(serverName, toolName, input, {
+        const called = await this._callTool(serverName, toolName, input, {
           workspaceId: bot.workspaceId,
           // Lets the caller apply this bot's per-provider tool limits.
           botId,
@@ -579,6 +639,13 @@ class BotRunner {
             : {}),
           botName: bot.name || null,
         });
+        // A tool outside its provider tools (DASH-115): refused, recorded.
+        if (called && called.refused && typeof called.refused === "object") {
+          const { refused, ...rest } = called;
+          onRefused({ ...refused, tool: refused.tool || toolName, input });
+          return rest;
+        }
+        return called;
       };
 
       // A run does the bot's job against current data → fresh conversation.
@@ -659,6 +726,8 @@ class BotRunner {
         approvalPolicy,
         leadRequest,
         createApproval,
+        // What its setup refuses is recorded and ends the run (DASH-115).
+        onRefused,
       };
       // Its git and gh commands sign in to GitHub with it (DASH-55).
       if (gitToken) ctx.gitToken = gitToken;
@@ -927,10 +996,38 @@ class BotRunner {
     } else if (failNote) {
       status = "failed";
       errorMessage = failNote;
-      emit({ type: "error", message: errorMessage, code: "APPROVAL_TIMEOUT" });
+      emit({
+        type: "error",
+        message: errorMessage,
+        code: controller.signal.reason.code || "APPROVAL_TIMEOUT",
+      });
     } else if (controller.signal.aborted) {
       status = controller.signal.reason === "quit" ? "interrupted" : "stopped";
       errorMessage = null;
+    }
+
+    // Its handoff asks the user about a refusal (DASH-115): never a
+    // question for them — the run fails with the refusal's reason. Matched
+    // against what was recorded, never guessed from the prose. A self-test's
+    // own block isn't (the handoff check sends that back: carry on).
+    if (
+      failOnRefusal &&
+      status === "completed" &&
+      refusals.some((r) => !r.test)
+    ) {
+      const h = readHandoff(answer);
+      const asked =
+        h && h.status === "ask"
+          ? refusalAsked(
+              h.question,
+              refusals.filter((r) => !r.test),
+            )
+          : null;
+      if (asked) {
+        status = "failed";
+        errorMessage = asked.message;
+        emit({ type: "error", message: errorMessage, code: "REFUSED" });
+      }
     }
 
     const runRecord = {
@@ -967,6 +1064,9 @@ class BotRunner {
     };
     // Tried more than once (US-023): how many attempts it took.
     if (attempts > 1) runRecord.attempts = attempts;
+    // What its setup refused (DASH-115), for the job's Blocked card.
+    // Sealed at rest like its warnings (a command can hold anything).
+    if (refusals.length) runRecord.refusals = JSON.stringify(refusals);
     // Sealed at rest like the answer: a server's error can echo anything.
     if (warnings.length) runRecord.warnings = JSON.stringify(warnings);
     if (toolErrors.length) runRecord.toolErrors = JSON.stringify(toolErrors);

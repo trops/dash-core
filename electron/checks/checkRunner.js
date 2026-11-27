@@ -130,6 +130,11 @@ async function runCheck(check, input, deps = {}) {
         item: (input && input.item) || null,
         folders: check.folders || [],
         tables: check.tables || [],
+        // What Dash refused in the run (DASH-115).
+        refusals:
+          work && typeof work === "object" && Array.isArray(work.refusals)
+            ? work.refusals
+            : [],
         home: deps.home || require("os").homedir(),
       });
     } else {

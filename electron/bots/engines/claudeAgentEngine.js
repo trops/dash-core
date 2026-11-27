@@ -194,6 +194,25 @@ function _makeCanUseTool(runCtx) {
   const outsideMessage = (what) =>
     `Not allowed: ${what} is outside this bot's folders (${fence.label}). ` +
     "Work only in those folders, or stop and say what you need from the user.";
+  // A refusal its setup made (DASH-115): the runner records it, and says
+  // what the bot is told (it ends the run failed, or in a self-test, lets
+  // it carry on).
+  const refuse = (info, message) => {
+    let said = message;
+    if (typeof ctx.onRefused === "function") {
+      try {
+        const r = ctx.onRefused(info);
+        if (r && typeof r.message === "string" && r.message) said = r.message;
+      } catch (_e) {
+        // Recording it never changes the refusal.
+      }
+    }
+    return { behavior: "deny", message: said };
+  };
+  const bashOf = (toolName, input) =>
+    toolName === "Bash" && input && typeof input.command === "string"
+      ? input.command
+      : null;
   return async function canUseTool(toolName, input) {
     if (ctx.signal && ctx.signal.aborted) {
       return { behavior: "deny", message: "run aborted" };
@@ -207,10 +226,14 @@ function _makeCanUseTool(runCtx) {
     // built-ins setting doesn't touch it (DASH-38); its own check is below.
     const linked = !bridged && connectorForTool(ctx.connectors, toolName);
     if (ctx.builtinTools === "none" && !bridged && !linked) {
-      return {
-        behavior: "deny",
-        message: "This bot has no built-in tools; use its team tools.",
-      };
+      return refuse(
+        {
+          reason: "no-builtins",
+          tool: toolName,
+          command: bashOf(toolName, input),
+        },
+        "This bot has no built-in tools; use its team tools.",
+      );
     }
     if (
       ctx.builtinTools === "read-only" &&
@@ -218,11 +241,14 @@ function _makeCanUseTool(runCtx) {
       !linked &&
       !READ_ONLY_BUILTINS.includes(toolName)
     ) {
-      return {
-        behavior: "deny",
-        message:
-          "This bot can only read files; make changes with its Dash tools.",
-      };
+      return refuse(
+        {
+          reason: "read-only",
+          tool: toolName,
+          command: bashOf(toolName, input),
+        },
+        "This bot can only read files; make changes with its Dash tools.",
+      );
     }
     // A Claude connector's tool: only on a connector this bot was granted,
     // and only a tool it may use; then the same Dash gate as its providers
@@ -231,10 +257,14 @@ function _makeCanUseTool(runCtx) {
     if (linked) {
       const allowed = linked.connector.allowed;
       if (Array.isArray(allowed) && !allowed.includes(linked.tool)) {
-        return {
-          behavior: "deny",
-          message: `${linked.tool} isn't allowed for this bot on ${linked.connector.provider}.`,
-        };
+        return refuse(
+          {
+            reason: "not-its-tool",
+            tool: linked.tool,
+            server: linked.connector.provider,
+          },
+          `${linked.tool} isn't allowed for this bot on ${linked.connector.provider}.`,
+        );
       }
       // On a run its lead started, the gate decides (it still asks before
       // tools that delete or send, DASH-29).
@@ -260,19 +290,22 @@ function _makeCanUseTool(runCtx) {
       !bridged &&
       !READ_ONLY_BUILTINS.includes(toolName)
     ) {
-      return {
-        behavior: "deny",
-        message:
-          "This unattended bot has no folders to work in, so it can't change files or run commands. Give it folders in Dash.",
-      };
+      return refuse(
+        {
+          reason: "no-folders",
+          tool: toolName,
+          command: bashOf(toolName, input),
+        },
+        "This unattended bot has no folders to work in, so it can't change files or run commands. Give it folders in Dash.",
+      );
     }
     // Anything else outside this bot's built-ins — denied, never asked, even
     // under "allow".
     if (!bridged && !_allowedBuiltins(ctx).includes(toolName)) {
-      return {
-        behavior: "deny",
-        message: `${toolName} isn't available to bots.`,
-      };
+      return refuse(
+        { reason: "not-available", tool: toolName },
+        `${toolName} isn't available to bots.`,
+      );
     }
     // A bot's folders (DASH-47): a file tool outside them is refused, never
     // asked, whatever the policy. Reading inside them never asks (unless the
@@ -280,7 +313,16 @@ function _makeCanUseTool(runCtx) {
     if (fence && !bridged && FILE_TOOL_FIELDS[toolName]) {
       const outside = fileToolOutside(fence, toolName, input);
       if (outside) {
-        return { behavior: "deny", message: outsideMessage(outside) };
+        return refuse(
+          {
+            reason: "outside-folders",
+            tool: toolName,
+            input: { path: outside },
+            detail: outside,
+            folders: fence.label,
+          },
+          outsideMessage(outside),
+        );
       }
       if (
         READ_ONLY_BUILTINS.includes(toolName) &&
@@ -307,20 +349,30 @@ function _makeCanUseTool(runCtx) {
       }
       const d = commandDecision(input.command, ctx.commands || {});
       if (d.decision === "blocked") {
-        return {
-          behavior: "deny",
-          message: `Not run: ${d.reason}. Do it another way, or stop and say what you need from the user.`,
-        };
+        return refuse(
+          {
+            reason: d.always ? "always-blocked" : "blocked-list",
+            command: input.command,
+            ...(d.always ? { label: d.always } : {}),
+            ...(d.rule ? { rule: d.rule } : {}),
+          },
+          `Not run: ${d.reason}. Do it another way, or stop and say what you need from the user.`,
+        );
       }
       // A command that reaches outside the bot's folders: refused under
       // "allow" (nobody is there to ask), asked otherwise — even when it's
       // on the allowed list ("cat" is; "cat ~/.ssh/config" isn't).
       commandOutside = bashOutside(fence, input.command);
       if (commandOutside && ctx.approvalPolicy === "allow") {
-        return {
-          behavior: "deny",
-          message: outsideMessage(commandOutside),
-        };
+        return refuse(
+          {
+            reason: "outside-folders",
+            command: input.command,
+            detail: commandOutside,
+            folders: fence.label,
+          },
+          outsideMessage(commandOutside),
+        );
       }
       if (d.decision === "allowed" && !commandOutside) {
         return { behavior: "allow", updatedInput: input };

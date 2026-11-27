@@ -1681,3 +1681,222 @@ describe("BotRunner — GitHub sign-in (DASH-55)", () => {
     assert.equal(engine.lastCtx.gitToken, undefined);
   });
 });
+
+// DASH-115: a bot's setup is the answer. What Dash refused ends the run
+// failed with the exact reason and fix; a self-test's own block is listed
+// with what it skipped, and the bot carries on.
+describe("BotRunner.run — refusals (DASH-115)", () => {
+  const { refusalsOf } = require("./refusals");
+  // An engine that tries a command, is refused, then answers.
+  function refusingEngine(info, answer = "done") {
+    const engine = {
+      id: "tool-loop",
+      told: null,
+      run(ctx) {
+        return (async function* () {
+          const r = ctx.onRefused(info);
+          engine.told = r && r.message;
+          yield { type: "text", text: answer };
+          yield { type: "done", stopReason: "end_turn" };
+        })();
+      },
+    };
+    return engine;
+  }
+
+  it("a blocked command ends the run failed, with what, why and the fix kept on it", async () => {
+    const engine = refusingEngine({
+      reason: "blocked-list",
+      command: "git push -u origin feat/DASH-1",
+      rule: "git push",
+    });
+    const { runner, runs } = makeRunner(engine, {
+      bot: { name: "PR Bot", commands: { blocked: ["git push"] } },
+    });
+    const events = [];
+    const record = await runner.run("bot_1", {
+      prompt: "go",
+      failOnRefusal: true,
+      emit: (e) => events.push(e),
+    });
+    assert.equal(record.status, "failed");
+    assert.equal(
+      record.error,
+      "PR Bot can't run `git push -u origin feat/DASH-1`: it's on the bot's blocked commands (\"git push\"). Take \"git push\" off the bot's Commands, or give it a provider tool that does this.",
+    );
+    assert.equal(engine.told, record.error);
+    assert.equal(refusalsOf(record).length, 1);
+    assert.equal(refusalsOf(record)[0].kind, "command");
+    assert.equal(refusalsOf(record)[0].section, "commands");
+    assert.equal(
+      refusalsOf(runs[0].run)[0].what,
+      "git push -u origin feat/DASH-1",
+    );
+    assert.ok(events.some((e) => e.type === "refused"));
+    assert.ok(events.some((e) => e.type === "error" && e.code === "REFUSED"));
+  });
+
+  it("an ask about the refusal is never put to the user: the run fails with the reason", async () => {
+    const engine = {
+      id: "tool-loop",
+      run(ctx) {
+        return (async function* () {
+          // Its answer arrives before Dash stops it.
+          yield {
+            type: "text",
+            text: '```json\n{ "status": "ask", "question": "Can you allow git push for this bot?" }\n```',
+          };
+          ctx.onRefused({
+            reason: "blocked-list",
+            command: "git push origin feat/x",
+            rule: "git push",
+          });
+          yield { type: "done", stopReason: "end_turn" };
+        })();
+      },
+    };
+    const { runner } = makeRunner(engine, {
+      bot: { name: "PR Bot", commands: { blocked: ["git push"] } },
+    });
+    const record = await runner.run("bot_1", {
+      prompt: "go",
+      failOnRefusal: true,
+    });
+    assert.equal(record.status, "failed");
+    assert.match(record.error, /^PR Bot can't run `git push origin feat\/x`/);
+  });
+
+  it("a provider tool it isn't set up with is refused the same way", async () => {
+    const engine = {
+      id: "tool-loop",
+      run(ctx) {
+        return (async function* () {
+          await ctx.executeTool("merge_pull_request", { number: 4 });
+          yield { type: "done", stopReason: "end_turn" };
+        })();
+      },
+    };
+    const { runner } = makeRunner(engine, {
+      bot: { name: "PR Bot" },
+      deps: {
+        callTool: async (server, tool) => ({
+          text: `Tool "${tool}" is not allowed for this bot on "${server}".`,
+          isError: true,
+          refused: { reason: "not-its-tool", tool, server },
+        }),
+      },
+    });
+    const record = await runner.run("bot_1", {
+      prompt: "go",
+      failOnRefusal: true,
+    });
+    assert.equal(record.status, "failed");
+    assert.equal(
+      record.error,
+      "PR Bot can't use `merge_pull_request {\"number\":4}`: it isn't one of the bot's tools on github. Add the tool to the bot's github tools, on its Providers.",
+    );
+    assert.equal(refusalsOf(record)[0].section, "providers");
+  });
+
+  it("a tool no provider has (missing, or not signed in) is refused", async () => {
+    const engine = {
+      id: "tool-loop",
+      run(ctx) {
+        return (async function* () {
+          await ctx.executeTool("create_issue", {});
+          yield { type: "done", stopReason: "end_turn" };
+        })();
+      },
+    };
+    const { runner } = makeRunner(engine, {
+      bot: { name: "Reporter" },
+      deps: {
+        resolveTools: async () => ({ tools: [], resolveServer: () => null }),
+      },
+    });
+    const record = await runner.run("bot_1", {
+      prompt: "go",
+      failOnRefusal: true,
+    });
+    assert.equal(record.status, "failed");
+    assert.match(record.error, /no provider on this computer has that tool/);
+    assert.match(record.error, /Settings › Providers/);
+  });
+
+  it("in a self-test, its own block isn't a failure: listed as skipped, and the bot carries on", async () => {
+    const engine = refusingEngine({
+      reason: "blocked-list",
+      command: "git push -u origin feat/x",
+      rule: "git push",
+    });
+    const { runner } = makeRunner(engine, { bot: { name: "PR Bot" } });
+    const skipped = [];
+    const record = await runner.run("bot_1", {
+      prompt: "go",
+      selfTest: true,
+      failOnRefusal: true,
+      onTestSkip: (n) => skipped.push(n),
+    });
+    assert.equal(record.status, "completed");
+    assert.match(
+      engine.told,
+      /^Skipped in a test: `git push -u origin feat\/x`/,
+    );
+    assert.deepEqual(skipped, [
+      { command: "git push -u origin feat/x", botName: "PR Bot" },
+    ]);
+    assert.equal(refusalsOf(record)[0].test, true);
+  });
+
+  it("in a self-test, a command on the bot's own blocked list still fails it", async () => {
+    const engine = refusingEngine({
+      reason: "blocked-list",
+      command: "git push origin x",
+      rule: "git push",
+    });
+    const { runner } = makeRunner(engine, {
+      bot: { name: "PR Bot", commands: { blocked: ["git push"] } },
+    });
+    const record = await runner.run("bot_1", {
+      prompt: "go",
+      selfTest: true,
+      failOnRefusal: true,
+    });
+    assert.equal(record.status, "failed");
+  });
+});
+
+describe("BotRunner.run — a refusal outside a handoff job (DASH-115)", () => {
+  const { refusalsOf } = require("./refusals");
+  it("a bot that isn't in a handoff job is told no, as before: its run goes on, the refusal kept", async () => {
+    const engine = {
+      id: "tool-loop",
+      told: undefined,
+      run(ctx) {
+        return (async function* () {
+          const r = ctx.onRefused({
+            reason: "outside-folders",
+            command: "cat ~/.ssh/config",
+            detail: "~/.ssh/config",
+            folders: "~/Notes",
+          });
+          engine.told = r;
+          yield {
+            type: "text",
+            text: "I couldn't read it, so here's the rest.",
+          };
+          yield { type: "done", stopReason: "end_turn" };
+        })();
+      },
+    };
+    const { runner, runs } = makeRunner(engine, { bot: { name: "Life HQ" } });
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.equal(record.status, "completed");
+    assert.equal(record.error, null);
+    // The engine's own "Not allowed" message stands.
+    assert.equal(engine.told, null);
+    assert.equal(refusalsOf(record)[0].section, "folders");
+    // Kept as JSON, so the store seals it at rest.
+    assert.equal(typeof runs[0].run.refusals, "string");
+  });
+});

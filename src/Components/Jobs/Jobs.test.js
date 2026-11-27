@@ -724,3 +724,127 @@ describe("what a step needs from you, on the job page (DASH-113)", () => {
     await waitFor(() => expect(calls.resume).toEqual(["pr"]));
   });
 });
+
+describe("a refused command or tool on the job page (DASH-115)", () => {
+  const refused = (refusal, extra = {}) => ({
+    id: "job_r",
+    workspaceId: "1",
+    leadId: "lead1",
+    leadName: "Code Lead",
+    title: "Fix the slug",
+    startedBy: { kind: "you" },
+    status: "failed",
+    createdAt: T,
+    updatedAt: T,
+    endedAt: T,
+    ...extra,
+    steps: [
+      {
+        id: "s1",
+        botId: "pr",
+        botName: "PR Bot",
+        status: "failed",
+        summary: refusal.message,
+        refusal,
+      },
+    ],
+  });
+  const cases = [
+    {
+      name: "a blocked command",
+      refusal: {
+        kind: "command",
+        what: "git push -u origin feat/DASH-1",
+        why: "it's on the bot's blocked commands (\"git push\")",
+        fix: 'Take "git push" off the bot\'s Commands, or give it a provider tool that does this.',
+        section: "commands",
+        message: "PR Bot can't run `git push -u origin feat/DASH-1`: …",
+      },
+      button: "Open PR Bot's Commands",
+      focus: "commands",
+    },
+    {
+      name: "a tool it isn't set up with",
+      refusal: {
+        kind: "tool",
+        what: 'merge_pull_request {"number":4}',
+        why: "it isn't one of the bot's tools on GitHub",
+        fix: "Add the tool to the bot's GitHub tools, on its Providers.",
+        section: "providers",
+        message: "PR Bot can't use `merge_pull_request`: …",
+      },
+      button: "Open PR Bot's Providers",
+      focus: "providers",
+    },
+    {
+      name: "a missing provider",
+      refusal: {
+        kind: "tool",
+        what: "create_issue",
+        why: "no provider on this computer has that tool",
+        fix: "Add or sign in to the provider in Settings › Providers, then give it to the bot on its Providers.",
+        section: "providers",
+        message: "PR Bot can't use `create_issue`: …",
+      },
+      button: "Open PR Bot's Providers",
+      focus: "providers",
+    },
+  ];
+  for (const c of cases) {
+    it(`${c.name}: a Blocked card with what, why, the fix, and its settings`, async () => {
+      withApi([refused(c.refusal)]);
+      const opened = [];
+      const on = (e) => opened.push(e.detail);
+      window.addEventListener("dash:open-bot", on);
+      try {
+        render(<JobsPage workspaces={WORKSPACES} />);
+        const card = await screen.findByTestId("job-blocked");
+        expect(within(card).getByTestId("job-blocked-what")).toHaveTextContent(
+          c.refusal.what,
+        );
+        expect(within(card).getByTestId("job-blocked-why")).toHaveTextContent(
+          `Why: ${c.refusal.why}.`,
+        );
+        expect(within(card).getByTestId("job-blocked-fix")).toHaveTextContent(
+          c.refusal.fix,
+        );
+        // Nothing to approve: its setup is the answer.
+        expect(
+          within(card).queryByRole("button", { name: /Allow/ }),
+        ).toBeNull();
+        fireEvent.click(within(card).getByRole("button", { name: c.button }));
+        expect(opened).toEqual([
+          { botId: "pr", tab: "settings", focus: c.focus },
+        ]);
+      } finally {
+        window.removeEventListener("dash:open-bot", on);
+      }
+    });
+  }
+
+  it("a self-test's own block isn't a failure: it's listed with what the test skipped", async () => {
+    withApi([
+      {
+        id: "job_t",
+        workspaceId: "1",
+        leadId: "lead1",
+        title: "DASH-1",
+        test: true,
+        startedBy: { kind: "you" },
+        status: "done",
+        createdAt: T,
+        updatedAt: T,
+        skippedInTest: [
+          { command: "git push -u origin feat/DASH-1", botName: "PR Bot" },
+        ],
+        steps: [{ id: "s1", botId: "pr", botName: "PR Bot", status: "done" }],
+      },
+    ]);
+    render(<JobsPage workspaces={WORKSPACES} />);
+    const test = await screen.findByTestId("job-self-test");
+    expect(test).toHaveTextContent(
+      "PR Bot: `git push -u origin feat/DASH-1` (blocked in a test)",
+    );
+    expect(screen.queryByTestId("job-blocked")).toBeNull();
+  });
+});

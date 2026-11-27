@@ -126,7 +126,8 @@ describe("DashboardStage — Bot monitor hand-off (TEAM-011 B3)", () => {
     );
     expect(stageSrc).toMatch(
       // Its Activity unless asked otherwise (no conversation, release 6b).
-      /setBotPageRequest\(\{ botId: d\.botId, tab: d\.tab \|\| "activity" \}\)/,
+      // A section of its settings to show too (DASH-115).
+      /setBotPageRequest\(\{\s*botId: d\.botId,\s*tab: d\.tab \|\| "activity",/,
     );
     expect(stageSrc).toMatch(
       /openBotSettings = useCallback\(\(botId\) => \{\s*if \(botId\) setBotPageRequest\(\{ botId, tab: "settings" \}\);/,

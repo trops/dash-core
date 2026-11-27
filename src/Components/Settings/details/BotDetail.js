@@ -131,6 +131,14 @@ function providerOptionsFrom(providers) {
   ];
 }
 
+// The settings section a refusal's fix names (DASH-115), by its test id.
+const FOCUS_IDS = {
+  commands: "bot-commands",
+  folders: "bot-work-folders",
+  tools: "bot-builtin-tools",
+  providers: "bot-providers",
+};
+
 /**
  * The model source to pre-select for a new bot: the default (Settings › AI).
  * An API key of its own is used only when the user picks it for the bot.
@@ -268,8 +276,20 @@ export const BotDetail = ({
   // (definition) — a new bot's form closed before it was created
   // (bot-test-run TST-003): what was typed, to keep in Recent.
   onLeave = null,
+  // A section to scroll to on open (DASH-115: a Blocked card's fix):
+  // "commands", "folders", "tools" or "providers".
+  focus = null,
 }) => {
   const from = bot || initial;
+  useEffect(() => {
+    if (!focus || typeof document === "undefined") return;
+    const id = FOCUS_IDS[focus];
+    const el = id ? document.querySelector(`[data-testid="${id}"]`) : null;
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
   const showInstructions = !section || section === "instructions";
   const showAccess = !section || section === "access";
   // A Dash team role (CRE-011) is never on a dashboard and only runs when
@@ -1107,7 +1127,7 @@ export const BotDetail = ({
 
           {showAccess && (
             <>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2" data-testid="bot-providers">
                 <span className="text-sm font-medium">Providers</span>
                 <span className="text-xs opacity-50">
                   What this bot can use — your providers from Settings →

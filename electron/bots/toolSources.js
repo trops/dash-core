@@ -325,6 +325,7 @@ function checkToolCall(allowedMap, serverName, toolName) {
     return {
       ok: false,
       message: `Tool "${toolName}" is not available to this bot (provider "${serverName}" isn't one of its providers).`,
+      notProvider: true,
     };
   }
   const allowed = allowedMap[serverName];

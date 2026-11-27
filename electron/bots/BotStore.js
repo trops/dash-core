@@ -37,7 +37,14 @@ const { botRef } = require("./botEvents");
 const MAX_RUNS_PER_BOT = 100;
 
 // Run fields that can hold sensitive text — sealed at rest via secretBox.
-const SEALED_RUN_FIELDS = ["output", "prompt", "toolErrors", "warnings"];
+const SEALED_RUN_FIELDS = [
+  "output",
+  "prompt",
+  "toolErrors",
+  "warnings",
+  // What its setup refused (DASH-115): exact commands and args.
+  "refusals",
+];
 
 class BotStore {
   /**

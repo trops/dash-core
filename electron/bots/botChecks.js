@@ -347,8 +347,12 @@ function jobSource({ trigger = "", via = "" } = {}) {
 }
 
 /** The work's record: the run's answer, as the checks read it. */
-function workOutput(answer) {
-  return { answer: String(answer == null ? "" : answer) };
+function workOutput(answer, refusals = null) {
+  return {
+    answer: String(answer == null ? "" : answer),
+    // What Dash refused in the run (DASH-115), for the Handoff check.
+    ...(Array.isArray(refusals) && refusals.length ? { refusals } : {}),
+  };
 }
 
 /** The latest work that passed on a job's task: its answer text. */

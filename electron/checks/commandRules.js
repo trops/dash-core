@@ -123,13 +123,19 @@ const OPAQUE = /(^|[^&])&([^&]|$)|\n|\$\(|`|[<>]|\$\{/;
  * blocked list), allowed (every part on its allowed list), or ask.
  * @param {string} command
  * @param {{ allowed?: string[], blocked?: string[] }} lists  prefixes
- * @returns {{ decision: "blocked"|"allowed"|"ask", reason?: string }}
+ * @returns {{ decision: "blocked"|"allowed"|"ask", reason?: string,
+ *            always?: string, rule?: string }}
  */
 function commandDecision(command, lists = {}) {
   const c = String(command || "").trim();
   const always = blockedBy(c);
   if (always) {
-    return { decision: "blocked", reason: `${always.label} is always blocked` };
+    return {
+      decision: "blocked",
+      reason: `${always.label} is always blocked`,
+      // What it matched (DASH-115): an always-blocked rule.
+      always: always.label,
+    };
   }
   const parts = partsOf(c);
   const blocked = (lists.blocked || [])
@@ -141,6 +147,8 @@ function commandDecision(command, lists = {}) {
       return {
         decision: "blocked",
         reason: `"${b}" is on this bot's blocked list`,
+        // The blocked-list entry it matched (DASH-115).
+        rule: b,
       };
     }
   }
