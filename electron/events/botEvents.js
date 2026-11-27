@@ -87,6 +87,15 @@ const BOTS_CHECK_PACKAGES_LIST = "bots-check-packages-list";
 const BOTS_CHECK_PACKAGES_SEARCH = "bots-check-packages-search";
 const BOTS_CHECK_PACKAGE_INSTALL = "bots-check-package-install";
 const BOTS_CHECK_PACKAGE_REMOVE = "bots-check-package-remove";
+// The Add check screen and Set up checks (DASH-110).
+const BOTS_SUGGEST_CHECKS = "bots-suggest-checks";
+const BOTS_DRAFT_CHECK = "bots-draft-check";
+const BOTS_TRY_CHECK = "bots-try-check";
+const BOTS_SAVE_CHECK = "bots-save-check";
+const BOTS_TEAM_CHECKS = "bots-team-checks";
+const BOTS_RESOLVE_TEAM_CHECK = "bots-resolve-team-check";
+const BOTS_REPOS_WITHOUT_CHECKS = "bots-repos-without-checks";
+const BOTS_SET_UP_REPO_CHECKS = "bots-set-up-repo-checks";
 // The team's setup, checked (DASH-108).
 const BOTS_CHECK_SETUP = "bots-check-setup";
 // The team's "Wait for approvals up to" (DASH-32).
@@ -223,6 +232,14 @@ module.exports = {
   BOTS_CHECK_PACKAGES_SEARCH,
   BOTS_CHECK_PACKAGE_INSTALL,
   BOTS_CHECK_PACKAGE_REMOVE,
+  BOTS_SUGGEST_CHECKS,
+  BOTS_DRAFT_CHECK,
+  BOTS_TRY_CHECK,
+  BOTS_SAVE_CHECK,
+  BOTS_TEAM_CHECKS,
+  BOTS_RESOLVE_TEAM_CHECK,
+  BOTS_REPOS_WITHOUT_CHECKS,
+  BOTS_SET_UP_REPO_CHECKS,
   BOTS_CHECK_SETUP,
   BOTS_GET_APPROVAL_WAIT_HOURS,
   BOTS_SET_APPROVAL_WAIT_HOURS,

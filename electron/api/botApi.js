@@ -81,6 +81,14 @@ const {
   BOTS_CHECK_PACKAGES_SEARCH,
   BOTS_CHECK_PACKAGE_INSTALL,
   BOTS_CHECK_PACKAGE_REMOVE,
+  BOTS_SUGGEST_CHECKS,
+  BOTS_DRAFT_CHECK,
+  BOTS_TRY_CHECK,
+  BOTS_SAVE_CHECK,
+  BOTS_TEAM_CHECKS,
+  BOTS_RESOLVE_TEAM_CHECK,
+  BOTS_REPOS_WITHOUT_CHECKS,
+  BOTS_SET_UP_REPO_CHECKS,
   BOTS_CHECK_SETUP,
   BOTS_GET_APPROVAL_WAIT_HOURS,
   BOTS_SET_APPROVAL_WAIT_HOURS,
@@ -430,6 +438,22 @@ const botApi = {
     ipcRenderer.invoke(BOTS_CHECK_PACKAGE_INSTALL, { ref, version }),
   removeCheckPackage: (ref) =>
     ipcRenderer.invoke(BOTS_CHECK_PACKAGE_REMOVE, { ref }),
+  /** The Add check screen and Set up checks (DASH-110). */
+  suggestChecks: (botId) => ipcRenderer.invoke(BOTS_SUGGEST_CHECKS, { botId }),
+  draftCheck: (botId, ask) =>
+    ipcRenderer.invoke(BOTS_DRAFT_CHECK, { botId, ask }),
+  tryCheck: (botId, draft) =>
+    ipcRenderer.invoke(BOTS_TRY_CHECK, { botId, draft }),
+  saveCheck: (botId, opts) =>
+    ipcRenderer.invoke(BOTS_SAVE_CHECK, { botId, ...opts }),
+  teamChecks: (workspaceId) =>
+    ipcRenderer.invoke(BOTS_TEAM_CHECKS, { workspaceId }),
+  resolveTeamCheck: (workspaceId, name, choice) =>
+    ipcRenderer.invoke(BOTS_RESOLVE_TEAM_CHECK, { workspaceId, name, choice }),
+  reposWithoutChecks: (workspaceId) =>
+    ipcRenderer.invoke(BOTS_REPOS_WITHOUT_CHECKS, { workspaceId }),
+  setUpRepoChecks: (workspaceId, repoKey) =>
+    ipcRenderer.invoke(BOTS_SET_UP_REPO_CHECKS, { workspaceId, repoKey }),
   /** A team's bots use the standard handoff (DASH-101). */
   setUsesHandoffs: (workspaceId, on) =>
     ipcRenderer.invoke(BOTS_SET_USES_HANDOFFS, { workspaceId, on }),

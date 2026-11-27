@@ -285,6 +285,40 @@ async function runRepoCheck(check, input, opts = {}) {
       check.from === "workspace"
         ? "The workspace"
         : `This repo${found.ref ? ` (on ${found.ref})` : ""}`;
+    // The team's copy (DASH-110): saved to the repo by a PR not merged yet,
+    // or kept for this team only.
+    const tc = opts.teamCheck ? opts.teamCheck(name) : null;
+    if (tc) {
+      const label =
+        tc.state === "pr-open"
+          ? `Team copy of .dash/checks/${tc.file} (PR open${tc.pr && tc.pr.url ? `: ${tc.pr.url}` : ""})`
+          : tc.state === "pr-closed"
+            ? `Team copy of .dash/checks/${tc.file} (its PR was closed: keep it or remove it on the bot's Checks)`
+            : `Team copy of .dash/checks/${tc.file}`;
+      const res = await runPackageFiles(
+        {
+          manifest: { name, run: tc.file },
+          files: { [tc.file]: tc.code },
+          label,
+        },
+        input,
+        {},
+        {
+          cwd,
+          env: opts.env,
+          tmpDir: opts.tmpDir,
+          spawn: opts.spawn,
+          timeoutSec: check.timeoutSec,
+        },
+      );
+      return {
+        ...res,
+        details:
+          res.details == null
+            ? { teamCopy: tc.file, state: tc.state }
+            : res.details,
+      };
+    }
     if (check.fallback && opts.runFallback) {
       const res = await opts.runFallback(check.fallback, input);
       return {

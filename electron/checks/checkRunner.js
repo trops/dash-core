@@ -79,6 +79,8 @@ async function runCheck(check, input, deps = {}) {
     } else if (kind === "repo") {
       // Kept in the repo like CI (DASH-102): .dash/checks/<name>.
       res = await runRepoCheck(check, input, {
+        // The team's copy, while its PR isn't merged (DASH-110).
+        ...(deps.teamCheck ? { teamCheck: deps.teamCheck } : {}),
         cwd: deps.cwd,
         tmpDir: deps.tmpDir,
         ...(deps.env ? { env: deps.env } : {}),
