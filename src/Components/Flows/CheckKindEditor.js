@@ -11,6 +11,7 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { PanelSection } from "./SidePanel";
+import { HelperCheckEditor } from "./HelperCheckEditor";
 
 // The main process's side of a check: read-only tools, Write it with AI.
 const flowsApi = () =>
@@ -28,6 +29,7 @@ export const KINDS = [
   { value: "git-committed", label: "Work is committed" },
   { value: "pr-ci", label: "The PR's CI passes" },
   { value: "handoff-has", label: "The handoff has" },
+  { value: "helper", label: "A factory helper" },
 ];
 
 export const KIND_INTRO = {
@@ -51,6 +53,8 @@ Object.assign(KIND_INTRO, {
     "Built in: the PR in the handoff (prUrl) has CI that passed. It waits for CI, using the bot's GitHub provider.",
   "handoff-has":
     "Built in: the bot's handoff has each of these keys, not empty.",
+  helper:
+    "Built in: one @trops/dash-check factory helper, e.g. only the planned files changed. It judges only what the work changed. No AI, no shell to write.",
 });
 
 const CI_LIMITS = [
@@ -633,6 +637,10 @@ export const CheckKindEditor = ({
 
       {check.kind === "package" ? (
         <PackageCheckEditor check={check} patch={patch} muted={muted} />
+      ) : null}
+
+      {check.kind === "helper" ? (
+        <HelperCheckEditor check={check} patch={patch} muted={muted} />
       ) : null}
 
       {check.kind === "repo" ? (

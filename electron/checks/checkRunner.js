@@ -21,6 +21,7 @@ const { runRepoCheck } = require("./kinds/repo");
 const { runPackageCheck } = require("./kinds/package");
 const { FACTORY_KINDS, runFactoryCheck } = require("./kinds/factory");
 const { runRecipeCheck } = require("./kinds/recipe");
+const { runHelperCheck } = require("./kinds/helper");
 const { handoffCheck } = require("../bots/botHandoff");
 
 const KIND_LABELS = {
@@ -31,6 +32,7 @@ const KIND_LABELS = {
   repo: "Repo check",
   package: "Check package",
   recipe: "Recipe",
+  helper: "Helper",
   "git-on-branch": "On its branch",
   "git-committed": "Work is committed",
   "pr-ci": "The PR's CI passes",
@@ -114,6 +116,17 @@ async function runCheck(check, input, deps = {}) {
     } else if (kind === "recipe") {
       // dash-check building blocks, kept on the step (DASH-133).
       res = await runRecipeCheck(check, input, {
+        cwd: deps.cwd,
+        ...(deps.env ? { env: deps.env } : {}),
+        callTool: deps.callTool,
+        isReadOnly: deps.isReadOnly,
+        selfTest: !!deps.selfTest,
+        ...(deps.fetch ? { fetch: deps.fetch } : {}),
+        ...(deps.sleep ? { sleep: deps.sleep } : {}),
+      });
+    } else if (kind === "helper") {
+      // One dash-check helper, set with no code (DASH-160).
+      res = await runHelperCheck(check, input, {
         cwd: deps.cwd,
         ...(deps.env ? { env: deps.env } : {}),
         callTool: deps.callTool,

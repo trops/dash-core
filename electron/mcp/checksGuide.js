@@ -67,14 +67,15 @@ check("the work is ready for review", async (ctx) => {
 });
 \`\`\`
 
-**Which to use:** a built-in kind (git-on-branch, git-committed, pr-ci, handoff-has) when one fits; else a recipe; else a \`.check.js\` file; a plain executable (sh, python) only for a repo whose CI is already a script.
+**Which to use:** a built-in kind (git-on-branch, git-committed, pr-ci, handoff-has) when one fits; else one helper as a step (kind "helper", e.g. git.changesMatchPlan); else a recipe; else a \`.check.js\` file; a plain executable (sh, python) only for a repo whose CI is already a script.
 
 ## 3. The contract (every file check)
 - It runs in the job's **workspace** (the repo the bot works in): cwd is that folder.
 - **Input:** the run as JSON, in the file named by \`$DASH_INPUT\` and on stdin (a \`.check.js\` file has it as ctx):
   - \`.input.answer\`: the bot's whole answer (its handoff is the last \`\`\`json block);
   - \`.item\`: the job's work item { id, title, url, source };
-  - \`.workspace\`: { dir, branch }.
+  - \`.workspace\`: { dir, branch };
+  - \`.handedOn\`: { from, handoff }, the handoff the bot was handed by the bot before it in the job (when it was).
 - **Environment:** DASH_INPUT, DASH_ITEM_ID, DASH_ITEM_TITLE, DASH_ITEM_URL, DASH_ITEM_SOURCE, DASH_WORKSPACE, DASH_BRANCH, DASH_STEP (the step's name), DASH_TEST (\"1\" in a team's self-test, where outward actions such as comments and pushes were skipped; also input.test), and DASH_TOOL_SOCKET (what answers ctx.tool). With a GitHub provider on the bot: GH_TOKEN, and git signed in. Never print the token.
 - **Result:** exit 0 passes; anything else fails. To say why, print one JSON line last: \`{"reason": "…", "details": {…}}\`. The reason shows on the job and goes back to the bot. A \`.check.js\` file and a recipe do this for you, with each check's and each step's result in details.
 - **Time:** 2 minutes unless the step sets timeoutSec (up to 30). Don't sleep-poll for long: a check that waits (for CI) has a deadline and says what it waited for.
@@ -86,6 +87,7 @@ check("the work is ready for review", async (ctx) => {
 - **In the repo (best):** \`.dash/checks/<name>.check.json\` (a recipe), \`.dash/checks/<name>.check.js\` (code), or a plain executable with any extension (validate.sh, lint.py). A step uses it by name: { kind: "repo", name: "validate" } finds validate.check.js, validate.check.json or validate.sh. Dash reads it, and \`.dash/checks/helpers/\`, from the repo's **base branch**, so the bot's own branch can't change the check that judges it. It's reviewed like code, and runs the same commands as the repo's CI.
 - **How it runs:** a \`.check.js\` file in its own node, with the library's runner; a \`.check.json\` recipe in Dash, with the library's helpers (in its own node when it uses the repo's own); anything else by its #! line, else by extension: .js .cjs .mjs with node, .sh with bash, .py with python3, anything else with sh.
 - **On the bot (a team copy):** a recipe step, { kind: "recipe", recipe: { name, steps } }. It's checked when the bot is saved and travels with a published team. It uses the library's helpers only: a repo's own helpers need a \`.check.json\` in the repo.
+- **One helper on the bot:** { kind: "helper", use: "git.changesMatchPlan", with: { planKeys: "files, tests" }, handoffFrom: "handed" }: a one-step recipe, checked when saved. handoffFrom "handed" reads the handoff the bot was handed (the Planner's, for a Coder) instead of its own; that handoff is also in a check's input as .handedOn { from, handoff }.
 - **A package** (shared, in the registry, or vendored): a folder \`.dash/checks/<name>/\` with a check.json manifest and its file (section 6).
 - **Built in:** git-on-branch, git-committed, pr-ci and handoff-has need no file (get_setup_guide("bots") §5). They run on the same helpers.
 

@@ -30,6 +30,7 @@ const { repoCheckError } = require("../checks/kinds/repo");
 const { factoryCheckError } = require("../checks/kinds/factory");
 const { packageCheckError } = require("../checks/kinds/package");
 const { recipeCheckError } = require("../checks/kinds/recipe");
+const { helperCheckError } = require("../checks/kinds/helper");
 // What a check that came with a package would run (DASH-125).
 const { offCommandOf } = require("../../src/utils/offCommands");
 
@@ -156,7 +157,9 @@ function checksError(input, selfId = null) {
         factoryCheckError(s.check) ||
         (s.check.kind === "package" ? packageCheckError(s.check) : null) ||
         // A recipe is checked with dash-check's validateRecipe (DASH-133).
-        (s.check.kind === "recipe" ? recipeCheckError(s.check) : null);
+        (s.check.kind === "recipe" ? recipeCheckError(s.check) : null) ||
+        // One dash-check helper (DASH-160).
+        (s.check.kind === "helper" ? helperCheckError(s.check) : null);
       if (bad) return bad;
     }
     if (s.kind === "reviewer" && !s.botId) {
