@@ -136,10 +136,9 @@ fi
 # only, ThemeContext from dash-react, CommonJS in electron/, no require()
 # in src/, no palette shades or theme keys as classes, hooks. Existing
 # violations are baselined (eslint-suppressions.json, --max-warnings), so
-# only new ones fail. Then the tests of Dash's own rules.
+# only new ones fail. (The rules' own tests run with the node:test files.)
 step "Linting (ESLint)"
 npm run lint --silent
-no_temp_leaks node --test scripts/eslint-rules/rules.test.js
 
 # 3. Build renderer
 step "Building renderer (Rollup)"
@@ -159,88 +158,28 @@ node scripts/inject-secrets.js
 step "Running Jest tests"
 npx jest --watchAll=false
 
-# 5. Every node:test file is in this script's lists (DASH-111): jest skips
-# electron/ and scripts/, so one that isn't named here never runs. The same
-# check the Dash Code Factory's bots run (.dash/checks/ci-test-list.js).
-step "Checking every node test file is in ci.sh"
+# 5a. Every node:test file runs (DASH-158). jest (above) runs src/; the
+# node:test files are in electron/ and scripts/, and all of them run here,
+# found by scripts/listNodeTests.js — no hand-kept list, so a new test file
+# runs without anyone adding it. A file that can't pass yet is quarantined
+# in .dash/checks/ci-test-list.known.txt with its Jira bug; the check below
+# (the same one the Dash Code Factory's bots run) fails on one without.
+step "Checking every node test file runs"
 node .dash/checks/ci-test-list.js
 
-# 5a. Temp-dir hygiene: the self-cleaning temp helper + the leak guard
-step "Running temp-dir helper + leak guard tests"
-no_temp_leaks node --test electron/testUtils/tempDir.test.js scripts/checkTempLeaks.test.js
-
-# 5a1. The release script (DASH-48): resumable, worktree-safe git workflow
-step "Testing the release script"
-no_temp_leaks node --test scripts/release.test.js scripts/pickReleaseVersion.test.js scripts/dashCheckCli.test.js
-
-# 6. Run MCP tests
-#   CAP-002: built-in providers (Web Fetch) — builtinServers/
-step "Running MCP tests"
-no_temp_leaks node --test electron/utils/mcpStartError.test.js electron/controller/mcpController.test.js electron/mcp/mcpServerCatalog.test.js electron/mcp/catalogReadOnly.test.js electron/mcp/installExternalMcpTool.test.js electron/mcp/mcpOAuthProvider.test.js electron/mcp/mcpOAuthRefresh.test.js electron/controller/providerController.test.js electron/mcp/builtinServers/index.test.js electron/mcp/builtinServers/webFetch.test.js electron/mcp/builtinServers/safeFetch.test.js electron/mcp/builtinServers/addressGuard.test.js electron/mcp/builtinServers/imageSniff.test.js electron/mcp/builtinServers/htmlToText.test.js
-
-# 6a-llm. Run LLM model-provider tests
-step "Running LLM model-provider tests"
-no_temp_leaks node --test electron/llm/modelProviders.test.js electron/llm/modelList.test.js electron/llm/modelUsage.test.js
-
-# 6a-bots. Run Bot Factory tests
-#   Slice 1: engine interface, tool-loop engine, provider adapters, event stream
-#   Slice 2: bot schema, bot store, core portability guard (NFR-006)
-#   Slice 3: bot approvals registry, bot PermissionGate wrapper
-#   Slice 4a: BotRunner, BotScheduler, MCP-result normalizer
-#   Slice 5:  BudgetController (per-run cost + monthly caps)
-#   Slice 6a: PauseController (global + per-bot pause)
-#   P1:       BotMemory + memoryTools (scoped durable memory)
-#   P1:       eventMatcher + EventDispatcher (event-bus bridge)
-#   P1:       claudeAgentEngine + agentToolBridge (Claude Agent SDK engine)
-#   CAP-001:  toolImages (image content in tool results)
-#   CAP-003/004: providerDiscovery + registrySearch (find_providers), botDrafts (gaps)
-#   US-003 AC5: AuditLog (the saved audit log)
-step "Running Bot Factory tests"
-no_temp_leaks node --test electron/bots/engines/eventStream.test.js electron/bots/engines/toolLoopEngine.test.js electron/bots/engines/claudeAgentEngine.test.js electron/bots/engines/folderFence.test.js electron/bots/engines/agentToolBridge.test.js electron/bots/engines/adapters/anthropicAdapter.test.js electron/bots/engines/adapters/openAICompatibleAdapter.test.js electron/bots/botSchema.test.js electron/bots/BotStore.test.js electron/bots/portability.test.js electron/bots/approvals.test.js electron/bots/PermissionGate.test.js electron/bots/mcpResult.test.js electron/bots/BotScheduler.test.js electron/bots/checkBot.test.js electron/bots/BotRunner.test.js electron/bots/BudgetController.test.js electron/bots/PauseController.test.js electron/bots/BotMemory.test.js electron/bots/memoryTools.test.js electron/bots/resultTools.test.js electron/bots/eventMatcher.test.js electron/bots/EventDispatcher.test.js electron/bots/toolSources.test.js electron/bots/claudeConnectors.test.js electron/bots/connectorRun.test.js electron/bots/rememberGrant.test.js electron/bots/botEvents.test.js electron/bots/BotEventPublisher.test.js electron/bots/teams.test.js electron/utils/workspaceEvents.test.js electron/bots/secretBox.test.js electron/bots/teamTools.test.js electron/bots/teamLeads.test.js electron/bots/runProvider.test.js electron/bots/stopRun.test.js electron/bots/teamManifest.test.js electron/bots/botPackage.test.js electron/bots/teamFilesWiring.test.js electron/utils/placeWidget.test.js electron/utils/activeLayout.test.js electron/mcp/toolHandlers.test.js electron/bots/widgetComponent.test.js electron/bots/teamLeadWiring.test.js electron/bots/botsViewWiring.test.js electron/bots/answerText.test.js electron/bots/toolImages.test.js electron/bots/providerDiscovery.test.js electron/bots/registrySearch.test.js electron/bots/botDrafts.test.js electron/bots/runCost.test.js electron/bots/dashTeam.test.js electron/bots/dashTeamWiring.test.js electron/bots/builtinInstructions.test.js electron/bots/roleTools.test.js electron/bots/markedSpots.test.js electron/bots/teamPlan.test.js electron/bots/configDiff.test.js electron/bots/roleToolsBuild.test.js electron/bots/roleToolsDraft.test.js electron/bots/planBuild.test.js electron/bots/planBuildRecovery.test.js electron/bots/planBuildChecked.test.js electron/bots/planBuildCell.test.js electron/bots/planBuildSpec.test.js electron/bots/planBuildHeld.test.js electron/bots/specChecks.test.js electron/bots/planBuildBot.test.js electron/bots/planBuildEdit.test.js electron/bots/planBuildTheme.test.js electron/bots/planMakeTheme.test.js electron/bots/planChangeTheme.test.js electron/bots/editTarget.test.js electron/bots/editWiring.test.js electron/bots/roleToolsBots.test.js electron/bots/handoff.test.js electron/bots/createRecent.test.js electron/bots/teamWidgets.test.js electron/bots/teamPublish.test.js electron/bots/resultsDigest.test.js electron/bots/recentRuns.test.js electron/bots/spending.test.js electron/bots/retryPolicy.test.js electron/bots/pausedQueue.test.js electron/bots/AuditLog.test.js electron/bots/botNotices.test.js electron/schema/dashboardConfigListeners.test.js electron/bots/mcpTasks.test.js electron/bots/leadAsk.test.js electron/bots/riskyTools.test.js electron/jobs/jobTracker.test.js electron/jobs/teamQueue.test.js electron/bots/oneJobAtATime.test.js electron/jobs/chainJobs.test.js electron/jobs/jobWiring.test.js electron/jobs/rerunStep.test.js electron/mcp/teamTools.test.js electron/mcp/teamTasks.test.js electron/mcp/botTools.test.js electron/mcp/botsGuide.test.js electron/mcp/toolSwitches.test.js electron/mcp/answerApproval.test.js electron/bots/taskRouting.test.js electron/bots/lastAnswers.test.js electron/bots/widgetWire.test.js electron/bots/widgetWireController.test.js electron/bots/aiRunProfile.test.js electron/bots/alwaysAllowController.test.js electron/goals/taskStatus.test.js electron/goals/goalStore.test.js electron/goals/goalTools.test.js electron/goals/goalWiring.test.js electron/controller/goalController.test.js electron/flows/flowModel.test.js electron/flows/flowMoves.test.js electron/flows/flowRunner.test.js electron/checks/stepInput.test.js electron/checks/commandRules.test.js electron/checks/kinds/rules.test.js electron/checks/kinds/command.test.js electron/checks/kinds/repo.test.js electron/checks/kinds/factory.test.js electron/checks/dashCheck.test.js electron/checks/checkPackage.test.js electron/checks/addCheck.test.js electron/checks/kinds/script.test.js electron/checks/kinds/toolCall.test.js electron/flows/reviewFixes.test.js electron/flows/sendBack.test.js electron/bots/botChecks.test.js electron/bots/checkJobs.test.js electron/bots/answerShape.test.js electron/bots/botTest.test.js electron/bots/gitSignIn.test.js electron/bots/runEnv.test.js electron/bots/teamValues.test.js electron/bots/teamTables.test.js electron/bots/jobPicks.test.js electron/bots/failedEventInput.test.js electron/bots/stepWhen.test.js electron/jobs/jobItem.test.js electron/bots/botHandoff.test.js electron/bots/preflight.test.js electron/bots/botOwnSettings.test.js electron/bots/trackerSetting.test.js electron/bots/selfTest.test.js
-
-# 6b. Run controller tests (auth, folders)
-step "Running controller tests"
-no_temp_leaks node --test electron/controller/installDashboardAuth.test.js electron/controller/registryController.test.js electron/controller/installThemeAuth.test.js electron/registryDownload.test.js electron/controller/menuItemsController.test.js electron/profile/profileStore.test.js electron/profile/profileMembership.test.js electron/profile/botProfiles.test.js electron/profile/sessionProfiles.test.js electron/profile/profileContents.test.js electron/profile/profileFile.test.js electron/profile/profilePublish.test.js electron/profile/profileLoad.test.js electron/profile/secretFields.test.js electron/registry/packageRef.test.js electron/registry/registryPackages.test.js electron/registry/widgetPublished.test.js electron/registry/installInPlace.test.js electron/registry/publishHeadless.test.js electron/registry/remix.test.js electron/registry/fingerprint.test.js electron/profile/profileManifest.test.js electron/profile/profileSetup.test.js electron/profile/profileSaveV3.test.js electron/profile/profileLoadV3.test.js electron/profile/profileProviders.test.js electron/profile/profileKeys.test.js electron/profile/profileKeysPhrase.test.js electron/profile/publishBuilt.test.js electron/profile/profileAutoSave.test.js electron/profile/profileLoadV2.test.js electron/profile/profileAccount.test.js electron/profile/profileDigest.test.js
-
-# 6c. Run safe-JS-executor sandbox pin
-step "Running safeJsExecutor sandbox tests"
-no_temp_leaks node --test electron/utils/safeJsExecutor.test.js
-
-# 6c2. Run safe-path containment pin
-step "Running safePath containment tests"
-no_temp_leaks node --test electron/utils/safePath.test.js electron/utils/scanWidgetBotCalls.test.js
-
-# 6c2a. Widget compiler: npm libraries from the app, plain build errors
-step "Running widget compiler tests"
-no_temp_leaks node --test electron/widgetCompiler.test.js electron/widgetRegistryFiles.test.js electron/widgetRegistryGate.test.js electron/widgetRegistryChecks.test.js electron/widgetRegistryUninstall.test.js electron/widgetRegistryScope.test.js electron/widgetLibraries.test.js
+step "Running every node:test file (electron/, scripts/)"
+NODE_TESTS=()
+while IFS= read -r f; do
+    NODE_TESTS+=("$f")
+done < <(node scripts/listNodeTests.js)
+echo "${#NODE_TESTS[@]} files"
+# A test that hangs fails after 5 minutes instead of stalling CI.
+no_temp_leaks node --test --test-timeout=300000 "${NODE_TESTS[@]}"
 
 # 6c2a2. Widget integration suite: loader + registry end to end on temp
 #        packages (ZIP install, folder load, ZIP round-trip; package-scoped names)
 step "Running widget integration suite"
 no_temp_leaks node scripts/testWidgetIntegration.cjs
-
-# 6c2b. Phase 5D — install-time manifest-signature verifier
-step "Running install-time manifest-signature verifier tests (Phase 5D)"
-no_temp_leaks node --test electron/security/verifyDownloadManifest.test.js
-
-# 6c3. Run MCP allowlist + ancillary security pins:
-#   - permissionGate (Slice 1+2): grant-based runtime gate
-#   - grantedPermissions (Slice 2): user-grant store + grantOrigin
-#   - mcpServerKey (Slice 3a): per-workspace process keying
-#   - mcpScopeResolver (Slice 3b): path-scope union
-#   - manifestScanner: literal-only static scanner
-#   - widgetMcpGrantsListing: panel data joiner
-#   - jitConsent: just-in-time consent state machine
-step "Running MCP + fs security tests"
-no_temp_leaks node --test electron/mcp/permissionGate.test.js electron/mcp/toolPattern.test.js electron/mcp/grantServerNames.test.js electron/mcp/grantedPermissions.test.js electron/mcp/widgetPermissions.test.js electron/utils/mcpServerKey.test.js electron/utils/mcpScopeResolver.test.js electron/utils/manifestScanner.test.js electron/utils/scanWidgetPackagePermissions.test.js electron/utils/isNewerVersion.test.js electron/utils/registryInstallScan.test.js electron/utils/scannerExport.test.js scripts/scanWidgetManifestCli.test.js electron/utils/dedupeWidgetFolders.test.js electron/schema/aggregateWidgetPermissions.test.js electron/controller/widgetMcpGrantsListing.test.js electron/controller/expandToComponentRows.test.js electron/mcp/jitConsent.test.js electron/mcp/approvalErrorReason.test.js electron/utils/securityFlags.test.js electron/security/fsGate.test.js electron/security/fsGrantAttribution.test.js electron/security/networkGate.test.js electron/security/mountTokenRegistry.test.js electron/api/secureStoreApi.test.js electron/api/algoliaApi.test.js electron/api/layoutApi.test.js electron/api/mainApi.test.js electron/api/clientCacheApi.test.js electron/api/pluginApi.test.js electron/controller/schedulerController.test.js electron/controller/notificationController.test.js electron/controller/grantDiff.test.js electron/controller/onboardingController.test.js electron/controller/exportController.test.js electron/issues/issueStore.test.js electron/issues/issueSources.test.js electron/controller/issueController.test.js electron/issues/issueWiring.test.js electron/security/ownDataFile.test.js electron/mcp/checkToolArgs.test.js electron/bots/userRunPaused.test.js electron/bots/chainLimit.test.js electron/bots/busyHandOn.test.js electron/bots/backgroundConversation.test.js electron/controller/mcpScreenHolds.test.js electron/controller/providerSummaries.test.js
-
-# 6c4. Widget-publish version-divergence regression-pin
-step "Running widget-publish version-sync tests"
-no_temp_leaks node --test electron/controller/widgetRegistryController.test.js
-
-# 6c5. Registry token auto-refresh regression-pin
-step "Running registry auth token-refresh tests"
-no_temp_leaks node --test electron/controller/registryAuthController.test.js
 
 # 6d. Untracked-sources gate regression-pin
 step "Validating untracked-sources gate config"
@@ -253,7 +192,6 @@ npm run test:untracked-pin
 # `npm run lint:safelist:update` after intentional cleanups to refresh.
 step "Linting tailwind safelist compliance"
 npm run lint:safelist
-no_temp_leaks node --test scripts/lib/findTailwindViolations.test.js
 
 # 7. Verify output
 step "Verifying build output"
@@ -300,7 +238,7 @@ Version: {{VERSION}}
 - Renderer build (Rollup): passed
 - Electron build (Rollup + MCP catalog): passed
 - Jest tests: passed
-- MCP tests: passed
+- node:test files (all of electron/ and scripts/): passed
 - Output verification: passed"
 
 node scripts/release.js --mode "$MODE" -m "$COMMIT_MSG" --main master \

@@ -127,6 +127,8 @@ const webSocketEvents = require("../events/webSocketEvents");
 // ---------------------------------------------------------------------------
 // Load webSocketController with mocked dependencies
 // ---------------------------------------------------------------------------
+const TIME_SCALE = 50;
+
 function loadController() {
   const source = fs.readFileSync(
     path.join(__dirname, "webSocketController.js"),
@@ -135,15 +137,54 @@ function loadController() {
 
   const customRequire = (mod) => {
     if (mod === "ws") return MockWebSocket;
-    if (mod === "electron") return { BrowserWindow: MockBrowserWindow };
+    // app.getPath: the controller reads its security flags from
+    // userData/Dashboard/settings.json; a folder that isn't there means
+    // no settings, so the network gate is off (DASH-158).
+    if (mod === "electron") {
+      return {
+        BrowserWindow: MockBrowserWindow,
+        app: { getPath: () => path.join(__dirname, "__no_user_data__") },
+      };
+    }
+    // The real gate loads the grants store (electron-store, Electron's
+    // userData). With the gate off it's never called; stub it to say so.
+    if (mod === "../security/networkGate") {
+      const never = () => {
+        throw new Error("network gate called with the gate off");
+      };
+      return { gateNetworkCall: never, gateNetworkCallWithJit: never };
+    }
     if (mod === "../events/webSocketEvents") return webSocketEvents;
     return require(mod);
   };
 
   const mod = { exports: {} };
-  const fn = new Function("require", "module", "exports", "console", source);
-  fn(customRequire, mod, mod.exports, console);
+  const fn = new Function(
+    "require",
+    "module",
+    "exports",
+    "console",
+    "setTimeout",
+    "setInterval",
+    source,
+  );
+  // The controller's own timers (30 s heartbeat, 10 s pong timeout, 1 s+
+  // backoff) run TIME_SCALE times faster, so the file takes seconds, not
+  // minutes (DASH-158). Tests wait with later(ms), in controller time.
+  fn(
+    customRequire,
+    mod,
+    mod.exports,
+    console,
+    (cb, ms, ...a) => setTimeout(cb, (ms || 0) / TIME_SCALE, ...a),
+    (cb, ms, ...a) => setInterval(cb, (ms || 0) / TIME_SCALE, ...a),
+  );
   return mod.exports;
+}
+
+/** Wait `ms` of the controller's (scaled) time, plus a little slack. */
+function later(ms) {
+  return new Promise((r) => setTimeout(r, ms / TIME_SCALE + 30));
 }
 
 // ---------------------------------------------------------------------------
@@ -432,7 +473,7 @@ describe("webSocketController", () => {
       );
 
       // Wait for the first reconnect attempt (1 second base delay)
-      await new Promise((r) => setTimeout(r, 1100));
+      await later(1100);
       const reconnectSocket = mockSocketInstances.find((s) => s !== socket);
       assert.ok(
         reconnectSocket,
@@ -459,7 +500,7 @@ describe("webSocketController", () => {
       for (let i = 0; i < 5; i++) {
         // Wait for the backoff delay (1s, 2s, 4s, etc — but capped by test patience)
         const delay = Math.min(1000 * Math.pow(2, i), 30000);
-        await new Promise((r) => setTimeout(r, delay + 50));
+        await later(delay + 50);
 
         // Find the newest socket (reconnect attempt)
         const newest = mockSocketInstances[mockSocketInstances.length - 1];
@@ -534,8 +575,8 @@ describe("webSocketController", () => {
 
       assert.equal(socket._pinged, false);
 
-      // Fast-forward 30 seconds to trigger heartbeat
-      await new Promise((r) => setTimeout(r, 30100));
+      // 30 seconds (controller time) to trigger the heartbeat
+      await later(30100);
 
       assert.equal(socket._pinged, true, "Ping should be sent after 30s");
     });
@@ -552,14 +593,14 @@ describe("webSocketController", () => {
       );
 
       // Trigger heartbeat
-      await new Promise((r) => setTimeout(r, 30100));
+      await later(30100);
       assert.equal(socket._pinged, true);
 
       // Respond with pong
       socket._simulatePong();
 
       // Wait for pong timeout period — connection should still be alive
-      await new Promise((r) => setTimeout(r, 11000));
+      await later(11000);
       const status = controller.getStatus(win, "pong-ws");
       assert.equal(
         status.status,
@@ -580,11 +621,11 @@ describe("webSocketController", () => {
       );
 
       // Trigger heartbeat ping
-      await new Promise((r) => setTimeout(r, 30100));
+      await later(30100);
       assert.equal(socket._pinged, true);
 
       // Do NOT send pong — wait for timeout (10s)
-      await new Promise((r) => setTimeout(r, 10100));
+      await later(10100);
 
       assert.equal(
         socket._closed,

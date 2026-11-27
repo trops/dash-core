@@ -225,7 +225,7 @@ dash-react first (cross-repo task), not to build a local substitute in dash-core
 ## ci.sh — The Only Approved Release Path
 
 The `scripts/ci.sh` script handles the full pipeline: Node 20 via nvm, Prettier, renderer
-build, electron build + MCP catalog, Jest tests, MCP tests, output verification, commit,
+build, electron build + MCP catalog, Jest tests, every node:test file, output verification, commit,
 version bump, push, PR, merge, tag, and cleanup.
 
 ```bash
@@ -246,6 +246,14 @@ npm run ci:release -- -m "Your commit message"
 ```
 
 Each flag is cumulative. `--release` runs all prior steps automatically.
+
+### Which tests run (DASH-158)
+
+jest runs `src/`. Every `node:test` file (in `electron/` and `scripts/`) runs in one
+`node --test`, found by `scripts/listNodeTests.js`: a new test file runs with no list to
+edit. A test that can't pass yet may be quarantined in `.dash/checks/ci-test-list.known.txt`
+only with its own Jira bug on the line (`path  # DASH-<n>: why`); fix it rather than do that.
+A hung test fails after 5 minutes.
 
 ### What validation and the release touch (DASH-153)
 

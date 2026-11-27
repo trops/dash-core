@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * ci-test-list: every node:test file is in scripts/ci.sh's test lists
- * (DASH-111). jest skips electron/ and scripts/ (jest.config.js), so a
- * node:test file that isn't named in ci.sh never runs anywhere — the
- * mistake that has bitten us before.
+ * ci-test-list: every node:test file runs in CI (DASH-111, DASH-158).
+ * jest skips electron/ and scripts/ (jest.config.js), so a node:test file
+ * that scripts/ci.sh doesn't run never runs anywhere.
  *
- * Files that were already missing when this check was added are listed in
- * ci-test-list.known.txt (one per line, # comments): they're a known gap, not
- * a new one. Take a file off that list once it's in ci.sh.
+ * ci.sh runs every node:test file through scripts/listNodeTests.js, except
+ * the ones quarantined in ci-test-list.known.txt. This check fails when:
+ *   - ci.sh doesn't run scripts/listNodeTests.js and doesn't name a file;
+ *   - a quarantined file has no Jira bug (`# DASH-<n>`) on its line.
  *
  * Exit 0 passes; the last line is {"reason", "details"}.
  */
@@ -19,45 +19,92 @@ const { execFileSync } = require("child_process");
 
 const root = process.env.DASH_WORKSPACE || process.cwd();
 const ci = fs.readFileSync(path.join(root, "scripts/ci.sh"), "utf8");
-const knownFile = path.join(__dirname, "ci-test-list.known.txt");
-const fromRepo = path.join(root, ".dash/checks/ci-test-list.known.txt");
-let known = [];
-for (const f of [knownFile, fromRepo]) {
-  try {
-    known = fs
-      .readFileSync(f, "utf8")
-      .split(/\r?\n/)
-      .map((l) => l.replace(/#.*$/, "").trim())
-      .filter(Boolean);
-    break;
-  } catch (_e) {
-    // Next place.
-  }
-}
+const runsAll = /node\s+scripts\/listNodeTests\.js/.test(ci);
 
-const files = execFileSync("git", ["ls-files", "*.test.js"], { cwd: root, encoding: "utf8" })
+// The quarantine, from the workspace (or next to this file).
+function readQuarantine() {
+  for (const f of [
+    path.join(root, ".dash/checks/ci-test-list.known.txt"),
+    path.join(__dirname, "ci-test-list.known.txt"),
+  ]) {
+    let text;
+    try {
+      text = fs.readFileSync(f, "utf8");
+    } catch (_e) {
+      continue;
+    }
+    return text
+      .split(/\r?\n/)
+      .map((line) => {
+        const hash = line.indexOf("#");
+        return {
+          file: (hash === -1 ? line : line.slice(0, hash)).trim(),
+          note: hash === -1 ? "" : line.slice(hash + 1).trim(),
+        };
+      })
+      .filter((q) => q.file);
+  }
+  return [];
+}
+const quarantined = readQuarantine();
+const quarantinedFiles = quarantined.map((q) => q.file);
+
+const files = execFileSync(
+  "git",
+  [
+    "ls-files",
+    "--cached",
+    "--others",
+    "--exclude-standard",
+    "--",
+    "*.test.js",
+    "*.test.cjs",
+    "*.test.mjs",
+  ],
+  { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+)
   .split("\n")
   .filter((f) => f && !f.startsWith("node_modules/"));
-const nodeTests = files.filter((f) => {
-  const src = fs.readFileSync(path.join(root, f), "utf8");
-  return /require\(["']node:test["']\)|from ["']node:test["']/.test(src);
+const nodeTests = [...new Set(files)].filter((f) => {
+  try {
+    const src = fs.readFileSync(path.join(root, f), "utf8");
+    return /require\(["']node:test["']\)|from ["']node:test["']/.test(src);
+  } catch (_e) {
+    return false;
+  }
 });
-const missing = nodeTests.filter((f) => !ci.includes(f) && !known.includes(f));
-const fixed = known.filter((f) => ci.includes(f));
 
+const fail = (reason, details) => {
+  console.log(JSON.stringify({ reason, details }));
+  process.exit(1);
+};
+
+const noTicket = quarantined.filter((q) => !/\bDASH-\d+\b/.test(q.note));
+if (noTicket.length) {
+  console.log(noTicket.map((q) => `  ${q.file}`).join("\n"));
+  fail(
+    `${noTicket.length} quarantined test file(s) in ci-test-list.known.txt name no Jira bug: add "# DASH-<n>: why" to the line, or fix the test and take it off`,
+    { noTicket: noTicket.map((q) => q.file) },
+  );
+}
+
+const missing = runsAll
+  ? []
+  : nodeTests.filter((f) => !ci.includes(f) && !quarantinedFiles.includes(f));
 if (missing.length) {
   console.log(missing.map((f) => `  ${f}`).join("\n"));
-  console.log(
-    JSON.stringify({
-      reason: `${missing.length} node:test file${missing.length === 1 ? " isn't" : "s aren't"} in scripts/ci.sh, so ${missing.length === 1 ? "it never runs" : "they never run"}: add ${missing.join(", ")} to a node --test line in scripts/ci.sh`,
-      details: { missing },
-    }),
+  fail(
+    `${missing.length} node:test file(s) never run: scripts/ci.sh should run every node:test file with scripts/listNodeTests.js`,
+    { missing },
   );
-  process.exit(1);
 }
+
+const out = quarantinedFiles.filter((f) => nodeTests.includes(f)).length;
 console.log(
   JSON.stringify({
-    reason: `All ${nodeTests.length - known.length + fixed.length} node:test files are in scripts/ci.sh${known.length - fixed.length ? ` (${known.length - fixed.length} known gaps in ci-test-list.known.txt)` : ""}`,
-    details: { known: known.length, fixedButStillListed: fixed },
+    reason: `All ${nodeTests.length - out} node:test files run in scripts/ci.sh${
+      out ? ` (${out} quarantined, each with a ticket)` : ""
+    }`,
+    details: { quarantined: quarantinedFiles },
   }),
 );
