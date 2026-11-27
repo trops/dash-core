@@ -1913,6 +1913,8 @@ describe("BotRunner.run — strict (DASH-116)", () => {
           "Shell commands (each covers the command and anything after it):",
           "- git status",
           "- npm test",
+          "Also inside your folders: cd, pwd, ls, test, [, head, tail, wc, echo, true, and 2>/dev/null or 2>&1.",
+          "Run one command per call: no &&, ;, || or |. The shell keeps its folder between calls.",
           "Folders (its file tools and commands work only inside these):",
           "- /Users/me/DashFactory",
           "Anything else is refused.",

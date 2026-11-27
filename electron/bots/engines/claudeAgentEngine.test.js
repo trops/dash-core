@@ -1433,25 +1433,41 @@ describe("claudeAgentEngine — strict (DASH-116)", () => {
   it("an unlisted command is refused, even unattended inside its folders", async () => {
     const seen = [];
     const can = await hook(strictCtx(seen, { strict: true }));
-    const r = await can("Bash", {
-      command: `cd ${root} && git push -u origin x`,
-    });
+    const r = await can("Bash", { command: "git push -u origin x" });
     assert.equal(r.behavior, "deny");
     assert.deepEqual(seen, [
-      {
-        reason: "not-allowed",
-        command: `cd ${root} && git push -u origin x`,
-        strict: true,
-      },
+      { reason: "not-allowed", command: "git push -u origin x", strict: true },
     ]);
     // rm -rf inside its folders isn't an exception for a strict bot.
     const rm = await can("Bash", { command: `rm -rf ${path.join(root, "b")}` });
     assert.equal(rm.behavior, "deny");
-    // Its allowed commands run.
+    // Its allowed commands run, one per call.
     assert.equal(
-      (await can("Bash", { command: "git status && npm test" })).behavior,
+      (await can("Bash", { command: "npm test 2>&1" })).behavior,
       "allow",
     );
+  });
+
+  // DASH-140: one command per call, and the basics inside its folders.
+  it("a chained command is refused, even of allowed parts", async () => {
+    const seen = [];
+    const can = await hook(strictCtx(seen, { strict: true }));
+    const command = "git status && npm test";
+    const r = await can("Bash", { command });
+    assert.equal(r.behavior, "deny");
+    assert.match(r.message, /one command per call/);
+    assert.deepEqual(seen, [{ reason: "chained", command, strict: true }]);
+  });
+
+  it("the basics run inside its folders, and stay fenced", async () => {
+    const seen = [];
+    const can = await hook(strictCtx(seen, { strict: true }));
+    for (const command of [`cd ${root}`, "ls DASH-97 2>/dev/null", "pwd"]) {
+      assert.equal((await can("Bash", { command })).behavior, "allow", command);
+    }
+    const out = await can("Bash", { command: "ls /etc" });
+    assert.equal(out.behavior, "deny");
+    assert.equal(seen[0].reason, "outside-folders");
   });
 
   it("an allowed command reaching outside its folders is refused", async () => {
