@@ -69,6 +69,8 @@ export function aheadText(job) {
 export function startedByText(job) {
   const by = (job && job.startedBy) || {};
   const lead = (job && job.leadName) || "its team lead";
+  // A team's self-test (DASH-109, DASH-123).
+  if (job && job.test) return "Self-test started by you";
   if (by.kind === "task") return `Task from ${by.label || "MCP"}`;
   if (by.kind === "mcp") return `Asked over MCP, in ${lead}`;
   // A chain that starts from one of the team's bots (DASH-70).
@@ -78,20 +80,44 @@ export function startedByText(job) {
   return `You, in ${lead}`;
 }
 
-/** Why a step started, in a few words. */
-export function whyText(why) {
+/**
+ * Why a step started, in a few words. `job`: a self-test's first step was
+ * started by the self-test, not asked by you (DASH-123).
+ */
+export function whyText(why, job = null) {
   const w = why || {};
   if (w.kind === "task")
     return `Got the task${w.label ? ` from ${w.label}` : ""}`;
   if (w.kind === "mcp") return "Asked over MCP";
+  if ((w.kind === "you" || w.kind === "manual") && job && job.test) {
+    return "Started by the self-test";
+  }
   if (w.kind === "you") return "You asked";
   if (w.kind === "asked") return `Asked by ${w.by || "its team lead"}`;
   if (w.kind === "schedule" || w.kind === "catch-up") return "On its schedule";
   if (w.kind === "manual") return "You ran it";
-  if (w.kind === "handon") {
-    return `Started by ${w.by || "a bot"}${w.label ? ` › ${w.label}` : ""}`;
-  }
+  if (w.kind === "handon") return `Handed on by ${w.by || "a bot"}`;
   return "";
+}
+
+/**
+ * A job's start line (DASH-123): "Self-test started by you · 7:56 AM ·
+ * running 7 min", "Started by you, in Woodworking Lead · Tue 9:41 · 2 h".
+ */
+export function startLineText(job, now = Date.now()) {
+  if (!job) return "";
+  const by = startedByText(job);
+  const who = /^You, in /.test(by)
+    ? `Started by you, in ${by.slice("You, in ".length)}`
+    : by;
+  const took = tookText(job, now);
+  return [
+    who,
+    whenText(job.createdAt, now),
+    took && job.status === "running" ? `running ${took}` : took,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** "9:41", or "Tue 16:20" before today, or "Nov 3" before this week. */

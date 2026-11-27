@@ -166,9 +166,7 @@ describe("jobText", () => {
       }),
     ).toBe("You ran Ticket Bot");
     expect(whyText({ kind: "schedule" })).toBe("On its schedule");
-    expect(whyText(JOBS[0].steps[2].why)).toBe(
-      "Started by Designer › Completed",
-    );
+    expect(whyText(JOBS[0].steps[2].why)).toBe("Handed on by Designer");
   });
   it("counts, filters and groups by dashboard", () => {
     expect(jobCounts(JOBS)).toMatchObject({
@@ -252,7 +250,7 @@ describe("JobsPage", () => {
       ).toBeInTheDocument(),
     );
     expect(
-      within(detail).getByText("Started by Designer › Completed"),
+      within(detail).getByText("Handed on by Designer"),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("radio", { name: /Running · 1/ }),

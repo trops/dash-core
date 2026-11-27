@@ -352,3 +352,82 @@ describe("a refusal on a job is sealed at rest (DASH-115)", () => {
     assert.ok(raw.length && raw.every((r) => !r.includes("secret-branch")));
   });
 });
+
+describe("a step's answer and handoff (DASH-123)", () => {
+  const { splitAnswer, keepHandoff, cleanProse } = require("./stepAnswer");
+  const answer = [
+    "DASH-97 is first.",
+    "",
+    "Next I'll move it to **In Progress**.",
+    "",
+    "```json",
+    JSON.stringify(
+      {
+        status: "ok",
+        item: { id: "DASH-97", url: "https://x.test/DASH-97" },
+        summary: "Took DASH-97",
+        body: "Part of DASH-94\n\nIn code-factory-sandbox…",
+      },
+      null,
+      2,
+    ),
+    "```",
+  ].join("\n");
+
+  it("keeps the prose as Markdown and the handoff apart", () => {
+    const t = make();
+    const job = t.startJob({ leadId: null, leadName: "Ticket Bot" });
+    t.startStep(job.id, { botId: "tb", botName: "Ticket Bot" });
+    t.endStep(job.id, { botId: "tb", record: done(answer) });
+    const step = t.get(job.id).steps[0];
+    assert.equal(
+      step.summary,
+      "DASH-97 is first.\n\nNext I'll move it to **In Progress**.",
+    );
+    assert.equal(step.handoff.status, "ok");
+    assert.equal(step.handoff.item.id, "DASH-97");
+    assert.equal(
+      step.handoff.body,
+      "Part of DASH-94\n\nIn code-factory-sandbox…",
+    );
+    // A run again of the step starts it clean.
+    t.startStep(job.id, { botId: "tb", botName: "Ticket Bot" });
+    t.waitStep(job.id, { botId: "tb", botName: "Ticket Bot", summary: "x" });
+    t.startStep(job.id, { botId: "tb", botName: "Ticket Bot" });
+    assert.equal(t.get(job.id).steps.at(-1).handoff, undefined);
+  });
+
+  it("splits an answer: no block, whole JSON, a bash block, a broken one", () => {
+    assert.deepEqual(splitAnswer("Just words."), {
+      prose: "Just words.",
+      handoff: null,
+    });
+    assert.deepEqual(splitAnswer('{"status":"none"}'), {
+      prose: "",
+      handoff: { status: "none" },
+    });
+    const bash = "Ran it:\n```bash\nnpm test\n```";
+    assert.deepEqual(splitAnswer(bash), { prose: bash, handoff: null });
+    const broken = 'Done.\n```json\n{"status": "ok",\n```';
+    assert.deepEqual(splitAnswer(broken), { prose: broken, handoff: null });
+    // Only the last json block is the handoff; an earlier one stays.
+    const two = 'A:\n```json\n{"a":1}\n```\nB.\n```json\n{"b":2}\n```';
+    assert.deepEqual(splitAnswer(two), {
+      prose: 'A:\n```json\n{"a":1}\n```\nB.',
+      handoff: { b: 2 },
+    });
+  });
+
+  it("keeps a big handoff small, and prose readable", () => {
+    const big = { status: "ok", summary: "s", log: "x".repeat(20000) };
+    const kept = keepHandoff(big);
+    assert.equal(kept.status, "ok");
+    assert.ok(JSON.stringify(kept).length <= 8000);
+    const many = { status: "ok" };
+    for (let i = 0; i < 40; i++) many[`k${i}`] = "y".repeat(900);
+    assert.deepEqual(Object.keys(keepHandoff(many)), ["status", "clipped"]);
+    assert.equal(keepHandoff([1]), null);
+    assert.equal(cleanProse("a\r\n\n\n\nb  \nc"), "a\n\nb\nc");
+    assert.equal(cleanProse("abcdef", 4), "abc…");
+  });
+});
