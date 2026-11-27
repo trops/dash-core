@@ -574,18 +574,18 @@ describe("BotsPage — setup status (DASH-119)", () => {
     expect(within(kitchen).queryByTestId("team-setup-badge")).toBeNull();
   });
 
-  it("the team page has the badge and the banner; Finish setup opens the bot's Settings", () => {
+  it("the team page has the badge and the Set up checklist; a bot's card opens its Settings (DASH-120)", () => {
     setup();
     fireEvent.click(within(mailRow()).getAllByRole("button")[0]);
     const overview = screen.getByTestId("team-overview");
     expect(within(overview).getByTestId("team-setup-badge")).toHaveTextContent(
       "Setup · 1 bot needs you",
     );
-    expect(within(overview).getByTestId("team-setup-banner")).toHaveTextContent(
-      "Digest needs “Inbox to read” filled in",
-    );
+    const checklist = within(overview).getByTestId("team-setup-checklist");
+    const card = within(checklist).getByTestId("setup-bot-card-b2");
+    expect(card).toHaveTextContent("1 to fill in");
     fireEvent.click(
-      within(overview).getByRole("button", { name: "Finish setup ›" }),
+      within(card).getByRole("button", { name: "Open Digest's settings ›" }),
     );
     expect(screen.getByText("bot page b2")).toBeInTheDocument();
     expect(screen.getByText("opens on settings")).toBeInTheDocument();

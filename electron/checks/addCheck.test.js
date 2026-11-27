@@ -629,3 +629,47 @@ describe("Set up checks: setup and validate from the repo's own CI", () => {
     );
   });
 });
+
+describe("repos with and without checks (DASH-120)", () => {
+  it("lists the repos with no checks, and those with them and which", async () => {
+    const settings = {
+      declared: [
+        {
+          name: "repos",
+          type: "table",
+          columns: [{ name: "url", type: "url" }],
+        },
+      ],
+      values: {
+        repos: [
+          { key: "a", url: "https://github.com/o/a.git" },
+          { key: "b", url: "https://github.com/o/b.git" },
+        ],
+      },
+    };
+    const ctl = {
+      _store: {
+        getTeamSettings: () => settings,
+        list: () => [{ id: "b1", workspaceId: "w" }],
+      },
+      _gitTokenFor: async () => "tok",
+      _preflightFetch: async (url) =>
+        url.includes("/o/a/")
+          ? {
+              status: 200,
+              json: async () => [
+                { name: "validate.sh" },
+                { name: "setup.sh" },
+                { name: "helpers" },
+                { name: "validate.sample.json" },
+              ],
+            }
+          : { status: 404, json: async () => ({}) },
+    };
+    const r = await botAddCheck.reposWithoutChecks(ctl, "w");
+    assert.deepEqual(r.repos, [{ key: "b", slug: "o/b" }]);
+    assert.deepEqual(r.withChecks, [
+      { key: "a", slug: "o/a", checks: ["validate", "setup"] },
+    ]);
+  });
+});

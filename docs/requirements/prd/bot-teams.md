@@ -1223,6 +1223,21 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 
 **Not done here (DASH-130):** the install dialog's "Install, fill in later" / "Install and open Set up" buttons and its visual polish.
 
+## DASH-120: "Set up this team" checklist on the team page (2026-11-27)
+
+**Status:** Implemented (mockup 2).
+
+**Why:** the team page read header → banner → bot table → an unlabelled Jobs box (One job at a time, Standard handoff, Self-test, Setup) → Checks → Team settings: the settings you need first came last, Check setup came after the self-test, and the Checks panel hid itself when there was nothing to do.
+
+- [x] A dashboard team's page (`AppPages/TeamOverview.js`) now reads: **Set up this team** (`Bots/TeamSetupChecklist.js`), what needs you (DASH-124), **How jobs run**, then **Bots on this team**. Other kinds (lone bots, the Dash team, dashboards with no bots) keep the setup banner (DASH-119) and the table. Team setup (DASH-118, `setupFocus`) scrolls to the checklist (`data-testid="team-setup"`).
+- [x] A numbered checklist, each step with its state badge and a tick when done, and "1 of 4 done · do them in order" (`src/utils/teamChecklist.js`, pure: `botSetupCards`, `checklistSteps`, `checklistLine`):
+  1. **Bots that need something from you:** a card per bot with a required setting of its own (or one it uses that's empty), its fields right there (TeamSettingsForm with `botName`), "1 to fill in" / "✓ Ready", and "Open <bot>'s settings ›". One Save for all cards (an unsaved bar with Discard / Save; each changed bot is saved as `bots.save({ id, settingValues })`). "The other N bots have nothing required." The team's old settings (DASH-57), when it declares some, sit under the cards with their own Save.
+  2. **Check setup:** its problems, each on a bot with **Go to it** (that bot's card, else its Settings tab). The result is kept in `teamSetupStore`, so it survives leaving the page for the session.
+  3. **Repo checks:** only when the team has repos: each repo with checks and which (`reposWithoutChecks` now also returns `withChecks: [{ key, slug, checks }]`), Set up checks for one without, and team checks to keep or remove (`Bots/TeamChecksPanel.js` is now `useRepoChecks` + `RepoChecksRows`).
+  4. **Run a self-test** (moved as it was; DASH-121 changes it).
+- [x] When every step is done, the checklist folds to its header ("All 4 done", Show steps).
+- [x] **How jobs run** (`Bots/TeamJobSettings.js`) has a visible heading and only the two switches, One job at a time and "Bots pass work in a standard format (recommended)", each with its error under its own row.
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams
@@ -1351,6 +1366,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.30    | 2026-11-27 | John   | DASH-135: the tracker setting type — where a bot's tickets come from (Jira / GitHub Issues / Linear / None) with pickers, a connection row, a preview and Jira's Advanced JQL; checked by setup |
 | 1.31    | 2026-11-27 | John   | DASH-119: a team's setup status — badge on the tree row and Bots view header, "This team can't take work yet" banner, "Needs setup" on cards, Run now says why it can't start |
 | 1.32    | 2026-11-27 | John   | DASH-118: Team setup in the Bots view header (opens the team page at its setup), team actions under ⋯, install copy names where settings are, a fresh install lands on the team's setup |
+| 1.33    | 2026-11-27 | John   | DASH-120: "Set up this team" checklist at the top of the team page (bots' required settings edited in cards, Check setup with Go to it, repo checks, self-test); "How jobs run" with its two switches |
 
 ---
 
