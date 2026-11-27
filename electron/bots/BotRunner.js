@@ -431,6 +431,7 @@ class BotRunner {
       stored && stored.commands && Array.isArray(stored.commands.blocked)
         ? stored.commands.blocked
         : [];
+    const failOnRefusal = !!opts.failOnRefusal;
     const onRefused = (info) => {
       const testBlock =
         !!opts.selfTest &&
@@ -457,6 +458,10 @@ class BotRunner {
         };
       }
       emit({ type: "refused", refusal: r });
+      // Only a job's run on a team with the standard handoff fails on it
+      // (opts.failOnRefusal): any other run is told no, as before, and the
+      // refusal is still kept on it.
+      if (!failOnRefusal) return null;
       if (!controller.signal.aborted) {
         controller.abort({ fail: r.message, code: "REFUSED" });
       }
@@ -1005,7 +1010,11 @@ class BotRunner {
     // question for them — the run fails with the refusal's reason. Matched
     // against what was recorded, never guessed from the prose. A self-test's
     // own block isn't (the handoff check sends that back: carry on).
-    if (status === "completed" && refusals.some((r) => !r.test)) {
+    if (
+      failOnRefusal &&
+      status === "completed" &&
+      refusals.some((r) => !r.test)
+    ) {
       const h = readHandoff(answer);
       const asked =
         h && h.status === "ask"
@@ -1056,7 +1065,8 @@ class BotRunner {
     // Tried more than once (US-023): how many attempts it took.
     if (attempts > 1) runRecord.attempts = attempts;
     // What its setup refused (DASH-115), for the job's Blocked card.
-    if (refusals.length) runRecord.refusals = refusals.slice();
+    // Sealed at rest like its warnings (a command can hold anything).
+    if (refusals.length) runRecord.refusals = JSON.stringify(refusals);
     // Sealed at rest like the answer: a server's error can echo anything.
     if (warnings.length) runRecord.warnings = JSON.stringify(warnings);
     if (toolErrors.length) runRecord.toolErrors = JSON.stringify(toolErrors);

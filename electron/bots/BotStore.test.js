@@ -390,6 +390,7 @@ describe("BotStore — encrypted run answers", () => {
       toolCalls: [{ tool: "search_emails", provider: "Gmail", ok: false }],
       toolErrors,
       warnings: JSON.stringify([{ message: "Gmail couldn't start" }]),
+      refusals: JSON.stringify([{ what: "git push origin secret-branch" }]),
     });
     const raw = persistence._blob().runs[bot.id][0];
     assert.ok(raw.toolErrors.startsWith("enc:v1:"));
@@ -397,6 +398,13 @@ describe("BotStore — encrypted run answers", () => {
     // Warnings are sealed too: a server's error can echo paths or tokens.
     assert.ok(raw.warnings.startsWith("enc:v1:"));
     assert.ok(!raw.warnings.includes("Gmail"));
+    // What its setup refused (DASH-115) is sealed too.
+    assert.ok(raw.refusals.startsWith("enc:v1:"));
+    assert.ok(!raw.refusals.includes("secret-branch"));
+    assert.equal(
+      JSON.parse(store.getRuns(bot.id)[0].refusals)[0].what,
+      "git push origin secret-branch",
+    );
     assert.equal(
       JSON.parse(store.getRuns(bot.id)[0].warnings)[0].message,
       "Gmail couldn't start",

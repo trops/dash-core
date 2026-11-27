@@ -30,6 +30,7 @@
 "use strict";
 
 const { cleanItem, cleanWorkspace, mergeItem } = require("./jobContext");
+const { refusalsOf } = require("../bots/refusals");
 
 const SETTLE_MS = 2000;
 const MAX_STEPS = 100;
@@ -84,7 +85,7 @@ function stepStatusOf(record) {
  * never fails one.
  */
 function refusalOf(record) {
-  const list = record && Array.isArray(record.refusals) ? record.refusals : [];
+  const list = refusalsOf(record);
   const r = list.find((x) => x && !x.test && x.what);
   if (!r) return null;
   const str = (v, n) => clip(typeof v === "string" ? v : "", n);

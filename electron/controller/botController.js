@@ -5706,6 +5706,13 @@ const botController = {
       via: opts.via || null,
       // A team's self-test (DASH-109): its outward commands are blocked.
       ...(selfTest ? { selfTest: true } : {}),
+      // A job's run on a team with the standard handoff: what its setup
+      // refuses fails the run (DASH-115). Other runs are told no.
+      ...(jobId &&
+      typeof this.usesHandoffs === "function" &&
+      this.usesHandoffs(bot.workspaceId)
+        ? { failOnRefusal: true }
+        : {}),
       // A command its test blocked, listed with what it skipped (DASH-115).
       ...(selfTest && this._jobs.noteSkipped
         ? { onTestSkip: (n) => this._jobs.noteSkipped(jobId, n) }
