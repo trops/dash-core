@@ -245,6 +245,8 @@ function createFlowRunner(deps) {
           ? { ended: res.ended }
           : {}),
         ...(!res.pass && res.ask ? { ask: res.ask } : {}),
+        // No retry can fix it (DASH-140): the job stops.
+        ...(!res.pass && res.stop ? { stop: true } : {}),
         summary: res.reason,
         details: res.details,
         kind: res.kind,

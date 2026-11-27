@@ -26,12 +26,60 @@ function words(part) {
   return out;
 }
 
-/** The parts of a chained command. */
+/**
+ * The command with its quoted text masked, same length so positions match
+ * (DASH-140). Inside '…' nothing can run; inside "…" only $, `, ( and {
+ * are kept, so $(…) and ${…} still show. An unclosed quote is left as it
+ * is: the shell wouldn't run it anyway.
+ */
+function masked(command) {
+  const s = String(command || "");
+  let out = "";
+  let q = null;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (q === "'") {
+      if (ch === "'") {
+        q = null;
+        out += ch;
+      } else out += "_";
+      continue;
+    }
+    if (q === '"') {
+      if (ch === "\\" && i + 1 < s.length) {
+        out += "__";
+        i++;
+      } else if (ch === '"') {
+        q = null;
+        out += ch;
+      } else out += "$`({".includes(ch) ? ch : "_";
+      continue;
+    }
+    if (ch === "\\" && i + 1 < s.length) {
+      out += "__";
+      i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"') q = ch;
+    out += ch;
+  }
+  return q ? s : out;
+}
+
+/** The parts of a chained command; a quoted ; | or && doesn't split it. */
 function partsOf(command) {
-  return String(command || "")
-    .split(/\s*(?:&&|\|\||;|\|)\s*/)
-    .map((p) => p.trim())
-    .filter(Boolean);
+  const s = String(command || "");
+  const m = masked(s);
+  const re = /\s*(?:&&|\|\||;|\|)\s*/g;
+  const out = [];
+  let last = 0;
+  let x;
+  while ((x = re.exec(m))) {
+    out.push(s.slice(last, x.index));
+    last = x.index + x[0].length;
+  }
+  out.push(s.slice(last));
+  return out.map((p) => p.trim()).filter(Boolean);
 }
 
 // git's own options that come before its subcommand, and take a value.
@@ -193,7 +241,7 @@ function commandDecision(command, lists = {}, opts = {}) {
     .filter(Boolean);
   const seen = basics ? withoutQuiet(c).trim() : c;
   const seenParts = basics ? partsOf(seen) : parts;
-  if (!allowed.length || !seenParts.length || OPAQUE.test(seen))
+  if (!allowed.length || !seenParts.length || OPAQUE.test(masked(seen)))
     return { decision: "ask" };
   // A strict bot runs one command per call (DASH-140): each step is seen
   // and checked on its own.
@@ -215,4 +263,4 @@ function commandDecision(command, lists = {}, opts = {}) {
   return all ? { decision: "allowed" } : { decision: "ask" };
 }
 
-module.exports = { BASICS, blockedBy, commandDecision, partsOf };
+module.exports = { BASICS, blockedBy, commandDecision, masked, partsOf };

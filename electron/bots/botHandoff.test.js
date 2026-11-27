@@ -154,12 +154,13 @@ describe("the Handoff check", () => {
     );
   });
 
-  it("fails a changed work item id", () => {
+  it("stops on a changed work item id: no retry (DASH-140)", () => {
     const r = handoffCheck(block({ item: { id: "DASH-94" } }), ctx);
     assert.equal(r.pass, false);
+    assert.equal(r.stop, true);
     assert.match(
       r.reason,
-      /"item.id" is "DASH-94", but this job is about "DASH-93"/,
+      /^Stopped: the bot worked on DASH-94, but this job is about DASH-93\. It may already have changed DASH-94/,
     );
     // The same id, with a title, is fine.
     assert.equal(
@@ -521,14 +522,25 @@ describe("end to end", () => {
   });
 
   it("sends a wrong handoff back to the bot with what's wrong", async () => {
-    answers.push(block({ item: { id: "DASH-93" }, summary: "Fixed" }));
-    userRun("tb", block({ item: { id: "DASH-94" } }));
+    answers.push(block({ summary: "Fixed" }));
+    userRun("tb", block({ status: "ask" }));
     assert.ok(await until(() => completed().length === 1));
     assert.equal(started.length, 1);
     assert.match(
       started[0].opts.prompt,
-      /"Handoff" failed: "item.id" is "DASH-94", but this job is about "DASH-93"/,
+      /"Handoff" failed: With "status": "ask", say what you need in "question"/,
     );
+  });
+
+  it("another work item stops the job, with no retry (DASH-140)", async () => {
+    userRun("tb", block({ item: { id: "DASH-94" } }));
+    assert.ok(await until(() => task() && task().status === "closed"));
+    assert.equal(started.length, 0, "not sent back to the bot");
+    assert.equal(completed().length, 0);
+    assert.equal(failed().length, 1, "it ends failed, so the Reporter runs");
+    const stop = task().history.find((r) => r.stepId === "step_handoff");
+    assert.equal(stop.stopped, true);
+    assert.match(stop.summary, /^Stopped: the bot worked on DASH-94/);
   });
 
   it("none: the job ends with nothing handed on", async () => {

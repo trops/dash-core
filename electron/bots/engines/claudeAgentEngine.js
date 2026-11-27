@@ -36,6 +36,7 @@ const { createEventStream } = require("./eventStream");
 const { BOT_MCP_SERVER, buildBotMcpServer } = require("./agentToolBridge");
 const { imagePlaceholder } = require("../toolImages");
 const { commandDecision } = require("../../checks/commandRules");
+const { skippedAnswer, skipsInTest } = require("../selfTest");
 const { runEnv } = require("../runEnv");
 const { gitSignInEnv, redact } = require("../gitSignIn");
 const {
@@ -265,6 +266,17 @@ function _makeCanUseTool(runCtx) {
           },
           `${linked.tool} isn't allowed for this bot on ${linked.connector.provider}.`,
         );
+      }
+      // A self-test (DASH-140): a connector tool that could change
+      // something isn't called, like a provider's (DASH-109).
+      if (ctx.selfTest && skipsInTest(linked.tool)) {
+        const { result, note } = skippedAnswer(
+          linked.connector.provider,
+          linked.tool,
+          input,
+        );
+        if (typeof ctx.onTestSkip === "function") ctx.onTestSkip(note);
+        return { behavior: "deny", message: result.text };
       }
       // On a run its lead started, the gate decides (it still asks before
       // tools that delete or send, DASH-29).

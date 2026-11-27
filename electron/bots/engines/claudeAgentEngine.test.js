@@ -274,6 +274,43 @@ describe("claudeAgentEngine", () => {
     assert.equal(asked.length, 1);
   });
 
+  // DASH-140: a self-test skips a connector's tools that could change
+  // something, as it does a provider's; reading still runs.
+  it("a self-test skips a connector tool that could change something", async () => {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    const asked = [];
+    const skipped = [];
+    await collect(
+      claudeAgentEngine.run(
+        withConnector({
+          approvalPolicy: "allow",
+          selfTest: true,
+          onTestSkip: (n) => skipped.push(n),
+          connectors: [
+            { ...calendar, allowed: ["list_events", "create_event"] },
+          ],
+          requestPermission: async (name) => {
+            asked.push(name);
+            return { allow: true };
+          },
+        }),
+      ),
+    );
+    const can = captured.options.canUseTool;
+    const write = await can("mcp__claude_ai_Google_Calendar__create_event", {
+      title: "x",
+    });
+    assert.equal(write.behavior, "deny");
+    assert.match(write.message, /^Skipped in a test: create_event/);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0].tool, "create_event");
+    assert.equal(skipped[0].server, "Google Calendar");
+    assert.equal(
+      (await can("mcp__claude_ai_Google_Calendar__list_events", {})).behavior,
+      "allow",
+    );
+  });
+
   // DASH-38: built-ins none or read-only govern Claude's own tools only — a
   // granted connector's tools still go to the connector check.
   for (const builtinTools of ["none", "read-only", "all"]) {

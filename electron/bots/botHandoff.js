@@ -172,10 +172,16 @@ function handoffProblems(
   if (h.itemGiven && !h.item) {
     problems.push('"item" needs an "id" (e.g. { "id": "DASH-93" }).');
   }
+  // Another work item (DASH-140): the bot worked on the wrong one, and may
+  // already have changed it, so the job stops instead of retrying.
   const jobItem = cleanItem(item);
-  if (h.item && jobItem && h.item.id !== jobItem.id) {
+  const wrongItem =
+    h.item && jobItem && h.item.id !== jobItem.id
+      ? { gave: h.item.id, job: jobItem.id }
+      : null;
+  if (wrongItem) {
     problems.push(
-      `"item.id" is "${h.item.id}", but this job is about "${jobItem.id}". A job's work item never changes: use "${jobItem.id}", or leave "item" out (Dash carries it).`,
+      `"item.id" is "${wrongItem.gave}", but this job is about "${wrongItem.job}". A job's work item never changes.`,
     );
   }
   if (h.workspaceGiven && !h.workspace) {
@@ -193,7 +199,7 @@ function handoffProblems(
         : `"workspace.dir" (${h.workspace.dir}) can't be used: you have no folders.`,
     );
   }
-  return { handoff: h, problems };
+  return { handoff: h, problems, wrongItem };
 }
 
 /**
@@ -202,9 +208,18 @@ function handoffProblems(
  *   none   passes, nothing handed on (ended: "none")
  *   split  passes, nothing handed on (ended: "split", items)
  *   ask    neither: the job waits for a person (ask: the question)
+ *   stop   fails with no retry (stop: true): it named another work item
  */
 function handoffCheck(answer, ctx = {}) {
-  const { handoff: h, problems } = handoffProblems(answer, ctx);
+  const { handoff: h, problems, wrongItem } = handoffProblems(answer, ctx);
+  if (wrongItem) {
+    return {
+      pass: false,
+      stop: true,
+      reason: `Stopped: the bot worked on ${wrongItem.gave}, but this job is about ${wrongItem.job}. It may already have changed ${wrongItem.gave}: check it before rerunning.`,
+      details: { problems, wrongItem },
+    };
+  }
   if (problems.length) {
     return { pass: false, reason: problems.join(" "), details: { problems } };
   }
