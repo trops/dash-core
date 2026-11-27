@@ -9,6 +9,7 @@ const assert = require("node:assert/strict");
 const {
   mergeTeamValues,
   withTeamValues,
+  rowsText,
   missingMessage,
   pickFrom,
   namesUsed,
@@ -244,5 +245,64 @@ describe("a job remembers its picks (DASH-84)", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("every row of a table: {repo.rows} (DASH-104)", () => {
+  it("lists each row's key and address, with no row picked", () => {
+    const bot = { instructions: "Pick one of these repos:\n{repo.rows}" };
+    const { bot: out, missing } = withTeamValues(bot, team(), { picks: {} });
+    assert.deepEqual(missing, []);
+    const lines = out.instructions.split("\n").slice(1);
+    assert.equal(lines.length, ROWS.length);
+    assert.equal(lines[0], `- ${ROWS[0].key}: ${ROWS[0].url}`);
+  });
+
+  it("still fills with a row picked, next to that row's cells", () => {
+    const bot = { instructions: "{repo.rows}\nYou have {repo.key}." };
+    const { bot: out, missing } = withTeamValues(bot, team(), {
+      picks: { repo: ROWS[0].key },
+    });
+    assert.deepEqual(missing, []);
+    assert.match(out.instructions, new RegExp(`You have ${ROWS[0].key}\\.$`));
+  });
+
+  it("a cell next to it still needs a pick", () => {
+    const bot = { instructions: "{repo.rows} then {repo.url}" };
+    const { missing } = withTeamValues(bot, team(), { picks: {} });
+    assert.equal(missing[0].reason, "unpicked");
+  });
+
+  it("an empty table can't be listed", () => {
+    const bot = { instructions: "{repo.rows}" };
+    const { missing } = withTeamValues(bot, team({ repo: [] }), { picks: {} });
+    assert.equal(missing.length, 1);
+    assert.equal(missing[0].reason, "no-rows");
+  });
+
+  it("rowsText takes the first url column, else the first text one", () => {
+    const setting = {
+      columns: [
+        { name: "on", type: "boolean" },
+        { name: "label", type: "text" },
+      ],
+    };
+    assert.equal(
+      rowsText(setting, [{ key: "a", label: "First" }, { key: "b" }]),
+      "- a: First\n- b",
+    );
+  });
+
+  it("rows can't be a column's name", () => {
+    const r = mergeTeamValues(null, {
+      declare: [
+        {
+          name: "repo",
+          type: "table",
+          columns: [{ name: "rows", type: "text" }],
+        },
+      ],
+    });
+    assert.match(r.errors.join(" "), /"rows" is every row/);
   });
 });
