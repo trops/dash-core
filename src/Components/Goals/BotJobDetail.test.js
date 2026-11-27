@@ -138,14 +138,16 @@ test("the waiting row shows the work being approved, and Approve hands it on", a
   );
 });
 
-test("Send back asks why, and sends the reason", async () => {
+test("Send back needs a note, and sends it", async () => {
   await openJob();
-  fireEvent.click(screen.getByRole("button", { name: "Send back…" }));
   const send = screen.getByRole("button", { name: "Send back" });
   expect(send).toBeDisabled();
-  fireEvent.change(screen.getByLabelText(/Why\? Coordinator gets this/), {
-    target: { value: "Add the weather" },
-  });
+  fireEvent.change(
+    screen.getByLabelText(/Note for Coordinator if you send it back/),
+    {
+      target: { value: "Add the weather" },
+    },
+  );
   fireEvent.click(send);
   await waitFor(() =>
     expect(mock.api.taskAction).toHaveBeenCalledWith("task_job", {

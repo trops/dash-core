@@ -315,10 +315,17 @@ describe("BotsPage — a team's overview (frame 23)", () => {
     expect(overview).toHaveTextContent(
       /Inbox Watch.*On a schedule.*Needs approval.*\$1\.20/,
     );
-    // What needs you: answered in the lead's conversation.
-    expect(screen.getByTestId("team-needs")).toHaveTextContent(
-      "Answer in the conversation",
-    );
+    // What needs you: a card with its buttons, answered here (DASH-124).
+    const needs = screen.getByTestId("team-needs");
+    expect(needs).not.toHaveTextContent("Answer in the conversation");
+    expect(
+      within(needs).getByRole("button", { name: "Allow once" }),
+    ).toBeInTheDocument();
+    expect(
+      within(needs).getByRole("button", {
+        name: "Always allow for Inbox Watch",
+      }),
+    ).toBeInTheDocument();
     fireEvent.click(
       within(overview).getByRole("button", { name: "Open conversation" }),
     );

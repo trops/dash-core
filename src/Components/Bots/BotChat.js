@@ -29,7 +29,7 @@ import {
 import { appendAnswerText } from "../../utils/answerText";
 import { runCostLabel } from "../../utils/runCostLabel";
 import { shortToolName } from "../../utils/toolNames";
-import { ApprovalPreview } from "./ApprovalPreview";
+import { ToolApprovalCard } from "../Jobs/NeedsYouCards";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 
 /**
@@ -484,48 +484,14 @@ export const BotChat = ({
             />
           ) : null}
           {turns.map(renderTurn)}
+          {/* The same card as the job and the team page (DASH-124). */}
           {approvals.map((a) => (
-            <div
+            <ToolApprovalCard
               key={a.id}
-              className={`rounded-md border px-3 py-3 flex flex-col gap-2 ${statusTokens.warning.bg} ${statusTokens.warning.border}`}
-            >
-              <span
-                className={`text-sm font-medium ${statusTokens.warning.text}`}
-              >
-                Needs your approval
-              </span>
-              <span className={`text-xs ${muted}`}>
-                <span className="font-mono">
-                  {(a.request && a.request.toolName) || "tool"}
-                </span>
-                {a.request && a.request.serverName
-                  ? ` on ${a.request.serverName}`
-                  : " (built-in)"}
-              </span>
-              <ApprovalPreview request={a.request} />
-              <div className="flex flex-row flex-wrap gap-2">
-                <Button3
-                  title="Allow once"
-                  size="sm"
-                  onClick={() => onApprove && onApprove(a.id, { allow: true })}
-                />
-                {a.request && a.request.serverName ? (
-                  <Button
-                    title="Always allow"
-                    size="sm"
-                    onClick={() =>
-                      onApprove &&
-                      onApprove(a.id, { allow: true, remember: true })
-                    }
-                  />
-                ) : null}
-                <Button3
-                  title="Deny"
-                  size="sm"
-                  onClick={() => onApprove && onApprove(a.id, { allow: false })}
-                />
-              </div>
-            </div>
+              approval={a}
+              botName={bot.name}
+              onAnswer={(decision) => onApprove && onApprove(a.id, decision)}
+            />
           ))}
         </div>
         {unseen ? (

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button3, StatusBadge } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useGoal } from "../../hooks/useGoals";
@@ -8,6 +8,15 @@ import {
   jobStateText,
   jobTimeline,
 } from "../Goals/jobTimeline";
+import {
+  BotPassedLine,
+  GoalNeedsYouCard,
+  goalNeedsYou,
+} from "../Jobs/NeedsYouCards";
+
+const goalsApi = () =>
+  (typeof window !== "undefined" && window.mainApi && window.mainApi.goals) ||
+  null;
 
 /**
  * JobCheckCard — under a lead's "Asked <bot>" step when that bot has checks
@@ -15,12 +24,33 @@ import {
  * the job is now, and Open in Jobs. It reads the job live, so it moves on
  * when you approve it in Jobs.
  *
+ * What it waits on you for is answered right here (DASH-124): its "You
+ * approve" check (Approve / Send back), its question, or checks that need a
+ * look — the same cards as the job. Another bot passing it is a green line.
+ *
  * @param {string} goalId  the job (the checked answer's marker)
  */
 export const JobCheckCard = ({ goalId }) => {
   const { muted, strong, hairline } = useConfigTokens();
-  const { goal } = useGoal(goalId);
+  const { goal, refresh } = useGoal(goalId);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   if (!goal) return null;
+  const act = async (taskId, action) => {
+    const api = goalsApi();
+    if (!api || !api.taskAction) return;
+    setBusy(true);
+    setError("");
+    try {
+      const r = await api.taskAction(taskId, action);
+      if (r && r.error) setError(r.error);
+    } catch (e) {
+      setError((e && e.message) || "That didn't work.");
+    } finally {
+      setBusy(false);
+      refresh();
+    }
+  };
   const results = checkResults(goal);
   const rows = jobTimeline(goal);
   const now = rows[rows.length - 1] || {};
@@ -76,6 +106,16 @@ export const JobCheckCard = ({ goalId }) => {
         </span>
         <Button3 title="Open in Jobs →" size="sm" onClick={open} />
       </div>
+      {goalNeedsYou(goal) ? (
+        <GoalNeedsYouCard goal={goal} busy={busy} onAction={act} />
+      ) : (
+        <BotPassedLine goal={goal} />
+      )}
+      {error ? (
+        <span className={`text-xs ${muted}`} role="alert">
+          {error}
+        </span>
+      ) : null}
     </div>
   );
 };
