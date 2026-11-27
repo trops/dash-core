@@ -5606,6 +5606,12 @@ const botController = {
     // Who started the bot's current run — a lead asked from outside Dash
     // can't run its bots (leadAsk.js). Only a run that will start counts.
     let viaEntry = null;
+    // A run in a team's self-test (DASH-109): outward tools are skipped.
+    const selfTest = !!(jobId && this._jobs.isTest && this._jobs.isTest(jobId));
+    if (selfTest) {
+      if (!this._selfTestRuns) this._selfTestRuns = new Map();
+      this._selfTestRuns.set(botId, jobId);
+    }
     if (!this._runner.listActive().includes(botId)) {
       if (!this._runVia) this._runVia = new Map();
       viaEntry = {
@@ -5617,12 +5623,6 @@ const botController = {
       // The run's goal, so a goal deleted mid-run is forgotten by it.
       if (!this._runGoals) this._runGoals = new Map();
       this._runGoals.set(botId, goal);
-    }
-    // A run in a team's self-test (DASH-109): outward tools are skipped.
-    const selfTest = !!(jobId && this._jobs.isTest && this._jobs.isTest(jobId));
-    if (selfTest) {
-      if (!this._selfTestRuns) this._selfTestRuns = new Map();
-      this._selfTestRuns.set(botId, jobId);
     }
     const p = this._runner.run(botId, {
       prompt: opts.prompt,
