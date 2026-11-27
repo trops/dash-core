@@ -10,7 +10,7 @@ import React, { useState } from "react";
 import { Button3, FontAwesomeIcon, useStatusTokens } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useGoal } from "../../hooks/useGoals";
-import { jobTimeline } from "./jobTimeline";
+import { jobBot, jobTimeline } from "./jobTimeline";
 
 /** A check's output (its last lines) behind Show output. */
 export const CheckOutput = ({ output, exitCode = null, label = null }) => {
@@ -63,16 +63,41 @@ const Line = ({ icon, iconClass, testId, children }) => (
   </div>
 );
 
-/** A checks job's rows, short, for a step of a job (the Jobs pages). */
-export const JobCheckRows = ({ goalId, goal: given = null }) => {
+/**
+ * What a failed check led to (DASH-122): "Coder was told what failed and
+ * tried again", "No tries left, so the job failed", or "" (it came to you:
+ * its card says so).
+ */
+export function failedThenText(row, botName = "The bot") {
+  if (!row || row.type !== "failed") return "";
+  if (row.then === "back")
+    return `${botName} was told what failed and tried again.`;
+  if (row.then === "stop") return "No tries left, so the job failed.";
+  return "";
+}
+
+/**
+ * A checks job's rows, short, for a step of a job (the Jobs pages): each
+ * try, each check's result with its reason, and what a fail led to.
+ * `title`: a heading over them ("Checks").
+ */
+export const JobCheckRows = ({ goalId, goal: given = null, title = null }) => {
   const { muted, strong } = useConfigTokens();
   const status = useStatusTokens();
   const { goal: loaded } = useGoal(given ? null : goalId);
   const goal = given || loaded;
   const rows = goal ? checkRows(goal) : [];
   if (!rows.length) return null;
+  const botName = jobBot(goal).name;
   return (
     <div className="flex flex-col gap-1.5 pt-1" data-testid="job-step-checks">
+      {title ? (
+        <span
+          className={`text-xs font-semibold uppercase tracking-wider ${muted}`}
+        >
+          {title}
+        </span>
+      ) : null}
       {rows.map((r, i) => {
         if (r.type === "try") {
           return (
@@ -102,6 +127,11 @@ export const JobCheckRows = ({ goalId, goal: given = null }) => {
               </span>
               {r.reason ? (
                 <span className={`text-xs ${muted}`}>{r.reason}</span>
+              ) : null}
+              {failedThenText(r, botName) ? (
+                <span className={`text-xs ${muted}`} data-testid="check-then">
+                  {failedThenText(r, botName)}
+                </span>
               ) : null}
               <CheckOutput output={r.output} exitCode={r.exitCode} />
             </Line>

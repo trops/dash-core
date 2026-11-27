@@ -431,3 +431,91 @@ describe("a step's answer and handoff (DASH-123)", () => {
     assert.equal(cleanProse("abcdef", 4), "abc…");
   });
 });
+
+describe("a failed job's why and running it again (DASH-122)", () => {
+  it("a Setup check step keeps its problems; a later run's end clears them", () => {
+    const t = make();
+    const job = t.startJob({ workspaceId: "ws1", leadId: "l", title: "x" });
+    t.startStep(job.id, { botId: "b1", botName: "Setup check" });
+    t.endStep(job.id, {
+      botId: "b1",
+      record: {
+        status: "failed",
+        error: "The team's setup has 1 problem",
+        problems: [
+          {
+            kind: "setting",
+            bot: "Workspace Bot",
+            botId: "b2",
+            setting: "workFolder",
+            message:
+              "Workspace Bot uses Work folder ({workFolder}), which has no value",
+            extra: "dropped",
+          },
+          { kind: "x" },
+        ],
+      },
+    });
+    const [step] = t.get(job.id).steps;
+    assert.deepEqual(step.problems, [
+      {
+        kind: "setting",
+        bot: "Workspace Bot",
+        botId: "b2",
+        setting: "workFolder",
+        message:
+          "Workspace Bot uses Work folder ({workFolder}), which has no value",
+      },
+    ]);
+  });
+
+  it("checks that fail it out fail the step, keeping its answer as its prose", () => {
+    const t = make();
+    const job = t.startJob({ workspaceId: "ws1", leadId: "l", title: "x" });
+    t.startStep(job.id, { botId: "c", botName: "Coder" });
+    t.endStep(job.id, {
+      botId: "c",
+      record: done("Changed formatDate."),
+      checking: { goalId: "goal_f" },
+    });
+    t.checksMoved("goal_f", "stopped");
+    t.checksMoved(
+      "goal_f",
+      "failed",
+      'Didn\'t pass "validate" on try 2: 2 tests fail',
+    );
+    settle();
+    const got = t.get(job.id);
+    assert.equal(got.status, "failed");
+    assert.equal(got.steps[0].status, "failed");
+    assert.equal(got.steps[0].summary, "Changed formatDate.");
+    assert.match(got.steps[0].failed, /validate/);
+  });
+
+  it("retryStep opens the job again and the step waits for its bot's run", () => {
+    const t = make();
+    const job = t.startJob({ workspaceId: "ws1", leadId: "l", title: "x" });
+    t.startStep(job.id, { botId: "c", botName: "Coder" });
+    t.endStep(job.id, {
+      botId: "c",
+      record: { status: "failed", error: "boom" },
+    });
+    settle();
+    assert.equal(t.get(job.id).status, "failed");
+    const stepId = t.get(job.id).steps[0].id;
+    // Only a failed or stopped step of an ended job.
+    assert.equal(t.retryStep(job.id, "nope"), null);
+    const step = t.retryStep(job.id, stepId);
+    assert.equal(step.status, "queued");
+    assert.equal(step.retries, 1);
+    assert.equal(t.get(job.id).status, "running");
+    assert.equal(t.get(job.id).endedAt, null);
+    assert.equal(t.retryStep(job.id, stepId), null);
+    // Its bot's run takes the same step up, and the job ends done.
+    t.startStep(job.id, { botId: "c", botName: "Coder" });
+    assert.equal(t.get(job.id).steps.length, 1);
+    t.endStep(job.id, { botId: "c", record: done("Fixed.") });
+    settle();
+    assert.equal(t.get(job.id).status, "done");
+  });
+});

@@ -465,7 +465,13 @@ function createCheckJobs(deps) {
         });
       }
       settle(goal.id, { ...info, reason });
-      notify(botId, { goalId: goal.id, state: "stopped" });
+      // It failed out (DASH-122): the job's step fails, saying why.
+      notify(botId, {
+        goalId: goal.id,
+        state: "stopped",
+        failed: true,
+        reason,
+      });
       return;
     }
     // Waiting for the user: someone waiting on it hears now.
