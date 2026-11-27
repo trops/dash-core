@@ -20,8 +20,14 @@
  * uses is reported against that bot here, so setup can say "Workspace Bot:
  * Work folder has no value" whichever kind it is.
  *
- * Pure, no imports: the renderer and the main process both use it.
+ * A "tracker" setting (DASH-135, trackerSetting.js) is empty until a
+ * source is chosen and, for Jira / GitHub / Linear, a project; "None" is
+ * filled in on purpose. Its entry in what's missing says which
+ * (`reason: "no-source" | "no-project"`).
+ *
+ * Pure: the renderer and the main process both use it.
  */
+import { trackerEmpty, trackerProblem, sourceLabel } from "./trackerSetting.js";
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
 // {name} or {table.field}.
@@ -53,6 +59,7 @@ export function settingEmpty(setting, values) {
   if (setting.type === "boolean") return false;
   const v = has(values, setting.name) ? values[setting.name] : setting.default;
   if (setting.type === "table") return !Array.isArray(v) || v.length === 0;
+  if (setting.type === "tracker") return trackerEmpty(v);
   return v === undefined || v === null || v === "";
 }
 
@@ -130,9 +137,26 @@ export function withBotSettings(team, bot) {
   };
 }
 
+/** A missing setting's entry: { name, label, owner, type, reason?, source? }. */
+function missingEntry(s, values, owner) {
+  const out = {
+    name: s.name,
+    label: s.label || s.name,
+    owner,
+    type: s.type || "text",
+  };
+  if (s.type === "tracker") {
+    const v = has(values, s.name) ? values[s.name] : s.default;
+    out.reason = trackerProblem(v);
+    if (out.reason === "no-project") out.source = v.source;
+  }
+  return out;
+}
+
 /**
  * What a bot still needs before it can do its job: each entry
- * { name, label, owner: "bot" | "team", type }.
+ * { name, label, owner: "bot" | "team", type } (a tracker's also has
+ * reason "no-source" | "no-project", and its source).
  *   - its own settings that are required, or that its text uses, with no
  *     value (a table with no rows);
  *   - its team's settings that its text uses, with no value.
@@ -146,12 +170,7 @@ export function botMissingSettings(bot, team = null) {
   for (const s of own.declared) {
     if (!(s.required === true || used.has(s.name))) continue;
     if (!settingEmpty(s, own.values)) continue;
-    out.push({
-      name: s.name,
-      label: s.label || s.name,
-      owner: "bot",
-      type: s.type || "text",
-    });
+    out.push(missingEntry(s, own.values, "bot"));
   }
   const declared =
     (team && Array.isArray(team.declared) && team.declared) || [];
@@ -159,12 +178,7 @@ export function botMissingSettings(bot, team = null) {
   for (const s of declared) {
     if (!s || ownNames.has(s.name) || !used.has(s.name)) continue;
     if (!settingEmpty(s, values)) continue;
-    out.push({
-      name: s.name,
-      label: s.label || s.name,
-      owner: "team",
-      type: s.type || "text",
-    });
+    out.push(missingEntry(s, values, "team"));
   }
   return out;
 }
@@ -191,14 +205,32 @@ export function botSetupStatus(bots, team = null) {
   return out;
 }
 
+/**
+ * What's missing in words, after the label: "has no value", "has no rows",
+ * or a tracker's "Jira: no project chosen" (DASH-135).
+ */
+export function missingWords(m) {
+  if (!m) return "has no value";
+  if (m.type === "table") return "has no rows";
+  if (m.type === "tracker" && m.reason === "no-project") {
+    const what =
+      m.source === "github"
+        ? "repo"
+        : m.source === "linear"
+          ? "team"
+          : "project";
+    return `is ${sourceLabel(m.source) || "set"}, but no ${what} is chosen`;
+  }
+  if (m.type === "tracker") return "has no ticket source chosen";
+  return "has no value";
+}
+
 /** Setup status as lines: "Workspace Bot: Work folder has no value." */
 export function botSetupLines(status) {
   const lines = [];
   for (const b of Array.isArray(status) ? status : []) {
     for (const m of b.missing || []) {
-      lines.push(
-        `${b.name}: ${m.label} ${m.type === "table" ? "has no rows" : "has no value"}.`,
-      );
+      lines.push(`${b.name}: ${m.label} ${missingWords(m)}.`);
     }
   }
   return lines;

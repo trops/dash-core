@@ -127,7 +127,18 @@ const SETTING_ITEM = {
     label: { type: "string" },
     type: {
       type: "string",
-      enum: ["text", "url", "folder", "command", "boolean", "number", "table"],
+      enum: [
+        "text",
+        "url",
+        "folder",
+        "command",
+        "boolean",
+        "number",
+        "table",
+        "tracker",
+      ],
+      description:
+        "'tracker' (DASH-135): where a bot's tickets come from, picked by the user (Jira / GitHub Issues / Linear / None). Its value is { source: 'jira'|'github'|'linear'|'none', project (Jira key, GitHub owner/repo, Linear team), status?, assignee?: 'anyone'|'me'|'unassigned', label?, query? (Jira JQL only) }. {name} reads it in words with the search to run; {name.source}, {name.project}, {name.query} … are its parts. 'none' is a choice: the bot works only from the task it's given.",
     },
     default: {},
     required: {
@@ -167,7 +178,7 @@ const BOT_FIELDS = {
   settings: {
     type: "object",
     description:
-      "The bot's own settings (DASH-136): the settings for its own job (a work folder, the repos it picks from), declared like set_team_settings' ({ declare, values, remove }) and kept on this bot. It uses them as {name} like team settings; its own win over a team setting of the same name. Mark one 'required' when the bot can't do its job without it: the team's setup lists the bot until it has a value. Permissions (push, merge…) are never settings: they're the bot's own access.",
+      "The bot's own settings (DASH-136): the settings for its own job (a work folder, the repos it picks from), declared like set_team_settings' ({ declare, values, remove }) and kept on this bot. It uses them as {name} like team settings; its own win over a team setting of the same name. A ticket source is type 'tracker' (never a JQL text setting). Mark one 'required' when the bot can't do its job without it: the team's setup lists the bot until it has a value. Permissions (push, merge…) are never settings: they're the bot's own access.",
     properties: {
       declare: { type: "array", items: SETTING_ITEM },
       values: {

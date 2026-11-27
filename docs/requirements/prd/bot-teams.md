@@ -1171,6 +1171,26 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 - `withBotSettings(team, bot)`, `settingsOfBot(bot)`, `settingEmpty(setting, values)`, `settingNamesUsed(bot)`, `BOT_VALUES_KEY` / `splitInstallValues(values)`.
 - botController: `setupStatus(workspaceId)` (the same list), `setBotSettings(botId, { declare, values, remove })`.
 
+## DASH-135: Where tickets come from (the tracker setting, 2026-11-27)
+
+**Status:** Implemented (mockups 2 and 8).
+
+**Why:** a ticket source was a raw JQL text box. Someone who doesn't know JQL couldn't fill it in, and a team on GitHub Issues or Linear couldn't use it at all.
+
+- [x] A new setting type, `tracker`, any bot (or team) may declare (`src/utils/trackerSetting.js`, pure). The Ticket Bot is the example; nothing in Dash is Ticket-Bot specific.
+- [x] Its value: `{ source: "jira" | "github" | "linear" | "none", project, status, assignee: "anyone" | "me" | "unassigned", label, query?, provider? }`. `project` is a Jira key, a GitHub `owner/repo` (a github.com address is turned into one) or a Linear team. `query` is Jira only (Advanced JQL) and replaces the choices. `provider` is the Dash provider it was connected through. teamValues.cleanValues checks it (a JSON string or a bare source is read too, for MCP and imports).
+- [x] **None** ("I'll hand it tickets myself") is a choice: the setting is filled in, and the bot works only from the task it's given.
+- [x] In a bot's text, `{tickets}` is the choice in words with the search to run ("Jira: project SANDBOX, status "To Do", assigned to anyone. Search (JQL): project = "SANDBOX" AND status = "To Do" ORDER BY created ASC. Use the Jira tools (provider "Jira")."); `{tickets.source}`, `.project`, `.status`, `.assignee`, `.label`, `.query` (the built JQL / GitHub search) and `.provider` are its parts.
+- [x] The form part (`Bots/TrackerSetting.js`, drawn by TeamSettingsForm for any tracker setting, so on the bot's Settings tab, the install form and team settings alike): the source choice; a connection row ("✓ Jira connected" with Change, or "<tracker> isn't connected on this computer yet" with Connect, which opens Settings › Providers' create flow); pickers for project (repo, team), status, assigned to and an optional label; Jira's "Advanced: edit as a Jira search (JQL)".
+- [x] Pickers are filled from the connected provider where Dash can list them: a running Dash provider of that tracker with a known tool (mcp-atlassian's `jira_get_all_projects` for Jira projects). Otherwise the project is a plain field with a hint ("Its key, like SANDBOX", "owner/repo"), and a Claude connector says Dash can't list through it. No new provider integration was built.
+- [x] A preview ("Right now this matches N tickets. Next up: SANDBOX-4 Fix the login") when Dash can search the tracker the same way (`jira_search`, server-github's `search_issues`). Linear and Claude connectors get no preview.
+- [x] Setup: `settingEmpty` / `botMissingSettings` know the type (entries carry `reason: "no-source" | "no-project"`), so the team's Set up and "Needs setup" list the bot. Check setup (preflight) says "Ticket Bot: Where tickets come from is Jira, but no project is chosen", and with the `trackerStatus` dep (botController: the user's providers via listToolSources) "Ticket Bot: Jira isn't connected …" (`kind: "tracker", reason: "not-connected"`) or "… it has no Jira provider" (`reason: "not-granted"`).
+- [x] MCP: the setting item's type takes `tracker` and says its value shape; the bots guide tells bot builders to use it instead of a JQL text setting.
+
+**For the next tickets:** `missingWords(m)` in botSettings.js is the "has no value" / "has no rows" / tracker wording, for the checklist and failure links. `trackerProblemText(v)` gives "no project chosen".
+
+**Not done:** Jira statuses and Linear teams are fixed lists / plain fields (not read from the tracker); the preview needs the provider already running in Dash.
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams
@@ -1295,6 +1315,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.26    | 2026-11-21 | John   | DASH-32: approvals over MCP — get_task_status "needs" + approvals, answer_approval (off by default), "Wait for approvals up to" per team (Implemented)                                                                                                                                                                                                                                              |
 | 1.27    | 2026-11-27 | John   | DASH-136: settings belong to bots — declared and kept per bot, filled into its run, grouped by bot at install, reported per bot by the setup check; team settings kept as they were |
 | 1.28    | 2026-11-27 | John   | TEAM-014 / DASH-139: readable diagram — work order, stacked handoffs, failure routes on cards, Lines toggle, helpers lane, widgets hidden by default, and the selected bot's connections panel |
+| 1.29    | 2026-11-27 | John   | DASH-135: the tracker setting type — where a bot's tickets come from (Jira / GitHub Issues / Linear / None) with pickers, a connection row, a preview and Jira's Advanced JQL; checked by setup |
 
 ---
 
