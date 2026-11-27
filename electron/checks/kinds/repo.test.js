@@ -328,3 +328,31 @@ describe("a repo check's settings", () => {
     assert.equal(cleaned.steps[0].held, true);
   });
 });
+
+describe("a plain repo check's step inputs (DASH-107)", () => {
+  it("reach it as DASH_CHECK_<NAME>", async () => {
+    write(
+      work,
+      ".dash/checks/says-heading.sh",
+      'echo "{\\"reason\\": \\"heading=${DASH_CHECK_HEADING:-Plan}\\"}"\n',
+    );
+    const set = await runRepoCheck(
+      {
+        kind: "repo",
+        name: "says-heading",
+        from: "workspace",
+        inputs: { heading: "Goal", bad: { x: 1 } },
+      },
+      INPUT,
+      opts(),
+    );
+    assert.equal(set.pass, true, set.reason);
+    assert.equal(set.reason, "heading=Goal");
+    const unset = await runRepoCheck(
+      { kind: "repo", name: "says-heading", from: "workspace" },
+      INPUT,
+      opts(),
+    );
+    assert.equal(unset.reason, "heading=Plan");
+  });
+});

@@ -28,6 +28,8 @@ A check proves one thing about a bot's work, the same way every time. Dash runs 
 - **Environment:** DASH_INPUT, DASH_ITEM_ID, DASH_ITEM_TITLE, DASH_ITEM_URL, DASH_ITEM_SOURCE, DASH_WORKSPACE, DASH_BRANCH, DASH_STEP (the step's name). With a GitHub provider on the bot: GH_TOKEN, and git signed in. Never print the token.
 - **Result:** exit 0 passes; anything else fails. To say why, print one JSON line last: \`{"reason": "…", "details": {…}}\`. The reason shows on the job and goes back to the bot.
 - **Time:** 2 minutes unless the step sets timeoutSec (up to 30). Don't sleep-poll for long: a check that waits (for CI) has a deadline and says what it waited for.
+- **Settings:** a step can give a check inputs ({ kind: "repo", name: "note-has-section", inputs: { heading: "Plan" } }); the check gets each as DASH_CHECK_<NAME> (DASH_CHECK_HEADING). Read them with a default, so the check works without them.
+- **No work item?** A check that needs item.id (DASH_ITEM_ID) should say so and fail when it's run on a job without one. But \`dash-check --ci\` runs every check with no item and an empty answer: a check that can't decide anything without one can exit 0 with {"reason": "No work item: nothing to check"} when DASH_ITEM_ID is empty, or be left out of the --ci list.
 - **Nothing to do:** print \`{"reason": "…", "handOn": false}\` and exit 0 to end the job quietly (better: the bot says "status": "none" in its handoff).
 
 ## 3. Where a check lives
@@ -103,14 +105,23 @@ print(json.dumps({"reason": "CHANGELOG.md is updated"}))
 - **needs:** the commands it runs, or the provider type it calls. Installing shows them, with its source and author.
 
 ## 6. Try it by hand
-In the repo, with a sample input:
+In the repo, write a sample input to a file (the answer only matters to checks that read the handoff):
+\`\`\`json
+{ "input": { "answer": "Done." }, "item": { "id": "DASH-1" }, "workspace": { "dir": ".", "branch": "fix/DASH-1" } }
+\`\`\`
+Then:
 \`\`\`sh
-echo '{"input": {"answer": "Done.\\n\\n\`\`\`json\\n{\\"summary\\": \\"x\\"}\\n\`\`\`"}, "item": {"id": "DASH-1"}}' > /tmp/sample.json
-npx -p @trops/dash-core dash-check validate --input /tmp/sample.json
+npx -p @trops/dash-core dash-check validate --input sample.json
+DASH_CHECK_HEADING=Goal npx -p @trops/dash-core dash-check note-has-section --input sample.json
 npx -p @trops/dash-core dash-check --list
 npx -p @trops/dash-core dash-check --ci     # every check, as CI would
 \`\`\`
-dash-check runs the workspace's copy (what you're editing); --base runs the base branch's, as Dash does. Try it twice: once with an input that should pass, and once with one that should fail. The failure's reason must say what to fix.
+- dash-check sets the same environment Dash does, DASH_ITEM_* from the sample's item included. It runs the workspace's copy (what you're editing); --base runs the base branch's, as Dash does, and needs a remote (origin/HEAD, origin/main or origin/master).
+- A pass prints "✓ name: reason"; a fail prints the check's output, then "✗ name: reason". Exit code: 0 passed, 1 failed, 2 no such check or bad arguments.
+- --ci runs every check (or --ci a,b those) with an empty answer and no item, so it suits checks that look at the repo (validate, lint), not ones about a job's work.
+- In a step, name a check without its extension: { kind: "repo", name: "validate" } finds validate.sh.
+
+Try it twice: once with an input that should pass, and once with one that should fail. The failure's reason must say what to fix.
 
 ## 7. Ship it
 - **Repo check:** commit \`.dash/checks/<name>\` in a PR. Once merged it's on the base branch, and every bot's { kind: "repo", name } step uses it. Run \`dash-check --ci\` in the repo's CI so the bots and CI agree.
