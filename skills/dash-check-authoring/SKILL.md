@@ -68,7 +68,7 @@ check("the work is ready for review", async (ctx) => {
   - `.input.answer`: the bot's whole answer (its handoff is the last ```json block);
   - `.item`: the job's work item { id, title, url, source };
   - `.workspace`: { dir, branch }.
-- **Environment:** DASH_INPUT, DASH_ITEM_ID, DASH_ITEM_TITLE, DASH_ITEM_URL, DASH_ITEM_SOURCE, DASH_WORKSPACE, DASH_BRANCH, DASH_STEP (the step's name), and DASH_TOOL_SOCKET (what answers ctx.tool). With a GitHub provider on the bot: GH_TOKEN, and git signed in. Never print the token.
+- **Environment:** DASH_INPUT, DASH_ITEM_ID, DASH_ITEM_TITLE, DASH_ITEM_URL, DASH_ITEM_SOURCE, DASH_WORKSPACE, DASH_BRANCH, DASH_STEP (the step's name), DASH_TEST ("1" in a team's self-test, where outward actions such as comments and pushes were skipped; also input.test), and DASH_TOOL_SOCKET (what answers ctx.tool). With a GitHub provider on the bot: GH_TOKEN, and git signed in. Never print the token.
 - **Result:** exit 0 passes; anything else fails. To say why, print one JSON line last: `{"reason": "…", "details": {…}}`. The reason shows on the job and goes back to the bot. A `.check.js` file and a recipe do this for you, with each check's and each step's result in details.
 - **Time:** 2 minutes unless the step sets timeoutSec (up to 30). Don't sleep-poll for long: a check that waits (for CI) has a deadline and says what it waited for.
 - **Settings:** a step can give a check inputs ({ kind: "repo", name: "note-has-section", inputs: { heading: "Plan" } }); the check gets each as DASH_CHECK_<NAME> (DASH_CHECK_HEADING). Read them with a default, so the check works without them.
