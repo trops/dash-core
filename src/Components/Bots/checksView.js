@@ -36,12 +36,33 @@ export function stepTone(step) {
   return "rule";
 }
 
-// Colour classes (in the prebuilt palette) and icons per tone.
+// Colour classes (in the prebuilt palette), icons and the short kind mark on
+// the diagram's cards (DASH-139: R rule, ›_ command, AI bot review, You) per tone.
 export const TONE = {
-  rule: { bg: "bg-blue-600", icon: "list-check", label: "A rule or compare" },
-  command: { bg: "bg-teal-600", icon: "terminal", label: "A command or test" },
-  reviewer: { bg: "bg-amber-600", icon: "robot", label: "A reviewer bot" },
-  you: { bg: "bg-purple-600", icon: "user", label: "You approve" },
+  rule: {
+    bg: "bg-blue-600",
+    icon: "list-check",
+    short: "R",
+    label: "A rule or compare",
+  },
+  command: {
+    bg: "bg-teal-600",
+    icon: "terminal",
+    short: "›_",
+    label: "A command or test",
+  },
+  reviewer: {
+    bg: "bg-amber-600",
+    icon: "robot",
+    short: "AI",
+    label: "A reviewer bot",
+  },
+  you: {
+    bg: "bg-purple-600",
+    icon: "user",
+    short: "You",
+    label: "You approve",
+  },
 };
 
 /**

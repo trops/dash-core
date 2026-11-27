@@ -17,7 +17,8 @@ export function sectionHeight(bot, canEdit) {
 /**
  * ChecksSection — a bot's own checks inside its box on the Bots diagram
  * (bot-checks PRD CHK-002, DASH-12): under a divider, top to bottom, each
- * row coloured by kind, with what they're doing now (`live`, liveChecks):
+ * row with its kind mark (R rule, ›_ command, AI reviewer, You) and its
+ * name on up to two lines (full name on hover), with what they're doing now (`live`, liveChecks):
  * "Checking · try 1 of 3" with a spinner on the check being run, "Sent
  * back · try 2 of 3", "Checking 2 jobs", and "N needs you".
  *
@@ -100,7 +101,8 @@ export const ChecksSection = ({
           <span
             key={r.key}
             data-testid={spins ? "check-running" : undefined}
-            className={`w-full flex flex-row items-center gap-1.5 ${
+            title={r.name}
+            className={`w-full flex flex-row items-start gap-1.5 ${
               header && !spins ? "opacity-50" : ""
             }`}
           >
@@ -109,14 +111,18 @@ export const ChecksSection = ({
                 <FontAwesomeIcon icon="spinner" className="animate-spin" />
               </span>
             ) : (
+              // The kind mark (DASH-139): R, ›_, AI or You.
               <span
-                className={`flex-shrink-0 h-4 w-4 rounded flex items-center justify-center text-white ${tone.bg}`}
+                className={`flex-shrink-0 h-4 rounded px-1 flex items-center justify-center text-white font-bold ${tone.bg}`}
+                style={{ minWidth: 16, fontSize: 9, marginTop: 1 }}
                 title={tone.label}
+                aria-label={tone.label}
               >
-                <FontAwesomeIcon icon={tone.icon} size="2xs" />
+                {tone.short}
               </span>
             )}
-            <span className={`flex-1 min-w-0 text-xs truncate ${strong}`}>
+            {/* Names wrap to two lines; the full name is on hover. */}
+            <span className={`flex-1 min-w-0 text-xs line-clamp-2 ${strong}`}>
               {r.name}
             </span>
           </span>

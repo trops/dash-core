@@ -20,7 +20,6 @@ import {
 } from "@trops/dash-react";
 import { BotAvatar } from "./BotAvatar";
 import { TeamChart } from "./TeamChart";
-import { BotFlowSummary } from "./BotFlowSummary";
 import { BotPage } from "./BotPage";
 import { BotDetail } from "../Settings/details/BotDetail";
 import { PublishBotDialog } from "./PublishBotDialog";
@@ -43,6 +42,7 @@ import {
   wireChange,
 } from "./widgetDiagram";
 import { BotChecksModal } from "./BotChecksModal";
+import { LINES, linesOrDefault } from "./teamFlow";
 import { liveChecks } from "./checksView";
 import { useGoals } from "../../hooks/useGoals";
 import { applyWiringChanges } from "../../utils/listenerResolution";
@@ -149,6 +149,22 @@ const writeMode = (mode) => {
     // Not remembered — fine.
   }
 };
+// The diagram's Lines toggle (DASH-139), remembered per viewer.
+const LINES_KEY = "dash:botsView:lines";
+const readLines = () => {
+  try {
+    return linesOrDefault(window.localStorage.getItem(LINES_KEY));
+  } catch (_e) {
+    return linesOrDefault(null);
+  }
+};
+const writeLines = (v) => {
+  try {
+    window.localStorage.setItem(LINES_KEY, v);
+  } catch (_e) {
+    // Not remembered — fine.
+  }
+};
 
 export const BotsView = ({
   workspace,
@@ -215,6 +231,15 @@ export const BotsView = ({
   const setMode = (next) => {
     setModeState(next);
     writeMode(next);
+  };
+  // The diagram's connections panel (DASH-139): open for the selected bot
+  // after a click on it; nothing is selected on the diagram until then.
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [lines, setLinesState] = useState(readLines);
+  const setLines = (next) => {
+    const v = linesOrDefault(next);
+    setLinesState(v);
+    writeLines(v);
   };
   // Team export (TEAM-006): the last outcome ({ text, details?: string[] }).
   const [teamNote, setTeamNote] = useState(null);
@@ -362,6 +387,8 @@ export const BotsView = ({
     guarded(() => {
       setDirty(false);
       setDetailOpen(false);
+      // Back to its connections panel (a new bot has none).
+      setPanelOpen(selectedId !== NEW_BOT);
       // A new bot has no summary — back to the lead (or first bot).
       if (selectedId === NEW_BOT) {
         setSelectedId(
@@ -439,16 +466,6 @@ export const BotsView = ({
 
   const afterChange = () => team && team.refresh && team.refresh();
 
-  // The summary's Run now: runs it and opens its page on Activity, where the
-  // run shows (failed or skipped too).
-  const runNow = () => {
-    const bots = api();
-    if (!bots || !selected) return;
-    const id = selected.id;
-    openBot(id, "activity");
-    Promise.resolve(bots.run(id, "", false)).catch(() => {});
-  };
-
   // Diagram wiring (TEAM-014 slice 2): a trigger is a subscription on the
   // target bot, saved with the bot like the Settings picker does.
   const findBot = (id) => all.find((b) => b.id === id) || null;
@@ -493,10 +510,6 @@ export const BotsView = ({
       ),
     [workspace],
   );
-  const teamNameOf = (id) => {
-    const b = findBot(id);
-    return b ? b.name : null;
-  };
   const changeDashboard = async (change, what) => {
     if (!onChangeDashboard)
       throw new Error("this dashboard can't be changed here");
@@ -595,8 +608,6 @@ export const BotsView = ({
     }
     return findBot(id);
   };
-
-  const status = selected && team ? team.statusOf(selected.id) : "Idle";
 
   // A bot's own checks (bot-checks CHK-002): the window from its box, and
   // what they're doing now (DASH-12) — a click on a job opens it in Jobs.
@@ -942,23 +953,57 @@ export const BotsView = ({
     </nav>
   );
 
-  // Diagram mode (TEAM-014): the team as an org chart; team actions
-  // and + Add bot stay reachable underneath.
+  // Diagram mode (TEAM-014, DASH-139): the team in work order with the
+  // selected bot's connections panel; the header has the widget count, the
+  // Lines toggle, Diagram / List and + Add bot; team actions stay
+  // reachable underneath.
+  // A click selects a bot and opens its panel (with its page open beside
+  // the diagram, the page switches to it); a click on it again or ✕ closes.
+  const selectOnDiagram = (id) => {
+    if (!id) {
+      setPanelOpen(false);
+      return;
+    }
+    if (detailOpen) {
+      openBot(id, tab);
+      return;
+    }
+    guarded(() => {
+      setDirty(false);
+      setSelectedId(id);
+      setTab("activity");
+      setMenuOpen(false);
+      setPanelOpen(true);
+    });
+  };
+  const diagramSelected =
+    (panelOpen || detailOpen) && selectedId !== NEW_BOT ? selectedId : null;
   const teamDiagram = (
     <section
       aria-label="Team"
       className={`dr-card flex-1 min-w-0 min-h-0 flex flex-col rounded-xl border ${hairline}`}
     >
       <div
-        className={`flex flex-row items-center justify-between gap-3 px-4 py-3 border-b ${hairline}`}
+        className={`flex flex-row flex-wrap items-center gap-3 px-4 py-3 border-b ${hairline}`}
       >
         {teamLabel}
-        <div className="flex flex-row items-center gap-2">
-          {viewSwitch}
-          <Button title="Add bot" size="sm" onClick={addBot} />
-        </div>
+        <span className={`flex-1 text-xs ${muted}`}>
+          {widgets.length
+            ? `· ${widgets.length} widget${widgets.length === 1 ? "" : "s"} on this dashboard`
+            : ""}
+        </span>
+        <span className={`text-xs ${muted}`}>Lines</span>
+        <SegmentedControl
+          ariaLabel="Lines"
+          size="sm"
+          value={lines}
+          onChange={setLines}
+          options={LINES}
+        />
+        {viewSwitch}
+        <Button title="Add bot" size="sm" onClick={addBot} />
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto p-2">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {lead ? null : (
           <div
             className={`flex flex-row items-center gap-3 px-3 py-2 text-xs ${muted}`}
@@ -970,11 +1015,13 @@ export const BotsView = ({
         <TeamChart
           lead={lead}
           members={members}
-          selectedId={selectedId}
+          selectedId={diagramSelected}
+          // The bot's page beside the diagram takes the panel's place.
+          showPanel={!detailOpen}
+          lines={lines}
           statusOf={(id) => (team ? team.statusOf(id) : "Idle")}
           approvalsFor={(id) => (team ? team.approvalsFor(id) : [])}
-          // A click opens the bot's page; × goes back to its summary.
-          onSelect={(id) => openBot(id, "activity")}
+          onSelect={selectOnDiagram}
           onOpen={openBot}
           // Off while a bot's Settings is open: saving from the diagram
           // would overwrite that form's unsaved edits.
@@ -983,7 +1030,11 @@ export const BotsView = ({
           onSaveTrigger={saveTrigger}
           onRemoveTrigger={removeTriggerFrom}
           widgets={widgets}
-          nameOf={teamNameOf}
+          // Any bot's name (a source on another dashboard too).
+          nameOf={(id) => {
+            const n = nameOf(id);
+            return n === id ? null : n;
+          }}
           onConnectWidget={connectWidget}
           onShowHere={showHere}
           onAskWidget={askAboutWidget}
@@ -1053,25 +1104,9 @@ export const BotsView = ({
         teamList
       )}
 
-      {sideBySide && !detailOpen && selected ? (
-        <aside
-          aria-label="Selected bot"
-          className={`w-80 flex-shrink-0 min-h-0 overflow-y-auto rounded-xl border ${hairline}`}
-        >
-          <BotFlowSummary
-            bot={selected}
-            team={all}
-            nameOf={(id) => {
-              const n = nameOf(id);
-              return n === id ? null : n;
-            }}
-            status={status}
-            onOpen={(t) => openBot(selected.id, t)}
-            onRunNow={runNow}
-            onOpenChecks={() => setChecksFor(selected.id)}
-          />
-        </aside>
-      ) : (
+      {/* Diagram: the selected bot's connections panel is in the diagram;
+          its page opens here, beside it. */}
+      {sideBySide && !detailOpen ? null : (
         <>
           {resizable ? (
             // Sits in the gap: the negative margins keep the gap 16px.
