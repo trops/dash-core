@@ -632,8 +632,15 @@ function Table({ columns = [], data = [], onRowClick = null }) {
   );
 }
 // DropdownPanel: rendered only while open; MenuItem2 is a button.
-function DropdownPanel({ isOpen, children }) {
-  return isOpen ? React.createElement("div", { role: "menu" }, children) : null;
+// Its position classes are kept on data-position (where it opens).
+function DropdownPanel({ isOpen, children, position }) {
+  return isOpen
+    ? React.createElement(
+        "div",
+        { role: "menu", "data-position": position },
+        children,
+      )
+    : null;
 }
 function MenuItem2({ onClick, children }) {
   return React.createElement(
