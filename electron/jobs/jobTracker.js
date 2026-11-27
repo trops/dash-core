@@ -639,6 +639,28 @@ function createJobTracker({
     return goalIndex().get(goalId) || null;
   }
 
+  /**
+   * The handoff a goal's bot was handed (DASH-160): the last step before
+   * the goal's, of another bot, that ended with one — e.g. the Planner's
+   * for the Coder's checks. { from, handoff } or null.
+   */
+  function handedTo(goalId) {
+    const job = jobOf(jobForGoal(goalId));
+    if (!job) return null;
+    const steps = job.steps || [];
+    const at = steps.findIndex((st) => st.goalId === goalId);
+    if (at < 0) return null;
+    const me = steps[at];
+    for (let i = at - 1; i >= 0; i--) {
+      const st = steps[i];
+      if (!st || st.botId === me.botId) continue;
+      if (st.handoff && typeof st.handoff === "object") {
+        return { from: st.botName || null, handoff: { ...st.handoff } };
+      }
+    }
+    return null;
+  }
+
   /** Still going (or waiting on the user): a hand-on may join it. */
   function isOpen(jobId) {
     const job = jobOf(jobId);
@@ -900,6 +922,7 @@ function createJobTracker({
     checksMoved,
     retryStep,
     jobForGoal,
+    handedTo,
     isOpen,
     clearEndedBefore,
     releaseWaiting,

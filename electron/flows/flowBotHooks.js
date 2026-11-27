@@ -112,7 +112,11 @@ function flowBotHooks(ctl) {
       }
       const jobId = ctl._jobs.jobForGoal(goalId);
       if (!jobId) return null;
-      const ctx = ctl._jobs.contextOf(jobId);
+      let ctx = ctl._jobs.contextOf(jobId);
+      // The handoff its bot was handed (DASH-160): a helper check with
+      // handoffFrom "handed" reads the Planner's plan, not the Coder's.
+      const handed = ctl._jobs.handedTo ? ctl._jobs.handedTo(goalId) : null;
+      if (handed) ctx = { ...(ctx || {}), handedOn: handed };
       // A self-test's checks are told so (DASH-140): what a test skipped
       // (a comment, a push) isn't there to check.
       const test = !!(ctl._jobs.isTest && ctl._jobs.isTest(jobId));

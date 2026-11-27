@@ -82,6 +82,8 @@ export const STEP_CHOICES = [
   { value: "git-committed", label: "Built in: the work is committed" },
   { value: "pr-ci", label: "Built in: the PR's CI passes" },
   { value: "handoff-has", label: "Built in: the handoff has keys" },
+  // One dash-check helper (DASH-160): did it do only what it planned?
+  { value: "helper", label: "Built in: a factory helper" },
   { value: "reviewer", label: "A reviewer bot" },
   { value: "you", label: "You approve" },
 ];
@@ -169,7 +171,31 @@ export const BUILT_IN_CHOICES = [
     label: "Work is committed (nothing left uncommitted)",
   },
   { value: "pr-ci", label: "The PR's CI passed" },
+  {
+    value: "helper",
+    label: "It did only what it planned (a factory helper)",
+  },
   { value: "rules", label: "The answer follows rules" },
+];
+
+/**
+ * The factory helpers a helper check offers (DASH-160): @trops/dash-check
+ * 0.2.0's, as electron/checks/kinds/helper.js lists them.
+ */
+export const FACTORY_HELPERS = [
+  {
+    value: "git.validateLeavesTreeClean",
+    label: "Validate doesn't rewrite files",
+  },
+  { value: "git.changesMatchPlan", label: "Only the planned files changed" },
+  { value: "git.commitsScoped", label: "Each commit is scoped to the plan" },
+  { value: "git.noChangesTo", label: "These files didn't change" },
+  { value: "node.lockfileExplained", label: "Lockfile change is explained" },
+  { value: "git.sourceHasTests", label: "Changed source has tests" },
+  { value: "node.newTestsAreRun", label: "New tests are run" },
+  { value: "git.noNewMatches", label: "No added line matches a pattern" },
+  { value: "files.maxGrowth", label: "No file grows too big" },
+  { value: "node.testScriptIsReal", label: "The test script is real" },
 ];
 
 /** Which AUTO_KINDS card a check step is on (null for a reviewer or you). */
@@ -249,6 +275,17 @@ export function newCheck(choice, { field = "input.answer" } = {}) {
         name: "The handoff has its keys",
         check: { kind: "handoff-has", keys: ["summary"] },
       };
+    case "helper":
+      return {
+        kind: "check",
+        name: "Only the planned files changed",
+        check: {
+          kind: "helper",
+          use: "git.changesMatchPlan",
+          with: { planKeys: "files, tests" },
+          handoffFrom: "handed",
+        },
+      };
     case "compare":
       return {
         kind: "check",
@@ -325,6 +362,12 @@ function stepWhat(step, nameOf) {
   if (c.kind === "handoff-has") {
     const keys = (c.keys || []).filter(Boolean);
     return `Built in · the handoff has ${keys.length ? keys.join(", ") : "…"} · no AI`;
+  }
+  if (c.kind === "helper") {
+    const h = FACTORY_HELPERS.find((x) => x.value === c.use);
+    return `Built in · ${h ? h.label : c.use || "pick a helper"}${
+      c.handoffFrom === "handed" ? " · on the plan it was handed" : ""
+    } · no AI`;
   }
   if (c.kind === "tool") {
     return c.server && c.tool

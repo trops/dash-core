@@ -40,6 +40,8 @@ const CHECK_KINDS = [
   "package",
   // dash-check building blocks on the step (DASH-133): checks/kinds/recipe.js.
   "recipe",
+  // One dash-check helper with its params (DASH-160): checks/kinds/helper.js.
+  "helper",
 ];
 // Dash's own checks, put in a bot's checks flow by Dash, never saved on a
 // bot (DASH-101: the Handoff check).

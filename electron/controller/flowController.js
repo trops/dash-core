@@ -76,6 +76,10 @@ async function checkContext(goal, step) {
   if (jobContext && jobContext.workspace) {
     ctxInput.workspace = jobContext.workspace;
   }
+  // The handoff its bot was handed (DASH-160): input.handedOn.
+  if (jobContext && jobContext.handedOn) {
+    ctxInput.handedOn = jobContext.handedOn;
+  }
   // A self-test (DASH-140): input.test and DASH_TEST=1.
   if (jobContext && jobContext.test === true) ctxInput.test = true;
   const ws =
