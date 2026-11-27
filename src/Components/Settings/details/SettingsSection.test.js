@@ -64,3 +64,25 @@ describe("SettingsSection", () => {
     expect(screen.getByText("inside").parentElement).not.toHaveClass("hidden");
   });
 });
+
+describe("SettingsSection re-fits on open (DASH-127 follow-up)", () => {
+  it("fires a window resize when it opens, not on first render or close", () => {
+    const onResize = jest.fn();
+    window.addEventListener("resize", onResize);
+    try {
+      const { rerender } = render(
+        <SettingsSection id="x" title="X" open={false} />,
+      );
+      expect(onResize).not.toHaveBeenCalled();
+      rerender(<SettingsSection id="x" title="X" open />);
+      expect(onResize).toHaveBeenCalledTimes(1);
+      rerender(<SettingsSection id="x" title="X" open={false} />);
+      expect(onResize).toHaveBeenCalledTimes(1);
+      // Starting open measures normally; no extra event.
+      render(<SettingsSection id="y" title="Y" open />);
+      expect(onResize).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("resize", onResize);
+    }
+  });
+});
