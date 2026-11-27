@@ -18,6 +18,7 @@ const { runCommand } = require("./kinds/command");
 const { runScript } = require("./kinds/script");
 const { runToolCall } = require("./kinds/toolCall");
 const { runRepoCheck } = require("./kinds/repo");
+const { runPackageCheck } = require("./kinds/package");
 const { FACTORY_KINDS, runFactoryCheck } = require("./kinds/factory");
 const { handoffCheck } = require("../bots/botHandoff");
 
@@ -27,6 +28,7 @@ const KIND_LABELS = {
   script: "Script",
   tool: "Tool call",
   repo: "Repo check",
+  package: "Check package",
   "git-on-branch": "On its branch",
   "git-committed": "Work is committed",
   "pr-ci": "The PR's CI passes",
@@ -94,6 +96,17 @@ async function runCheck(check, input, deps = {}) {
         ...(deps.fetch ? { fetch: deps.fetch } : {}),
         ...(deps.sleep ? { sleep: deps.sleep } : {}),
         ...(deps.exec ? { exec: deps.exec } : {}),
+      });
+    } else if (kind === "package") {
+      // A check package (DASH-106): Dash's, or installed from the registry.
+      res = await runPackageCheck(check, input, {
+        getPackage: deps.getPackage,
+        serverForType: deps.serverForType,
+        callTool: deps.callTool,
+        isReadOnly: deps.isReadOnly,
+        cwd: deps.cwd,
+        tmpDir: deps.tmpDir,
+        ...(deps.env ? { env: deps.env } : {}),
       });
     } else if (kind === "handoff") {
       // Dash's own (DASH-101): the answer's handoff, against its job.

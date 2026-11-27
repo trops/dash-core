@@ -85,6 +85,7 @@ const {
   publishFiles,
   readPackageFiles,
   findBotPackages,
+  checkPackagesOf,
 } = require("../bots/botPackage");
 const { downloadBotPackage } = require("./botRegistryInstall");
 const {
@@ -129,6 +130,7 @@ const { botUpdatePatch } = require("../bots/botUpdate");
 const { publishFingerprint } = require("../registry/fingerprint");
 const { remixOrigin, checkRemix, checkRemixAll } = require("../registry/remix");
 const { unassignTeam, isOnTeam } = require("../bots/teams");
+const { createPackageStore } = require("../checks/packageStore");
 const {
   TEAM_SERVER,
   TEAM_TOOLS,
@@ -723,6 +725,10 @@ const botController = {
         }),
     });
     this._jobs.interruptLeftovers();
+    // Check packages installed on this computer (DASH-106).
+    this._checkPackages = createPackageStore({
+      root: path.join(path.dirname(this._botsRoot), "check-packages"),
+    });
     // What waited for the jobs (tasks queued before a restart, DASH-81).
     for (const fn of this._jobsReady || []) this._callReady(fn);
     this._jobsReady = null;
@@ -2632,6 +2638,97 @@ const botController = {
     return !!(t && t.usesHandoffs === true);
   },
 
+  /** The check packages here: Dash's, installed ones, the built-in kinds. */
+  listCheckPackages() {
+    return this._checkPackages
+      ? this._checkPackages.list()
+      : { packages: [], builtIns: [] };
+  },
+
+  /** One check package (its manifest and files), or null. */
+  getCheckPackage(ref) {
+    return this._checkPackages ? this._checkPackages.get(ref) : null;
+  },
+
+  /**
+   * Install a check package from the registry (DASH-106): downloaded,
+   * its signature verified, its files checked, then kept here.
+   * @returns {Promise<{ ok, id, manifest } | { error }>}
+   */
+  async installCheckPackage(ref, opts = {}) {
+    const { downloadCheckPackage } = require("./botRegistryInstall");
+    const got = await downloadCheckPackage(ref, {
+      version: opts.version || null,
+    });
+    if (got.error) return got;
+    if (!got.pkg.scope) return { error: `"${ref}" has no scope` };
+    return this._checkPackages.install({
+      scope: got.pkg.scope,
+      name: got.pkg.name,
+      files: got.files,
+      from: "registry",
+      version: got.pkg.version,
+    });
+  },
+
+  /** Check packages in the registry (DASH-106), by words. */
+  async searchCheckPackages({ query = "" } = {}) {
+    const registryController = require("./registryController");
+    const index = await registryController.fetchRegistryIndex();
+    const q = String(query || "")
+      .trim()
+      .toLowerCase();
+    return ((index && index.packages) || [])
+      .filter((p) => p && p.type === "check")
+      .filter(
+        (p) =>
+          !q ||
+          [
+            p.name,
+            p.displayName,
+            p.description,
+            p.author,
+            p.scope,
+            ...(p.tags || []),
+          ]
+            .filter(Boolean)
+            .join("\n")
+            .toLowerCase()
+            .includes(q),
+      )
+      .map((p) => ({
+        ref: p.scope ? `@${p.scope}/${p.name}` : p.name,
+        name: p.name,
+        displayName: p.displayName || p.name,
+        author: p.author || p.scope || "",
+        description: p.description || "",
+        version: p.version || p.latestVersion || null,
+        check: p.check || null,
+        installed: !!(p.scope && this.getCheckPackage(`@${p.scope}/${p.name}`)),
+      }));
+  },
+
+  removeCheckPackage(ref) {
+    return this._checkPackages
+      ? this._checkPackages.remove(ref)
+      : { error: "No packages here" };
+  },
+
+  /** A provider of this type the bot has (else any here), for a tool package. */
+  serverForType(botId, type) {
+    const bot = this._store.get(botId);
+    if (!bot || !type) return null;
+    const sources = this.listToolSources(bot.workspaceId) || [];
+    const ofType = sources.filter(
+      (s) =>
+        s &&
+        s.type &&
+        String(s.type).toLowerCase() === String(type).toLowerCase(),
+    );
+    const mine = ofType.find((s) => (bot.mcpServers || []).includes(s.name));
+    return (mine || ofType[0] || {}).name || null;
+  },
+
   setUsesHandoffs(workspaceId, on) {
     if (workspaceId === null || workspaceId === undefined) {
       return { error: "Which team?" };
@@ -3819,6 +3916,12 @@ const botController = {
     }
     const previewId = `rp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     this._registryPreviews.set(previewId, { manifest: read.manifest, source });
+    // The check packages it uses (DASH-106), and which are here already.
+    const checkPackages = checkPackagesOf(
+      (read.manifest.members || [])
+        .map((m) => m.embedded)
+        .concat(read.manifest.bot ? [read.manifest.bot] : []),
+    ).map((id) => ({ id, installed: !!this.getCheckPackage(id) }));
     return {
       previewId,
       kind: read.kind,
@@ -3828,6 +3931,7 @@ const botController = {
         displayName: dl.pkg.displayName,
       },
       manifest: read.manifest,
+      checkPackages,
       plan: planTeamInstall(read.manifest, {
         workspaceId,
         providers: this._providerList(),
@@ -3953,7 +4057,7 @@ const botController = {
       return { error: "That preview has expired — find the package again." };
     }
     this._registryPreviews.delete(previewId);
-    return this._installTeamPlan(
+    const res = this._installTeamPlan(
       planTeamInstall(preview.manifest, {
         workspaceId,
         providers: this._providerList(),
@@ -3964,6 +4068,19 @@ const botController = {
       null,
       values,
     );
+    // The check packages its checks use (DASH-106): installed with it.
+    const missing = checkPackagesOf(
+      (preview.manifest.members || []).map((m) => m.embedded),
+    ).filter((id) => !this.getCheckPackage(id));
+    if (!missing.length || !res || res.error) return res;
+    return Promise.all(
+      missing.map((id) =>
+        this.installCheckPackage(id).then(
+          (r) => ({ id, ...(r.error ? { error: r.error } : { ok: true }) }),
+          (e) => ({ id, error: (e && e.message) || String(e) }),
+        ),
+      ),
+    ).then((checkPackages) => ({ ...res, checkPackages }));
   },
 
   /**

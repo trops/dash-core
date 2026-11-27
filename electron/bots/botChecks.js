@@ -28,6 +28,7 @@ const {
 } = require("../flows/flowModel");
 const { repoCheckError } = require("../checks/kinds/repo");
 const { factoryCheckError } = require("../checks/kinds/factory");
+const { packageCheckError } = require("../checks/kinds/package");
 
 const CHECKS_FLOW_KIND = "bot-checks";
 const ON_FAIL = ["retry", "you", "stop"];
@@ -75,7 +76,7 @@ function cleanCheckStep(s, i) {
     // A command that came with a package stays off until you turn it on
     // (DASH-57): nothing it says runs on this computer before then.
     // So does a repo check (DASH-102): it runs the repo's own code.
-    if (s.held === true && (check.kind === "command" || check.kind === "repo"))
+    if (s.held === true && ["command", "repo", "package"].includes(check.kind))
       step.held = true;
   }
   if (s.kind === "reviewer") {
@@ -148,7 +149,9 @@ function checksError(input, selfId = null) {
       if (bad) return bad;
     }
     if (s.kind === "check") {
-      const bad = factoryCheckError(s.check);
+      const bad =
+        factoryCheckError(s.check) ||
+        (s.check.kind === "package" ? packageCheckError(s.check) : null);
       if (bad) return bad;
     }
     if (s.kind === "reviewer" && !s.botId) {

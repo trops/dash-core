@@ -23,6 +23,7 @@ export const KINDS = [
   { value: "script", label: "Script" },
   { value: "tool", label: "Tool call" },
   { value: "repo", label: "Repo check" },
+  { value: "package", label: "Check package" },
   { value: "git-on-branch", label: "On its branch" },
   { value: "git-committed", label: "Work is committed" },
   { value: "pr-ci", label: "The PR's CI passes" },
@@ -40,6 +41,8 @@ export const KIND_INTRO = {
 };
 
 Object.assign(KIND_INTRO, {
+  package:
+    "A ready-made check from a package: one that ships with Dash, or one you install from the registry. Fill in its inputs; it runs without AI.",
   "git-on-branch":
     "Built in: the job's workspace is on its branch (the handoff's workspace.branch). No AI, no shell to write.",
   "git-committed":
@@ -171,6 +174,139 @@ function check({ goal, input, from, files }) {
     details: null,
   };
 }`;
+
+const botsApiOf = () =>
+  (typeof window !== "undefined" && window.mainApi && window.mainApi.bots) ||
+  null;
+
+/**
+ * A package step (DASH-106): which package (Dash's or installed), its
+ * inputs, and finding one in the registry to install.
+ */
+export const PackageCheckEditor = ({ check, patch, muted = "" }) => {
+  const [list, setList] = useState(null);
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [note, setNote] = useState(null);
+  const load = () => {
+    const api = botsApiOf();
+    if (!api || !api.listCheckPackages) {
+      setList([]);
+      return;
+    }
+    Promise.resolve(api.listCheckPackages())
+      .then((r) => setList((r && r.packages) || []))
+      .catch(() => setList([]));
+  };
+  useEffect(load, []);
+  const pkg = (list || []).find((p) => p.id === check.package) || null;
+  const inputs = (check && check.inputs) || {};
+  const search = async () => {
+    const api = botsApiOf();
+    if (!api || !api.searchCheckPackages) return;
+    setNote(null);
+    try {
+      setFound((await api.searchCheckPackages(query)) || []);
+    } catch (e) {
+      setNote((e && e.message) || "Couldn't search the registry.");
+    }
+  };
+  const install = async (ref) => {
+    const api = botsApiOf();
+    if (!api || !api.installCheckPackage) return;
+    setBusy(ref);
+    setNote(null);
+    try {
+      const r = await api.installCheckPackage(ref);
+      if (r && r.error) throw new Error(r.error);
+      patch({ package: r.id || ref, inputs: {} });
+      load();
+      setNote(`Installed ${r.id || ref}.`);
+    } catch (e) {
+      setNote((e && e.message) || "Couldn't install it.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <>
+      <SelectInput
+        label="Package"
+        value={check.package || ""}
+        options={[
+          { value: "", label: list ? "Pick a package" : "Looking…" },
+          ...(list || []).map((p) => ({
+            value: p.id,
+            label: `${p.id}${p.source === "dash" ? " (ships with Dash)" : ""}`,
+          })),
+          ...(check.package && !pkg
+            ? [
+                {
+                  value: check.package,
+                  label: `${check.package} (not installed)`,
+                },
+              ]
+            : []),
+        ]}
+        onChange={(v) => patch({ package: v, inputs: {} })}
+      />
+      {pkg ? (
+        <span className={`text-xs ${muted}`}>
+          {`${pkg.description || ""}${pkg.needs && pkg.needs.provider ? ` Needs a ${pkg.needs.provider} provider.` : ""}${pkg.needs && pkg.needs.commands ? ` Runs ${pkg.needs.commands.join(", ")}.` : ""}`}
+        </span>
+      ) : null}
+      {pkg
+        ? (pkg.inputs || []).map((i) => (
+            <InputText
+              key={i.name}
+              label={i.label || i.name}
+              value={inputs[i.name] !== undefined ? String(inputs[i.name]) : ""}
+              placeholder={i.default !== undefined ? String(i.default) : ""}
+              onChange={(v) =>
+                patch({
+                  inputs: { ...inputs, [i.name]: v === "" ? undefined : v },
+                })
+              }
+            />
+          ))
+        : null}
+      <PanelSection label="Find one in the registry">
+        <div className="flex flex-row gap-2">
+          <div className="flex-1">
+            <InputText
+              ariaLabel="Search check packages"
+              value={query}
+              placeholder="jira, tests, plan…"
+              onChange={setQuery}
+            />
+          </div>
+          <Button title="Search" size="sm" onClick={search} />
+        </div>
+        {(found || []).map((f) => (
+          <div key={f.ref} className="flex flex-row items-center gap-2 text-sm">
+            <span className="flex-1 min-w-0">
+              {`${f.ref}${f.version ? ` ${f.version}` : ""} · ${f.author}: ${f.description}`}
+            </span>
+            {f.installed ? (
+              <span className={`text-xs ${muted}`}>Installed</span>
+            ) : (
+              <Button
+                title={busy === f.ref ? "Installing…" : "Install"}
+                size="sm"
+                onClick={busy ? undefined : () => install(f.ref)}
+              />
+            )}
+          </div>
+        ))}
+        {found && !found.length ? (
+          <span className={`text-xs ${muted}`}>No check packages match.</span>
+        ) : null}
+        {note ? <span className="text-xs">{note}</span> : null}
+      </PanelSection>
+    </>
+  );
+};
 
 /** A fresh check of `kind`, starting from `rows` (What it gets) for rules. */
 export function checkOfKind(kind, rows) {
@@ -422,6 +558,10 @@ export const CheckKindEditor = ({
             </pre>
           </PanelSection>
         </>
+      ) : null}
+
+      {check.kind === "package" ? (
+        <PackageCheckEditor check={check} patch={patch} muted={muted} />
       ) : null}
 
       {check.kind === "repo" ? (

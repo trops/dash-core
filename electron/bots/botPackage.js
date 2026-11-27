@@ -114,6 +114,26 @@ function validateBotPackage(input) {
   };
 }
 
+/**
+ * The registry check packages a team's (or bot's) checks use (DASH-106):
+ * "@scope/name" refs, so installing the team installs them. The ones Dash
+ * ships (a plain name) need no install.
+ */
+function checkPackagesOf(embedded) {
+  const { parsePackageRef } = require("../checks/checkPackage");
+  const out = [];
+  for (const e of embedded || []) {
+    const steps =
+      (e && e.checks && Array.isArray(e.checks.steps) && e.checks.steps) || [];
+    for (const s of steps) {
+      const c = s && s.kind === "check" ? s.check : null;
+      const ref = c && c.kind === "package" ? parsePackageRef(c.package) : null;
+      if (ref && ref.scope && !out.includes(ref.id)) out.push(ref.id);
+    }
+  }
+  return out;
+}
+
 function providerTypesOf(members) {
   const out = [];
   for (const e of members) {
@@ -146,6 +166,8 @@ function registryManifestFor(pkg, meta) {
     visibility: meta.visibility === "public" ? "public" : "private",
     type: isTeam ? PACKAGE_TYPE_TEAM : PACKAGE_TYPE_BOT,
     providerTypes: providerTypesOf(embedded),
+    // The check packages it uses (DASH-106): installed with it.
+    checkPackages: checkPackagesOf(embedded),
   };
   if (isTeam) {
     manifest.team = {
@@ -292,6 +314,7 @@ function findBotPackages(packages, query = "", type = null) {
 }
 
 module.exports = {
+  checkPackagesOf,
   findBotPackages,
   readPackageFiles,
   publishFiles,

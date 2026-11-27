@@ -77,6 +77,10 @@ const {
   BOTS_SET_ASKS_TASK_PASSPHRASE,
   BOTS_SET_ONE_JOB_AT_A_TIME,
   BOTS_SET_USES_HANDOFFS,
+  BOTS_CHECK_PACKAGES_LIST,
+  BOTS_CHECK_PACKAGES_SEARCH,
+  BOTS_CHECK_PACKAGE_INSTALL,
+  BOTS_CHECK_PACKAGE_REMOVE,
   BOTS_GET_APPROVAL_WAIT_HOURS,
   BOTS_SET_APPROVAL_WAIT_HOURS,
   BOTS_TASK_PASSPHRASE_STATE,
@@ -417,6 +421,14 @@ const botApi = {
   /** The team's "One job at a time" switch (DASH-81). */
   setOneJobAtATime: (workspaceId, on) =>
     ipcRenderer.invoke(BOTS_SET_ONE_JOB_AT_A_TIME, { workspaceId, on }),
+  /** Check packages (DASH-106): here, in the registry, install, remove. */
+  listCheckPackages: () => ipcRenderer.invoke(BOTS_CHECK_PACKAGES_LIST, {}),
+  searchCheckPackages: (query) =>
+    ipcRenderer.invoke(BOTS_CHECK_PACKAGES_SEARCH, { query }),
+  installCheckPackage: (ref, version = null) =>
+    ipcRenderer.invoke(BOTS_CHECK_PACKAGE_INSTALL, { ref, version }),
+  removeCheckPackage: (ref) =>
+    ipcRenderer.invoke(BOTS_CHECK_PACKAGE_REMOVE, { ref }),
   /** A team's bots use the standard handoff (DASH-101). */
   setUsesHandoffs: (workspaceId, on) =>
     ipcRenderer.invoke(BOTS_SET_USES_HANDOFFS, { workspaceId, on }),

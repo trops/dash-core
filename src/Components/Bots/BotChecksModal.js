@@ -438,7 +438,8 @@ export const BotChecksModal = ({
                       {(step.check &&
                         (step.check.command ||
                           (step.check.fallback &&
-                            step.check.fallback.command))) ||
+                            step.check.fallback.command) ||
+                          step.check.package)) ||
                         ""}
                     </code>
                     <div>

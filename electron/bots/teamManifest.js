@@ -438,7 +438,10 @@ function checksForInstall(checks, picked) {
       if (
         c &&
         (c.kind === "command" ||
-          (c.kind === "repo" && c.fallback && c.fallback.kind === "command"))
+          (c.kind === "repo" && c.fallback && c.fallback.kind === "command") ||
+          // A registry check package runs its author's code too (DASH-106);
+          // the ones Dash ships don't.
+          (c.kind === "package" && /\//.test(String(c.package || ""))))
       )
         copy.held = true;
       steps.push(copy);

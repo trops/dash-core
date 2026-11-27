@@ -405,3 +405,19 @@ describe("the built-in factory checks (DASH-103)", () => {
     expect(draftError({ steps: [step] }, "me")).toMatch(/needs the keys/);
   });
 });
+
+describe("a check package step (DASH-106)", () => {
+  it("is offered, says its package, and needs one", () => {
+    expect(STEP_CHOICES.map((c) => c.value)).toContain("package");
+    const step = { ...newCheck("package"), id: "a" };
+    expect(step.check).toEqual({ kind: "package", package: "", inputs: {} });
+    expect(stepSub(step)).toBe("Package · pick one · no AI");
+    expect(draftError({ steps: [step] }, "me")).toMatch(/needs a package/);
+    const set = {
+      ...step,
+      check: { ...step.check, package: "plan-has-sections" },
+    };
+    expect(draftError({ steps: [set] }, "me")).toBeNull();
+    expect(stepSub(set)).toBe("Package · plan-has-sections · no AI");
+  });
+});
