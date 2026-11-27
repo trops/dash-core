@@ -132,6 +132,15 @@ if ! npx prettier --check "${PRETTIER_GLOBS[@]}"; then
     exit 1
 fi
 
+# 2a. ESLint (DASH-157): Dash's rules (eslint.config.mjs) — dash-react UI
+# only, ThemeContext from dash-react, CommonJS in electron/, no require()
+# in src/, no palette shades or theme keys as classes, hooks. Existing
+# violations are baselined (eslint-suppressions.json, --max-warnings), so
+# only new ones fail. Then the tests of Dash's own rules.
+step "Linting (ESLint)"
+npm run lint --silent
+no_temp_leaks node --test scripts/eslint-rules/rules.test.js
+
 # 3. Build renderer
 step "Building renderer (Rollup)"
 npx rollup -c rollup.config.renderer.mjs
@@ -287,6 +296,7 @@ Version: {{VERSION}}
 
 ## Validation
 - Prettier (check): passed
+- ESLint (new violations): passed
 - Renderer build (Rollup): passed
 - Electron build (Rollup + MCP catalog): passed
 - Jest tests: passed

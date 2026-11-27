@@ -196,6 +196,7 @@ import {
 // WRONG — never build custom UI components that duplicate dash-react functionality
 // WRONG — never import ThemeContext from a local file
 import { ThemeContext } from "./Context/ThemeContext"; // creates dual context instances
+// (importing it from the `src/Context` index, which re-exports dash-react's, is fine)
 
 // WRONG — never import FontAwesomeIcon directly
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"; // duplicates dependency
@@ -353,6 +354,26 @@ The plan's verification section MUST include the screenshot command with navigat
 - **Electron layer:** CommonJS (`require` / `module.exports`)
 - **Renderer layer:** ES modules (`import` / `export`)
 - **UI components:** Always from `@trops/dash-react` — never built locally if dash-react provides it
+- **Lint:** `npm run lint` (ESLint, `eslint.config.mjs`; ci.sh runs it). See "ESLint rules" below.
+
+### ESLint rules (DASH-157)
+
+ESLint enforces the rules above, not a style (Prettier does that). Rules, in `eslint.config.mjs`:
+
+| Rule | What it stops |
+|---|---|
+| `no-restricted-imports` | `@headlessui/*`, `@fortawesome/*` (use dash-react; `src/utils/resolveIcon.js` is the one exception) and `ThemeContext` from a local file (use `@trops/dash-react` or the `src/Context` re-export) |
+| `no-restricted-syntax` | `require()` in `src/` (exceptions: `src/utils/plugin-loader.js`, `src/utils/widgetBundleLoader.js`); `import`/`export` in `electron/` (CommonJS; it may `require()` the few ESM `src/utils` modules it uses) |
+| `react-hooks/rules-of-hooks`, `react-hooks/exhaustive-deps` | hook mistakes; an `eslint-disable` for them now means something |
+| `dash/no-palette-classes` | Tailwind palette shades such as `bg-gray-800`: use an Aurora role (`dr-role-*`), a `currentTheme[...]` token or a dash-react component |
+| `dash/no-theme-key-classes` | a theme-map key such as `text-primary-medium` written as a class. It isn't a Tailwind class and renders nothing: use `${currentTheme["text-primary-medium"]}` |
+| `no-console` (warning) | `console.log` in `src/` (`console.warn`/`error` are fine) |
+
+The `dash/*` rules are in `scripts/eslint-rules/` (tests next to them). Existing violations are
+baselined: errors per file and rule in `eslint-suppressions.json`, warnings by `--max-warnings`
+in package.json's `lint` script. Only new ones fail. **Never** add to the baseline (or run
+`--suppress-all`) to make a change pass: fix the code. After a cleanup, `npm run lint:prune`
+shrinks the baseline; lower `--max-warnings` by the warnings you removed.
 
 ---
 

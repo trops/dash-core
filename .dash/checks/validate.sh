@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# validate: what dash-core's CI checks (DASH-111): scripts/ci.sh (lint,
-# both test lists, the build) — which runs the ci-test-list check too.
+# validate: what dash-core's CI checks (DASH-111): scripts/ci.sh (Prettier,
+# ESLint with Dash's rules (DASH-157), both test lists, the build) —
+# which runs the ci-test-list check too.
 # By hand: npx -p @trops/dash-core dash-check validate
 # It never rewrites a file (DASH-153): Prettier only checks here
 # (DASH_CI_PRETTIER=check), so an unformatted file fails instead of being
