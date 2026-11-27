@@ -341,3 +341,31 @@ describe("a paused bot finishes a job already started (DASH-12)", () => {
     assert.deepEqual(ctl.calls, [["run", "bot_w", "flow:flow_123"]]);
   });
 });
+
+// DASH-140: a self-test's checks are told so, since what it skipped (a
+// comment, a push) isn't there to check.
+describe("a self-test's checks know it (DASH-140)", () => {
+  const { flowBotHooks } = require("../flows/flowBotHooks");
+  const ctl = (test) => ({
+    _jobs: {
+      jobForGoal: () => "job_1",
+      contextOf: () => ({ item: { id: "DASH-97" }, workspace: null }),
+      isTest: () => test,
+    },
+  });
+
+  it("a test job's context says test: true", () => {
+    assert.deepEqual(flowBotHooks(ctl(true)).jobContext("g"), {
+      item: { id: "DASH-97" },
+      workspace: null,
+      test: true,
+    });
+  });
+
+  it("a real job's context is as before", () => {
+    assert.deepEqual(flowBotHooks(ctl(false)).jobContext("g"), {
+      item: { id: "DASH-97" },
+      workspace: null,
+    });
+  });
+});

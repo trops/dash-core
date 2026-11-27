@@ -76,6 +76,8 @@ async function checkContext(goal, step) {
   if (jobContext && jobContext.workspace) {
     ctxInput.workspace = jobContext.workspace;
   }
+  // A self-test (DASH-140): input.test and DASH_TEST=1.
+  if (jobContext && jobContext.test === true) ctxInput.test = true;
   const ws =
     jobContext && jobContext.workspace && jobContext.workspace.dir
       ? jobContext.workspace.dir
@@ -95,6 +97,7 @@ async function checkContext(goal, step) {
   }
   const folder = own || (g && goal && goal.id ? g.paths(goal.id).work : null);
   const ctxEnv = contextEnv(jobContext || {});
+  if (jobContext && jobContext.test === true) ctxEnv.DASH_TEST = "1";
   // Which step is running (DASH-102), for a check shared by several.
   if (step && step.name) ctxEnv.DASH_STEP = String(step.name);
   // A bot's command checks sign git and gh in like its own commands
