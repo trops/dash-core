@@ -143,6 +143,8 @@ function flowBotHooks(ctl) {
     },
     isReadOnlyTool,
     // Check packages (DASH-106): one by ref, and a provider of a type.
+    teamCheck: (workspaceId, name) =>
+      ctl.teamCheck ? ctl.teamCheck(workspaceId, name) : null,
     getCheckPackage: (ref) =>
       ctl.getCheckPackage ? ctl.getCheckPackage(ref) : null,
     serverForType: (botId, type) =>

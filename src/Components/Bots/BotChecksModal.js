@@ -20,6 +20,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { CheckKindEditor, KIND_INTRO } from "../Flows/CheckKindEditor";
 import { PanelSection } from "../Flows/SidePanel";
 import { BotAvatar } from "./BotAvatar";
+import { AddCheckScreen } from "./AddCheckScreen";
 import { triggerSummary } from "./teamUtils";
 import {
   MAX_CHECKS,
@@ -174,18 +175,30 @@ export const BotChecksModal = ({
       <span className={`w-px h-3 border-l ${hairline}`} />
       {adding === at ? (
         <div
-          className={`flex flex-row flex-wrap gap-1 p-2 rounded-lg border ${hairline} ${fieldBg}`}
+          className={`flex flex-col gap-3 p-3 rounded-lg border ${hairline} ${fieldBg}`}
           data-testid={`add-menu-${at}`}
         >
-          {STEP_CHOICES.map((c) => (
-            <Button3
-              key={c.value}
-              title={c.label}
-              size="sm"
-              onClick={() => add(at, c.value)}
-            />
-          ))}
-          <Button3 title="Cancel" size="sm" onClick={() => setAdding(null)} />
+          {/* Add check (DASH-110): who decides, suggestions, describe it. */}
+          <AddCheckScreen
+            bot={bot}
+            onAdd={(s) => {
+              setDraft((d) => addStep(d, at, s));
+              setSelected(at);
+              setAdding(null);
+            }}
+            onCancel={() => setAdding(null)}
+          />
+          <span className={`text-xs ${muted}`}>Or start a blank one:</span>
+          <div className="flex flex-row flex-wrap gap-1">
+            {STEP_CHOICES.map((c) => (
+              <Button3
+                key={c.value}
+                title={c.label}
+                size="sm"
+                onClick={() => add(at, c.value)}
+              />
+            ))}
+          </div>
         </div>
       ) : (
         <ButtonIcon

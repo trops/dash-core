@@ -127,6 +127,11 @@ async function checkContext(goal, step) {
     isReadOnly: (server, tool) => bots.isReadOnlyTool(server, tool),
     readScript: (ref) => readScriptRef(ref),
     // A package step (DASH-106): the package, and a provider of its type.
+    // A repo check's team copy (DASH-110), from the job's team.
+    teamCheck: (name) =>
+      goal && goal.workspaceId != null && bots.teamCheck
+        ? bots.teamCheck(goal.workspaceId, name)
+        : null,
     getPackage: (ref) =>
       bots.getCheckPackage ? bots.getCheckPackage(ref) : null,
     serverForType: (type) =>

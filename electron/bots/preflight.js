@@ -217,8 +217,13 @@ async function preflight(
       ? "The GitHub provider's token"
       : "Dash (no bot on the team has a GitHub provider)";
     const anyPush = list.some(pushes);
+    // A check the team keeps its own copy of (DASH-110) runs from there.
+    const teamCopies = (team && team.teamChecks) || {};
     const withChecks = list
-      .map((b) => ({ bot: b, checks: repoChecksOf(b) }))
+      .map((b) => ({
+        bot: b,
+        checks: repoChecksOf(b).filter((c) => !teamCopies[c.check.name]),
+      }))
       .filter((x) => x.checks.length);
     for (const r of repos) {
       const res = await gh(doFetch, token, `repos/${r.slug}`);

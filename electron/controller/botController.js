@@ -2709,6 +2709,36 @@ const botController = {
       }));
   },
 
+  // The Add check screen and Set up checks (DASH-110): botAddCheck.js.
+  suggestChecks(botId) {
+    return require("./botAddCheck").suggest(this, botId);
+  },
+  draftCheck(botId, ask) {
+    return require("./botAddCheck").draft(this, botId, ask);
+  },
+  tryCheck(botId, draft) {
+    return require("./botAddCheck").tryIt(this, botId, draft);
+  },
+  saveCheck(botId, opts) {
+    return require("./botAddCheck").save(this, botId, opts);
+  },
+  teamChecks(workspaceId) {
+    return require("./botAddCheck").refresh(this, workspaceId);
+  },
+  resolveTeamCheck(workspaceId, name, choice) {
+    return require("./botAddCheck").resolve(this, workspaceId, name, choice);
+  },
+  reposWithoutChecks(workspaceId) {
+    return require("./botAddCheck").reposWithoutChecks(this, workspaceId);
+  },
+  setUpRepoChecks(workspaceId, repoKey, opts) {
+    return require("./botAddCheck").setUp(this, workspaceId, repoKey, opts);
+  },
+  /** A repo check's team copy (while its PR isn't merged), or null. */
+  teamCheck(workspaceId, name) {
+    return require("./botAddCheck").teamCheck(this, workspaceId, name);
+  },
+
   removeCheckPackage(ref) {
     return this._checkPackages
       ? this._checkPackages.remove(ref)
