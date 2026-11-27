@@ -1704,6 +1704,51 @@ describe("BotRunner.run — refusals (DASH-115)", () => {
     return engine;
   }
 
+  // DASH-140: a chained command ran nothing; the bot splits it and goes on.
+  it("a chained command doesn't end the run: the bot is told to split it", async () => {
+    const engine = refusingEngine(
+      { reason: "chained", command: "cd x && npm test", strict: true },
+      "split it",
+    );
+    const { runner } = makeRunner(engine);
+    const record = await runner.run("bot_1", {
+      prompt: "go",
+      failOnRefusal: true,
+    });
+    assert.equal(record.status, "completed");
+    assert.match(engine.told, /one command per call/);
+    assert.match(engine.told, /Nothing ran/);
+  });
+
+  it("a fourth chained command in a run ends it failed", async () => {
+    const engine = {
+      id: "tool-loop",
+      told: [],
+      run(ctx) {
+        return (async function* () {
+          for (let i = 0; i < 4; i++) {
+            const r = ctx.onRefused({
+              reason: "chained",
+              command: "cd x && npm test",
+              strict: true,
+            });
+            engine.told.push(r && r.message);
+          }
+          yield { type: "text", text: "done" };
+          yield { type: "done", stopReason: "end_turn" };
+        })();
+      },
+    };
+    const { runner } = makeRunner(engine);
+    const record = await runner.run("bot_1", {
+      prompt: "go",
+      failOnRefusal: true,
+    });
+    assert.equal(record.status, "failed");
+    assert.match(engine.told[2], /Nothing ran/);
+    assert.doesNotMatch(engine.told[3], /Nothing ran/);
+  });
+
   it("a blocked command ends the run failed, with what, why and the fix kept on it", async () => {
     const engine = refusingEngine({
       reason: "blocked-list",

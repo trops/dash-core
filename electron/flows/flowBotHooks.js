@@ -111,7 +111,12 @@ function flowBotHooks(ctl) {
         return null;
       }
       const jobId = ctl._jobs.jobForGoal(goalId);
-      return jobId ? ctl._jobs.contextOf(jobId) : null;
+      if (!jobId) return null;
+      const ctx = ctl._jobs.contextOf(jobId);
+      // A self-test's checks are told so (DASH-140): what a test skipped
+      // (a comment, a push) isn't there to check.
+      const test = !!(ctl._jobs.isTest && ctl._jobs.isTest(jobId));
+      return test ? { ...(ctx || {}), test: true } : ctx;
     },
     // The bot's GitHub sign-in for its command checks (DASH-66), or null.
     // Never logged.
