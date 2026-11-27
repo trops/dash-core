@@ -5,7 +5,14 @@
 import React from "react";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { teamLines, installedText, needsTeamSetup } from "./dashboardBots";
+import {
+  teamLines,
+  installedText,
+  needsTeamSetup,
+  opensTeamSetup,
+  installButtons,
+  installWaitingText,
+} from "./dashboardBots";
 import { PublishBotsList } from "./PublishDashboardModal";
 
 jest.mock("../../../ComponentManager", () => ({
@@ -127,5 +134,60 @@ describe("needsTeamSetup (DASH-118)", () => {
       needsTeamSetup({ summary: { bots: { needsSettings: ["A"] } } }),
     ).toBe(false);
     expect(needsTeamSetup(null)).toBe(false);
+  });
+});
+
+describe("the install dialog's choice (DASH-130)", () => {
+  const ws = { id: 7 };
+  const filled = { workspace: ws, summary: { bots: { installed: [{}] } } };
+  const missing = {
+    workspace: ws,
+    summary: { bots: { installed: [{}], needsSettings: ["Repo URL"] } },
+  };
+
+  it("fill in later never lands on Set up; open Set up always does", () => {
+    expect(opensTeamSetup(missing, false)).toBe(false);
+    expect(opensTeamSetup(filled, true)).toBe(true);
+    expect(opensTeamSetup(missing, true)).toBe(true);
+    // No choice made: DASH-118's rule.
+    expect(opensTeamSetup(filled, undefined)).toBe(false);
+    expect(opensTeamSetup(missing, undefined)).toBe(true);
+    // Nothing to open.
+    expect(opensTeamSetup({ summary: { bots: {} } }, true)).toBe(false);
+    expect(
+      opensTeamSetup(
+        { workspace: ws, summary: { bots: { error: "x" } } },
+        true,
+      ),
+    ).toBe(false);
+    expect(opensTeamSetup(null, true)).toBe(false);
+  });
+
+  it("buttons: one Install without a team; fill in later while missing", () => {
+    expect(installButtons({}).map((b) => b.title)).toEqual(["Install"]);
+    expect(
+      installButtons({ hasTeam: true, missing: true }).map((b) => [
+        b.title,
+        b.openSetup,
+        b.primary,
+      ]),
+    ).toEqual([
+      ["Install, fill in later", false, false],
+      ["Install and open Set up", true, true],
+    ]);
+    expect(installButtons({ hasTeam: true })[0].title).toBe("Install");
+  });
+
+  it("says the team won't take work until required settings are filled in", () => {
+    expect(installWaitingText({})).toBeNull();
+    expect(installWaitingText({ teamMissing: 1 })).toBe(
+      "1 required team setting is still empty. The dashboard installs, but its team won't take work until they're filled in. The team's Set up shows what's left.",
+    );
+    expect(installWaitingText({ teamMissing: 2, botsWaiting: 1 })).toMatch(
+      /^Team settings and 1 bot still need filling in\./,
+    );
+    expect(installWaitingText({ botsWaiting: 2 })).toMatch(
+      /^2 bots still need settings\. .*those bots wait until they're filled in\./,
+    );
   });
 });

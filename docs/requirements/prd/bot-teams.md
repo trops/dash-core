@@ -1223,6 +1223,16 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 
 **Not done here (DASH-130):** the install dialog's "Install, fill in later" / "Install and open Set up" buttons and its visual polish.
 
+## DASH-130: Install dialog and Checks panel polish (2026-11-27)
+
+**Status:** Implemented (mockup 8).
+
+- [x] The registry dashboard install (`Settings/details/DashboardInstallOptionsModal.js`) uses theme tokens throughout (`useConfigTokens`, `useStatusTokens`, dash-react `SelectInput` / `Button3`); no hard-coded grays or reds.
+- [x] Required settings are marked: team settings by `TeamSettingsForm`, and each bot's card in "Bots that need something from you" (`Bots/BotSettings.js` `BotSettingsInstall`) has the bot's initials (`botInitials`), its first setting's label and a **Required** mark. TeamImportReview shows the same cards.
+- [x] An install with required settings empty is allowed. The dialog says what waits ("3 bots still need settings. The dashboard installs, and those bots wait until they're filled in." or, for team settings, "…its team won't take work until they're filled in."), with `dashboardBots.installWaitingText`.
+- [x] With a team, the buttons are **Install, fill in later** (plain "Install" once nothing required is empty) and **Install and open Set up** (`dashboardBots.installButtons`). `onConfirm` gets `openSetup`; RegistryDashboardDetail lands on the team's setup per `dashboardBots.opensTeamSetup(result, openSetup)`: never for fill in later, always (when a team installed) for open Set up, and DASH-118's `needsTeamSetup` rule when no choice was made. A dashboard with no team keeps one Install button.
+- [x] The team's Checks panel (`Bots/TeamChecksPanel.js`) is always shown, with a line per repo ("dash-core: 2 checks", "no checks yet" with Set up checks, or "Dash can't read its checks"). `reposWithoutChecks` also returns `all: [{ key, slug, count }]` (`count` null when unreadable; `botAddCheck.checkNamesIn` leaves out helpers and sample inputs). PR links open in the browser (`mainApi.shell.openExternal`).
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams
@@ -1351,6 +1361,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.30    | 2026-11-27 | John   | DASH-135: the tracker setting type — where a bot's tickets come from (Jira / GitHub Issues / Linear / None) with pickers, a connection row, a preview and Jira's Advanced JQL; checked by setup |
 | 1.31    | 2026-11-27 | John   | DASH-119: a team's setup status — badge on the tree row and Bots view header, "This team can't take work yet" banner, "Needs setup" on cards, Run now says why it can't start |
 | 1.32    | 2026-11-27 | John   | DASH-118: Team setup in the Bots view header (opens the team page at its setup), team actions under ⋯, install copy names where settings are, a fresh install lands on the team's setup |
+| 1.33    | 2026-11-27 | John   | DASH-130: install dialog in theme colours, Required marks and bot initials, "Install, fill in later" / "Install and open Set up"; the Checks panel always shown with a line per repo and clickable PR links |
 
 ---
 

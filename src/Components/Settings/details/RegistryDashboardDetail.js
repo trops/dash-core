@@ -20,13 +20,15 @@ import { InstallProgressModal } from "./InstallProgressModal";
 import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
 import { DashboardInstallOptionsModal } from "./DashboardInstallOptionsModal";
 import { botsWithSettings } from "../../Bots/BotSettings";
-import { teamLines, installedText, needsTeamSetup } from "./dashboardBots";
+import { teamLines, installedText, opensTeamSetup } from "./dashboardBots";
 import { openTeamSetup } from "../../Bots/openTeamSetup";
 
-// A fresh install whose bots still need settings lands on its team's
-// setup (DASH-118), after the host has opened the new dashboard.
-function landOnSetup(result) {
-  if (needsTeamSetup(result)) openTeamSetup(result.workspace.id);
+// A fresh install lands on its team's setup (DASH-118), after the host
+// has opened the new dashboard: on "Install and open Set up", never on
+// "Install, fill in later" (DASH-130), and otherwise when its bots still
+// need settings.
+function landOnSetup(result, openSetup) {
+  if (opensTeamSetup(result, openSetup)) openTeamSetup(result.workspace.id);
 }
 import { unavailableRequiredWidgets } from "./registryDashboardCompat";
 
@@ -57,6 +59,8 @@ export const RegistryDashboardDetail = ({
   const [progressWidgets, setProgressWidgets] = useState([]);
   const [progressComplete, setProgressComplete] = useState(false);
   const progressResultRef = useRef(null);
+  // The install dialog's button: open the team's Set up after (DASH-130).
+  const openSetupRef = useRef(undefined);
   const cleanupProgressRef = useRef(null);
 
   // Pre-install options modal: choose folder + rename. Lets the user
@@ -122,8 +126,9 @@ export const RegistryDashboardDetail = ({
     return window.mainApi?.menuItems?.saveMenuItem?.(appId, menuItem);
   }
 
-  async function handleOptionsConfirm({ name, menuId, teamValues }) {
+  async function handleOptionsConfirm({ name, menuId, teamValues, openSetup }) {
     setShowOptionsModal(false);
+    openSetupRef.current = openSetup;
     await runInstall({
       name,
       menuId,
@@ -214,7 +219,7 @@ export const RegistryDashboardDetail = ({
         if (result?.success && onInstallComplete) {
           onInstallComplete(result);
         }
-        if (result?.success) landOnSetup(result);
+        if (result?.success) landOnSetup(result, openSetupRef.current);
       }
     } catch (err) {
       console.error("[RegistryDashboardDetail] Install error:", err);
@@ -248,7 +253,7 @@ export const RegistryDashboardDetail = ({
       if (result.success && onInstallComplete) {
         onInstallComplete(result);
       }
-      if (result.success) landOnSetup(result);
+      if (result.success) landOnSetup(result, openSetupRef.current);
     }
   }, [pkg.name, onInstallComplete]);
 

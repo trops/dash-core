@@ -24,6 +24,7 @@ import {
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { TeamSettingsForm, emptySettings } from "./TeamSettingsForm";
 import { BOT_VALUES_KEY } from "../../utils/botSettings";
+import { avatarColor } from "../AppPages/botSummary";
 
 const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
 const COLUMN_TYPES = ["text", "url", "folder", "command", "boolean", "number"];
@@ -287,6 +288,33 @@ export function botsWithSettings(members) {
     .filter((b) => b.role && b.settings.length);
 }
 
+/** A bot's initials for its install card (mockup 8): "Ticket Bot" → "TB". */
+export function botInitials(name) {
+  const words = String(name || "")
+    .trim()
+    .split(/[\s_-]+/)
+    .filter(Boolean);
+  if (!words.length) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+/** How many of these install bots still have a Required setting empty. */
+export function botsWaiting(bots, values = {}) {
+  return (Array.isArray(bots) ? bots : []).filter(
+    (b) =>
+      b &&
+      b.settings &&
+      missingRequired(b.settings, (values || {})[b.role] || {}).length,
+  ).length;
+}
+
+/** "3 bots still need settings. …" (mockup 8), or null when none do. */
+export function botsWaitingText(n) {
+  if (!n) return null;
+  return `${n} bot${n === 1 ? "" : "s"} still need${n === 1 ? "s" : ""} settings. The dashboard installs, and ${n === 1 ? "that bot waits" : "those bots wait"} until ${n === 1 ? "it's" : "they're"} filled in.`;
+}
+
 /** Team values with the bots' own put in under "@bots" (when any). */
 export function withBotInstallValues(teamValues, botValues) {
   const bots = Object.fromEntries(
@@ -302,43 +330,63 @@ export function withBotInstallValues(teamValues, botValues) {
  * "Bots that need something from you" (mockup 8): one card per bot that
  * declares settings, its Required ones marked. Controlled: `values`
  * { [role]: { [name]: value } }, onChange(role, name, value). Nothing
- * shows when no bot declares any.
+ * shows when no bot declares any. Each card has the bot's initials and a
+ * Required mark when it has a required setting (DASH-130).
  */
 export const BotSettingsInstall = ({
   bots = [],
   values = {},
   onChange,
   disabled = false,
+  // Off where the form around it says what's still missing (the registry
+  // dashboard install, DASH-130).
+  showWaiting = true,
 }) => {
-  const { muted, hairline } = useConfigTokens();
+  const { muted, hairline, selectedBg } = useConfigTokens();
   const status = useStatusTokens();
   const list = (Array.isArray(bots) ? bots : []).filter(
     (b) => b && b.settings && b.settings.length,
   );
   if (!list.length) return null;
-  const waiting = list.filter(
-    (b) => missingRequired(b.settings, values[b.role] || {}).length,
-  ).length;
+  const waiting = botsWaiting(list, values);
   return (
     <div className="flex flex-col gap-3" data-testid="bot-settings-install">
       <div className="flex flex-col gap-0.5">
         <SectionLabel text="Bots that need something from you" />
         <span className={`text-xs ${muted}`}>
-          Fill them in now or later on each bot&apos;s Settings tab. Each is
-          saved on its bot.
+          Fill them in now or later on the team&apos;s Set up. Each is saved on
+          its bot.
         </span>
       </div>
       {list.map((b) => {
         const first = b.settings.find((s) => s.required) || b.settings[0];
+        const required = b.settings.some((s) => s && s.required);
         return (
           <div
             key={b.role}
-            className={`flex flex-col gap-2 rounded-lg border p-3 ${hairline}`}
+            className={`flex flex-col gap-2 rounded-lg border p-3 ${hairline} ${selectedBg}`}
             data-testid={`bot-settings-install-${b.role}`}
           >
-            <span className="text-sm font-medium">
-              {`${b.name}${first ? ` · ${first.label || first.name}` : ""}`}
-            </span>
+            <div className="flex flex-row items-center gap-2">
+              <span
+                aria-hidden="true"
+                data-testid="bot-settings-install-initials"
+                className={`flex items-center justify-center h-7 w-7 rounded-full flex-shrink-0 text-xs font-bold text-white ${avatarColor({ name: b.name || b.role })}`}
+              >
+                {botInitials(b.name || b.role)}
+              </span>
+              <span className="flex-1 min-w-0 text-sm font-medium">
+                {`${b.name}${first ? ` · ${first.label || first.name}` : ""}`}
+              </span>
+              {required ? (
+                <span
+                  className={`text-xs font-semibold ${status.warning.text}`}
+                  data-testid={`bot-settings-install-${b.role}-required`}
+                >
+                  Required
+                </span>
+              ) : null}
+            </div>
             <TeamSettingsForm
               settings={b.settings}
               values={values[b.role] || {}}
@@ -349,13 +397,13 @@ export const BotSettingsInstall = ({
           </div>
         );
       })}
-      {waiting ? (
-        <span
-          className={`text-xs ${status.warning.text}`}
+      {waiting && showWaiting ? (
+        <div
+          className={`rounded-lg border px-3 py-2 text-sm ${status.info.border} ${status.info.bg} ${status.info.text}`}
           data-testid="bot-settings-install-waiting"
         >
-          {`${waiting} bot${waiting === 1 ? "" : "s"} still need${waiting === 1 ? "s" : ""} settings. It installs, and ${waiting === 1 ? "that bot waits" : "those bots wait"} until they're filled in.`}
-        </span>
+          {botsWaitingText(waiting)}
+        </div>
       ) : null}
     </div>
   );

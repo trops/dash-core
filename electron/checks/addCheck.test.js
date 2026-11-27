@@ -629,3 +629,23 @@ describe("Set up checks: setup and validate from the repo's own CI", () => {
     );
   });
 });
+
+describe("a repo's check count (DASH-130)", () => {
+  it("counts each check once, leaving out helpers and sample inputs", () => {
+    assert.deepEqual(
+      botAddCheck.checkNamesIn({
+        checks: [
+          "setup.sh",
+          "validate.sh",
+          "validate.sample.json",
+          "lint.bad.json",
+          "helpers",
+          "lint.check.js",
+        ],
+      }),
+      ["setup", "validate", "lint"],
+    );
+    assert.deepEqual(botAddCheck.checkNamesIn({}), []);
+    assert.deepEqual(botAddCheck.checkNamesIn(null), []);
+  });
+});
