@@ -10,6 +10,35 @@ const { describe, it, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
+const { tempDir } = require("../testUtils/tempDir");
+
+// The server is HTTPS with a self-signed certificate (tlsCert.js), made
+// once in a temp userData that's removed at exit (DASH-158).
+const userData = tempDir("dash-mcp-server-test-");
+
+/** A request to the test server: { status, body }. */
+function request(port, { path: urlPath, method, token }) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: urlPath,
+        method,
+        rejectUnauthorized: false, // the server's self-signed certificate
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => (body += chunk));
+        res.on("end", () => resolve({ status: res.statusCode, body }));
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Mock State
@@ -307,10 +336,7 @@ describe("mcpDashServerController", () => {
       if (mod === "crypto") return require("crypto");
       if (mod === "electron")
         return {
-          app: {
-            getPath: () =>
-              path.join(require("os").tmpdir(), "dash-test-" + Date.now()),
-          },
+          app: { getPath: () => userData },
         };
       if (mod === "@modelcontextprotocol/sdk/server/mcp.js")
         return { McpServer: MockMcpServer };
@@ -485,175 +511,86 @@ describe("mcpDashServerController", () => {
       await controller.stopServer(win);
     });
 
-    it("rejects requests without valid Bearer token", async () => {
+    // Each test stops its server even when an assert fails, or the open
+    // server keeps the run from ever ending.
+    async function withServer(port, fn) {
       const { controller } = loadController();
-      const http = require("http");
-      const result = await controller.startServer(win, { port: 13150 });
-      assert.equal(result.success, true);
+      const result = await controller.startServer(win, { port });
+      try {
+        assert.equal(result.success, true, result.error);
+        return await fn(controller);
+      } finally {
+        await controller.stopServer(win);
+      }
+    }
 
-      // Make request without auth header
-      const response = await new Promise((resolve, reject) => {
-        const req = http.request(
-          {
-            hostname: "127.0.0.1",
-            port: 13150,
-            path: "/mcp",
-            method: "POST",
-          },
-          (res) => {
-            let body = "";
-            res.on("data", (chunk) => (body += chunk));
-            res.on("end", () => resolve({ status: res.statusCode, body }));
-          },
-        );
-        req.on("error", reject);
-        req.end();
+    it("rejects requests without valid Bearer token", async () => {
+      await withServer(13150, async () => {
+        const response = await request(13150, {
+          path: "/mcp",
+          method: "POST",
+        });
+        assert.equal(response.status, 401);
+        const data = JSON.parse(response.body);
+        assert.match(data.error, /unauthorized/i);
       });
-
-      assert.equal(response.status, 401);
-      const data = JSON.parse(response.body);
-      assert.match(data.error, /unauthorized/i);
-
-      await controller.stopServer(win);
     });
 
     it("rejects requests with wrong Bearer token", async () => {
-      const { controller } = loadController();
-      const http = require("http");
-      await controller.startServer(win, { port: 13151 });
-
-      const response = await new Promise((resolve, reject) => {
-        const req = http.request(
-          {
-            hostname: "127.0.0.1",
-            port: 13151,
-            path: "/mcp",
-            method: "POST",
-            headers: {
-              Authorization: "Bearer wrong-token-123",
-            },
-          },
-          (res) => {
-            let body = "";
-            res.on("data", (chunk) => (body += chunk));
-            res.on("end", () => resolve({ status: res.statusCode, body }));
-          },
-        );
-        req.on("error", reject);
-        req.end();
+      await withServer(13151, async () => {
+        const response = await request(13151, {
+          path: "/mcp",
+          method: "POST",
+          token: "wrong-token-123",
+        });
+        assert.equal(response.status, 401);
       });
-
-      assert.equal(response.status, 401);
-
-      await controller.stopServer(win);
     });
 
     it("returns 404 for unknown paths", async () => {
-      const { controller } = loadController();
-      const http = require("http");
-      await controller.startServer(win, { port: 13152 });
-      const token = controller.getOrCreateToken(win);
-
-      const response = await new Promise((resolve, reject) => {
-        const req = http.request(
-          {
-            hostname: "127.0.0.1",
-            port: 13152,
-            path: "/unknown",
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-          (res) => {
-            let body = "";
-            res.on("data", (chunk) => (body += chunk));
-            res.on("end", () => resolve({ status: res.statusCode, body }));
-          },
-        );
-        req.on("error", reject);
-        req.end();
+      await withServer(13152, async (controller) => {
+        const response = await request(13152, {
+          path: "/unknown",
+          method: "GET",
+          token: controller.getOrCreateToken(win),
+        });
+        assert.equal(response.status, 404);
       });
-
-      assert.equal(response.status, 404);
-
-      await controller.stopServer(win);
     });
 
     it("serves health check endpoint", async () => {
-      const { controller } = loadController();
-      const http = require("http");
-      await controller.startServer(win, { port: 13153 });
-      const token = controller.getOrCreateToken(win);
-
-      const response = await new Promise((resolve, reject) => {
-        const req = http.request(
-          {
-            hostname: "127.0.0.1",
-            port: 13153,
-            path: "/health",
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-          (res) => {
-            let body = "";
-            res.on("data", (chunk) => (body += chunk));
-            res.on("end", () => resolve({ status: res.statusCode, body }));
-          },
-        );
-        req.on("error", reject);
-        req.end();
+      await withServer(13153, async (controller) => {
+        const response = await request(13153, {
+          path: "/health",
+          method: "GET",
+          token: controller.getOrCreateToken(win),
+        });
+        assert.equal(response.status, 200);
+        const data = JSON.parse(response.body);
+        assert.equal(data.status, "ok");
+        assert.equal(data.server, "dash-electron-mcp");
       });
-
-      assert.equal(response.status, 200);
-      const data = JSON.parse(response.body);
-      assert.equal(data.status, "ok");
-      assert.equal(data.server, "dash-electron-mcp");
-
-      await controller.stopServer(win);
     });
 
     it("rate limits excessive requests", async () => {
-      const { controller } = loadController();
-      const http = require("http");
-      await controller.startServer(win, { port: 13154 });
-      const token = controller.getOrCreateToken(win);
-
-      // Send 61 requests rapidly (rate limit is 60/min)
-      const results = [];
-      for (let i = 0; i < 62; i++) {
-        const response = await new Promise((resolve, reject) => {
-          const req = http.request(
-            {
-              hostname: "127.0.0.1",
-              port: 13154,
-              path: "/health",
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            },
-            (res) => {
-              let body = "";
-              res.on("data", (chunk) => (body += chunk));
-              res.on("end", () => resolve({ status: res.statusCode, body }));
-            },
-          );
-          req.on("error", reject);
-          req.end();
-        });
-        results.push(response.status);
-      }
-
-      // At least one should be rate limited (429)
-      assert.ok(
-        results.includes(429),
-        "Expected at least one 429 rate limit response",
-      );
-
-      await controller.stopServer(win);
+      await withServer(13154, async (controller) => {
+        const token = controller.getOrCreateToken(win);
+        // Send 62 requests rapidly (rate limit is 60/min)
+        const results = [];
+        for (let i = 0; i < 62; i++) {
+          const response = await request(13154, {
+            path: "/health",
+            method: "GET",
+            token,
+          });
+          results.push(response.status);
+        }
+        // At least one should be rate limited (429)
+        assert.ok(
+          results.includes(429),
+          "Expected at least one 429 rate limit response",
+        );
+      });
     });
 
     it("EADDRINUSE returns descriptive error", async () => {

@@ -17,7 +17,9 @@ npx -p @trops/dash-core dash-check validate
 How to write one: `get_setup_guide({ topic: "checks" })` or the
 `dash-check-authoring` skill.
 
-dash-core also has `ci-test-list`: every `node:test` file is in
-`scripts/ci.sh`'s lists (jest skips `electron/` and `scripts/`, so one that
-isn't named there never runs). `scripts/ci.sh` runs it too, so CI and the
-bots agree. Files that were already missing are in `ci-test-list.known.txt`.
+dash-core also has `ci-test-list`: every `node:test` file runs in CI
+(DASH-158). jest skips `electron/` and `scripts/`, so `scripts/ci.sh` runs
+every `node:test` file it finds with `scripts/listNodeTests.js`, no list to
+keep. A file that can't pass yet is quarantined in `ci-test-list.known.txt`
+with its Jira bug (`path  # DASH-<n>: why`); the check fails on one without.
+`scripts/ci.sh` runs the check too, so CI and the bots agree.

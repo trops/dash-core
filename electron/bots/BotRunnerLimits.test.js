@@ -137,7 +137,16 @@ describe("BotRunner — Settings › AI", () => {
     };
     // 0.0005 minutes = 30 ms.
     const { runner } = makeRunner(engine, { maxMinutes: 0.0005 });
-    const record = await runner.run("bot_1", { prompt: "go" });
+    // BotRunner unref()s its time-limit timer (it mustn't keep the app
+    // alive), so here, where nothing else is pending, hold the event loop
+    // open until the run ends or node:test gives up on it (DASH-158).
+    const keepAlive = setInterval(() => {}, 1000);
+    let record;
+    try {
+      record = await runner.run("bot_1", { prompt: "go" });
+    } finally {
+      clearInterval(keepAlive);
+    }
     assert.equal(record.status, "failed");
     assert.match(
       record.error,
