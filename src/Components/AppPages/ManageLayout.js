@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ButtonIcon,
   DropdownPanel,
@@ -6,6 +6,7 @@ import {
   MenuItem2,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { placeMenu, visibleBounds } from "./menuPlacement";
 
 /**
  * ManageLayout — the shared frame of the five Manage pages (Dashboards,
@@ -149,22 +150,41 @@ export const DetailGroup = ({ title, testId, children }) => {
  *
  * @param {Array<{ label: string, icon?: string, onClick: () => void }>} items
  */
+// The menu's width (w-56) and a row's height, to place it before it's drawn.
+const MENU_WIDTH = 224;
+const MENU_ROW = 36;
+
 export const OverflowMenu = ({ items = [], ariaLabel = "More actions" }) => {
   const [open, setOpen] = useState(false);
+  // Which edge of the button it lines up with, and up or down: so it stays
+  // in view (a "⋯" near the left of a narrow window grows right, DASH-118).
+  const [place, setPlace] = useState({ align: "right", direction: "down" });
+  const rootRef = useRef(null);
   const shown = items.filter(Boolean);
   if (!shown.length) return null;
+  const toggle = () => {
+    if (!open && rootRef.current) {
+      setPlace(
+        placeMenu({
+          anchor: rootRef.current.getBoundingClientRect(),
+          menu: { width: MENU_WIDTH, height: 8 + shown.length * MENU_ROW },
+          bounds: visibleBounds(rootRef.current),
+        }),
+      );
+    }
+    setOpen((v) => !v);
+  };
+  const position = `absolute ${place.align === "left" ? "left-0" : "right-0"} ${
+    place.direction === "up" ? "bottom-full mb-1" : "top-full mt-1"
+  }`;
   return (
-    <div className="relative" data-testid="overflow-menu">
-      <ButtonIcon
-        icon="ellipsis"
-        ariaLabel={ariaLabel}
-        onClick={() => setOpen((v) => !v)}
-      />
+    <div className="relative" data-testid="overflow-menu" ref={rootRef}>
+      <ButtonIcon icon="ellipsis" ariaLabel={ariaLabel} onClick={toggle} />
       <DropdownPanel
         isOpen={open}
         onClose={() => setOpen(false)}
-        position="absolute top-full right-0 mt-1"
-        align="right"
+        position={position}
+        align={place.align}
         width="w-56"
       >
         {shown.map((item) => (

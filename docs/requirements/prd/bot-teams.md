@@ -1217,6 +1217,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 
 - [x] The Bots view's team header has **Team setup** next to Add bot (diagram, list and narrow windows). It opens the team's page under Manage › Bots, scrolled to its setup sections (`Bots/openTeamSetup.js`: a `dash:open-page` event `{ page: "bots", teamId, setup: true }` → DashboardStage `botsLink` → AppPage → BotsPage `teamLink` → TeamOverview `setupFocus`). A team that isn't set up opens at the top, where its banner (DASH-119) says what's missing.
 - [x] Team budget, Export team, Show team activity and Publish team moved under a ⋯ menu beside them (no longer at the bottom of the diagram). What an export or publish says still shows below the team.
+- [x] Follow-up: the ⋯ menu stays in view. `OverflowMenu` (ManageLayout, also Manage pages' detail headers) picks, on open, which edge of the button it lines up with and whether it opens up (`AppPages/menuPlacement.js` `placeMenu`, bounded by the window cut by any clipping container): near the left of a narrow window it grows right instead of running under the sidebar.
 - [x] The setup banner with no one bot to fix (only Check setup's other problems) opens Team setup, in the Bots view and a lead's conversation.
 - [x] Install copy (DashboardInstallOptionsModal and TeamImportReview): "You can change them later in the team's setup: Team setup in the dashboard's Bots view, or Manage › Bots."
 - [x] A registry dashboard install whose team or bots still need settings (`needsSettings` / `botsNeedSettings`, `dashboardBots.needsTeamSetup`) lands on that team's setup after the new dashboard opens.
@@ -1428,6 +1429,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.37    | 2026-11-27 | John   | DASH-125: Check setup lists the commands that came with a package and are off, with one "Review and turn on"; a job waiting on one says its command ("Turn on npm test") |
 | 1.38    | 2026-11-27 | John   | DASH-129: copy for installers — settings say what they're for, "Show how bots use it" hides {name}; the standard handoff's format under Learn more, and on at install for packages that declare it |
 | 1.39    | 2026-11-27 | John   | DASH-119 follow-up: the Bots switch's count says what it counts and for whom, opens that bot, and a failure dismissed in Bot notifications leaves it |
+| 1.40    | 2026-11-27 | John   | DASH-118 follow-up: the team ⋯ menu (and every Manage ⋯ menu) flips to stay inside the window |
 
 ---
 
