@@ -146,6 +146,11 @@ const BOT_FIELDS = {
     description:
       "'ask' (asks before anything that changes things), 'ask-every' (before every tool) or 'allow' (without asking; deleting or sending still asks when its lead asks) or 'unattended' (never asks, on any run: inside its folders everything runs, outside them is refused; it needs folders). New bots: 'ask' unless given.",
   },
+  strict: {
+    type: "boolean",
+    description:
+      "Strict: only what's listed (DASH-116). Its runs may use only its providers' listed tools, its allowed shell commands (commands.allowed) and files in its folders; anything else is refused and the run fails with the reason. Left out: on for a team with the standard handoff.",
+  },
   providers: {
     type: "array",
     items: PROVIDER_SCHEMA,
@@ -668,6 +673,9 @@ function botView(bot, { workspaces, grant, paused }) {
     provider: bot.provider || null,
     builtinTools: builtinOf(bot),
     approvalPolicy: bot.approvalPolicy || "ask",
+    // true / false, or null: its team's default (on with the standard
+    // handoff), DASH-116.
+    strict: typeof bot.strict === "boolean" ? bot.strict : null,
     providers: serversOf(bot).map((name) => {
       const g = grantEntryOf(grant, name) || { tools: [], read: [], write: [] };
       return {
@@ -807,6 +815,13 @@ function readFields(
       problems.push(`approvalPolicy must be one of ${POLICIES.join(", ")}.`);
     } else {
       fields.approvalPolicy = { approvalPolicy: args.approvalPolicy };
+    }
+  }
+  if (has("strict")) {
+    if (typeof args.strict !== "boolean") {
+      problems.push("strict must be true or false.");
+    } else {
+      fields.strict = { strict: args.strict };
     }
   }
   if (has("providers")) {
@@ -1507,6 +1522,18 @@ function describeChanges(
           policyWords(from, lead),
           policyWords(next.approvalPolicy, lead),
           POLICY_RANK[next.approvalPolicy] > POLICY_RANK[from],
+        );
+        break;
+      }
+      case "strict": {
+        const word = (v) =>
+          v === true ? "on" : v === false ? "off" : "its team's default";
+        // Turning it off lets it do more than what's listed.
+        line(
+          "Strict",
+          word(typeof bot.strict === "boolean" ? bot.strict : null),
+          word(next.strict),
+          next.strict === false,
         );
         break;
       }
@@ -2380,6 +2407,7 @@ function makeBotToolHandlers({
         ...pick("aiProvider"),
         ...pick("builtinTools"),
         ...pick("approvalPolicy"),
+        ...pick("strict"),
         ...pick("providers"),
         ...pick("commands"),
         ...pick("runLimits"),
@@ -2531,6 +2559,9 @@ function makeBotToolHandlers({
           builtinTools: builtinOf(bot) === "all" ? null : builtinOf(bot),
         },
         approvalPolicy: { approvalPolicy: bot.approvalPolicy || "ask" },
+        strict: {
+          strict: typeof bot.strict === "boolean" ? bot.strict : null,
+        },
         providers: {
           mcpServers: serversOf(bot),
           toolSelections: selectionsOf(bot),

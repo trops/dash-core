@@ -1399,3 +1399,108 @@ describe("GitHub sign-in (DASH-55)", () => {
     assert.ok(!JSON.stringify(events).includes(TOKEN));
   });
 });
+
+// DASH-116: a strict bot does only what's listed.
+describe("claudeAgentEngine — strict (DASH-116)", () => {
+  const path = require("path");
+  const { tempDir } = require("../../testUtils/tempDir");
+
+  let root;
+  function strictCtx(seen, over = {}) {
+    root = root || tempDir("engine-strict-");
+    return ctx({
+      approvalPolicy: "unattended",
+      workingDir: root,
+      projects: [root],
+      commands: { allowed: ["git status", "npm test"] },
+      onRefused: (info) => {
+        seen.push(info);
+        return null;
+      },
+      createApproval: () => {
+        seen.push("asked");
+        return { promise: Promise.resolve({ allow: true }) };
+      },
+      ...over,
+    });
+  }
+  async function hook(c) {
+    stubQuery([{ type: "result", subtype: "success", usage: {} }]);
+    await collect(claudeAgentEngine.run(c));
+    return captured.options.canUseTool;
+  }
+
+  it("an unlisted command is refused, even unattended inside its folders", async () => {
+    const seen = [];
+    const can = await hook(strictCtx(seen, { strict: true }));
+    const r = await can("Bash", {
+      command: `cd ${root} && git push -u origin x`,
+    });
+    assert.equal(r.behavior, "deny");
+    assert.deepEqual(seen, [
+      {
+        reason: "not-allowed",
+        command: `cd ${root} && git push -u origin x`,
+        strict: true,
+      },
+    ]);
+    // rm -rf inside its folders isn't an exception for a strict bot.
+    const rm = await can("Bash", { command: `rm -rf ${path.join(root, "b")}` });
+    assert.equal(rm.behavior, "deny");
+    // Its allowed commands run.
+    assert.equal(
+      (await can("Bash", { command: "git status && npm test" })).behavior,
+      "allow",
+    );
+  });
+
+  it("an allowed command reaching outside its folders is refused", async () => {
+    const seen = [];
+    const can = await hook(
+      strictCtx(seen, {
+        strict: true,
+        approvalPolicy: "ask",
+        commands: { allowed: ["cat"] },
+      }),
+    );
+    const r = await can("Bash", { command: "cat ~/.ssh/config" });
+    assert.equal(r.behavior, "deny");
+    assert.equal(seen[0].reason, "outside-folders");
+    assert.ok(!seen.includes("asked"));
+  });
+
+  it("with no folders, its file tools are refused", async () => {
+    const seen = [];
+    const can = await hook(
+      strictCtx(seen, { strict: true, approvalPolicy: "ask", projects: [] }),
+    );
+    const r = await can("Read", { file_path: "/etc/hosts" });
+    assert.equal(r.behavior, "deny");
+    assert.equal(seen[0].reason, "no-folders");
+  });
+
+  it("a self-test's own block comes first: skipped, not refused as unlisted", async () => {
+    const seen = [];
+    const can = await hook(
+      strictCtx(seen, {
+        strict: true,
+        commands: { allowed: ["git status"], blocked: ["git push"] },
+      }),
+    );
+    await can("Bash", { command: "git push -u origin x" });
+    assert.equal(seen[0].reason, "blocked-list");
+    assert.equal(seen[0].rule, "git push");
+  });
+
+  it("a bot that isn't strict behaves as before", async () => {
+    const seen = [];
+    const can = await hook(strictCtx(seen));
+    const r = await can("Bash", {
+      command: `cd ${root} && git push -u origin x`,
+    });
+    assert.equal(r.behavior, "allow");
+    const rm = await can("Bash", { command: `rm -rf ${path.join(root, "b")}` });
+    assert.equal(rm.behavior, "allow");
+    assert.deepEqual(seen, []);
+  });
+});

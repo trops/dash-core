@@ -307,6 +307,14 @@ function _makeCanUseTool(runCtx) {
         `${toolName} isn't available to bots.`,
       );
     }
+    // A strict bot (DASH-116) with no folders: its file tools have nowhere
+    // to work, so they're refused.
+    if (ctx.strict && !fence && !bridged && FILE_TOOL_FIELDS[toolName]) {
+      return refuse(
+        { reason: "no-folders", tool: toolName, strict: true },
+        "This strict bot has no folders, so its file tools can't be used. Give it folders in Dash.",
+      );
+    }
     // A bot's folders (DASH-47): a file tool outside them is refused, never
     // asked, whatever the policy. Reading inside them never asks (unless the
     // bot asks before every tool).
@@ -343,8 +351,9 @@ function _makeCanUseTool(runCtx) {
       typeof input.command === "string"
     ) {
       // An unattended bot deletes its own work (DASH-54): rm -rf of
-      // folders strictly inside its folders, and nothing else, runs.
-      if (unattended && rmInside(fence, input.command)) {
+      // folders strictly inside its folders, and nothing else, runs — not
+      // for a strict bot (DASH-116): only its allowed commands run.
+      if (!ctx.strict && unattended && rmInside(fence, input.command)) {
         return { behavior: "allow", updatedInput: input };
       }
       const d = commandDecision(input.command, ctx.commands || {});
@@ -362,8 +371,16 @@ function _makeCanUseTool(runCtx) {
       // A command that reaches outside the bot's folders: refused under
       // "allow" (nobody is there to ask), asked otherwise — even when it's
       // on the allowed list ("cat" is; "cat ~/.ssh/config" isn't).
+      // A strict bot (DASH-116): only its allowed commands, whatever the
+      // policy — even unattended, inside its folders.
+      if (ctx.strict && d.decision !== "allowed") {
+        return refuse(
+          { reason: "not-allowed", command: input.command, strict: true },
+          "Not run: this strict bot may only run its allowed commands.",
+        );
+      }
       commandOutside = bashOutside(fence, input.command);
-      if (commandOutside && ctx.approvalPolicy === "allow") {
+      if (commandOutside && (ctx.approvalPolicy === "allow" || ctx.strict)) {
         return refuse(
           {
             reason: "outside-folders",

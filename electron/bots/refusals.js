@@ -102,7 +102,9 @@ function makeRefusal(r = {}) {
       section = "folders";
       break;
     case "no-folders":
-      why = "it's unattended and has no folders to work in";
+      why = r.strict
+        ? "the bot runs strict and has no folders to work in"
+        : "it's unattended and has no folders to work in";
       fix = "Give it the folders it works in, on the bot's Folders.";
       section = "folders";
       break;

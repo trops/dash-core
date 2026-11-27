@@ -12,6 +12,7 @@ import {
   SearchInput,
   SegmentedControl,
   StatusBadge,
+  Switch,
   ThemeContext,
 } from "@trops/dash-react";
 import {
@@ -343,6 +344,27 @@ export const BotDetail = ({
       ? from.builtinTools
       : "all",
   );
+  // Strict (DASH-116): only what's listed. Left out → its team's default
+  // (on with the standard handoff), read below.
+  const [strict, setStrict] = useState(
+    from?.strict === true ? true : from?.strict === false ? false : null,
+  );
+  const [teamStrict, setTeamStrict] = useState(false);
+  const strictTeam = from?.workspaceId ?? null;
+  useEffect(() => {
+    const api = typeof window !== "undefined" && window.mainApi;
+    const get = api && api.bots && api.bots.getTeamSettings;
+    if (typeof get !== "function" || strictTeam == null) return undefined;
+    let live = true;
+    Promise.resolve(get(strictTeam))
+      .then((t) => {
+        if (live) setTeamStrict(!!(t && t.usesHandoffs === true));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [strictTeam]);
   // Folders it works in, and its shell commands (flows PRD, phase 5).
   const [projects, setProjects] = useState(
     Array.isArray(from?.projects) ? from.projects : [],
@@ -480,6 +502,7 @@ export const BotDetail = ({
     minutesLimit,
     approvalPolicy,
     builtinTools,
+    strict,
     whilePaused,
     selectedServers,
     toolSelections,
@@ -903,6 +926,8 @@ export const BotDetail = ({
         ].filter(([, v]) => v !== undefined),
       ),
       approvalPolicy,
+      // Strict (DASH-116): kept only once it's set; else its team's default.
+      ...(strict === null ? {} : { strict }),
       // Leads and Dash team roles have theirs set by Dash.
       ...(hasBuiltin
         ? {}
@@ -1423,6 +1448,29 @@ export const BotDetail = ({
                       }}
                     />
                   </div>
+                </div>
+              ) : null}
+              {!isTeamRole && !hasBuiltin ? (
+                <div className="flex flex-col gap-1" data-testid="bot-strict">
+                  <div className="flex flex-row items-center gap-2">
+                    <Switch
+                      checked={strict === null ? teamStrict : strict}
+                      onChange={(v) => setStrict(!!v)}
+                      ariaLabel="Strict: only what's listed"
+                    />
+                    <span className="text-sm font-medium">
+                      Strict: only what&apos;s listed
+                    </span>
+                  </div>
+                  <span className="text-xs opacity-50">
+                    {`Its runs may use only its providers' listed tools, its allowed shell commands and files in its folders. Anything else is refused and the run fails, saying what to change.${
+                      strict === null
+                        ? teamStrict
+                          ? " On because its team uses the standard handoff."
+                          : " Off by default for a team without the standard handoff."
+                        : ""
+                    }`}
+                  </span>
                 </div>
               ) : null}
               {/* Shell commands only matter with all its built-ins. */}
