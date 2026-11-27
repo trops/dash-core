@@ -10,6 +10,7 @@ const assert = require("node:assert/strict");
 const os = require("os");
 const {
   TEST_BLOCKED,
+  TEST_NOTE,
   skipsInTest,
   skippedAnswer,
   withTestBlocks,
@@ -95,6 +96,19 @@ describe("outward actions in a test", () => {
       withTestBlocks({ name: "x" }).commands.blocked,
       TEST_BLOCKED,
     );
+  });
+
+  it("every bot in a test is told outward actions are skipped on purpose, and to carry on", () => {
+    const bot = withTestBlocks({
+      name: "PR Bot",
+      instructions: "Push the branch and open a PR.",
+    });
+    assert.ok(bot.instructions.startsWith("Push the branch and open a PR."));
+    assert.ok(bot.instructions.endsWith(TEST_NOTE));
+    assert.match(TEST_NOTE, /git push/);
+    assert.match(TEST_NOTE, /don't ask anyone to allow it/);
+    assert.match(TEST_NOTE, /pull\/0/);
+    assert.equal(withTestBlocks({ name: "x" }).instructions, TEST_NOTE);
   });
 
   it("pr-ci passes as skipped in a test, and runs otherwise", async () => {
