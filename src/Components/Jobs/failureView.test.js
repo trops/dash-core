@@ -348,6 +348,41 @@ describe("failureView", () => {
     expect(v.rerun).toBe(false);
   });
 
+  it("a package command that's off says its command, and Turn on <command> (DASH-125)", () => {
+    const goal = checksGoal({ held: true });
+    goal.flow.steps[1] = {
+      id: "c1",
+      kind: "you",
+      name: "Tests pass (off)",
+      offCommand: "npm test",
+    };
+    const v = failureView(
+      job(
+        [
+          {
+            id: "s1",
+            botId: "c",
+            botName: "Coder",
+            status: "needs-you",
+            goalId: "goal_1",
+          },
+        ],
+        { status: "needs-you" },
+      ),
+      { goal },
+    );
+    expect(failureTitle(v)).toBe(
+      "Waiting at Coder: its Tests pass check (npm test) came with the package and is off",
+    );
+    expect(v.action).toEqual({
+      type: "turn-on",
+      label: "Turn on npm test",
+      botId: "c",
+      check: "Tests pass",
+      command: "npm test",
+    });
+  });
+
   it("over budget: Stopped at, and Raise budget (waiting or failed)", () => {
     const waiting = failureView(
       job(

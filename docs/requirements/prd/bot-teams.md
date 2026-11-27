@@ -1269,6 +1269,17 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 - [x] With a team, the buttons are **Install, fill in later** (plain "Install" once nothing required is empty) and **Install and open Set up** (`dashboardBots.installButtons`). `onConfirm` gets `openSetup`; RegistryDashboardDetail lands on the team's setup per `dashboardBots.opensTeamSetup(result, openSetup)`: never for fill in later, always (when a team installed) for open Set up, and DASH-118's `needsTeamSetup` rule when no choice was made. A dashboard with no team keeps one Install button.
 - [x] Checks (DASH-120's Repo checks step, `Bots/TeamChecksPanel.js` `RepoChecksRows`): PR links, on a team check and in the "Opened …" note after Set up checks, open in the browser (`PrLink`, `mainApi.shell.openExternal`). "Always shown, a line per repo" came with DASH-120 (`withChecks`).
 
+## DASH-125: Commands that came with a package and are off (2026-11-27)
+
+**Status:** Implemented (mockups 2 and 7).
+
+**Why:** a check a package brings that runs something on this computer (a command, a repo check, a check package) stays off until you turn it on (DASH-57, DASH-102), and its jobs wait for your approval in its place. You only found that out by opening one bot's checks and picking that check; on the job it just said "Needs you".
+
+- [x] Check setup lists them: `preflight` returns `off` (`[{ botId, bot, stepId, step, command }]`, with the team's values filled in), from `src/utils/offCommands.js` (pure: `offCommands`, `offCommandsLine`, `turnOnAll`, `offCommandOf`). They don't stop a job (`ok` is unchanged); `preflightText` adds them under "Worth a look".
+- [x] The Set up checklist's Check setup step shows them as one more problem: "3 commands that came with the package are off: npm ci, npm test (Coder), gh pr checks (PR Bot). Until they're on, those checks wait for your approval." with **Review and turn on**. It asks first ("Turn on the package's commands?", listing each command and its bot), then saves each bot's checks with all of them on, and checks the setup again, which clears the row. The step isn't done while any are off (`teamChecklist.checklistSteps`, `setupView`).
+- [x] A job waiting on one says what it would run: its checks flow's You step keeps `offCommand` (`botChecks.checksFlow`, kept by `flowModel`), so the failed-job header says "Waiting at Coder: its Tests pass check (npm test) came with the package and is off" with **Turn on npm test** (opens the bot's checks, `failureView`).
+- [x] The checks window keeps its per-check notice with Turn on (DASH-57).
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams
@@ -1401,6 +1412,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.34    | 2026-11-27 | John   | DASH-121: Run self-test waits for a passing Check setup, checks again, then opens its job; the item field's hint comes from the package; the setup status counts an untested change |
 | 1.35    | 2026-11-27 | John   | DASH-128: one save model on the team page (one unsaved bar for the bots' cards and the team's settings); leaving with unsaved settings asks "Discard unsaved changes?" |
 | 1.36    | 2026-11-27 | John   | DASH-130: install dialog in theme colours, Required marks and bot initials, "Install, fill in later" / "Install and open Set up"; clickable PR links in the repo checks |
+| 1.37    | 2026-11-27 | John   | DASH-125: Check setup lists the commands that came with a package and are off, with one "Review and turn on"; a job waiting on one says its command ("Turn on npm test") |
 
 ---
 

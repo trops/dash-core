@@ -30,6 +30,8 @@ const { repoCheckError } = require("../checks/kinds/repo");
 const { factoryCheckError } = require("../checks/kinds/factory");
 const { packageCheckError } = require("../checks/kinds/package");
 const { recipeCheckError } = require("../checks/kinds/recipe");
+// What a check that came with a package would run (DASH-125).
+const { offCommandOf } = require("../../src/utils/offCommands");
 
 const CHECKS_FLOW_KIND = "bot-checks";
 const ON_FAIL = ["retry", "you", "stop"];
@@ -261,6 +263,8 @@ function checksFlow(bot, { handoff = false, tables = [] } = {}) {
         mode: "approve",
         action: "Approve",
         sendBackTo: WORK_STEP,
+        // What's off (DASH-125): the job says "Turn on npm test".
+        ...(offCommandOf(c) ? { offCommand: offCommandOf(c) } : {}),
       });
     } else if (c.kind === "check") {
       steps.push({

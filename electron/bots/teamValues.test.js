@@ -495,6 +495,8 @@ describe("a package's command checks install switched off", () => {
     assert.equal(step.kind, "you");
     assert.equal(step.name, "Tests pass (off)");
     assert.equal(step.check, undefined);
+    // What it would run, so the job can say "Turn on <command>" (DASH-125).
+    assert.equal(step.offCommand, "{validate}");
     assert.equal(flow.steps.find((s) => s.id === "step_c2").kind, "check");
     // Turned on (saved without the mark), it runs.
     const on = {

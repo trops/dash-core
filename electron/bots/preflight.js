@@ -19,6 +19,11 @@
  *   strict-command  a strict bot's instructions name a shell command that
  *                   isn't in its allowed commands
  *
+ * And `off` (DASH-125), which doesn't stop a job either: the checks that
+ * came with a package and are off on this computer, so their jobs wait for
+ * your approval in their place ({ botId, bot, stepId, step, command }).
+ * Check setup lists them with one "Review and turn on".
+ *
  * Pure apart from what it's given: the providers, the GitHub token and
  * fetch come in as deps, so the app and the tests run the same code.
  */
@@ -39,6 +44,7 @@ const {
 const { pickFile, CHECKS_DIR } = require("../checks/kinds/repo");
 const { aiLabel } = require("./aiLogin");
 const { strictCommandWarnings } = require("./strictMode");
+const { offCommands, offCommandsLine } = require("../../src/utils/offCommands");
 
 const REPO_URL_RE =
   /^(?:https:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/;
@@ -507,15 +513,31 @@ async function preflight(
     }
   }
   const warnings = strictWarnings(list, team);
-  return { ok: problems.length === 0, problems, warnings, checked };
+  // Shown with the team's values filled in ("npm test", not "{test}").
+  const off = offCommands(
+    list.map((bot) => {
+      try {
+        return withTeamValues(bot, withBotSettings(withOwn, bot), { home }).bot;
+      } catch (_e) {
+        return bot;
+      }
+    }),
+  );
+  return { ok: problems.length === 0, problems, warnings, off, checked };
 }
 
 /** Problems as the lines a failed job (or the Check setup button) shows. */
-function preflightText(problems, warnings = []) {
+function preflightText(problems, warnings = [], off = []) {
   const list = problems || [];
-  const warn = (warnings || []).length
-    ? ["Worth a look:", ...warnings.map((w) => `- ${w.message}`)]
-    : [];
+  const offLine = offCommandsLine(off);
+  const warn =
+    (warnings || []).length || offLine
+      ? [
+          "Worth a look:",
+          ...(warnings || []).map((w) => `- ${w.message}`),
+          ...(offLine ? [`- ${offLine}`] : []),
+        ]
+      : [];
   if (!list.length) return ["The team's setup is good.", ...warn].join("\n");
   return [
     `The team's setup has ${list.length} problem${list.length === 1 ? "" : "s"}, so the job didn't start:`,

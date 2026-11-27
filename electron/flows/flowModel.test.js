@@ -147,3 +147,22 @@ describe("briefLine", () => {
     );
   });
 });
+
+describe("a check that's off (DASH-125)", () => {
+  it("keeps what the check would run on its You step", () => {
+    const flow = normalizeFlow({
+      steps: [
+        { id: "step_work", kind: "bot", name: "Coder", botId: "c" },
+        {
+          id: "c1",
+          kind: "you",
+          name: "Tests pass (off)",
+          offCommand: "npm test",
+        },
+        { id: "c2", kind: "you", name: "You approve" },
+      ],
+    });
+    assert.equal(flow.steps[1].offCommand, "npm test");
+    assert.equal(flow.steps[2].offCommand, undefined);
+  });
+});

@@ -106,6 +106,21 @@ describe("checklistSteps", () => {
     ]);
     expect(checklistLine(later)).toBe("0 of 3 done · do them in order");
   });
+
+  it("commands that came with a package and are off are one more to fix (DASH-125)", () => {
+    const off = [{ botId: "c", bot: "Coder", command: "npm test" }];
+    const good = checklistSteps({ check: { ok: true, problems: [], off } });
+    expect(good.steps.find((s) => s.key === "check")).toMatchObject({
+      done: false,
+      state: "1 problem to fix",
+    });
+    const bad = checklistSteps({
+      check: { ok: false, problems: [{ message: "a" }], off },
+    });
+    expect(bad.steps.find((s) => s.key === "check").state).toBe(
+      "2 problems to fix",
+    );
+  });
 });
 
 describe("the self-test's item field (DASH-121)", () => {

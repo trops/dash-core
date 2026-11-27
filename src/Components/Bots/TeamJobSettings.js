@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Switch, useStatusTokens } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { offCommandsLine } from "../../utils/offCommands";
 
 /**
  * TeamJobSettings — "How jobs run" on a team's page (DASH-120): its "One
@@ -59,13 +60,23 @@ export const SETUP_HELP =
 export function setupView(res) {
   if (!res) return null;
   if (res.error) return { ok: false, title: res.error, lines: [] };
-  const n = (res.problems || []).length;
+  // Commands that came with a package and are off (DASH-125): one more
+  // thing to fix, though jobs still start (they wait for your approval).
+  const off = Array.isArray(res.off) ? res.off : [];
+  const offLine = offCommandsLine(off);
+  const n = (res.problems || []).length + (offLine ? 1 : 0);
   return {
     ok: !!res.ok,
-    title: res.ok
-      ? "The setup is good."
-      : `${n} problem${n === 1 ? "" : "s"} to fix:`,
-    lines: (res.problems || []).map((p) => p.message),
+    title:
+      res.ok && !offLine
+        ? "The setup is good."
+        : `${n} problem${n === 1 ? "" : "s"} to fix:`,
+    lines: [
+      ...(res.problems || []).map((p) => p.message),
+      ...(offLine ? [offLine] : []),
+    ],
+    off,
+    offLine,
   };
 }
 

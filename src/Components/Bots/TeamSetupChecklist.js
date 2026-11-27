@@ -7,7 +7,9 @@
  *      setting of its own (DASH-136), its fields right there, with "Open its
  *      settings ›". One Save for all of them (the unsaved bar). The team's
  *      old settings (DASH-57), when it declares some, sit under the cards.
- *   2. Check setup: its problems, each with "Go to it".
+ *   2. Check setup: its problems, each with "Go to it", and the commands
+ *      that came with a package and are off, with one "Review and turn on"
+ *      that turns them all on after you confirm (DASH-125).
  *   3. Repo checks: only when the team has repos.
  *   4. Run a self-test.
  *
@@ -17,6 +19,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Button3,
+  ConfirmationModal,
   FontAwesomeIcon,
   StatusBadge,
   useStatusTokens,
@@ -50,6 +53,7 @@ import {
   testItemField,
 } from "../../utils/teamChecklist";
 import { onJobsChanged } from "../../hooks/useJobs";
+import { turnOnAll } from "../../utils/offCommands";
 
 /** The Jobs page, open on a job (DashboardStage's `dash:open-page`). */
 export function openJob(jobId) {
@@ -340,6 +344,43 @@ export const TeamSetupChecklist = ({
     }
   };
   const shown = setupView(check);
+
+  // Commands that came with a package and are off (DASH-125): turned on
+  // all at once, after you confirm, then checked again.
+  const [reviewOff, setReviewOff] = useState(false);
+  const [turningOn, setTurningOn] = useState(false);
+  const [offError, setOffError] = useState(null);
+  const turnOnOff = async () => {
+    setReviewOff(false);
+    const api = botsApi();
+    if (!api || !api.save) {
+      setOffError("Turning these on needs a newer Dash.");
+      return;
+    }
+    const ids = Array.from(
+      new Set(((shown && shown.off) || []).map((o) => String(o.botId))),
+    );
+    setTurningOn(true);
+    setOffError(null);
+    const errors = [];
+    for (const id of ids) {
+      const b = byId.get(id);
+      if (!b || !b.checks) continue;
+      try {
+        await api.save({ id: b.id, checks: turnOnAll(b.checks) });
+      } catch (e) {
+        errors.push(
+          (e && e.message) || `${b.name || "A bot"}'s checks weren't saved.`,
+        );
+      }
+    }
+    if (current.current !== workspaceId) return;
+    setTurningOn(false);
+    if (errors.length) setOffError(errors.join(" "));
+    noteSetupChanged(workspaceId);
+    if (onBotsChanged) onBotsChanged();
+    await checkSetup();
+  };
   const goTo = (p) => {
     if (!p || p.botId == null) return null;
     const el = cardRefs.current[String(p.botId)];
@@ -542,7 +583,7 @@ export const TeamSetupChecklist = ({
                 {checkError}
               </span>
             ) : null}
-            {shown && !shown.ok ? (
+            {shown && (!shown.ok || shown.offLine) ? (
               <div
                 className="flex flex-col gap-1 text-xs"
                 data-testid="setup-result"
@@ -562,8 +603,42 @@ export const TeamSetupChecklist = ({
                     </span>
                   );
                 })}
+                {shown.offLine ? (
+                  <span
+                    className="flex flex-row flex-wrap items-center gap-2"
+                    data-testid="setup-off-commands"
+                  >
+                    <span className="flex-1 min-w-0">{shown.offLine}</span>
+                    <Button
+                      title={turningOn ? "Turning on…" : "Review and turn on"}
+                      size="sm"
+                      disabled={turningOn}
+                      onClick={turningOn ? undefined : () => setReviewOff(true)}
+                    />
+                  </span>
+                ) : null}
+                {offError ? (
+                  <span className={status.error.text}>{offError}</span>
+                ) : null}
               </div>
             ) : null}
+            <ConfirmationModal
+              isOpen={reviewOff}
+              setIsOpen={(o) => !o && setReviewOff(false)}
+              title="Turn on the package's commands?"
+              message={`Dash will run these on this computer whenever their checks run: ${(
+                (shown && shown.off) ||
+                []
+              )
+                .map((o) => `${o.command} (${o.bot})`)
+                .join(
+                  ", ",
+                )}. Turn them on only if you trust the package they came with.`}
+              confirmLabel="Turn them on"
+              cancelLabel="Cancel"
+              onConfirm={turnOnOff}
+              onCancel={() => setReviewOff(false)}
+            />
           </Step>
           {repos.shown ? (
             <Step

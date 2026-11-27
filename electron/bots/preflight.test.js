@@ -346,6 +346,54 @@ describe("preflight", () => {
     assert.equal(pushes(ticketBot), false);
   });
 
+  it("lists the commands that came with a package and are off, filled in, and they don't stop a job (DASH-125)", async () => {
+    const m = mergeTeamValues(null, {
+      declare: [{ name: "test", label: "Test command", type: "text" }],
+      values: { test: "npm test" },
+    });
+    const t = { declared: m.declared, values: m.values };
+    const res = await preflight({
+      bots: [
+        {
+          id: "b-c",
+          name: "Coder",
+          checks: {
+            steps: [
+              {
+                id: "c1",
+                kind: "check",
+                name: "Tests pass",
+                held: true,
+                check: { kind: "command", command: "{test}" },
+              },
+              {
+                id: "c2",
+                kind: "check",
+                name: "Lint",
+                check: { kind: "command", command: "npm run lint" },
+              },
+            ],
+          },
+        },
+      ],
+      team: t,
+    });
+    assert.equal(res.ok, true);
+    assert.deepEqual(res.off, [
+      {
+        botId: "b-c",
+        bot: "Coder",
+        stepId: "c1",
+        step: "Tests pass",
+        command: "npm test",
+      },
+    ]);
+    assert.equal(
+      preflightText([], [], res.off),
+      "The team's setup is good.\nWorth a look:\n- 1 command that came with the package is off: npm test (Coder). Until it's on, that check waits for your approval.",
+    );
+  });
+
   it("says its problems as lines", () => {
     assert.equal(preflightText([]), "The team's setup is good.");
     assert.equal(

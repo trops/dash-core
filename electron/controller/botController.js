@@ -2960,7 +2960,7 @@ const botController = {
     );
     const out = {
       ...res,
-      text: preflightText(res.problems, res.warnings),
+      text: preflightText(res.problems, res.warnings, res.off),
       at: new Date().toISOString(),
     };
     this._lastSetup = this._lastSetup || new Map();
