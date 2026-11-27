@@ -152,6 +152,14 @@ function validateBotDefinition(def) {
   ) {
     errors.push(`builtinTools must be one of ${[...BUILTIN_TOOLS].join(", ")}`);
   }
+  // Strict (DASH-116): true or false; left out → its team's default.
+  if (
+    def.strict !== undefined &&
+    def.strict !== null &&
+    typeof def.strict !== "boolean"
+  ) {
+    errors.push("strict must be true or false");
+  }
   if (!WHILE_PAUSED.has(def.whilePaused)) {
     errors.push(`whilePaused must be one of ${[...WHILE_PAUSED].join(", ")}`);
   }

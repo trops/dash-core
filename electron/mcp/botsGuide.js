@@ -76,6 +76,7 @@ A team that works on several repos (or apps, or stores) keeps them in a **table*
 - projects (folders): give each bot only the folder it works in, e.g. "{workRoot}".
 - builtinTools: "none", "read-only" or "all". Reviewers and planners only need read-only.
 - Provider tools: name each tool the bot needs, by its real name on that provider. Names differ between providers that do the same thing (connectors especially), and an unknown name is refused, with suggestions. list_bots shows what a bot has.
+- strict: a strict bot does only what's listed: its providers' listed tools, its commands.allowed (prefix match) and files in its folders. Anything else is refused and the run fails with the exact reason and fix (a bot never asks the user to grant it something), so list every command it needs. Dash adds a "What you can do" block to its instructions as it runs, and Check setup warns about a command its instructions name that isn't allowed. On by default for a team with the standard handoff; set strict: false to turn it off.
 
 ## 8. Lessons from building the Code Factory
 - **Don't make a bot wait.** The engine blocks long \`sleep\` commands, and a bot polling for minutes burns tokens. Let the bot start the thing (open the PR) and let a check do the waiting, with a deadline: the built-in pr-ci check does exactly that.

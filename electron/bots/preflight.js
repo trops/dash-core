@@ -11,6 +11,10 @@
  *   repo-check  a repo check a step names isn't on a repo's base branch
  *               (and the step has no fallback, and doesn't skip)
  *
+ * And warnings, which don't stop a job (strictWarnings, DASH-116):
+ *   strict-command  a strict bot's instructions name a shell command that
+ *                   isn't in its allowed commands
+ *
  * Pure apart from what it's given: the providers, the GitHub token and
  * fetch come in as deps, so the app and the tests run the same code.
  */
@@ -19,6 +23,7 @@
 const { withTeamValues } = require("./teamValues");
 const { pickFile, CHECKS_DIR } = require("../checks/kinds/repo");
 const { aiLabel } = require("./aiLogin");
+const { strictCommandWarnings } = require("./strictMode");
 
 const REPO_URL_RE =
   /^(?:https:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/;
@@ -78,6 +83,17 @@ function pushes(bot) {
     ? Object.values(bot.toolSelections).flat()
     : [];
   return [...tools, ...sel].some((t) => PUSH_TOOLS.includes(t));
+}
+
+/**
+ * Warnings for a team's strict bots (DASH-116): a command their
+ * instructions name that their allowed commands don't cover. They don't
+ * stop a job: its run would be refused the command, saying so.
+ */
+function strictWarnings(bots, team) {
+  return (bots || [])
+    .filter(Boolean)
+    .flatMap((bot) => strictCommandWarnings(bot, team));
 }
 
 /** The repo checks a bot's steps name, that need the file. */
@@ -338,17 +354,29 @@ async function preflight(
       }
     }
   }
-  return { ok: problems.length === 0, problems, checked };
+  const warnings = strictWarnings(list, team);
+  return { ok: problems.length === 0, problems, warnings, checked };
 }
 
 /** Problems as the lines a failed job (or the Check setup button) shows. */
-function preflightText(problems) {
+function preflightText(problems, warnings = []) {
   const list = problems || [];
-  if (!list.length) return "The team's setup is good.";
+  const warn = (warnings || []).length
+    ? ["Worth a look:", ...warnings.map((w) => `- ${w.message}`)]
+    : [];
+  if (!list.length) return ["The team's setup is good.", ...warn].join("\n");
   return [
     `The team's setup has ${list.length} problem${list.length === 1 ? "" : "s"}, so the job didn't start:`,
     ...list.map((p) => `- ${p.message}`),
+    ...warn,
   ].join("\n");
 }
 
-module.exports = { preflight, preflightText, teamRepos, pushes, repoChecksOf };
+module.exports = {
+  preflight,
+  preflightText,
+  teamRepos,
+  pushes,
+  repoChecksOf,
+  strictWarnings,
+};

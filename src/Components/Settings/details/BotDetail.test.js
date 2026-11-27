@@ -2076,3 +2076,53 @@ describe("BotDetail — Test", () => {
     expect(screen.queryByLabelText("Test it with (optional)")).toBeNull();
   });
 });
+
+describe("BotDetail — Strict: only what's listed (DASH-116)", () => {
+  afterEach(() => {
+    delete window.mainApi;
+  });
+  const fill = () => {
+    fireEvent.change(screen.getByPlaceholderText("e.g. PR Digest"), {
+      target: { value: "PR Bot" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("What should this bot do?"), {
+      target: { value: "Open the PR." },
+    });
+  };
+
+  it("left alone, the bot keeps its team's default (nothing saved)", () => {
+    const onSave = jest.fn().mockResolvedValue({});
+    render(<BotDetail isCreating providers={{}} onSave={onSave} />);
+    expect(screen.getByTestId("bot-strict")).toHaveTextContent(
+      "Strict: only what's listed",
+    );
+    fill();
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].strict).toBeUndefined();
+  });
+
+  it("shows its team's default, and saves the switch once turned", async () => {
+    window.mainApi = {
+      bots: { getTeamSettings: jest.fn(async () => ({ usesHandoffs: true })) },
+    };
+    const onSave = jest.fn().mockResolvedValue({});
+    render(
+      <BotDetail
+        isCreating
+        providers={{}}
+        onSave={onSave}
+        initial={{ workspaceId: "7", name: "", instructions: "" }}
+      />,
+    );
+    const box = screen.getByTestId("bot-strict");
+    const sw = within(box).getByRole("switch");
+    await waitFor(() => expect(sw).toBeChecked());
+    expect(box).toHaveTextContent(
+      "On because its team uses the standard handoff",
+    );
+    fireEvent.click(sw);
+    fill();
+    fireEvent.click(screen.getByText("Create"));
+    expect(onSave.mock.calls[0][0].strict).toBe(false);
+  });
+});

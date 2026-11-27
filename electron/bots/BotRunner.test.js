@@ -1866,6 +1866,81 @@ describe("BotRunner.run — refusals (DASH-115)", () => {
   });
 });
 
+// DASH-116: a strict bot's run knows exactly what it may do.
+describe("BotRunner.run — strict (DASH-116)", () => {
+  const tools = [
+    { name: "create_pull_request" },
+    { name: "getJiraIssue" },
+    { name: "memory_get" },
+  ];
+  const serverOf = {
+    create_pull_request: "GitHub",
+    getJiraIssue: "Atlassian",
+    memory_get: "bot-memory",
+  };
+  function strictRunner(bot, team = null) {
+    const engine = mockEngine([{ type: "done", stopReason: "end_turn" }]);
+    const { runner } = makeRunner(engine, {
+      bot: {
+        name: "PR Bot",
+        commands: { allowed: ["git status", "npm test"] },
+        projects: ["/Users/me/DashFactory"],
+        ...bot,
+      },
+      deps: {
+        resolveTools: async () => ({
+          tools,
+          resolveServer: (t) => serverOf[t] || null,
+        }),
+        internalServers: ["bot-memory"],
+      },
+    });
+    runner._store.getTeamSettings = () => team;
+    return { runner, engine };
+  }
+
+  it("a strict bot runs strict, told exactly its tools, commands and folders", async () => {
+    const { runner, engine } = strictRunner({ strict: true });
+    await runner.run("bot_1", { prompt: "go" });
+    const ctx = engine.lastCtx;
+    assert.equal(ctx.strict, true);
+    assert.ok(
+      ctx.systemPrompt.includes(
+        [
+          "Provider tools:",
+          "- Atlassian: getJiraIssue",
+          "- GitHub: create_pull_request",
+          "Shell commands (each covers the command and anything after it):",
+          "- git status",
+          "- npm test",
+          "Folders (its file tools and commands work only inside these):",
+          "- /Users/me/DashFactory",
+          "Anything else is refused.",
+        ].join("\n"),
+      ),
+      ctx.systemPrompt,
+    );
+    // Dash's own memory tools aren't its provider tools.
+    assert.ok(!ctx.systemPrompt.includes("memory_get"));
+  });
+
+  it("on a team with the standard handoff, a bot is strict unless it says not", async () => {
+    const on = strictRunner({}, { usesHandoffs: true });
+    await on.runner.run("bot_1", { prompt: "go" });
+    assert.equal(on.engine.lastCtx.strict, true);
+    const off = strictRunner({ strict: false }, { usesHandoffs: true });
+    await off.runner.run("bot_1", { prompt: "go" });
+    assert.equal(off.engine.lastCtx.strict, undefined);
+  });
+
+  it("a bot that isn't strict runs as before: no block", async () => {
+    const { runner, engine } = strictRunner({});
+    await runner.run("bot_1", { prompt: "go" });
+    assert.equal(engine.lastCtx.strict, undefined);
+    assert.ok(!engine.lastCtx.systemPrompt.includes("WHAT YOU CAN DO"));
+  });
+});
+
 describe("BotRunner.run — a refusal outside a handoff job (DASH-115)", () => {
   const { refusalsOf } = require("./refusals");
   it("a bot that isn't in a handoff job is told no, as before: its run goes on, the refusal kept", async () => {
@@ -1898,5 +1973,32 @@ describe("BotRunner.run — a refusal outside a handoff job (DASH-115)", () => {
     assert.equal(refusalsOf(record)[0].section, "folders");
     // Kept as JSON, so the store seals it at rest.
     assert.equal(typeof runs[0].run.refusals, "string");
+  });
+});
+
+describe("BotRunner.run — a strict bot's refusal (DASH-116)", () => {
+  it("fails its run, in a job or not", async () => {
+    const engine = {
+      id: "tool-loop",
+      run(ctx) {
+        return (async function* () {
+          ctx.onRefused({
+            reason: "not-allowed",
+            command: "git push origin x",
+            strict: true,
+          });
+          yield { type: "done", stopReason: "end_turn" };
+        })();
+      },
+    };
+    const { runner } = makeRunner(engine, {
+      bot: { name: "PR Bot", strict: true },
+    });
+    const record = await runner.run("bot_1", { prompt: "go" });
+    assert.equal(record.status, "failed");
+    assert.equal(
+      record.error,
+      "PR Bot can't run `git push origin x`: it isn't in the bot's allowed commands. Add it on the bot's Commands, or give it a provider tool that does this.",
+    );
   });
 });

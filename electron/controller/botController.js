@@ -2857,7 +2857,7 @@ const botController = {
     );
     const out = {
       ...res,
-      text: preflightText(res.problems),
+      text: preflightText(res.problems, res.warnings),
       at: new Date().toISOString(),
     };
     this._lastSetup = this._lastSetup || new Map();

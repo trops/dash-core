@@ -27,6 +27,7 @@
 const { withTestBlocks, TEST_BLOCKED } = require("./selfTest");
 const { makeRefusal, keepRefusal, refusalAsked } = require("./refusals");
 const { readHandoff } = require("./botHandoff");
+const { isStrict, capabilitiesBlock } = require("./strictMode");
 
 const { createRequestPermission } = require("./PermissionGate");
 const { deletesOrSends } = require("./riskyTools");
@@ -268,6 +269,49 @@ class BotRunner {
    * @param {{ prompt?: string, trigger?: string, emit?: (e: object) => void }} opts
    * @returns {Promise<object>} the appended run record (or a skip marker)
    */
+  /** Does this bot run strict (DASH-116)? Its own setting, or its team's. */
+  _isStrict(bot) {
+    let team = null;
+    if (
+      bot &&
+      bot.workspaceId != null &&
+      this._store &&
+      typeof this._store.getTeamSettings === "function"
+    ) {
+      try {
+        team = this._store.getTeamSettings(bot.workspaceId);
+      } catch (_e) {
+        team = null;
+      }
+    }
+    return isStrict(bot, team);
+  }
+
+  /**
+   * A run's provider tools by provider, for a strict bot's "What you can
+   * do" block: Dash's own internal tools (memory, results) left out.
+   */
+  _toolsByProvider(tools, resolveServer, connectors = []) {
+    const internal = new Set(this._internalServers || []);
+    const out = {};
+    for (const t of tools || []) {
+      if (!t || !t.name) continue;
+      let server = null;
+      try {
+        server = resolveServer(t.name);
+      } catch (_e) {
+        server = null;
+      }
+      if (!server || internal.has(server)) continue;
+      (out[server] = out[server] || []).push(t.name);
+    }
+    for (const c of connectors || []) {
+      if (!c || !c.provider || !Array.isArray(c.allowed)) continue;
+      out[c.provider] = [...(out[c.provider] || []), ...c.allowed];
+    }
+    return out;
+  }
+
   /**
    * The bot with its team's settings filled in: { bot, missing }. A table's
    * row (DASH-84) is the one this run's input names ("repo": "dash-core" in
@@ -431,7 +475,8 @@ class BotRunner {
       stored && stored.commands && Array.isArray(stored.commands.blocked)
         ? stored.commands.blocked
         : [];
-    const failOnRefusal = !!opts.failOnRefusal;
+    // A strict bot's refusals fail its run too (DASH-116).
+    const failOnRefusal = !!opts.failOnRefusal || this._isStrict(bot);
     const onRefused = (info) => {
       const testBlock =
         !!opts.selfTest &&
@@ -664,6 +709,26 @@ class BotRunner {
           ? stored.state
           : null;
 
+      // A strict bot (DASH-116): only what its setup lists, said up front.
+      const strict = this._isStrict(bot);
+      const canDo = strict
+        ? capabilitiesBlock({
+            tools: this._toolsByProvider(tools, resolveServer, connectors),
+            commands:
+              bot.commands && Array.isArray(bot.commands.allowed)
+                ? bot.commands.allowed
+                : [],
+            folders: Array.isArray(bot.projects) ? bot.projects : [],
+            builtins:
+              bot.role === "lead" || opts.noTools
+                ? "none"
+                : bot.builtinTools === "none" ||
+                    bot.builtinTools === "read-only"
+                  ? bot.builtinTools
+                  : "all",
+          })
+        : null;
+
       const ctx = {
         botId,
         prompt: opts.prompt,
@@ -681,6 +746,7 @@ class BotRunner {
             : bot.instructions,
           profile.styleLine,
           ...(Array.isArray(toolNotes) ? toolNotes : []),
+          canDo,
           dateLine(this._now()),
         ]
           .filter(Boolean)
@@ -728,6 +794,8 @@ class BotRunner {
         createApproval,
         // What its setup refuses is recorded and ends the run (DASH-115).
         onRefused,
+        // Only what its setup lists (DASH-116).
+        ...(strict ? { strict: true } : {}),
       };
       // Its git and gh commands sign in to GitHub with it (DASH-55).
       if (gitToken) ctx.gitToken = gitToken;

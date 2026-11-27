@@ -650,3 +650,125 @@ describe("checkAiLogin: one cheap call per AI provider (DASH-114)", () => {
     assert.equal((await checkAiLogin("someday", {})).ok, true);
   });
 });
+
+// DASH-116: strict bots — the "What you can do" block, and the setup
+// check's warning for a command its instructions name that isn't allowed.
+describe("strict bots (DASH-116)", () => {
+  const {
+    isStrict,
+    capabilitiesBlock,
+    instructionCommands,
+    strictCommandWarnings,
+    REFUSED_LINE,
+  } = require("./strictMode");
+  const { strictWarnings, preflightText } = require("./preflight");
+
+  it("is strict when set, else when its team uses the standard handoff", () => {
+    assert.equal(isStrict({ strict: true }, null), true);
+    assert.equal(isStrict({ strict: false }, { usesHandoffs: true }), false);
+    assert.equal(isStrict({}, { usesHandoffs: true }), true);
+    assert.equal(isStrict({}, { usesHandoffs: false }), false);
+    assert.equal(isStrict({}, null), false);
+  });
+
+  it("the block lists exactly its tools, commands and folders, then the refused line", () => {
+    const text = capabilitiesBlock({
+      tools: {
+        GitHub: ["create_pull_request", "get_pull_request"],
+        Atlassian: ["getJiraIssue"],
+        Empty: [],
+      },
+      commands: ["git status", "npm test"],
+      folders: ["/Users/me/DashFactory"],
+    });
+    assert.equal(
+      text,
+      [
+        "WHAT YOU CAN DO (Dash runs this bot strict: only what's listed here works).",
+        "Provider tools:",
+        "- Atlassian: getJiraIssue",
+        "- GitHub: create_pull_request, get_pull_request",
+        "Shell commands (each covers the command and anything after it):",
+        "- git status",
+        "- npm test",
+        "Folders (its file tools and commands work only inside these):",
+        "- /Users/me/DashFactory",
+        REFUSED_LINE,
+      ].join("\n"),
+    );
+    assert.equal(
+      REFUSED_LINE,
+      "Anything else is refused. If your task needs something not listed, stop and end your answer failed with what you needed. Don't try another way and don't ask.",
+    );
+  });
+
+  it("says none where it has nothing, and no commands without all its built-ins", () => {
+    const text = capabilitiesBlock({
+      tools: {},
+      commands: ["git"],
+      folders: ["/w"],
+      builtins: "read-only",
+    });
+    assert.match(text, /Provider tools:\n- none/);
+    assert.match(text, /anything after it\):\n- none/);
+    assert.match(text, /only inside these\):\n- \/w/);
+  });
+
+  it("finds the commands its instructions name: backticked, or a plain git push", () => {
+    assert.deepEqual(
+      instructionCommands(
+        "Make sure the tests pass: run `npm test`. Then git push the branch and open it with gh pr create. Go to the page.",
+      ),
+      ["npm test", "git push", "gh pr"],
+    );
+  });
+
+  it("the setup check warns about a command that isn't allowed, and not for a bot that isn't strict", () => {
+    const bot = {
+      name: "PR Bot",
+      instructions: "Run `npm test`, then git push.",
+      commands: { allowed: ["npm test"] },
+    };
+    const team = { usesHandoffs: true };
+    const w = strictCommandWarnings(bot, team);
+    assert.deepEqual(
+      w.map((x) => x.command),
+      ["git push"],
+    );
+    assert.match(w[0].message, /^PR Bot's instructions use "git push"/);
+    assert.deepEqual(
+      strictCommandWarnings({ ...bot, strict: false }, team),
+      [],
+    );
+    assert.deepEqual(
+      strictCommandWarnings(
+        { ...bot, commands: { allowed: ["npm test", "git"] } },
+        team,
+      ),
+      [],
+    );
+    const all = strictWarnings([bot, null], team);
+    assert.equal(all.length, 1);
+    assert.match(
+      preflightText([], all),
+      /^The team's setup is good\.\nWorth a look:\n- PR Bot's instructions use "git push"/,
+    );
+  });
+
+  it("preflight returns the warnings, and they don't stop a job", async () => {
+    const { preflight } = require("./preflight");
+    const res = await preflight({
+      bots: [
+        {
+          name: "PR Bot",
+          strict: true,
+          instructions: "Then `gh pr create`.",
+          commands: { allowed: [] },
+        },
+      ],
+      team: null,
+    });
+    assert.equal(res.ok, true);
+    assert.equal(res.warnings[0].command, "gh pr");
+  });
+});

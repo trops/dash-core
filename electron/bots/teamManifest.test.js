@@ -307,6 +307,37 @@ describe("planTeamInstall", () => {
     assert.equal(plan.members[1].definition.builtinTools, undefined);
   });
 
+  it("strict goes through export and install, and only when set (DASH-116)", () => {
+    const out = buildTeamManifest({
+      name: "Daily Brief",
+      bots: [
+        lead,
+        { ...agenda, strict: true },
+        { ...inbox, strict: false },
+        writer,
+      ],
+      providers,
+    }).manifest;
+    const checked = validateTeamManifest(out);
+    assert.ok(checked.manifest, JSON.stringify(checked.errors));
+    const plan = planTeamInstall(checked.manifest, {
+      workspaceId: "ws2",
+      providers,
+    });
+    assert.equal(plan.members[0].definition.strict, true);
+    assert.equal(plan.members[1].definition.strict, false);
+    assert.equal(plan.members[2].definition.strict, undefined);
+    // A file that says something else is refused.
+    const bad = JSON.parse(JSON.stringify(out));
+    const e = bad.members.find((m) => m.embedded && m.embedded.strict === true);
+    e.embedded.strict = "yes";
+    const refused = validateTeamManifest(bad);
+    assert.ok(!refused.manifest);
+    assert.ok(
+      refused.errors.some((x) => /strict must be true or false/.test(x)),
+    );
+  });
+
   it("uses the only provider of a type, with its tool choices", () => {
     const plan = planTeamInstall(manifest, { workspaceId: "ws2", providers });
     const a = plan.members[0];

@@ -1526,3 +1526,34 @@ describe("provider tool names are checked (DASH-72)", () => {
     assert.match(b.reasons.join(" "), /has no tool named addComment/);
   });
 });
+
+describe("strict over MCP (DASH-116)", () => {
+  it("create_bot and update_bot take strict; list_bots shows it", async () => {
+    const { handlers, state } = setup();
+    const made = body(await handlers.create_bot(newBot({ strict: true })));
+    assert.equal(made.status, "waiting");
+    assert.equal(state.checks[0].strict, true);
+
+    const off = body(
+      await handlers.update_bot({ bot: "Writer", strict: false }),
+    );
+    assert.equal(off.status, "waiting");
+    assert.deepEqual(state.checks[1], { id: "b_writer", strict: false });
+    assert.match(
+      off.summary,
+      /Strict: its team's default → off \(more access\)/,
+    );
+
+    const bad = body(
+      await handlers.update_bot({ bot: "Writer", strict: "yes" }),
+    );
+    assert.equal(bad.status, "invalid");
+    assert.match(bad.reasons[0], /strict must be true or false/);
+
+    const listed = body(await handlers.list_bots({}));
+    assert.equal(listed.bots.find((b) => b.id === "b_writer").strict, null);
+    state.bots.find((b) => b.id === "b_writer").strict = true;
+    const again = body(await handlers.list_bots({}));
+    assert.equal(again.bots.find((b) => b.id === "b_writer").strict, true);
+  });
+});

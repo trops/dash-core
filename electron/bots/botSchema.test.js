@@ -270,3 +270,17 @@ describe('botSchema — "unattended" (DASH-54)', () => {
     );
   });
 });
+
+describe("strict (DASH-116)", () => {
+  const { validateBotDefinition, withDefaults } = require("./botSchema");
+  const def = (strict) =>
+    withDefaults({ name: "PR Bot", instructions: "Open the PR.", strict });
+  it("is true, false or left out", () => {
+    assert.equal(validateBotDefinition(def(true)).valid, true);
+    assert.equal(validateBotDefinition(def(false)).valid, true);
+    assert.equal(validateBotDefinition(def(undefined)).valid, true);
+    const bad = validateBotDefinition(def("on"));
+    assert.equal(bad.valid, false);
+    assert.ok(bad.errors.includes("strict must be true or false"));
+  });
+});
