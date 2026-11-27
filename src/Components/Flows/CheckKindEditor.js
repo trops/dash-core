@@ -308,6 +308,77 @@ export const PackageCheckEditor = ({ check, patch, muted = "" }) => {
   );
 };
 
+/** "plan, repo" typed into the key box: its keys, trimmed. */
+export function keysFrom(text) {
+  return String(text || "")
+    .split(/[,\n]/)
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The handoff's keys as chips (DASH-127, screen 4c): ✕ takes one off;
+ * type one and press Enter (or a comma) to add it. plan.cause reaches in.
+ */
+export const KeyChips = ({ keys = [], onChange }) => {
+  const { muted, hairline, fieldBg } = useConfigTokens();
+  const [text, setText] = useState("");
+  const add = () => {
+    const more = keysFrom(text).filter((k) => !keys.includes(k));
+    if (more.length) onChange([...keys, ...more]);
+    setText("");
+  };
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="handoff-keys">
+      <span className="text-xs font-semibold">
+        Keys that must be there, not empty
+      </span>
+      <div className="flex flex-row flex-wrap items-center gap-2">
+        {keys.map((k) => (
+          <span
+            key={k}
+            className={`flex flex-row items-center gap-1 rounded-full border pl-3 pr-1 py-0.5 text-sm ${hairline} ${fieldBg}`}
+          >
+            <span className="font-mono">{k}</span>
+            <button
+              type="button"
+              className={`px-1 ${muted}`}
+              aria-label={`Remove ${k}`}
+              onClick={() => onChange(keys.filter((x) => x !== k))}
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+        <div className="w-40">
+          <InputText
+            ariaLabel="Add a key"
+            placeholder="+ add a key"
+            value={text}
+            onChange={(v) => {
+              if (/[,\n]/.test(v)) {
+                const more = keysFrom(v).filter((k) => !keys.includes(k));
+                if (more.length) onChange([...keys, ...more]);
+                setText("");
+              } else setText(v);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+            onBlur={add}
+          />
+        </div>
+      </div>
+      <span className={`text-xs ${muted}`}>
+        plan.cause reaches inside plan. Press Enter to add a key.
+      </span>
+    </div>
+  );
+};
+
 /** A fresh check of `kind`, starting from `rows` (What it gets) for rules. */
 export function checkOfKind(kind, rows) {
   if (kind === "rules") return { kind, rules: startingRules(rows) };
@@ -665,17 +736,9 @@ export const CheckKindEditor = ({
       ) : null}
 
       {check.kind === "handoff-has" ? (
-        <TextArea
-          label="Keys, one per line (plan.cause reaches in)"
-          value={(check.keys || []).join("\n")}
-          onChange={(v) =>
-            patch({
-              keys: String(v)
-                .split("\n")
-                .map((k) => k.trim())
-                .filter(Boolean),
-            })
-          }
+        <KeyChips
+          keys={check.keys || []}
+          onChange={(keys) => patch({ keys })}
         />
       ) : null}
 

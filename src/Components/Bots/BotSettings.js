@@ -120,6 +120,8 @@ export const BotOwnSettings = ({
   disabled = false,
   // Its dashboard, for the providers a tracker setting lists from.
   workspaceId = null,
+  // Off inside an accordion section that already says it (DASH-127).
+  showLabel = true,
 }) => {
   const { muted, hairline } = useConfigTokens();
   const status = useStatusTokens();
@@ -150,7 +152,7 @@ export const BotOwnSettings = ({
 
   return (
     <div className="flex flex-col gap-2" data-testid="bot-own-settings">
-      <SectionLabel text="Settings for its job" />
+      {showLabel ? <SectionLabel text="Settings for its job" /> : null}
       <span className={`text-xs ${muted}`}>
         {`What ${who} needs to do its own job, like the folder it works in. Use one as {name} in its instructions, folders or checks; it's filled in when it runs. What it decides goes to the next bot in its handoff. What it may do (push, merge…) is its access, never a setting.`}
       </span>

@@ -7,13 +7,13 @@ import {
   TextArea,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { newCheck } from "./checksView";
+import { WHO, newCheck } from "./checksView";
 
 /**
  * AddCheckScreen (DASH-110) — adding a check to a bot, in its checks
  * window:
  *
- *   1. Who decides: a rule (the default), a bot reviews, or you approve.
+ *   1. Who decides: automatic (the default), a bot reviews, or you approve.
  *   2. Suggested checks for this bot, labelled In repo, Built in, Ships
  *      with Dash or Registry. One click adds one, inputs filled from the
  *      team's settings.
@@ -35,18 +35,22 @@ export const SOURCE_LABELS = {
   registry: "Registry",
 };
 
-export const WHO_OPTIONS = [
-  { value: "rule", label: "A rule decides (no AI)" },
-  { value: "reviewer", label: "A bot reviews" },
-  { value: "you", label: "You approve" },
-];
+// Who decides (DASH-127): the same choices as the checks window's.
+export const WHO_OPTIONS = WHO.map(({ value, label }) => ({ value, label }));
 
 /** Can this draft be saved? Only once Try it passed on it, as it is now. */
 export function canSave(draft, tried) {
   return !!(draft && tried && tried.ok && tried.for === draft.code);
 }
 
-export const AddCheckScreen = ({ bot, onAdd, onCancel }) => {
+/**
+ * @param {boolean} [canReview]  another bot on the team can review (else
+ *   "A bot reviews" isn't offered: it's you)
+ */
+export const AddCheckScreen = ({ bot, onAdd, onCancel, canReview = true }) => {
+  const whoOptions = canReview
+    ? WHO_OPTIONS
+    : WHO_OPTIONS.filter((o) => o.value !== "reviewer");
   const { muted, hairline, fieldBg, strong } = useConfigTokens();
   const [who, setWho] = useState("rule");
   const [suggested, setSuggested] = useState(null);
@@ -119,7 +123,7 @@ export const AddCheckScreen = ({ bot, onAdd, onCancel }) => {
   if (who !== "rule") {
     return (
       <div className="flex flex-col gap-3" data-testid="add-check-screen">
-        <RadioGroup value={who} onChange={setWho} options={WHO_OPTIONS} />
+        <RadioGroup value={who} onChange={setWho} options={whoOptions} />
         <div className="flex flex-row gap-2">
           <Button
             title="Add it"
@@ -134,7 +138,7 @@ export const AddCheckScreen = ({ bot, onAdd, onCancel }) => {
 
   return (
     <div className="flex flex-col gap-4" data-testid="add-check-screen">
-      <RadioGroup value={who} onChange={setWho} options={WHO_OPTIONS} />
+      <RadioGroup value={who} onChange={setWho} options={whoOptions} />
 
       <div className="flex flex-col gap-2" data-testid="suggested-checks">
         <span className={`text-sm font-semibold ${strong}`}>

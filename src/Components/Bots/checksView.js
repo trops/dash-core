@@ -12,7 +12,7 @@
  */
 
 import { isBotJob, jobTimeline } from "../Goals/jobTimeline";
-import { parseBotEventType } from "./teamDiagram";
+import { addTrigger, parseBotEventType, removeTrigger } from "./teamDiagram";
 import { BOT_RESULTS } from "./widgetDiagram";
 
 export const MAX_CHECKS = 10;
@@ -86,6 +86,100 @@ export const STEP_CHOICES = [
   { value: "you", label: "You approve" },
 ];
 
+/**
+ * Who decides a check (DASH-127, screens 4b/4c): a rule or command Dash
+ * runs, another bot on the team, or you. Each with its one-line why.
+ */
+export const WHO = [
+  {
+    value: "rule",
+    label: "Automatic: a rule or command (no AI)",
+    hint: "Passes or fails on its own, every time the same way. Free or cheap, so put it early.",
+  },
+  {
+    value: "reviewer",
+    label: "A bot reviews",
+    hint: "Another bot on this team reads the work and says pass or fail, with why. Costs AI.",
+  },
+  {
+    value: "you",
+    label: "You approve",
+    hint: "The job waits for you to approve it, or send it back with a reason.",
+  },
+];
+
+/** Who decides a step: "rule" (any check Dash runs), "reviewer" or "you". */
+export function whoOf(step) {
+  if (step && (step.kind === "you" || step.kind === "reviewer")) {
+    return step.kind;
+  }
+  return "rule";
+}
+
+/**
+ * The kinds of automatic check, as cards (screen 4c), with the
+ * STEP_CHOICES value each starts as. Built in also holds "A rule" on the
+ * answer (BUILT_IN_CHOICES).
+ */
+export const AUTO_KINDS = [
+  {
+    value: "builtin",
+    label: "Built in",
+    hint: "Ready-made: the handoff has keys, work is committed, PR CI passed…",
+    start: "handoff-has",
+  },
+  {
+    value: "command",
+    label: "A command",
+    hint: "Run one you already have, like npm test. Its output is kept as proof.",
+    start: "command",
+  },
+  {
+    value: "repo",
+    label: "A repo check",
+    hint: "One the repo keeps in .dash/checks, like CI. Read from the base branch.",
+    start: "repo",
+  },
+  {
+    value: "script",
+    label: "A script",
+    hint: "A short function. Describe it and AI writes it once; you read it before saving.",
+    start: "script",
+  },
+  {
+    value: "compare",
+    label: "Ask a provider",
+    hint: "Look up a fact, like the ticket's status, and check it. Read-only tools only.",
+    start: "compare",
+  },
+  {
+    value: "package",
+    label: "From a package",
+    hint: "A check that ships with Dash or comes from the registry. Fill in its inputs.",
+    start: "package",
+  },
+];
+
+/** The Built in card's checks (STEP_CHOICES values). */
+export const BUILT_IN_CHOICES = [
+  { value: "handoff-has", label: "The handoff has these keys" },
+  { value: "git-on-branch", label: "The workspace is on its branch" },
+  {
+    value: "git-committed",
+    label: "Work is committed (nothing left uncommitted)",
+  },
+  { value: "pr-ci", label: "The PR's CI passed" },
+  { value: "rules", label: "The answer follows rules" },
+];
+
+/** Which AUTO_KINDS card a check step is on (null for a reviewer or you). */
+export function autoKindOf(step) {
+  if (whoOf(step) !== "rule") return null;
+  const c = choiceOf(step);
+  if (BUILT_IN_CHOICES.some((b) => b.value === c)) return "builtin";
+  return AUTO_KINDS.some((k) => k.value === c) ? c : "builtin";
+}
+
 /** Which STEP_CHOICES value a step is ("script" for a script check). */
 export function choiceOf(step) {
   if (!step) return "rules";
@@ -118,6 +212,12 @@ export function newCheck(choice, { field = "input.answer" } = {}) {
         kind: "check",
         name: "A check package passes",
         check: { kind: "package", package: "", inputs: {} },
+      };
+    case "script":
+      return {
+        kind: "check",
+        name: "A script passes",
+        check: { kind: "script", script: "", timeoutSec: 10 },
       };
     case "repo":
       return {
@@ -559,5 +659,54 @@ export function targetChanges(before = [], after = []) {
   return {
     adds: after.filter((t) => !was.has(t.key)),
     removes: before.filter((t) => !now.has(t.key)),
+  };
+}
+
+// ── Sends its work to (DASH-127, screen 7b) ────────────────────────────
+
+/**
+ * The bots a bot's passed work goes to: the team bots that run when it
+ * completes (handsOnTargets' bots), and the team bots it could add.
+ * Widgets are connected on the team Diagram.
+ *
+ * @param {object} bot
+ * @param {object[]} team  its team (others' bots are left out; it may be
+ *   among them)
+ * @returns {{ targets: object[], choices: object[] }}
+ */
+export function sendsWorkTo(bot, team = []) {
+  if (!bot) return { targets: [], choices: [] };
+  const onTeam = (m) =>
+    bot.workspaceId === null ||
+    bot.workspaceId === undefined ||
+    String(m.workspaceId) === String(bot.workspaceId);
+  const members = (team || []).filter(
+    (m) => m && m.id !== bot.id && m.system !== "dash-team" && onTeam(m),
+  );
+  const targets = handsOnTargets(bot, members).filter((t) => t.type === "bot");
+  const choices = handsOnChoices(bot, members, [], targets).filter(
+    (c) => c.type === "bot",
+  );
+  return { targets, choices };
+}
+
+/**
+ * The save that sends `source`'s work to `target`: `target` runs on its
+ * Completed event, the same trigger as a line on the Diagram (+ Add a bot,
+ * DASH-139). Only the target's triggers change.
+ */
+export function sendToSave(target, source) {
+  return {
+    id: target.id,
+    subscriptions: addTrigger(target, source, "completed", "Completed", "")
+      .subscriptions,
+  };
+}
+
+/** The save that stops it: the target's trigger `eventType` removed. */
+export function stopSendingSave(target, eventType) {
+  return {
+    id: target.id,
+    subscriptions: removeTrigger(target, eventType).subscriptions,
   };
 }
