@@ -603,6 +603,7 @@ export const TeamChart = ({
             onOpen && onOpen(selected.id, "conversation")
           }
           onOpenChecks={canEditChecks ? () => onOpenChecks(selected.id) : null}
+          onOpenSettings={() => onOpen && onOpen(selected.id, "settings")}
           onAdd={addListener}
           onRemove={removeListener}
         >

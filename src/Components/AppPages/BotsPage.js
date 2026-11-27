@@ -89,6 +89,8 @@ export const BotsPage = ({
   onOpenBotInBotsView = () => {},
   onOpenAppSettings = null,
   onOpenWorkspace = null,
+  // A team's setup from elsewhere (DASH-118): { workspaceId, setup, nonce }.
+  teamLink = null,
 }) => {
   const { muted, strong, selectedBg, selectedBorder } = useConfigTokens();
   const statusTokens = useStatusTokens();
@@ -116,6 +118,21 @@ export const BotsPage = ({
   // The bot page has unsaved Settings edits: leaving it asks first.
   const [pageDirty, setPageDirty] = useState(false);
   const [pendingLeave, setPendingLeave] = useState(null);
+  // A team's setup from elsewhere (Team setup in the Bots view, a fresh
+  // install): pick the team, open it, and scroll to its setup sections.
+  const [setupFocus, setSetupFocus] = useState(null);
+  const linkNonce = teamLink ? teamLink.nonce : null;
+  useEffect(() => {
+    if (!teamLink || teamLink.workspaceId == null) return;
+    const key = `team:${teamLink.workspaceId}`;
+    setPageView("bots");
+    setDashSettings(false);
+    setBotTab("activity");
+    setSelected(key);
+    setOpenTeams((o) => ({ ...o, [key]: true }));
+    if (teamLink.setup) setSetupFocus(teamLink.nonce);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkNonce]);
   // Global switch: give every dashboard an idle team lead (TEAM-002).
   const [autoLeads, setAutoLeads] = useState(null);
 
@@ -302,6 +319,7 @@ export const BotsPage = ({
         onPickBot={(id) => pickBot(id, selTeam.key)}
         setup={selTeam.setup}
         onOpenBotSettings={(id) => pickBot(id, selTeam.key, "settings")}
+        setupFocus={setupFocus}
         onOpenConversation={() =>
           openWorkspace(
             selTeam.kind === "dash"

@@ -219,7 +219,8 @@ export const TeamImportReview = ({
             <SectionLabel text="Team settings" />
             <span className={`text-xs ${muted}`}>
               This team's bots use these in their instructions, checks and
-              folders. You can change them later on the dashboard.
+              folders. You can change them later in the team's setup: Team setup
+              in the dashboard's Bots view, or Manage › Bots.
             </span>
             <TeamSettingsForm
               settings={manifest.settings}

@@ -5,7 +5,7 @@
 import React from "react";
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { teamLines, installedText } from "./dashboardBots";
+import { teamLines, installedText, needsTeamSetup } from "./dashboardBots";
 import { PublishBotsList } from "./PublishDashboardModal";
 
 jest.mock("../../../ComponentManager", () => ({
@@ -88,4 +88,44 @@ test("PublishBotsList: bots with what starts them; Include toggles", () => {
     <PublishBotsList bots={bots} include={false} onInclude={onInclude} />,
   );
   expect(screen.queryByText(/Greeter/)).toBeNull();
+});
+
+describe("needsTeamSetup (DASH-118)", () => {
+  const ws = { id: 12, name: "Factory" };
+  it("a fresh install whose team or bots still need settings lands on its setup", () => {
+    expect(
+      needsTeamSetup({
+        workspace: ws,
+        summary: { bots: { installed: [{}], needsSettings: ["Repo URL"] } },
+      }),
+    ).toBe(true);
+    expect(
+      needsTeamSetup({
+        workspace: ws,
+        summary: {
+          bots: {
+            installed: [{}],
+            botsNeedSettings: [
+              { botId: "b", name: "Workspace Bot", missing: [{}] },
+            ],
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+  it("not when nothing is missing, its bots failed, or there's no dashboard", () => {
+    expect(
+      needsTeamSetup({ workspace: ws, summary: { bots: { installed: [{}] } } }),
+    ).toBe(false);
+    expect(
+      needsTeamSetup({
+        workspace: ws,
+        summary: { bots: { error: "x", needsSettings: ["A"] } },
+      }),
+    ).toBe(false);
+    expect(
+      needsTeamSetup({ summary: { bots: { needsSettings: ["A"] } } }),
+    ).toBe(false);
+    expect(needsTeamSetup(null)).toBe(false);
+  });
 });

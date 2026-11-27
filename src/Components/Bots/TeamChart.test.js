@@ -600,3 +600,14 @@ describe("TeamChart — a bot's checks inside its box (DASH-12)", () => {
     });
   });
 });
+
+describe("TeamChart — What it can do's Edit (DASH-126, wired in DASH-118)", () => {
+  it("opens the selected bot's Settings", () => {
+    const { onOpen } = setup({ selectedId: "reader" });
+    const section =
+      screen.getByText("What it can do").closest("section") ||
+      screen.getByText("What it can do").parentElement.parentElement;
+    fireEvent.click(within(section).getByRole("button", { name: "Edit" }));
+    expect(onOpen).toHaveBeenCalledWith("reader", "settings");
+  });
+});

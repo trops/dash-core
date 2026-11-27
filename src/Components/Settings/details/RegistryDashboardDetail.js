@@ -20,7 +20,14 @@ import { InstallProgressModal } from "./InstallProgressModal";
 import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
 import { DashboardInstallOptionsModal } from "./DashboardInstallOptionsModal";
 import { botsWithSettings } from "../../Bots/BotSettings";
-import { teamLines, installedText } from "./dashboardBots";
+import { teamLines, installedText, needsTeamSetup } from "./dashboardBots";
+import { openTeamSetup } from "../../Bots/openTeamSetup";
+
+// A fresh install whose bots still need settings lands on its team's
+// setup (DASH-118), after the host has opened the new dashboard.
+function landOnSetup(result) {
+  if (needsTeamSetup(result)) openTeamSetup(result.workspace.id);
+}
 import { unavailableRequiredWidgets } from "./registryDashboardCompat";
 
 /**
@@ -207,6 +214,7 @@ export const RegistryDashboardDetail = ({
         if (result?.success && onInstallComplete) {
           onInstallComplete(result);
         }
+        if (result?.success) landOnSetup(result);
       }
     } catch (err) {
       console.error("[RegistryDashboardDetail] Install error:", err);
@@ -240,6 +248,7 @@ export const RegistryDashboardDetail = ({
       if (result.success && onInstallComplete) {
         onInstallComplete(result);
       }
+      if (result.success) landOnSetup(result);
     }
   }, [pkg.name, onInstallComplete]);
 

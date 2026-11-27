@@ -52,6 +52,8 @@ import { dropBotForm, keepBotForm } from "./botFormDrafts";
 import { useTeamSetup } from "./useTeamSetup";
 import { TeamSetupBadge, TeamSetupBanner } from "./TeamSetupBanner";
 import { needsSetupIds } from "../../utils/teamSetupStatus";
+import { openTeamSetup } from "./openTeamSetup";
+import { OverflowMenu } from "../AppPages/ManageLayout";
 
 /**
  * BotsView — a dashboard's team, full stage (bot-teams PRD TEAM-011).
@@ -471,7 +473,7 @@ export const BotsView = ({
 
   // The team's setup (DASH-119): a badge in the header, a banner until it's
   // ready, "Needs setup" on those bots; "Finish setup ›" opens the first
-  // one's Settings (or, with no one bot to fix, the team on the Bots page).
+  // one's Settings (or, with no one bot to fix, the team's setup).
   const setup = useTeamSetup(workspaceId, team ? team.bots || all : []);
   const setupIds = needsSetupIds(setup);
   const finishSetup = (first) => {
@@ -479,12 +481,17 @@ export const BotsView = ({
       openBot(first.botId, "settings");
       return;
     }
-    guarded(() =>
-      window.dispatchEvent(
-        new CustomEvent("dash:open-page", { detail: { page: "bots" } }),
-      ),
-    );
+    guarded(() => openTeamSetup(workspaceId));
   };
+  // Team setup (DASH-118): the team's page under Manage › Bots, at its
+  // setup sections (settings, Check setup, self-test, checks).
+  const teamSetupButton = workspace ? (
+    <Button3
+      title="Team setup"
+      size="sm"
+      onClick={() => guarded(() => openTeamSetup(workspaceId))}
+    />
+  ) : null;
   const setupBanner = (
     <TeamSetupBanner status={setup} onFinish={finishSetup} finishWithoutBot />
   );
@@ -828,43 +835,47 @@ export const BotsView = ({
     setPublishError(null);
   };
 
-  const teamActions = (
-    <div className="flex flex-col gap-1">
-      <div className="flex flex-row flex-wrap gap-2">
-        {workspace ? (
-          <Button3
-            title="Team budget…"
-            size="sm"
-            onClick={() => setTeamBudgetOpen(true)}
-          />
-        ) : null}
-        <Button3 title="Export team" size="sm" onClick={exportTeam} />
-        <Button3
-          title="Show team activity"
-          size="sm"
-          onClick={() => showOnDashboard("activity")}
-        />
-        <Button3
-          title="Publish team…"
-          size="sm"
-          onClick={() => openPublish("team")}
-        />
-      </div>
-      {teamNote ? (
-        <div className={`text-xs flex flex-col gap-0.5 ${muted}`}>
-          <span>{teamNote.text}</span>
-          {teamNote.details && teamNote.details.length ? (
-            <>
-              <span>Not included:</span>
-              {teamNote.details.map((d, i) => (
-                <span key={i}>{`· ${d}`}</span>
-              ))}
-            </>
-          ) : null}
-        </div>
+  // The team's other actions, under ⋯ next to Team setup (DASH-118,
+  // mockup 1): budget, export, activity on the dashboard, publish.
+  const teamMenu = (
+    <OverflowMenu
+      ariaLabel="More team actions"
+      items={[
+        workspace
+          ? {
+              label: "Team budget…",
+              onClick: () => setTeamBudgetOpen(true),
+            }
+          : null,
+        { label: "Export team", onClick: exportTeam },
+        {
+          label: "Show team activity",
+          onClick: () => showOnDashboard("activity"),
+        },
+        {
+          label: "Publish team…",
+          onClick: () => openPublish("team"),
+        },
+      ]}
+    />
+  );
+  // What the last of them did (an export's file, a publish's error).
+  const teamNoteView = teamNote ? (
+    <div
+      className={`text-xs flex flex-col gap-0.5 ${muted}`}
+      data-testid="team-note"
+    >
+      <span>{teamNote.text}</span>
+      {teamNote.details && teamNote.details.length ? (
+        <>
+          <span>Not included:</span>
+          {teamNote.details.map((d, i) => (
+            <span key={i}>{`· ${d}`}</span>
+          ))}
+        </>
       ) : null}
     </div>
-  );
+  ) : null;
 
   const turnOffLead = async () => {
     const bots = api();
@@ -972,8 +983,14 @@ export const BotsView = ({
         </div>
       ) : null}
       <div className="flex-1" />
-      {teamActions}
-      <Button title="Add bot" size="sm" onClick={addBot} />
+      {teamNoteView}
+      <div className="flex flex-row items-center gap-2">
+        {teamSetupButton}
+        <span className="flex-1">
+          <Button title="Add bot" size="sm" onClick={addBot} />
+        </span>
+        {teamMenu}
+      </div>
     </nav>
   );
 
@@ -1026,7 +1043,9 @@ export const BotsView = ({
           options={LINES}
         />
         {viewSwitch}
+        {teamSetupButton}
         <Button title="Add bot" size="sm" onClick={addBot} />
+        {teamMenu}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
         {setup.ready ? null : <div className="px-4 pt-3">{setupBanner}</div>}
@@ -1088,7 +1107,9 @@ export const BotsView = ({
           }
         />
       </div>
-      <div className={`px-4 py-3 border-t ${hairline}`}>{teamActions}</div>
+      {teamNoteView ? (
+        <div className={`px-4 py-3 border-t ${hairline}`}>{teamNoteView}</div>
+      ) : null}
     </section>
   );
   const diagramMode = mode === "diagram";
@@ -1124,7 +1145,11 @@ export const BotsView = ({
         <div className="flex flex-col gap-2">
           {setupBanner}
           {picker}
-          {teamActions}
+          <div className="flex flex-row items-center gap-2">
+            {teamSetupButton}
+            {teamMenu}
+          </div>
+          {teamNoteView}
         </div>
       ) : diagramMode ? (
         teamDiagram

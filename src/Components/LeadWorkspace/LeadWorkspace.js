@@ -18,6 +18,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useAllBots } from "../AppPages/useAllBots";
 import { useTeamSetup } from "../Bots/useTeamSetup";
 import { TeamSetupBanner } from "../Bots/TeamSetupBanner";
+import { openTeamSetup } from "../Bots/openTeamSetup";
 import { useTeamLeads } from "../AiAssistant/components/RecipientPicker";
 import { AskStep, isAsking } from "../Create/AskStep";
 import { BotChat } from "../Bots/BotChat";
@@ -3422,8 +3423,14 @@ export const LeadWorkspace = ({
               <div className="flex-shrink-0 px-6 pt-3">
                 <TeamSetupBanner
                   status={leadTeamSetup}
+                  finishWithoutBot
                   onFinish={(first) => {
                     onClose();
+                    if (!first) {
+                      // No one bot to fix: the team's setup (DASH-118).
+                      openTeamSetup(leadTeamWs);
+                      return;
+                    }
                     window.dispatchEvent(
                       new CustomEvent("dash:open-bot", {
                         detail: { botId: first.botId, tab: "settings" },

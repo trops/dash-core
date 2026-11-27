@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Button, Button3, Table } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotAvatar } from "../Bots/BotAvatar";
@@ -30,6 +30,8 @@ const howItRuns = (bot) =>
  * @param {() => void} [onDashTeamSettings]
  * @param {object|null} [setup]  the team's setup status when it isn't ready
  *   (teamSetupStatus, DASH-119): a badge by its name and a banner on top
+ * @param {*} [setupFocus]  a new value scrolls to the team's setup
+ *   sections (Team setup from the Bots view, a fresh install; DASH-118)
  * @param {(botId) => void} [onOpenBotSettings]  "Finish setup ›": a bot's
  *   Settings tab
  */
@@ -44,8 +46,21 @@ export const TeamOverview = ({
   onDashTeamSettings = null,
   setup = null,
   onOpenBotSettings = null,
+  setupFocus = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
+  // Team setup (DASH-118): its sections in view. A team that isn't set up
+  // starts at the top instead, where its banner says what's missing.
+  const setupRef = useRef(null);
+  const setupReady = !setup || setup.ready !== false;
+  useEffect(() => {
+    if (setupFocus == null || !setupReady) return;
+    const el = setupRef.current;
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "start" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setupFocus]);
   if (!team) return null;
   const isEmpty = team.kind === "empty";
   const isDash = team.kind === "dash";
@@ -192,19 +207,22 @@ export const TeamOverview = ({
             onRowClick={isEmpty ? null : (row) => onPickBot(row.id)}
           />
           <span className={`text-xs ${muted}`}>{note}</span>
-          {/* One job at a time (DASH-81): a team's, whatever its bots. */}
-          {team.kind === "team" && team.workspace && !isEmpty ? (
-            <>
+          {/* The team's setup (Team setup lands here, DASH-118). */}
+          {team.kind === "team" && team.workspace ? (
+            <div
+              ref={setupRef}
+              data-testid="team-setup"
+              className="flex flex-col gap-4"
+            >
+              {/* One job at a time (DASH-81): a team's, whatever its bots. */}
               <TeamJobSettings workspaceId={team.workspace.id} />
               <TeamChecksPanel workspaceId={team.workspace.id} />
-            </>
-          ) : null}
-          {/* Its settings (DASH-57), when its bots declare some. */}
-          {team.kind === "team" && team.workspace ? (
-            <TeamSettingsPanel
-              key={String(team.workspace.id)}
-              workspaceId={team.workspace.id}
-            />
+              {/* Its settings (DASH-57), when its bots declare some. */}
+              <TeamSettingsPanel
+                key={String(team.workspace.id)}
+                workspaceId={team.workspace.id}
+              />
+            </div>
           ) : null}
         </div>
       </div>
