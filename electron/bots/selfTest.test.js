@@ -107,7 +107,11 @@ describe("outward actions in a test", () => {
     assert.ok(bot.instructions.endsWith(TEST_NOTE));
     assert.match(TEST_NOTE, /git push/);
     assert.match(TEST_NOTE, /don't ask anyone to allow it/);
-    assert.match(TEST_NOTE, /pull\/0/);
+    // DASH-140: what was skipped is said as "would have", with no made-up
+    // link: a PR it never opened isn't "open", and has no URL.
+    assert.doesNotMatch(TEST_NOTE, /pull\/0/);
+    assert.match(TEST_NOTE, /Never say it happened/);
+    assert.match(TEST_NOTE, /set it to null/);
     assert.equal(withTestBlocks({ name: "x" }).instructions, TEST_NOTE);
   });
 

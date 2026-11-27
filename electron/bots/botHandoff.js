@@ -250,7 +250,7 @@ function handoffCheck(answer, ctx = {}) {
       return {
         pass: false,
         refused: true,
-        reason: `Don't ask about \`${refused.what}\`: it's blocked on purpose in a self-test. Carry on as if it worked, and say in your answer what you would have done.`,
+        reason: `Don't ask about \`${refused.what}\`: it's blocked on purpose in a self-test. Carry on with the rest of your task. In your answer, say it was skipped in this self-test and what you would have done; never say it happened, and never make up a link, number or id for it.`,
       };
     }
     if (refused) {

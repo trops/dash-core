@@ -508,7 +508,7 @@ class BotRunner {
           }
         }
         return {
-          message: `Skipped in a test: \`${r.what}\` wasn't run (outward commands are blocked in a self-test, on purpose). Carry on as if it worked, and say in your answer what you would have done.`,
+          message: `Skipped in a test: \`${r.what}\` wasn't run (outward commands are blocked in a self-test, on purpose). Carry on with the rest of your task. In your answer, say it was skipped in this self-test and what you would have done; never say it happened, and never make up a link, number or id for it.`,
         };
       }
       emit({ type: "refused", refusal: r });
