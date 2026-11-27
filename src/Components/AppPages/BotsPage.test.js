@@ -542,3 +542,52 @@ describe("BotsPage — the pick goes away, and leaving unsaved edits from anywhe
     expect(within(detail()).getByText("bot page b1")).toBeInTheDocument();
   });
 });
+
+describe("BotsPage — setup status (DASH-119)", () => {
+  const needy = {
+    id: "b2",
+    name: "Digest",
+    workspaceId: 9,
+    settings: [{ name: "inbox", label: "Inbox to read", required: true }],
+    settingValues: {},
+  };
+  beforeEach(() => {
+    mockBots = MOCK_BOTS.map((b) => (b.id === "b2" ? needy : b));
+  });
+  afterEach(() => {
+    mockBots = MOCK_BOTS;
+  });
+
+  const mailRow = () =>
+    screen
+      .getAllByTestId("bots-tree-team")
+      .find((t) => within(t).queryByText("Mail"));
+
+  it("the team's row says Setup; a set-up team's doesn't", () => {
+    setup();
+    expect(within(mailRow()).getByTestId("team-setup-badge")).toHaveTextContent(
+      "Setup · 1",
+    );
+    const kitchen = screen
+      .getAllByTestId("bots-tree-team")
+      .find((t) => within(t).queryByText("Kitchen Sink"));
+    expect(within(kitchen).queryByTestId("team-setup-badge")).toBeNull();
+  });
+
+  it("the team page has the badge and the banner; Finish setup opens the bot's Settings", () => {
+    setup();
+    fireEvent.click(within(mailRow()).getAllByRole("button")[0]);
+    const overview = screen.getByTestId("team-overview");
+    expect(within(overview).getByTestId("team-setup-badge")).toHaveTextContent(
+      "Setup · 1 bot needs you",
+    );
+    expect(within(overview).getByTestId("team-setup-banner")).toHaveTextContent(
+      "Digest needs “Inbox to read” filled in",
+    );
+    fireEvent.click(
+      within(overview).getByRole("button", { name: "Finish setup ›" }),
+    );
+    expect(screen.getByText("bot page b2")).toBeInTheDocument();
+    expect(screen.getByText("opens on settings")).toBeInTheDocument();
+  });
+});

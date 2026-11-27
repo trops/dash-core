@@ -1193,6 +1193,21 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 
 **Not done:** Jira statuses and Linear teams are fixed lists / plain fields (not read from the tracker); the preview needs the provider already running in Dash.
 
+## DASH-119: A team's setup status, wherever the team appears (2026-11-27)
+
+**Status:** Implemented (mockups 1 and 2).
+
+**Why:** an empty required setting only showed as a small warning inside the form at the bottom of the team page, so a freshly installed team looked ready when it wasn't.
+
+- [x] One status per team (`src/utils/teamSetupStatus.js`, pure): the bots with a required (or used) setting still empty (`botSetupStatus`, DASH-136), plus what the last Check setup found that settings can't say (a provider, a repo, an AI login), on its bot by id or name, or on no one bot. It counts bots, not team fields. The check's setting problems are left out: the bots as saved now say those, so filling one in clears it without another check. A passing Check setup clears the rest.
+- [x] Shown as a badge: "Setup · 2 bots need you" in the dashboard's Bots view header and by the team's name on its page; "Setup · 2" (full text as the tooltip) on the Bots tree's team row (`botsTree` `setupOf` → `team.setup`).
+- [x] A banner on top of the team page, the Bots view (diagram and list) and a team lead's conversation: "This team can't take work yet", each bot and what it needs, "Then run Check setup and a self-test.", and **Finish setup ›**, which opens the first bot's Settings tab (with no one bot to fix, the Bots view's goes to the Bots page).
+- [x] "Needs setup" on those bots' diagram cards (TeamChart `setupFor`).
+- [x] Run now on a bot of a team that isn't set up doesn't start: "This team can't take work yet: Workspace Bot needs “Work folder” filled in." with Finish setup › (BotPage `onOpenBot`, else a `dash:open-bot` event). A task in the lead's conversation shows the same banner.
+- [x] The renderer keeps each team's last Check setup for the session (`Bots/teamSetupStore.js`: `rememberSetupCheck` from the team page's Check setup, `noteSetupChanged` after the team settings save); `Bots/useTeamSetup.js` (`useTeamSetup(workspaceId, bots)`, `useTeamSetups([{ workspaceId, bots }])`) reads the team settings and works the status out from the bots as saved. No new IPC.
+
+**Not done here:** the "untested change" marker isn't counted (DASH-121's self-test owns it); MCP `give_task` isn't refused on an un-set-up team (its bots' runs still fail with the missing setting).
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams
@@ -1319,6 +1334,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.28    | 2026-11-27 | John   | TEAM-014 / DASH-139: readable diagram — work order, stacked handoffs, failure routes on cards, Lines toggle, helpers lane, widgets hidden by default, and the selected bot's connections panel                                                                                                                                                                                                      |
 | 1.29    | 2026-11-27 | John   | DASH-126: "What it can do" in the selected bot's panel — files and shell with its folders, what it asks you before, commands, each provider's allowed tools, the always-blocked list (`canDoView`)                                                                                                                                                                                                  |
 | 1.30    | 2026-11-27 | John   | DASH-135: the tracker setting type — where a bot's tickets come from (Jira / GitHub Issues / Linear / None) with pickers, a connection row, a preview and Jira's Advanced JQL; checked by setup |
+| 1.31    | 2026-11-27 | John   | DASH-119: a team's setup status — badge on the tree row and Bots view header, "This team can't take work yet" banner, "Needs setup" on cards, Run now says why it can't start |
 
 ---
 

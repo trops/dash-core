@@ -983,3 +983,55 @@ describe("BotsView — a new bot's form from Create opens once", () => {
     expect(onFocusApplied).not.toHaveBeenCalled();
   });
 });
+
+describe("BotsView — setup status (DASH-119)", () => {
+  const needy = {
+    ...crm,
+    settings: [{ name: "workFolder", label: "Work folder", required: true }],
+    settingValues: {},
+  };
+  const needyTeam = () =>
+    makeTeam({ members: [inbox, needy], bots: [lead, inbox, needy] });
+
+  it("the header says setup isn't done, the banner says what's missing, and the bot shows Needs setup", () => {
+    setup({ mode: null, team: needyTeam() });
+    expect(screen.getByTestId("team-setup-badge")).toHaveTextContent(
+      "Setup · 1 bot needs you",
+    );
+    const banner = screen.getByTestId("team-setup-banner");
+    expect(banner).toHaveTextContent("This team can't take work yet");
+    expect(banner).toHaveTextContent("CRM Sync needs “Work folder” filled in");
+    expect(
+      within(screen.getByTestId("diagram-card-b2")).getByText("Needs setup"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("diagram-card-b1")).queryByText("Needs setup"),
+    ).toBeNull();
+  });
+
+  it("Finish setup opens that bot's Settings", () => {
+    setup({ mode: null, team: needyTeam() });
+    fireEvent.click(screen.getByRole("button", { name: "Finish setup ›" }));
+    expect(pageShows()).toBe("b2 on settings");
+  });
+
+  it("the list view keeps the banner; a set-up team shows none", () => {
+    setup({ mode: "list", team: needyTeam() });
+    expect(
+      within(teamList()).getByTestId("team-setup-banner"),
+    ).toBeInTheDocument();
+  });
+
+  it("a team with nothing to fill in has no badge or banner", () => {
+    setup({ mode: null });
+    expect(screen.queryByTestId("team-setup-badge")).toBeNull();
+    expect(screen.queryByTestId("team-setup-banner")).toBeNull();
+  });
+
+  it("the bot page can open another bot (its Run now's Finish setup)", () => {
+    setup({ mode: "list", team: needyTeam() });
+    fireEvent.click(within(teamList()).getByText("Inbox Watch"));
+    act(() => mockPageProps.onOpenBot("b2", "settings"));
+    expect(pageShows()).toBe("b2 on settings");
+  });
+});

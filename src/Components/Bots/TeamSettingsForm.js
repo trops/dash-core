@@ -29,6 +29,7 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { noteSetupChanged } from "./teamSetupStore";
 import { TrackerSetting } from "./TrackerSetting";
 import { trackerEmpty } from "../../utils/trackerSetting";
 
@@ -383,6 +384,7 @@ export const TeamSettingsPanel = ({ workspaceId }) => {
       if (r && r.errors && r.errors.length) setErrors(r.errors);
       else {
         setSaved(true);
+        noteSetupChanged(workspaceId);
         await load();
       }
     } catch (e) {

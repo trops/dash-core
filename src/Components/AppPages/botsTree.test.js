@@ -153,3 +153,29 @@ test("a lead on a dashboard with no bots can need you: counted, filtered, and it
 test("On no dashboard starts open", () => {
   expect(tree().find((x) => x.key === LONE_KEY).open).toBe(true);
 });
+
+describe("botsTree — setup status (DASH-119)", () => {
+  it("a dashboard team carries its setup status when it isn't ready", () => {
+    const notReady = {
+      ready: false,
+      count: 1,
+      badge: "Setup · 1 bot needs you",
+    };
+    const teams = botsTree({
+      bots: BOTS,
+      dashTeam: TEAM,
+      workspaces: WS,
+      setupOf: (id) => (id === "7" ? notReady : { ready: true }),
+    });
+    const byKey = Object.fromEntries(teams.map((t) => [t.key, t]));
+    expect(byKey["team:7"].setup).toBe(notReady);
+    expect(byKey["team:9"].setup).toBeNull();
+    expect(byKey[DASH_KEY].setup).toBeNull();
+    expect(byKey[LONE_KEY].setup).toBeNull();
+  });
+
+  it("no setupOf: no setup status", () => {
+    const teams = botsTree({ bots: BOTS, workspaces: WS });
+    expect(teams.every((t) => !t.setup)).toBe(true);
+  });
+});

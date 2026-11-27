@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button, Switch } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { rememberSetupCheck } from "./teamSetupStore";
 
 /**
  * TeamJobSettings — a team's "One job at a time" (DASH-81), on its page in
@@ -130,6 +131,8 @@ export const TeamJobSettings = ({ workspaceId }) => {
     setChecking(true);
     try {
       const r = await api.checkSetup(workspaceId);
+      // The team's setup status everywhere counts it (DASH-119).
+      rememberSetupCheck(workspaceId, r);
       if (current.current === workspaceId) setSetup(r || null);
     } catch (err) {
       if (current.current === workspaceId) {

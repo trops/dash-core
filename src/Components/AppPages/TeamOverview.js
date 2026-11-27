@@ -7,6 +7,7 @@ import { triggerSummary } from "../Bots/teamUtils";
 import { TeamSettingsPanel } from "../Bots/TeamSettingsForm";
 import { TeamJobSettings } from "../Bots/TeamJobSettings";
 import { TeamChecksPanel } from "../Bots/TeamChecksPanel";
+import { TeamSetupBadge, TeamSetupBanner } from "../Bots/TeamSetupBanner";
 import { TeamNeedsYouCards } from "../Jobs/NeedsYouCards";
 
 const howItRuns = (bot) =>
@@ -27,6 +28,10 @@ const howItRuns = (bot) =>
  * @param {() => void} onOpenConversation
  * @param {(workspace) => void} [onOpenDashboard]
  * @param {() => void} [onDashTeamSettings]
+ * @param {object|null} [setup]  the team's setup status when it isn't ready
+ *   (teamSetupStatus, DASH-119): a badge by its name and a banner on top
+ * @param {(botId) => void} [onOpenBotSettings]  "Finish setup ›": a bot's
+ *   Settings tab
  */
 export const TeamOverview = ({
   team,
@@ -37,6 +42,8 @@ export const TeamOverview = ({
   onOpenConversation = () => {},
   onOpenDashboard = null,
   onDashTeamSettings = null,
+  setup = null,
+  onOpenBotSettings = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
   if (!team) return null;
@@ -116,7 +123,10 @@ export const TeamOverview = ({
           large
         />
         <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-          <h3 className="text-lg font-semibold truncate">{title}</h3>
+          <span className="flex flex-row items-center gap-2 min-w-0">
+            <h3 className="text-lg font-semibold truncate">{title}</h3>
+            <TeamSetupBadge status={setup} />
+          </span>
           <span className={`text-xs ${muted}`}>{line}</span>
         </div>
         <div className="flex flex-row flex-wrap items-center gap-2 flex-shrink-0">
@@ -151,6 +161,16 @@ export const TeamOverview = ({
         data-testid="team-overview-scroll"
       >
         <div className="flex flex-col gap-4">
+          {/* Not set up yet (DASH-119): what each bot needs, and the first
+              one's Settings. */}
+          <TeamSetupBanner
+            status={setup}
+            onFinish={
+              onOpenBotSettings
+                ? (first) => onOpenBotSettings(first.botId)
+                : null
+            }
+          />
           {/* What needs you, as cards with their buttons (DASH-124):
               answered here, never "in the conversation". */}
           {isEmpty ? null : (

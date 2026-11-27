@@ -407,3 +407,51 @@ test("a member on a dashboard with no lead says how to give it one", () => {
     screen.queryByRole("button", { name: "Open conversation" }),
   ).toBeNull();
 });
+
+describe("BotPage — Run now on a team that isn't set up (DASH-119)", () => {
+  const folder = {
+    id: "b3",
+    name: "Workspace Bot",
+    workspaceId: 7,
+    settings: [{ name: "workFolder", label: "Work folder", required: true }],
+    settingValues: {},
+  };
+
+  it("doesn't run: says why, and Finish setup opens the bot that needs it", () => {
+    const onOpenBot = jest.fn();
+    const { botsApi } = setup({ onOpenBot }, { bots: [...BOTS, folder] });
+    fireEvent.click(screen.getByRole("button", { name: "Run now" }));
+    expect(botsApi.run).not.toHaveBeenCalled();
+    expect(screen.getByTestId("bot-page-run-status")).toHaveTextContent(
+      "This team can't take work yet: Workspace Bot needs “Work folder” filled in.",
+    );
+    fireEvent.click(screen.getByTestId("bot-page-run-fix"));
+    expect(onOpenBot).toHaveBeenCalledWith("b3", "settings");
+  });
+
+  it("the bot that needs it: Finish setup opens its own Settings tab", () => {
+    setup({ botId: "b3" }, { bots: [...BOTS, folder] });
+    fireEvent.click(screen.getByRole("button", { name: "Run now" }));
+    fireEvent.click(screen.getByTestId("bot-page-run-fix"));
+    expect(screen.getByText("settings for Workspace Bot")).toBeInTheDocument();
+  });
+
+  it("with no host to open it, asks the app to open that bot's Settings", () => {
+    const opened = jest.fn();
+    window.addEventListener("dash:open-bot", opened);
+    setup({}, { bots: [...BOTS, folder] });
+    fireEvent.click(screen.getByRole("button", { name: "Run now" }));
+    fireEvent.click(screen.getByTestId("bot-page-run-fix"));
+    window.removeEventListener("dash:open-bot", opened);
+    expect(opened.mock.calls[0][0].detail).toEqual({
+      botId: "b3",
+      tab: "settings",
+    });
+  });
+
+  it("a bot on no dashboard, or a set-up team, runs as before", async () => {
+    const { botsApi } = setup({ botId: "b2" }, { bots: [...BOTS, folder] });
+    fireEvent.click(screen.getByRole("button", { name: "Run now" }));
+    await waitFor(() => expect(botsApi.run).toHaveBeenCalledWith("b2"));
+  });
+});
