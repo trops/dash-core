@@ -432,7 +432,14 @@ function checksForInstall(checks, picked) {
       const copy = JSON.parse(JSON.stringify(s));
       // A command from a package runs on this computer: it installs off,
       // until you turn it on (DASH-57).
-      if (copy.kind === "check" && copy.check && copy.check.kind === "command")
+      // A repo check runs your repo's own file, so it doesn't, unless its
+      // fallback is the package's command (DASH-102).
+      const c = copy.kind === "check" ? copy.check : null;
+      if (
+        c &&
+        (c.kind === "command" ||
+          (c.kind === "repo" && c.fallback && c.fallback.kind === "command"))
+      )
         copy.held = true;
       steps.push(copy);
     }

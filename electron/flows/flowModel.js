@@ -25,7 +25,7 @@
 
 const STEP_KINDS = ["source", "bot", "check", "you"];
 const YOU_MODES = ["approve", "read", "custom"];
-const CHECK_KINDS = ["rules", "command", "script", "tool"];
+const CHECK_KINDS = ["rules", "command", "script", "tool", "repo"];
 // Dash's own checks, put in a bot's checks flow by Dash, never saved on a
 // bot (DASH-101: the Handoff check).
 const BUILTIN_CHECK_KINDS = ["handoff"];

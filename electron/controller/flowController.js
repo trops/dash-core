@@ -65,7 +65,7 @@ function filesOf(goalId) {
 }
 
 /** What a check needs to run for a job: its folder, scripts and tools. */
-async function checkContext(goal, _step) {
+async function checkContext(goal, step) {
   const g = goals();
   // The job's work item and workspace (DASH-100): its checks run in the
   // workspace, and get both in their input and environment.
@@ -95,6 +95,8 @@ async function checkContext(goal, _step) {
   }
   const folder = own || (g && goal && goal.id ? g.paths(goal.id).work : null);
   const ctxEnv = contextEnv(jobContext || {});
+  // Which step is running (DASH-102), for a check shared by several.
+  if (step && step.name) ctxEnv.DASH_STEP = String(step.name);
   // A bot's command checks sign git and gh in like its own commands
   // (DASH-66): its GitHub provider's token, for that check only, and taken
   // out of what the check keeps.

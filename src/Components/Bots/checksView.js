@@ -5,7 +5,7 @@
  *
  * A bot's checks: `{ steps, onFail, maxTries, handsOn }` or null
  * (electron/bots/botChecks.js). A step is a check Dash runs (`check`, with
- * `check.kind` rules | command | script | tool), a reviewer bot
+ * `check.kind` rules | command | script | tool | repo), a reviewer bot
  * (`reviewer`, with `botId`) or you (`you`).
  *
  * Pure: no React, no IPC.
@@ -31,6 +31,8 @@ export function stepTone(step) {
   if (step.kind === "you") return "you";
   if (step.kind === "reviewer") return "reviewer";
   if (step.check && step.check.kind === "command") return "command";
+  // Runs the repo's own file (DASH-102), like a command.
+  if (step.check && step.check.kind === "repo") return "command";
   return "rule";
 }
 
@@ -51,6 +53,7 @@ export const STEP_CHOICES = [
   { value: "compare", label: "Compare with a provider" },
   { value: "rules", label: "A rule" },
   { value: "command", label: "A command or test" },
+  { value: "repo", label: "A check in the repo" },
   { value: "reviewer", label: "A reviewer bot" },
   { value: "you", label: "You approve" },
 ];
@@ -81,6 +84,12 @@ export function newCheck(choice, { field = "input.answer" } = {}) {
           timeoutSec: 120,
           passWhen: { type: "exit0" },
         },
+      };
+    case "repo":
+      return {
+        kind: "check",
+        name: "The repo's check passes",
+        check: { kind: "repo", name: "validate", ifMissing: "fail" },
       };
     case "compare":
       return {
@@ -140,6 +149,10 @@ function stepWhat(step, nameOf) {
   }
   if (c.kind === "command") {
     return c.command ? `Command · ${c.command}` : "Command · not set yet";
+  }
+  if (c.kind === "repo") {
+    const file = c.name ? `.dash/checks/${c.name}` : "pick its file";
+    return `${step.held ? "Off · came with the package · " : ""}Repo · ${file}`;
   }
   if (c.kind === "tool") {
     return c.server && c.tool
@@ -259,6 +272,15 @@ export function draftError(draft, selfId) {
     if (s.kind === "check" && s.check && s.check.kind === "command") {
       if (!String(s.check.command || "").trim()) {
         return `"${s.name || "Command"}" needs a command to run.`;
+      }
+    }
+    if (s.kind === "check" && s.check && s.check.kind === "repo") {
+      const n = String(s.check.name || "").trim();
+      if (!n) {
+        return `"${s.name || "Repo check"}" needs the name of its file in .dash/checks.`;
+      }
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(n) || n.includes("..")) {
+        return `"${n}" can't be a check's name: use letters, numbers, ".", "-" and "_".`;
       }
     }
     if (s.kind === "check" && s.check && s.check.kind === "tool") {

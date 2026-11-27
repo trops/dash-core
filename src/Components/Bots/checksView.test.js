@@ -14,6 +14,7 @@ import {
   savedChecks,
   stepSub,
   stepTone,
+  STEP_CHOICES,
   targetChanges,
   updateStep,
 } from "./checksView";
@@ -333,5 +334,40 @@ describe("checksView", () => {
         removes: [a],
       });
     });
+  });
+});
+
+describe("a check kept in the repo (DASH-102)", () => {
+  it("is offered, starts as validate, and shows its file", () => {
+    expect(STEP_CHOICES.map((c) => c.value)).toContain("repo");
+    const step = newCheck("repo");
+    expect(step.check).toEqual({
+      kind: "repo",
+      name: "validate",
+      ifMissing: "fail",
+    });
+    expect(choiceOf(step)).toBe("repo");
+    expect(stepTone(step)).toBe("command");
+    expect(stepSub(step)).toBe("Repo · .dash/checks/validate");
+    expect(stepSub({ ...step, held: true })).toBe(
+      "Off · came with the package · Repo · .dash/checks/validate",
+    );
+  });
+
+  it("needs a file name Dash can use", () => {
+    const step = { ...newCheck("repo"), id: "a" };
+    expect(draftError({ steps: [step] }, "me")).toBeNull();
+    expect(
+      draftError(
+        { steps: [{ ...step, check: { kind: "repo", name: "" } }] },
+        "me",
+      ),
+    ).toMatch(/needs the name of its file/);
+    expect(
+      draftError(
+        { steps: [{ ...step, check: { kind: "repo", name: "../x" } }] },
+        "me",
+      ),
+    ).toMatch(/can't be a check's name/);
   });
 });
