@@ -22,6 +22,11 @@
  * that come from a setting ("{workFolder}/repo"); a folder on this
  * computer stays behind.
  *
+ * A member may declare its own settings (DASH-136) as `settings` on its
+ * embedded bot, in the same shape, values again left behind: they're the
+ * settings for that bot's job, filled in on its section of the install
+ * form and on its Settings tab. Its folders may come from them too.
+ *
  * Pure (NFR-006): decisions only; botController reads/writes files and saves
  * the bots.
  */
@@ -186,13 +191,17 @@ function buildTeamManifest({
       const sel = selections[providerName];
       providersOut.push({ type, tools: Array.isArray(sel) ? [...sel] : null });
     }
+    // Its own settings (DASH-136): declared, never their values.
+    const ownSettings = cleanSettings(bot.settings, { of: "a bot" }).settings;
+    const ownNames = ownSettings.map((d) => d.name);
     // Folders from a setting travel; one on this computer doesn't.
     const projects = [];
     for (const p of Array.isArray(bot.projects) ? bot.projects : []) {
-      if (usesSetting(p, settingNames)) projects.push(String(p));
-      else if (String(p || "").trim()) {
+      if (usesSetting(p, [...settingNames, ...ownNames])) {
+        projects.push(String(p));
+      } else if (String(p || "").trim()) {
         notIncluded.push(
-          `${bot.name}: the folder "${p}" (a folder on this computer: use a team setting, like {workFolder})`,
+          `${bot.name}: the folder "${p}" (a folder on this computer: use a setting, like {workFolder})`,
         );
       }
     }
@@ -226,6 +235,7 @@ function buildTeamManifest({
           })),
         ...(projects.length ? { projects } : {}),
         ...(checks ? { checks } : {}),
+        ...(ownSettings.length ? { settings: ownSettings } : {}),
       },
     };
   });
@@ -602,15 +612,22 @@ function validateTeamManifest(input) {
       ) {
         errors.push(`${where}: results are malformed`);
       }
+      // Its own settings (DASH-136).
+      const ownRead = cleanSettings(e.settings, { of: "a bot" });
+      for (const err of ownRead.errors) errors.push(`${where}: ${err}`);
+      const ownNames = ownRead.settings.map((d) => d.name);
       const projects = [];
       if (e.projects != null) {
         if (!Array.isArray(e.projects) || e.projects.length > LIMITS.folders) {
           errors.push(`${where}: projects must be a list of folders`);
         } else {
           for (const f of e.projects) {
-            if (!str(f, LIMITS.short) || !usesSetting(f, settingNames)) {
+            if (
+              !str(f, LIMITS.short) ||
+              !usesSetting(f, [...settingNames, ...ownNames])
+            ) {
               errors.push(
-                `${where}: a folder must start with one of the team's settings, like {workFolder}`,
+                `${where}: a folder must start with one of the team's or the bot's settings, like {workFolder}`,
               );
               break;
             }
@@ -650,6 +667,7 @@ function validateTeamManifest(input) {
           })),
           ...(projects.length ? { projects } : {}),
           ...(checksRead.checks ? { checks: checksRead.checks } : {}),
+          ...(ownRead.settings.length ? { settings: ownRead.settings } : {}),
         },
       });
     });
@@ -887,6 +905,11 @@ function planTeamInstall(
           // Reviewers stand in by role until the bots exist
           // (resolveReviewers).
           ...(e.checks ? { checks: checksForInstall(e.checks, picked) } : {}),
+          // Its own settings (DASH-136); their values come from the
+          // install form's section for this bot.
+          ...(Array.isArray(e.settings) && e.settings.length
+            ? { settings: e.settings.map((d) => ({ ...d })) }
+            : {}),
         },
       };
     });
@@ -896,6 +919,10 @@ function planTeamInstall(
     name: manifest.name,
     // Its settings, for the install form (DASH-57).
     settings: (manifest.settings || []).map((d) => ({ ...d })),
+    // Each bot's own (DASH-136), for the form's section per bot.
+    botSettings: botSettingsOf(
+      manifest.members.filter((m) => picked.has(m.role)),
+    ),
     members,
     // Wiring only between the bots being installed.
     wiring: manifest.wiring
@@ -1009,6 +1036,11 @@ function teamSummaryFor(manifest) {
     members: (manifest.members || []).map((m) => ({
       role: m.role,
       name: m.embedded.name,
+      // Its own settings (DASH-136), so the install form shows them
+      // before the download.
+      ...(Array.isArray(m.embedded.settings) && m.embedded.settings.length
+        ? { settings: m.embedded.settings.map((d) => ({ ...d })) }
+        : {}),
     })),
     wiring: (manifest.wiring || []).map((w) => ({
       role: w.role,
@@ -1019,6 +1051,26 @@ function teamSummaryFor(manifest) {
       ? { settings: manifest.settings.map((d) => ({ ...d })) }
       : {}),
   };
+}
+
+/**
+ * The members that declare settings of their own (DASH-136), for the install
+ * form: [{ role, name, settings }].
+ */
+function botSettingsOf(members) {
+  return (members || [])
+    .filter(
+      (m) =>
+        m &&
+        m.embedded &&
+        Array.isArray(m.embedded.settings) &&
+        m.embedded.settings.length,
+    )
+    .map((m) => ({
+      role: m.role,
+      name: m.embedded.name,
+      settings: m.embedded.settings.map((d) => ({ ...d })),
+    }));
 }
 
 /** Provider types the team's bots need, once each. */
@@ -1088,6 +1140,7 @@ module.exports = {
   wireWidgets,
   stripBotListeners,
   teamSummaryFor,
+  botSettingsOf,
   teamProviderTypes,
   describeTeam,
 };

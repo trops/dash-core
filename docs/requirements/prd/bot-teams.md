@@ -1148,6 +1148,29 @@ Implementation notes:
 
 Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny only, never Always allow; always the task passphrase; provider tools only, in tasks given over MCP only (not ask_team_lead questions); the tool switch (off by default) is the setting; tasks given over MCP time out after the team's setting (default 4 h) and fail, saying why. Out of scope: a per-provider "Can be approved remotely" switch.
 
+## DASH-136: Settings belong to bots (2026-11-27)
+
+**Status:** Implemented (data, run, install, setup check, MCP; the Set up checklist, badges and failure links are DASH-119/120/122).
+
+**Why:** Dash is a bot platform, not a factory product. Each bot has one job, and the settings for that job belong to it (the Ticket Bot's ticket source, Triage's repos, the Workspace Bot's work folder). Team-wide settings (DASH-57/84) put values on no particular bot and could contradict a bot's own permissions.
+
+- [x] A bot declares its own settings in the team-settings shape (name, label, type: text, url, folder, command, boolean, number, table; default, description) plus `required`. They're kept on the bot: `settings` (declared) and `settingValues` ({ name: value }). botSchema checks them; a value for a setting taken away is dropped on save.
+- [x] They reach the bot's run like team settings: {name} in its instructions, folders, checks, schedules' prompts and triggers' notes (teamValues.withTeamValues, given `withBotSettings(team, bot)`). The bot's own win over a team setting of the same name. A bot on no team can use them too. An empty one fails the run with "This bot's setting … has no value: fill it in on this bot's Settings tab".
+- [x] No bot reads another bot's settings: what a bot decided goes to the next one through the handoff (DASH-101). A table a bot owns is picked from that bot's answer like a team's (picks are kept on the job).
+- [x] Permissions stay on the bot (push, merge… are its access, never a settings column).
+- [x] The bot's Settings tab (BotDetail) shows **Settings for its job**: fill them in, add one (name, label, type, columns for a table, default, description, Required), take one away. Saved with the bot form.
+- [x] A package carries each member's declarations (never the values) as `embedded.settings`; a member's folder may come from its own setting ("{workFolder}"). The registry summary lists each member's settings so the install form shows before the download. Updating from a newer version takes its declarations and keeps the values filled in.
+- [x] The install form groups them by bot (mockup 8): **Bots that need something from you**, one card per bot, Required marks, and how many bots still need settings. One shared component (`Bots/BotSettings.js` `BotSettingsInstall`) in the registry dashboard install (DashboardInstallOptionsModal) and the team / bot import review (TeamImportReview). Their values travel inside the install values under `"@bots": { [role]: { [name]: value } }` (no setting can have that name), so the IPC is unchanged. The install result lists `botsNeedSettings`.
+- [x] Check setup / preflight report per bot: "Workspace Bot: Work folder has no value: fill it in on its Settings tab" (problem `{ kind: "setting", bot, botId, owner: "bot" | "team", setting }`), including a required setting the bot's text doesn't use yet. Repos in a bot's own table are checked like the team's.
+- [x] MCP: `create_bot` / `update_bot` take `settings: { declare, values, remove }` (the summary says what changes); `list_bots` shows a bot's own settings. `set_team_settings` is unchanged.
+
+**Team-level settings are kept, not migrated.** Existing teams and packages with team settings work exactly as before (read, filled in, installed, published). Moving a value onto "the bot that uses it" can't be done safely by Dash: several bots often use one team setting, and a copy per bot would let them drift apart. So nothing is rewritten; a package moves its settings onto its bots in its next version (its members declare them, its team `settings` drop them), and the setup check reports a team setting a bot uses against that bot, so the user sees one per-bot list either way. Team settings stay the place for how bots work together ("One job at a time", the standard handoff).
+
+**For the next tickets:** `src/utils/botSettings.js` (pure; the main process requires it too):
+- `botSetupStatus(bots, team)` → `[{ botId, name, missing: [{ name, label, owner: "bot" | "team", type }] }]`, only bots with something missing, leads and Dash team bots left out. `botMissingSettings(bot, team)` for one bot; `botSetupLines(status)` → "Workspace Bot: Work folder has no value.".
+- `withBotSettings(team, bot)`, `settingsOfBot(bot)`, `settingEmpty(setting, values)`, `settingNamesUsed(bot)`, `BOT_VALUES_KEY` / `splitInstallValues(values)`.
+- botController: `setupStatus(workspaceId)` (the same list), `setBotSettings(botId, { declare, values, remove })`.
+
 ## Out of Scope
 
 - Multi-user, shared, or cloud-hosted teams
@@ -1270,7 +1293,8 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.24    | 2026-11-10 | John   | TEAM-014: the diagram shows the dashboard's widgets; drag a bot to a widget to show what it sends (team-dashboards TD-009)                                                                                                                                                                                                                                                                          |
 | 1.25    | 2026-11-13 | John   | TEAM-012 look (approved mockup "Bot widgets that look like Dash"): Bot results reads the answer as its structure (answerShape: lead line, one row per item with its action badge, short answers said large), status badge + icon actions, approvals answered in the widget, running step + Stop, failure with Try again, compact face in small cells; Bot activity grouped by day with status icons |
 | 1.26    | 2026-11-21 | John   | DASH-32: approvals over MCP — get_task_status "needs" + approvals, answer_approval (off by default), "Wait for approvals up to" per team (Implemented)                                                                                                                                                                                                                                              |
-| 1.27    | 2026-11-27 | John   | TEAM-014 / DASH-139: readable diagram — work order, stacked handoffs, failure routes on cards, Lines toggle, helpers lane, widgets hidden by default, and the selected bot's connections panel |
+| 1.27    | 2026-11-27 | John   | DASH-136: settings belong to bots — declared and kept per bot, filled into its run, grouped by bot at install, reported per bot by the setup check; team settings kept as they were |
+| 1.28    | 2026-11-27 | John   | TEAM-014 / DASH-139: readable diagram — work order, stacked handoffs, failure routes on cards, Lines toggle, helpers lane, widgets hidden by default, and the selected bot's connections panel |
 
 ---
 

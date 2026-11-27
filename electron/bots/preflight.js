@@ -2,7 +2,8 @@
  * preflight.js — a team's setup, checked before a job starts (DASH-108).
  *
  * Deterministic, and each problem says its fix:
- *   setting     a setting a bot uses has no value (or a table no rows)
+ *   setting     a setting a bot uses has no value (or a table no rows), or
+ *               one of a bot's own required settings has none (DASH-136)
  *   provider    a provider a bot uses isn't there, or doesn't start
  *   ai-login    the AI a bot runs on (or the user's default) isn't signed
  *               in: an expired or missing login, a refused key (DASH-114)
@@ -21,6 +22,11 @@
 "use strict";
 
 const { withTeamValues } = require("./teamValues");
+// Settings a bot owns (DASH-136).
+const {
+  withBotSettings,
+  botMissingSettings,
+} = require("../../src/utils/botSettings");
 const { pickFile, CHECKS_DIR } = require("../checks/kinds/repo");
 const { aiLabel } = require("./aiLogin");
 const { strictCommandWarnings } = require("./strictMode");
@@ -119,16 +125,58 @@ function repoChecksOf(bot) {
     .map((s) => ({ step: s.name || s.check.name, check: s.check }));
 }
 
+/**
+ * The team's settings with its bots' own tables added (a table of the same
+ * name stays the team's, or the first bot's), for the repos to check.
+ */
+function withBotsTables(team, bots) {
+  const base = isObj(team) ? team : {};
+  const declared = Array.isArray(base.declared) ? [...base.declared] : [];
+  const values = { ...(isObj(base.values) ? base.values : {}) };
+  const names = new Set(declared.map((d) => d && d.name));
+  for (const bot of bots || []) {
+    const own = Array.isArray(bot && bot.settings) ? bot.settings : [];
+    const ownValues = isObj(bot && bot.settingValues) ? bot.settingValues : {};
+    for (const d of own) {
+      if (!d || d.type !== "table" || names.has(d.name)) continue;
+      names.add(d.name);
+      declared.push(d);
+      if (Array.isArray(ownValues[d.name])) values[d.name] = ownValues[d.name];
+    }
+  }
+  return { ...base, declared, values };
+}
+
 function settingProblems(bot, team, home) {
-  const { missing } = withTeamValues(bot, team, { home, picks: {} });
+  const { missing } = withTeamValues(bot, withBotSettings(team, bot), {
+    home,
+    picks: {},
+  });
   const out = [];
+  const said = new Set();
+  const where = (m) =>
+    m.owner === "bot" ? "fill it in on its Settings tab" : null;
   for (const m of missing || []) {
     // Filled in by the job (a pick, its item or workspace): not setup.
     if (m.reason && m.reason !== "no-rows") continue;
-    if (m.reason === "no-rows") {
+    said.add(m.name);
+    const owner = m.owner === "bot" ? "bot" : "team";
+    if (owner === "bot") {
+      // The bot's own (DASH-136): "Workspace Bot: Work folder has no value".
       out.push({
         kind: "setting",
         bot: bot.name,
+        botId: bot.id,
+        owner,
+        setting: m.name,
+        message: `${bot.name}: ${m.label} ${m.reason === "no-rows" ? "has no rows" : "has no value"}: ${where(m)}`,
+      });
+    } else if (m.reason === "no-rows") {
+      out.push({
+        kind: "setting",
+        bot: bot.name,
+        botId: bot.id,
+        owner,
         setting: m.name,
         message: `${bot.name} uses the ${m.label} table, which has no rows: add one on the team's page`,
       });
@@ -136,10 +184,24 @@ function settingProblems(bot, team, home) {
       out.push({
         kind: "setting",
         bot: bot.name,
+        botId: bot.id,
+        owner,
         setting: m.name,
         message: `${bot.name} uses ${m.label && m.label !== m.name ? `${m.label} ({${m.name}})` : `{${m.name}}`}, which has no value: fill it in on the team's page`,
       });
     }
+  }
+  // Its own required settings its text doesn't use (yet).
+  for (const m of botMissingSettings(bot, null)) {
+    if (said.has(m.name)) continue;
+    out.push({
+      kind: "setting",
+      bot: bot.name,
+      botId: bot.id,
+      owner: "bot",
+      setting: m.name,
+      message: `${bot.name}: ${m.label} ${m.type === "table" ? "has no rows" : "has no value"}: fill it in on its Settings tab`,
+    });
   }
   return out;
 }
@@ -260,8 +322,10 @@ async function preflight(
     }
   }
 
-  // Repos: read, push, and the repo checks on their base branches.
-  const repos = teamRepos(team);
+  // Repos: read, push, and the repo checks on their base branches. The
+  // team's tables and its bots' own (DASH-136).
+  const withOwn = withBotsTables(team, list);
+  const repos = teamRepos(withOwn);
   const doFetch = deps.fetch || (typeof fetch === "function" ? fetch : null);
   const checked = { repos: repos.length, bots: list.length };
   if (repos.length && doFetch) {
@@ -313,7 +377,7 @@ async function preflight(
           // The check's base, filled from this repo's row.
           const { bot: filled } = withTeamValues(
             { checks: { steps: [{ kind: "check", check }] } },
-            team,
+            withBotSettings(withOwn, bot),
             { home, picks: { [r.table]: r.key } },
           );
           const fc = (filled.checks && filled.checks.steps[0].check) || check;
@@ -374,6 +438,7 @@ function preflightText(problems, warnings = []) {
 
 module.exports = {
   preflight,
+  settingProblems,
   preflightText,
   teamRepos,
   pushes,

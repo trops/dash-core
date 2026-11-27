@@ -10,6 +10,11 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { TeamSettingsForm } from "./TeamSettingsForm";
+import {
+  BotSettingsInstall,
+  botsWithSettings,
+  withBotInstallValues,
+} from "./BotSettings";
 
 const POLICY_LABELS = {
   ask: "Ask before external actions",
@@ -101,6 +106,8 @@ export const TeamImportReview = ({
   const [choices, setChoices] = useState({});
   // Its settings (DASH-57): filled in here, used by its bots as {name}.
   const [values, setValues] = useState({});
+  // Each bot's own settings (DASH-136): { [role]: { [name]: value } }.
+  const [botValues, setBotValues] = useState({});
   // Which bots to install (TEAM-007 slice 3b): all, until the user unticks.
   const [picked, setPicked] = useState(
     () => new Set(((manifest && manifest.members) || []).map((m) => m.role)),
@@ -223,6 +230,19 @@ export const TeamImportReview = ({
             />
           </div>
         ) : null}
+
+        <BotSettingsInstall
+          bots={botsWithSettings(
+            (manifest.members || []).filter((m) => picked.has(m.role)),
+          )}
+          values={botValues}
+          onChange={(role, n, v) =>
+            setBotValues((prev) => ({
+              ...prev,
+              [role]: { ...(prev[role] || {}), [n]: v },
+            }))
+          }
+        />
 
         {dropped.length || memoryRoles.length ? (
           <div className="flex flex-col gap-1">
@@ -359,11 +379,16 @@ export const TeamImportReview = ({
             disabled={
               installing || pickedRoles.length === 0 || teamNeedsDashboard
             }
-            onClick={() =>
-              !isBot && (manifest.settings || []).length
-                ? onInstall(choices, isPartial ? pickedRoles : null, values)
-                : onInstall(choices, isPartial ? pickedRoles : null)
-            }
+            onClick={() => {
+              // The team's values (DASH-57) and each bot's own (DASH-136).
+              const all = withBotInstallValues(
+                !isBot && (manifest.settings || []).length ? values : null,
+                botValues,
+              );
+              return all
+                ? onInstall(choices, isPartial ? pickedRoles : null, all)
+                : onInstall(choices, isPartial ? pickedRoles : null);
+            }}
           />
         </div>
       </div>

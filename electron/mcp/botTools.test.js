@@ -617,6 +617,51 @@ describe("create_bot", () => {
 });
 
 describe("update_bot", () => {
+  it("declares and fills in the bot's own settings (DASH-136)", async () => {
+    const { handlers, state } = setup({ state: { asks: false } });
+    const b = body(
+      await handlers.update_bot({
+        bot: "b_writer",
+        settings: {
+          declare: [
+            {
+              name: "workFolder",
+              label: "Work folder",
+              type: "folder",
+              required: true,
+            },
+          ],
+          values: { workFolder: "/w" },
+        },
+      }),
+    );
+    assert.equal(b.status, "changed");
+    assert.deepEqual(state.saves[0].def, {
+      id: "b_writer",
+      settings: [
+        {
+          name: "workFolder",
+          label: "Work folder",
+          type: "folder",
+          required: true,
+        },
+      ],
+      settingValues: { workFolder: "/w" },
+    });
+    const listed = body(await handlers.list_bots({})).bots.find(
+      (x) => x.id === "b_writer",
+    );
+    assert.deepEqual(listed.settings.values, { workFolder: "/w" });
+    const bad = body(
+      await handlers.update_bot({
+        bot: "b_writer",
+        settings: { values: { ghost: "x" } },
+      }),
+    );
+    assert.equal(bad.status, "invalid");
+    assert.match(bad.reasons.join(" "), /isn't one of this bot's settings/);
+  });
+
   it("changes only what's given; the summary says old → new and more access", async () => {
     const { handlers, state } = setup();
     const w = body(

@@ -54,6 +54,7 @@ import { BuiltinInstructions } from "./BuiltinInstructions";
 import { AlwaysAllowedList } from "../../Bots/AlwaysAllowedList";
 import { useBotTest } from "../../Bots/useBotTest";
 import { TestResult } from "../../Bots/TestResult";
+import { BotOwnSettings } from "../../Bots/BotSettings";
 
 /**
  * BotDetail — create/edit form for a Bot Factory bot (Settings → Bots).
@@ -446,6 +447,15 @@ export const BotDetail = ({
   const [publishes, setPublishes] = useState(() =>
     (from?.publishes || []).filter((p) => p && p.name),
   );
+  // --- Its own settings (DASH-136): declared and kept on the bot ---
+  const [ownSettings, setOwnSettings] = useState(() =>
+    Array.isArray(from?.settings) ? from.settings : [],
+  );
+  const [settingValues, setSettingValues] = useState(() =>
+    from?.settingValues && typeof from.settingValues === "object"
+      ? from.settingValues
+      : {},
+  );
   const [newResultLabel, setNewResultLabel] = useState("");
   const [newResultDescription, setNewResultDescription] = useState("");
 
@@ -519,6 +529,8 @@ export const BotDetail = ({
     subscriptions,
     publishes,
     team,
+    ownSettings,
+    settingValues,
   });
   const [baseline, setBaseline] = useState(snapshot);
   const dirty = snapshot !== baseline;
@@ -959,6 +971,10 @@ export const BotDetail = ({
         ...p,
         label: (p.label || "").trim() || p.name,
       })),
+      // Its own settings (DASH-136), only once it has or had some.
+      ...(ownSettings.length || (from && Array.isArray(from.settings))
+        ? { settings: ownSettings, settingValues }
+        : {}),
     };
   }
 
@@ -1791,6 +1807,19 @@ export const BotDetail = ({
                   arrives.
                 </span>
               </div>
+
+              {!hasBuiltin ? (
+                <BotOwnSettings
+                  botName={name.trim()}
+                  settings={ownSettings}
+                  values={settingValues}
+                  disabled={saving}
+                  onChange={({ settings: next, values: nextValues }) => {
+                    setOwnSettings(next);
+                    setSettingValues(nextValues);
+                  }}
+                />
+              ) : null}
             </>
           )}
           {!stageChanges && botTest.phase !== "idle" ? (
