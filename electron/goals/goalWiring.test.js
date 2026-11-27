@@ -84,8 +84,8 @@ describe("botController", () => {
     assert.match(
       bots,
       // (The run's job is worked out in between, DASH-28, and its team's
-      // one-job-at-a-time gate, DASH-81.)
-      /cause\.goal = goal;[\s\S]{0,3500}?if \(!alreadyRunning\) \{\s*this\._events\.startRun\(botId, cause, \{/,
+      // one-job-at-a-time gate, DASH-81, and its setup check, DASH-108.)
+      /cause\.goal = goal;[\s\S]{0,4000}?if \(!alreadyRunning\) \{\s*this\._events\.startRun\(botId, cause, \{/,
     );
     assert.match(bots, /planId: String\(opts\.planId\) \} : \{\}\),\s*goal,/);
   });
