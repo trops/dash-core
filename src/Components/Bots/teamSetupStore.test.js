@@ -13,16 +13,18 @@ import {
 afterEach(() => _resetSetupStore());
 
 describe("teamSetupStore", () => {
-  it("keeps a team's last check (ok, problems, at), by id as a string", () => {
+  it("keeps a team's last check (ok, problems, off, at), by id as a string", () => {
     rememberSetupCheck(7, {
       ok: false,
       problems: [{ kind: "repo-read", message: "x" }],
+      off: [{ botId: "c", bot: "Coder", command: "npm test" }],
       at: "2026-11-27T10:00:00Z",
       text: "…",
     });
     expect(lastSetupCheck("7")).toEqual({
       ok: false,
       problems: [{ kind: "repo-read", message: "x" }],
+      off: [{ botId: "c", bot: "Coder", command: "npm test" }],
       at: "2026-11-27T10:00:00Z",
     });
     expect(lastSetupCheck(8)).toBeNull();

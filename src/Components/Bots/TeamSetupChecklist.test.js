@@ -167,6 +167,93 @@ describe("TeamSetupChecklist", () => {
     expect(screen.getByText("2 problems to fix")).toBeInTheDocument();
   });
 
+  it("lists the package's commands that are off, and Review and turn on turns them all on (DASH-125)", async () => {
+    const held = {
+      ...coder,
+      checks: {
+        steps: [
+          {
+            id: "c1",
+            kind: "check",
+            name: "Tests pass",
+            held: true,
+            check: { kind: "command", command: "npm test" },
+          },
+          { id: "c2", kind: "you", name: "You approve" },
+        ],
+      },
+    };
+    const off = [
+      {
+        botId: "b-c",
+        bot: "Coder",
+        stepId: "c1",
+        step: "Tests pass",
+        command: "npm test",
+      },
+    ];
+    let offNow = off;
+    const calls = withApi({
+      checkSetup: jest.fn(async () => ({
+        ok: true,
+        problems: [],
+        off: offNow,
+      })),
+    });
+    const changed = jest.fn();
+    render(
+      <TeamSetupChecklist
+        workspaceId="7"
+        bots={[held]}
+        onBotsChanged={changed}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Check setup" }));
+    const row = await screen.findByTestId("setup-off-commands");
+    expect(screen.getByTestId("setup-result")).toHaveTextContent(
+      "1 problem to fix:",
+    );
+    expect(row).toHaveTextContent(
+      "1 command that came with the package is off: npm test (Coder). Until it's on, that check waits for your approval.",
+    );
+    expect(screen.getByText("1 problem to fix")).toBeInTheDocument();
+    // Review first: nothing is turned on until you confirm.
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Review and turn on" }),
+    );
+    expect(calls).toEqual([]);
+    expect(
+      screen.getByText(/npm test \(Coder\)\. Turn them on only/),
+    ).toBeInTheDocument();
+    offNow = [];
+    fireEvent.click(screen.getByText("Turn them on"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("setup-off-commands")).toBeNull(),
+    );
+    expect(calls).toEqual([
+      [
+        "save",
+        {
+          id: "b-c",
+          checks: {
+            steps: [
+              {
+                id: "c1",
+                kind: "check",
+                name: "Tests pass",
+                check: { kind: "command", command: "npm test" },
+              },
+              { id: "c2", kind: "you", name: "You approve" },
+            ],
+          },
+        },
+      ],
+    ]);
+    expect(changed).toHaveBeenCalled();
+    expect(window.mainApi.bots.checkSetup).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("The setup is good")).toBeInTheDocument();
+  });
+
   it("shows repo checks only when the team has repos", async () => {
     withApi({
       reposWithoutChecks: jest.fn(async () => ({

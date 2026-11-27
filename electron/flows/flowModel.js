@@ -181,6 +181,10 @@ function cleanStep(s, i) {
           : "Approve");
     if (s.sendBackTo && STEP_ID.test(String(s.sendBackTo)))
       step.sendBackTo = String(s.sendBackTo);
+    // A bot's check that came with a package and is off (DASH-125): what
+    // it would run, so the job can say "Turn on npm test".
+    const off = str(s.offCommand, 200);
+    if (off) step.offCommand = off;
   }
   return step;
 }

@@ -199,7 +199,11 @@ function heldCheck(goal) {
   if (!m && !/came with a package and is off/.test(String(step.note || ""))) {
     return null;
   }
-  return { name: (m ? m[1] : step.name) || "its check" };
+  return {
+    name: (m ? m[1] : step.name) || "its check",
+    // What it would run (DASH-125): "Turn on npm test".
+    command: String(step.offCommand || ""),
+  };
 }
 
 /** The checks that failed a step out: name, reason, tries, output. */
@@ -235,14 +239,20 @@ const settingsAction = (botId, botName, section = null) =>
     : { type: "check-setup", label: "Check setup" };
 
 /** The button for a kind of failure. */
-function actionFor(kind, { botId, botName, section, check }) {
+function actionFor(kind, { botId, botName, section, check, command }) {
   if (kind === "blocked") return settingsAction(botId, botName, section);
   if (kind === "setting") return settingsAction(botId, botName);
   if (kind === "login" || kind === "provider" || kind === "setup") {
     return { type: "check-setup", label: "Check setup" };
   }
   if (kind === "command-off") {
-    return { type: "turn-on", label: `Turn on ${check}`, botId, check };
+    return {
+      type: "turn-on",
+      label: `Turn on ${command || check}`,
+      botId,
+      check,
+      ...(command ? { command } : {}),
+    };
   }
   if (kind === "budget") {
     return { type: "budget", label: "Raise budget", botId };
@@ -280,6 +290,7 @@ export function failureView(job, { goal = null } = {}) {
       botName: out.botName,
       section: v.section,
       check: v.check,
+      command: v.command,
     });
     // Run again from this step: a real bot's step of an ended job.
     out.rerun =
@@ -301,12 +312,18 @@ export function failureView(job, { goal = null } = {}) {
     }
     const held = heldCheck(goal);
     if (!held) return null;
+    const what =
+      held.command && held.command !== held.name
+        ? `its ${held.name} check (${held.command})`
+        : `its ${held.name} check`;
     return finish({
       verb: "Waiting",
       kind: "command-off",
-      reason: `its ${held.name} check came with the package and is off`,
-      detail: "Turn it on, or approve the work yourself.",
+      reason: `${what} came with the package and is off`,
+      detail:
+        "Dash won't run it on this computer until you turn it on. Turn it on, or approve the work yourself.",
       check: held.name,
+      command: held.command || null,
     });
   }
 

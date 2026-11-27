@@ -27,7 +27,7 @@ function emit(workspaceId) {
   }
 }
 
-/** Keep a Check setup result ({ ok, problems, at }) for a team. */
+/** Keep a Check setup result ({ ok, problems, off, at }) for a team. */
 export function rememberSetupCheck(workspaceId, result) {
   const key = keyOf(workspaceId);
   if (key === null) return;
@@ -35,6 +35,8 @@ export function rememberSetupCheck(workspaceId, result) {
     checks.set(key, {
       ok: result.ok,
       problems: Array.isArray(result.problems) ? result.problems : [],
+      // Checks that came with a package and are off (DASH-125).
+      off: Array.isArray(result.off) ? result.off : [],
       at: result.at || null,
     });
   } else {

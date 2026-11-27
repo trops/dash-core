@@ -65,14 +65,29 @@ describe("TeamJobSettings", () => {
 describe("Check setup (DASH-108)", () => {
   it("says a good setup, or each problem", () => {
     expect(setupView(null)).toBeNull();
-    expect(setupView({ ok: true, problems: [] })).toEqual({
+    expect(setupView({ ok: true, problems: [] })).toMatchObject({
       ok: true,
       title: "The setup is good.",
       lines: [],
+      offLine: "",
     });
     expect(
       setupView({ ok: false, problems: [{ message: "A" }, { message: "B" }] }),
-    ).toEqual({ ok: false, title: "2 problems to fix:", lines: ["A", "B"] });
+    ).toMatchObject({
+      ok: false,
+      title: "2 problems to fix:",
+      lines: ["A", "B"],
+    });
+    // Commands that came with a package and are off (DASH-125).
+    const off = setupView({
+      ok: true,
+      problems: [],
+      off: [{ botId: "c", bot: "Coder", command: "npm test" }],
+    });
+    expect(off.title).toBe("1 problem to fix:");
+    expect(off.lines).toEqual([
+      "1 command that came with the package is off: npm test (Coder). Until it's on, that check waits for your approval.",
+    ]);
     expect(setupView({ error: "Nope" }).title).toBe("Nope");
   });
 });

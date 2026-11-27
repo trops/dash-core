@@ -78,7 +78,7 @@ export function draftChanged(saved, draft) {
  * @param {object} p
  * @param {object[]} p.cards       botSetupCards (as saved: drafts don't count)
  * @param {number} [p.teamEmpty]   team settings with no value (old, DASH-57)
- * @param {object|null} [p.check]  the last Check setup ({ ok, problems })
+ * @param {object|null} [p.check]  the last Check setup ({ ok, problems, off })
  * @param {object|null} [p.repos]  { shown, missing, closed } repo checks:
  *   shown when the team has repos; missing = repos with no checks;
  *   closed = team checks whose PR was closed without merging
@@ -109,14 +109,19 @@ export function checklistSteps({
             .join(" · ")
         : "Nothing to fill in",
   });
-  const n = check && Array.isArray(check.problems) ? check.problems.length : 0;
+  // Commands that came with a package and are off (DASH-125) count as one
+  // more thing to fix: jobs still start, but wait for your approval.
+  const off = check && Array.isArray(check.off) && check.off.length ? 1 : 0;
+  const n =
+    (check && Array.isArray(check.problems) ? check.problems.length : 0) + off;
+  const good = !!(check && check.ok === true) && !off;
   steps.push({
     key: "check",
     title: "Check setup",
-    done: !!(check && check.ok === true),
+    done: good,
     state: !check
       ? "Not checked yet"
-      : check.ok
+      : good
         ? "The setup is good"
         : plural(n, "problem", "problems") + " to fix",
   });
