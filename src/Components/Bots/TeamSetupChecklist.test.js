@@ -199,3 +199,83 @@ describe("TeamSetupChecklist", () => {
     expect(screen.getByTestId("team-self-test")).toBeInTheDocument();
   });
 });
+
+describe("Run a self-test (DASH-121)", () => {
+  const ticketBot = {
+    id: "b-t",
+    name: "Ticket Bot",
+    workspaceId: "7",
+    settings: [
+      { name: "source", label: "Where tickets come from", type: "tracker" },
+    ],
+    settingValues: { source: { source: "none" } },
+  };
+
+  it("has a generic field, and waits for a passing Check setup", async () => {
+    withApi({ getTeamSettings: jest.fn(async () => ({})) });
+    render(<TeamSetupChecklist workspaceId="7" bots={[ticketBot, coder]} />);
+    const field = screen.getByLabelText("Test ticket");
+    expect(field).toHaveAttribute(
+      "placeholder",
+      "A ticket in your sandbox project",
+    );
+    expect(screen.queryByPlaceholderText("DASH-97")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Run self-test" }),
+    ).toBeDisabled();
+    expect(screen.getByTestId("self-test-blocked")).toHaveTextContent(
+      "Run Check setup in step 2 first.",
+    );
+  });
+
+  it("checks setup again and doesn't start on problems", async () => {
+    rememberSetupCheck("7", { ok: true, problems: [] });
+    withApi({ testTeam: jest.fn() });
+    render(<TeamSetupChecklist workspaceId="7" bots={[coder]} />);
+    fireEvent.change(screen.getByLabelText("Test item"), {
+      target: { value: "T-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run self-test" }));
+    expect(await screen.findByTestId("self-test-note")).toHaveTextContent(
+      "Not started: fix the 2 problems in step 2 first.",
+    );
+    expect(window.mainApi.bots.testTeam).not.toHaveBeenCalled();
+    expect(screen.getByTestId("setup-result")).toHaveTextContent(
+      "Coder: GitHub doesn't start.",
+    );
+  });
+
+  it("starts on a good setup and opens the job", async () => {
+    rememberSetupCheck("7", { ok: true, problems: [] });
+    withApi({
+      checkSetup: jest.fn(async () => ({ ok: true, problems: [] })),
+      setTestItem: jest.fn(async (_w, item) => ({ testItem: item })),
+      testTeam: jest.fn(async () => ({
+        jobId: "job-9",
+        botId: "b-c",
+        item: { id: "T-1" },
+      })),
+    });
+    const opened = [];
+    const onPage = (e) => opened.push(e.detail);
+    window.addEventListener("dash:open-page", onPage);
+    try {
+      render(<TeamSetupChecklist workspaceId="7" bots={[coder]} />);
+      fireEvent.change(screen.getByLabelText("Test item"), {
+        target: { value: "T-1" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Run self-test" }));
+      expect(await screen.findByTestId("self-test-note")).toHaveTextContent(
+        "The self-test started on T-1.",
+      );
+      expect(window.mainApi.bots.setTestItem).toHaveBeenCalledWith("7", {
+        id: "T-1",
+      });
+      expect(opened).toEqual([{ page: "jobs", jobId: "job-9" }]);
+      fireEvent.click(screen.getByText("Open the job ›"));
+      expect(opened).toHaveLength(2);
+    } finally {
+      window.removeEventListener("dash:open-page", onPage);
+    }
+  });
+});

@@ -16,6 +16,12 @@
  *     bots' settings, as saved now, say those (filling one in clears it
  *     without another check).
  *
+ * An "untested change" (DASH-121: the team's bots or settings changed
+ * since its last passing self-test, `team.untested = { what, at }`) is
+ * counted too, without making the team "not ready": a run can still start,
+ * but the badge says so ("Setup · untested change") until a self-test
+ * passes.
+ *
  * Pure, no imports beyond botSettings.
  */
 import { botSetupStatus } from "./botSettings";
@@ -31,6 +37,7 @@ const READY = Object.freeze({
   first: null,
   badge: null,
   short: null,
+  untested: null,
 });
 
 /**
@@ -43,7 +50,9 @@ const READY = Object.freeze({
  * @returns {{ ready: boolean,
  *   bots: { botId, name, missing: object[], problems: string[] }[],
  *   other: string[], count: number, first: { botId, name } | null,
- *   badge: string|null, short: string|null }}
+ *   badge: string|null, short: string|null, untested: string|null }}
+ *   untested: what changed since the last passing self-test, if anything
+ *   (the team stays ready; only the badge says so).
  *   count: how many bots need something; other: problems on no one bot.
  */
 export function teamSetupStatus({ bots = [], team = null, check = null } = {}) {
@@ -97,7 +106,20 @@ export function teamSetupStatus({ bots = [], team = null, check = null } = {}) {
       (order.get(String(a.botId)) ?? 1e9) - (order.get(String(b.botId)) ?? 1e9),
   );
   const count = out.length;
-  if (!count && !other.length) return { ...READY };
+  const untested =
+    isObj(team) && isObj(team.untested)
+      ? String(team.untested.what || "a change")
+      : null;
+  if (!count && !other.length) {
+    return untested
+      ? {
+          ...READY,
+          untested,
+          badge: "Setup · untested change",
+          short: "Untested",
+        }
+      : { ...READY };
+  }
   const badge = count
     ? `Setup · ${plural(count, "bot needs", "bots need")} you`
     : `Setup · ${plural(other.length, "problem", "problems")} to fix`;
@@ -112,6 +134,7 @@ export function teamSetupStatus({ bots = [], team = null, check = null } = {}) {
     first: count ? { botId: out[0].botId, name: out[0].name } : null,
     badge,
     short,
+    untested,
   };
 }
 
