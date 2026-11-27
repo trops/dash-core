@@ -279,3 +279,53 @@ describe("Run a self-test (DASH-121)", () => {
     }
   });
 });
+
+describe("one save model for the team's settings (DASH-128)", () => {
+  it("the team's own settings join the unsaved bar and its Save", async () => {
+    const setTeamValues = jest.fn(async () => ({}));
+    withApi({
+      getTeamValues: jest.fn(async () => ({
+        declared: [{ name: "branch", label: "Base branch" }],
+        values: { branch: "main" },
+      })),
+      setTeamValues,
+    });
+    const onDirtyChange = jest.fn();
+    render(
+      <TeamSetupChecklist
+        workspaceId="7"
+        bots={[coder]}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    const field = await screen.findByLabelText("Base branch");
+    // No second Save on the page.
+    expect(screen.queryByText("Save settings")).toBeNull();
+    fireEvent.change(field, { target: { value: "develop" } });
+    expect(screen.getByTestId("setup-unsaved-bar")).toHaveTextContent(
+      "Leaving this team asks before discarding them.",
+    );
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() =>
+      expect(setTeamValues).toHaveBeenCalledWith("7", {
+        values: { branch: "develop" },
+      }),
+    );
+  });
+
+  it("Discard puts the team's settings back too", async () => {
+    withApi({
+      getTeamValues: jest.fn(async () => ({
+        declared: [{ name: "branch", label: "Base branch" }],
+        values: { branch: "main" },
+      })),
+    });
+    render(<TeamSetupChecklist workspaceId="7" bots={[coder]} />);
+    const field = await screen.findByLabelText("Base branch");
+    fireEvent.change(field, { target: { value: "develop" } });
+    fireEvent.click(screen.getByText("Discard"));
+    expect(screen.getByLabelText("Base branch")).toHaveValue("main");
+    expect(screen.queryByTestId("setup-unsaved-bar")).toBeNull();
+  });
+});

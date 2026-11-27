@@ -115,7 +115,8 @@ export const BotsPage = ({
   const [openTeams, setOpenTeams] = useState({});
   // The Dash team's Settings, from its overview.
   const [dashSettings, setDashSettings] = useState(false);
-  // The bot page has unsaved Settings edits: leaving it asks first.
+  // The bot page, or a team page's Set up (DASH-128), has unsaved
+  // settings: leaving it asks first.
   const [pageDirty, setPageDirty] = useState(false);
   const [pendingLeave, setPendingLeave] = useState(null);
   // A team's setup from elsewhere (Team setup in the Bots view, a fresh
@@ -321,6 +322,8 @@ export const BotsPage = ({
         onOpenBotSettings={(id) => pickBot(id, selTeam.key, "settings")}
         setupFocus={setupFocus}
         onBotsChanged={all.refresh}
+        // Unsaved settings on the team page: leaving asks first (DASH-128).
+        onDirtyChange={setPageDirty}
         onOpenConversation={() =>
           openWorkspace(
             selTeam.kind === "dash"
@@ -598,7 +601,11 @@ export const BotsPage = ({
         isOpen={!!pendingLeave}
         setIsOpen={() => setPendingLeave(null)}
         title="Discard unsaved changes?"
-        message="Your changes to this bot haven't been saved."
+        message={
+          selTeam
+            ? "Your changes to this team's settings haven't been saved."
+            : "Your changes to this bot haven't been saved."
+        }
         confirmLabel="Discard"
         variant="danger"
         onConfirm={discardAndLeave}

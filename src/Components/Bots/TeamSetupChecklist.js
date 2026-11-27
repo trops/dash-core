@@ -161,7 +161,9 @@ const BotSetupCard = ({
  * @param {object[]} bots   the team's bots, as saved
  * @param {(botId) => void} [onOpenBotSettings]  a bot's Settings tab
  * @param {() => void} [onBotsChanged]  after a bot's settings were saved
- * @param {(dirty: boolean) => void} [onDirtyChange]  unsaved bot settings
+ * @param {(dirty: boolean) => void} [onDirtyChange]  unsaved settings here
+ *   (the bots' cards or the team's own): the Bots page asks "Discard
+ *   unsaved changes?" before leaving (DASH-128)
  */
 export const TeamSetupChecklist = ({
   workspaceId,
@@ -188,7 +190,10 @@ export const TeamSetupChecklist = ({
     const b = byId.get(id);
     return !!b && draftChanged(b.settingValues, drafts[id]);
   });
-  const dirty = changed.length > 0;
+  // The team's old settings (DASH-57) join the same Save (DASH-128).
+  const teamPanel = useRef(null);
+  const [teamDirty, setTeamDirty] = useState(false);
+  const dirty = changed.length > 0 || teamDirty;
   const cards = botSetupCards(bots, drafts);
   const savedCards = botSetupCards(bots);
   const cardRefs = useRef({});
@@ -217,10 +222,11 @@ export const TeamSetupChecklist = ({
   const discard = () => {
     setDrafts({});
     setSaveErrors([]);
+    if (teamPanel.current) teamPanel.current.discard();
   };
   const save = async () => {
     const api = botsApi();
-    if (!api || !api.save) {
+    if (changed.length && (!api || !api.save)) {
       setSaveErrors(["Saving a bot's settings needs a newer Dash."]);
       return;
     }
@@ -236,6 +242,10 @@ export const TeamSetupChecklist = ({
       } catch (e) {
         errors.push((e && e.message) || `${b.name || "A bot"} wasn't saved.`);
       }
+    }
+    if (teamDirty && teamPanel.current) {
+      // Its errors show in its own section.
+      await teamPanel.current.save();
     }
     setSaving(false);
     if (current.current !== workspaceId) return;
@@ -475,6 +485,14 @@ export const TeamSetupChecklist = ({
                 are on its own page.
               </span>
             ) : null}
+            {/* The team's own settings (DASH-57), when it declares some. */}
+            <TeamSettingsPanel
+              ref={teamPanel}
+              hideSave
+              onDirtyChange={setTeamDirty}
+              key={String(workspaceId)}
+              workspaceId={workspaceId}
+            />
             {dirty || saveErrors.length ? (
               <div
                 role="status"
@@ -483,7 +501,7 @@ export const TeamSetupChecklist = ({
               >
                 <span className="flex-1 min-w-0 text-xs">
                   {dirty
-                    ? "You have unsaved changes."
+                    ? "You have unsaved changes. Leaving this team asks before discarding them."
                     : "Some settings weren't saved."}
                 </span>
                 <Button3
@@ -505,11 +523,6 @@ export const TeamSetupChecklist = ({
                 {e}
               </span>
             ))}
-            {/* The team's own settings (DASH-57), when it declares some. */}
-            <TeamSettingsPanel
-              key={String(workspaceId)}
-              workspaceId={workspaceId}
-            />
           </Step>
           <Step
             n={numberOf("check")}

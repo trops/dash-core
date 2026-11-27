@@ -1249,6 +1249,16 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 - [x] The item field's label and hint come from the package (`teamChecklist.testItemField`): a setting named `testItem` (the team's or a bot's: its label, its description as the hint); else, when a bot takes tickets (a tracker setting), "Test ticket" / "A ticket in your sandbox project"; else "Test item" / "A test ticket key". Never a real ticket key.
 - [x] The setup status counts an **untested change** (the team's bots or settings changed since its last passing self-test): `teamSetupStatus` takes it from the team settings (`getTeamValues` now returns `untested`) as `status.untested`; the team stays ready (runs aren't blocked) and the badge says "Setup · untested change", with what changed as its tooltip. `useTeamSetups` reads the team again when one of its bots is saved or a job ends done; the checklist reloads its step 4 state when a job ends.
 
+## DASH-128: No silent loss of unsaved settings on the team page (2026-11-27)
+
+**Status:** Implemented (mockup 2).
+
+**Why:** filling in a team's settings (the Repos table, say) and then picking another team or bot dropped the edits without a word, and the page mixed instant switches with two kinds of Save.
+
+- [x] One save model on the team page: the Set up checklist's step 1 has one unsaved bar for the bots' cards and the team's own settings (DASH-57): "You have unsaved changes. Leaving this team asks before discarding them." with **Discard** / **Save**. `TeamSettingsPanel` joins it (`hideSave`, `onDirtyChange`, and a ref with `save()` / `discard()`), so it has no Save of its own there. The "How jobs run" switches still apply at once (they're one click and say so).
+- [x] Leaving with unsaved settings asks first, the same way a bot's page does: picking another team or bot in the tree, a bot's "Open … settings ›", or switching to Log (BotsPage `guard`, TeamOverview `onDirtyChange` → `pageDirty`). The dialog says "Discard unsaved changes?" / "Your changes to this team's settings haven't been saved."; Discard drops them and goes on.
+- [x] A bot's own page keeps its existing guard (NAV-016); its Settings tab isn't changed here.
+
 ## DASH-130: Install dialog and Checks panel polish (2026-11-27)
 
 **Status:** Implemented (mockup 8).
@@ -1389,7 +1399,8 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.32    | 2026-11-27 | John   | DASH-118: Team setup in the Bots view header (opens the team page at its setup), team actions under ⋯, install copy names where settings are, a fresh install lands on the team's setup |
 | 1.33    | 2026-11-27 | John   | DASH-120: "Set up this team" checklist at the top of the team page (bots' required settings edited in cards, Check setup with Go to it, repo checks, self-test); "How jobs run" with its two switches |
 | 1.34    | 2026-11-27 | John   | DASH-121: Run self-test waits for a passing Check setup, checks again, then opens its job; the item field's hint comes from the package; the setup status counts an untested change |
-| 1.35    | 2026-11-27 | John   | DASH-130: install dialog in theme colours, Required marks and bot initials, "Install, fill in later" / "Install and open Set up"; clickable PR links in the repo checks |
+| 1.35    | 2026-11-27 | John   | DASH-128: one save model on the team page (one unsaved bar for the bots' cards and the team's settings); leaving with unsaved settings asks "Discard unsaved changes?" |
+| 1.36    | 2026-11-27 | John   | DASH-130: install dialog in theme colours, Required marks and bot initials, "Install, fill in later" / "Install and open Set up"; clickable PR links in the repo checks |
 
 ---
 
