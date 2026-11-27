@@ -1,4 +1,6 @@
 import {
+  approvalRows,
+  approvalView,
   botPassText,
   botPassesOf,
   canAlwaysAllow,
@@ -174,5 +176,115 @@ describe("jobsNeedingYou / looseApprovals", () => {
     expect(
       looseApprovals(approvals, ["pl", "pr"], ["pl"]).map((a) => a.id),
     ).toEqual(["a2"]);
+  });
+});
+
+// Triage's answer as the bot wrote it: narration, the plan, its json last.
+const TRIAGE = [
+  "Confirmed. The label is already present. Let me check for existing tests, then comment.",
+  "- **Cause**: buildLink drops the title",
+  "```json",
+  JSON.stringify({
+    status: "ok",
+    summary: "SANDBOX-58 → sandbox-web: add the title",
+    repo: "sandbox-web",
+    acceptance: ["Preview shows the title", "No title: the site name"],
+    plan: {
+      cause: 'buildLink ignores "title"',
+      fix: "Add og:title",
+      test: "buildLink.test.js",
+    },
+  }),
+  "```",
+].join("\n\n");
+
+describe("approvalRows", () => {
+  it("labels a plan's fields, opens plan {}, known keys first", () => {
+    const rows = approvalRows({
+      status: "ok",
+      summary: "left out",
+      item: { id: "X-1" },
+      risk: "Low",
+      acceptance: ["A", "B"],
+      plan: { cause: "C", fix: "F", test: "T" },
+      repo: "web",
+    });
+    expect(rows.map((r) => r.label)).toEqual([
+      "Repo",
+      "Cause",
+      "Fix",
+      "Test",
+      "Done when",
+      "Risk",
+    ]);
+    expect(rows.find((r) => r.key === "acceptance").list).toEqual(["A", "B"]);
+    expect(rows[0].text).toBe("web");
+  });
+
+  it("an object that names a thing is one row, with its why", () => {
+    const rows = approvalRows({
+      repo: { name: "web", why: "the share code is there", url: "u" },
+      files: [{ path: "a.js" }, "b.js", { nothing: 1 }],
+      steps: ["one", "two"],
+      next_step: "Coder",
+      empty: "  ",
+      nested: [[1]],
+    });
+    expect(rows).toEqual([
+      {
+        key: "repo",
+        label: "Repo",
+        text: "web",
+        note: "the share code is there",
+      },
+      { key: "steps", label: "Steps", list: ["one", "two"] },
+      { key: "files", label: "Files", list: ["a.js", "b.js"] },
+      { key: "next_step", label: "Next step", text: "Coder" },
+    ]);
+  });
+
+  it("two keys with one label keep the first; none for no handoff", () => {
+    expect(
+      approvalRows({ acceptance: ["a"], acceptance_criteria: ["b"] }),
+    ).toEqual([{ key: "acceptance", label: "Done when", list: ["a"] }]);
+    expect(approvalRows(null)).toEqual([]);
+    expect(approvalRows({ status: "ok", summary: "s" })).toEqual([]);
+  });
+});
+
+describe("approvalView", () => {
+  it("reads the json block out of the answer, never as prose", () => {
+    const v = approvalView(TRIAGE);
+    expect(v.prose).not.toMatch(/```|"status"/);
+    expect(v.prose).toMatch(/Cause/);
+    expect(v.handoff.repo).toBe("sandbox-web");
+    expect(v.rows.map((r) => r.label)).toEqual([
+      "Repo",
+      "Cause",
+      "Fix",
+      "Test",
+      "Done when",
+    ]);
+    expect(v.rows[1].text).toBe('buildLink ignores "title"');
+    expect(v.cut).toBe(false);
+  });
+
+  it("a cut-off block falls back to the step's saved handoff", () => {
+    const v = approvalView('Plan.\n\n```json\n{"status": "ok", "re', {
+      repo: "web",
+    });
+    expect(v.prose).toBe("Plan.");
+    expect(v.rows).toEqual([{ key: "repo", label: "Repo", text: "web" }]);
+    expect(v.cut).toBe(false);
+    expect(approvalView('Plan.\n\n```json\n{"a').cut).toBe(true);
+  });
+
+  it("plain prose has no rows", () => {
+    expect(approvalView("Opened the plan.")).toEqual({
+      prose: "Opened the plan.",
+      handoff: null,
+      rows: [],
+      cut: false,
+    });
   });
 });
