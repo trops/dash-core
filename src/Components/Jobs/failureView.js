@@ -27,6 +27,13 @@
  *              Spending tab), "rerun"
  *   rerun    the step can be run again (Run again from / Send back to)
  *   output   the failing check's printed output: { name, output, exitCode }
+ *   then     failures after the first one, set off by it (a bot that runs
+ *            On Failure, or any later step that failed): [{ stepId, botId,
+ *            botName, kind, reason }]. The header leads with the first;
+ *            these show as "Then Reporter failed too: …" (failureThenText).
+ *
+ * Check names are quoted (“The ticket got its comment”) so they read
+ * inside a sentence.
  */
 import { jobTimeline, WORK_STEP } from "../Goals/jobTimeline";
 import { refusalSectionText } from "./jobText";
@@ -47,6 +54,20 @@ const OWN_RE = /^(.+?): (.+?) has no (value|rows)\b/;
 
 const str = (v) => (typeof v === "string" ? v.trim() : "");
 
+/** A check's name inside a sentence: “Tests pass”. */
+export function quoted(name) {
+  const n = str(name).replace(/^["“”']+|["“”']+$/g, "");
+  return n ? `“${n}”` : "";
+}
+
+/** "its check “Tests pass”" — or "its check" with no name. */
+const itsCheck = (name) =>
+  quoted(name) ? `its check ${quoted(name)}` : "its check";
+
+// A checks job's own failure line (checkJobs failReason):
+// 'Didn't pass "Tests pass" on try 2: 3 tests fail'.
+const DIDNT_PASS_RE = /^Didn't pass "(.+?)" on try (\d+)(?::\s*([\s\S]*))?$/;
+
 /** "Work folder ({workFolder})" → "Work folder"; "{workFolder}" → "workFolder". */
 export function settingLabel(text) {
   const t = str(text);
@@ -62,7 +83,8 @@ export function plainReason(text, max = 200) {
     .replace(/\s+/g, " ")
     .trim();
   if (!t) return "";
-  const m = t.match(/^(.+?[.!?])(?:\s|$)/);
+  // A quoted name's own full stop doesn't end the sentence.
+  const m = t.match(/^((?:“[^”]*”|"[^"]*"|[^"“])+?[.!?])(?:\s|$)/);
   const first = (m ? m[1] : t).replace(/[.]$/, "");
   return first.length > max ? `${first.slice(0, max - 1)}…` : first;
 }
@@ -171,13 +193,32 @@ function problemsFromText(text) {
     }));
 }
 
+/**
+ * A job's failed steps, in the order they ran: `first` made the job fail;
+ * `then` failed after it (a bot that runs On Failure, set off by it, or
+ * any later step). A step run again (Run again from) starts a new try:
+ * failures that ended before it last started belong to the try before.
+ */
+export function failedSteps(job) {
+  const steps = (job && job.steps) || [];
+  const failed = steps.filter((s) => s && s.status === "failed");
+  const since = steps
+    .filter((s) => s && s.retries > 0 && s.startedAt)
+    .map((s) => String(s.startedAt))
+    .sort()
+    .pop();
+  const now = since
+    ? failed.filter((s) => !s.endedAt || String(s.endedAt) >= since)
+    : failed;
+  const list = now.length ? now : failed;
+  return { first: list[0] || null, then: list.slice(1) };
+}
+
 /** The step a job's failure (or its stop at you) is about, or null. */
 export function failureStep(job) {
   const steps = (job && job.steps) || [];
   if (!job) return null;
-  if (job.status === "failed") {
-    return [...steps].reverse().find((s) => s.status === "failed") || null;
-  }
+  if (job.status === "failed") return failedSteps(job).first;
   if (job.status === "needs-you") {
     return (
       steps.find((s) => s.status === "needs-you" && s.waiting === "budget") ||
@@ -200,7 +241,7 @@ function heldCheck(goal) {
     return null;
   }
   return {
-    name: (m ? m[1] : step.name) || "its check",
+    name: (m ? m[1] : step.name) || "",
     // What it would run (DASH-125): "Turn on npm test".
     command: String(step.offCommand || ""),
   };
@@ -248,7 +289,7 @@ function actionFor(kind, { botId, botName, section, check, command }) {
   if (kind === "command-off") {
     return {
       type: "turn-on",
-      label: `Turn on ${command || check}`,
+      label: `Turn on ${command || quoted(check) || "its check"}`,
       botId,
       check,
       ...(command ? { command } : {}),
@@ -266,6 +307,108 @@ const botIdByName = (job, name) =>
   null;
 
 /**
+ * Why a failed step failed: { kind, reason, detail?, section?, botName?,
+ * botId?, lines?, output? }. `goal` is its checks job, when it's loaded.
+ */
+function whyFailed(job, step, goal) {
+  const summary = str(step.summary);
+
+  // Its setup refused a command or tool (DASH-115): the refusal's reason.
+  if (step.refusal) {
+    const r = step.refusal;
+    return {
+      kind: "blocked",
+      reason: `it can't ${r.kind === "command" ? "run" : "use"} \`${r.what}\`: ${r.why}`,
+      detail: r.fix || "",
+      section: r.section || null,
+    };
+  }
+
+  // The team's setup, checked before the job started (DASH-108).
+  const problems =
+    (Array.isArray(step.problems) && step.problems.length && step.problems) ||
+    (step.botName === SETUP_STEP || /setup has \d+ problem/.test(summary)
+      ? problemsFromText(summary)
+      : []);
+  if (problems.length) {
+    const all = problems.map((p) => setupProblem(p));
+    const first = all[0];
+    const botName = first.botName || null;
+    const botId =
+      first.botId || (botName ? botIdByName(job, botName) : null) || null;
+    return {
+      kind: first.kind,
+      botName: botName || "its setup check",
+      botId,
+      reason:
+        all.length > 1
+          ? `${first.reason} (and ${all.length - 1} more)`
+          : first.reason,
+      detail: first.detail || "",
+      lines: problems.map((p) => str(p.message)).filter(Boolean),
+    };
+  }
+
+  // Its checks failed it out.
+  const checks = checksOut(goal);
+  if (checks) {
+    const c = checks;
+    const what = c.reviewer
+      ? `${c.reviewer} still doesn't pass its work`
+      : `${itsCheck(c.name)} still fails`;
+    const once = c.reviewer
+      ? `${c.reviewer} didn't pass its work`
+      : `${itsCheck(c.name)} failed`;
+    return {
+      kind: "checks",
+      reason: c.tries > 1 ? `${what} after ${c.tries} tries` : once,
+      detail: c.reason || "",
+      output: c.output
+        ? { name: c.name, output: c.output, exitCode: c.exitCode }
+        : null,
+    };
+  }
+  // Its checks job isn't loaded: its own line says which check and try.
+  const said = str(step.failed).match(DIDNT_PASS_RE);
+  if (said) {
+    const tries = Number(said[2]) || 1;
+    return {
+      kind: "checks",
+      reason:
+        tries > 1
+          ? `${itsCheck(said[1])} still fails after ${tries} tries`
+          : `${itsCheck(said[1])} failed`,
+      detail: plainReason(said[3] || ""),
+    };
+  }
+  if (step.failed) {
+    return { kind: "checks", reason: lead(plainReason(step.failed)) };
+  }
+
+  const text = str(step.failed) || summary;
+  if (BUDGET_RE.test(text)) {
+    return { kind: "budget", reason: "it's over its monthly budget" };
+  }
+  if (LOGIN_RE.test(text)) {
+    return { kind: "login", reason: lead(plainReason(text)) };
+  }
+  const rows = text.match(NO_ROWS_RE);
+  const none = text.match(NO_VALUE_RE);
+  if (rows || none) {
+    const label = settingLabel(
+      (rows && (rows[1] || rows[2])) || (none && (none[1] || none[2])),
+    );
+    return {
+      kind: "setting",
+      reason: rows
+        ? `its ${label} table has no rows`
+        : `its ${label} has no value`,
+    };
+  }
+  return { kind: "other", reason: lead(plainReason(text)) || "it failed" };
+}
+
+/**
  * @param {object} job   a job (with its steps' summaries: useJob)
  * @param {{ goal?: object|null }} [opts]  the failed step's checks job
  */
@@ -280,8 +423,8 @@ export function failureView(job, { goal = null } = {}) {
     detail: "",
     lines: [],
     output: null,
+    then: [],
   };
-  const summary = str(step.summary);
   const finish = (v) => {
     const kind = v.kind;
     const out = { ...base, ...v };
@@ -314,8 +457,8 @@ export function failureView(job, { goal = null } = {}) {
     if (!held) return null;
     const what =
       held.command && held.command !== held.name
-        ? `its ${held.name} check (${held.command})`
-        : `its ${held.name} check`;
+        ? `${itsCheck(held.name)} (${held.command})`
+        : itsCheck(held.name);
     return finish({
       verb: "Waiting",
       kind: "command-off",
@@ -327,95 +470,28 @@ export function failureView(job, { goal = null } = {}) {
     });
   }
 
-  // Its setup refused a command or tool (DASH-115): the refusal's reason.
-  if (step.refusal) {
-    const r = step.refusal;
-    return finish({
-      kind: "blocked",
-      reason: `it can't ${r.kind === "command" ? "run" : "use"} \`${r.what}\`: ${r.why}`,
-      detail: r.fix || "",
-      section: r.section || null,
-    });
-  }
-
-  // The team's setup, checked before the job started (DASH-108).
-  const problems =
-    (Array.isArray(step.problems) && step.problems.length && step.problems) ||
-    (step.botName === SETUP_STEP || /setup has \d+ problem/.test(summary)
-      ? problemsFromText(summary)
-      : []);
-  if (problems.length) {
-    const all = problems.map((p) => setupProblem(p));
-    const first = all[0];
-    const botName = first.botName || null;
-    const botId =
-      first.botId || (botName ? botIdByName(job, botName) : null) || null;
-    return finish({
-      kind: first.kind,
-      botName: botName || "its setup check",
-      botId,
-      reason:
-        all.length > 1
-          ? `${first.reason} (and ${all.length - 1} more)`
-          : first.reason,
-      detail: first.detail || "",
-      lines: problems.map((p) => str(p.message)).filter(Boolean),
-    });
-  }
-
-  // Its checks failed it out.
-  const checks = checksOut(goal);
-  if (checks || step.failed) {
-    const c = checks || {};
-    const what = c.reviewer
-      ? `${c.reviewer} still doesn't pass its work`
-      : `its ${c.name} check still fails`;
-    const once = c.reviewer
-      ? `${c.reviewer} didn't pass its work`
-      : `its ${c.name} check failed`;
-    const reason = checks
-      ? c.tries > 1
-        ? `${what} after ${c.tries} tries`
-        : once
-      : lead(plainReason(step.failed));
-    return finish({
-      kind: "checks",
-      reason,
-      detail: c.reason || "",
-      output: c.output
-        ? { name: c.name, output: c.output, exitCode: c.exitCode }
-        : null,
-    });
-  }
-
-  const text = str(step.failed) || summary;
-  if (BUDGET_RE.test(text)) {
-    return finish({ kind: "budget", reason: "it's over its monthly budget" });
-  }
-  if (LOGIN_RE.test(text)) {
-    return finish({ kind: "login", reason: lead(plainReason(text)) });
-  }
-  const rows = text.match(NO_ROWS_RE);
-  const none = text.match(NO_VALUE_RE);
-  if (rows || none) {
-    const label = settingLabel(
-      (rows && (rows[1] || rows[2])) || (none && (none[1] || none[2])),
-    );
-    return finish({
-      kind: "setting",
-      reason: rows
-        ? `its ${label} table has no rows`
-        : `its ${label} has no value`,
-    });
-  }
-  return finish({
-    kind: "other",
-    reason: lead(plainReason(text)) || "it failed",
+  // The failures after the first: a line each, never the header.
+  const then = failedSteps(job).then.map((s) => {
+    const w = whyFailed(job, s, null);
+    return {
+      stepId: s.id,
+      botId: (w.botId !== undefined ? w.botId : s.botId) || null,
+      botName: w.botName || s.botName || "a bot",
+      kind: w.kind,
+      reason: w.reason,
+    };
   });
+  return finish({ ...whyFailed(job, step, goal), then });
 }
 
-/** "Failed at Coder: its tests still fail after 2 tries". */
+/** "Failed at Coder: it can't run `cd x && npm test`: …". */
 export function failureTitle(view) {
   if (!view) return "";
   return `${view.verb} at ${view.botName}: ${view.reason}`;
+}
+
+/** "Then Reporter failed too: its check “The ticket got its comment” …". */
+export function failureThenText(then) {
+  if (!then) return "";
+  return `Then ${then.botName} failed too: ${then.reason}`;
 }
