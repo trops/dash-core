@@ -11,10 +11,12 @@ import { BotAvatar } from "./BotAvatar";
 import { TONE, stepTone } from "./checksView";
 import { checkCost } from "./teamFlow";
 import { WhatItCanDo } from "./WhatItCanDo";
+import { SelectedMarker } from "./TeamChartLegend";
 
 /**
  * TeamConnectionsPanel — the side panel of the team diagram for the
- * selected bot (DASH-139 screen 1b), in flow order: its name with the full
+ * selected bot (DASH-139 screen 1b), in flow order: its name (the heading,
+ * with the same "Selected" marker as its card) with the full
  * page (expand icon) and ✕ (the lead also gets Open conversation); Gets work
  * from; What it can do (DASH-126); Its checks with Edit checks; one box per
  * event it publishes (On Complete, On Failure, On Result · <name>) listing
@@ -142,8 +144,14 @@ export const TeamConnectionsPanel = ({
       <div className="flex flex-row items-center gap-3">
         <BotAvatar bot={bot} large />
         <div className="flex-1 min-w-0 flex flex-col">
-          <span className={`text-base font-semibold truncate ${strong}`}>
-            {bot.name}
+          <span className="flex flex-row items-center gap-2 min-w-0">
+            <h3
+              data-testid="connections-heading"
+              className={`text-base font-semibold truncate ${strong}`}
+            >
+              {bot.name}
+            </h3>
+            <SelectedMarker className="flex-shrink-0" />
           </span>
           <span className={`text-xs ${muted}`}>
             {isLead ? "Team lead" : "Its connections"}

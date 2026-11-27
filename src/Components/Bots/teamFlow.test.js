@@ -2,6 +2,7 @@ import { diagramEdges } from "./teamDiagram";
 import {
   arrowKeys,
   botConnections,
+  cardState,
   cardText,
   checkCost,
   curveBetween,
@@ -399,5 +400,52 @@ describe("teamFlow — line geometry", () => {
     const dip = curveBetween(a, { x: 300, y: 0, w: 100, h: 80 }).d;
     expect(dip).toMatch(/^M50,80 C50,(\d+)/);
     expect(Number(dip.match(/^M50,80 C50,(\d+)/)[1])).toBeGreaterThan(80);
+  });
+});
+
+describe("cardState — the selected card's style (DASH-139)", () => {
+  const shown = {
+    lit: new Set(["sel", "up", "down", "fail"]),
+    failLit: new Set(["fail"]),
+  };
+  it("the selected bot is 'selected' even though it is lit (and in failLit)", () => {
+    expect(cardState("sel", "sel", shown)).toBe("selected");
+    expect(
+      cardState("sel", "sel", {
+        lit: new Set(["sel"]),
+        failLit: new Set(["sel"]),
+      }),
+    ).toBe("selected");
+  });
+  it("linked, failure listeners and unrelated bots each get their own state", () => {
+    expect(cardState("up", "sel", shown)).toBe("linked");
+    expect(cardState("down", "sel", shown)).toBe("linked");
+    expect(cardState("fail", "sel", shown)).toBe("failure");
+    expect(cardState("other", "sel", shown)).toBe("dimmed");
+  });
+  it("nothing selected: no state", () => {
+    expect(cardState("sel", null, shown)).toBeNull();
+    expect(cardState("sel", undefined, shown)).toBeNull();
+  });
+  it("a numeric id matches its string form", () => {
+    const n = { lit: new Set([7, 8]), failLit: new Set() };
+    expect(cardState(7, "7", n)).toBe("selected");
+    expect(cardState("8", 7, n)).toBe("linked");
+  });
+  it("follows lineSet: the selected bot, its links and the rest", () => {
+    const members = [
+      { id: "a", subscriptions: [] },
+      { id: "b", subscriptions: [{ eventType: ev("a", "completed") }] },
+      { id: "c", subscriptions: [{ eventType: ev("b", "failed") }] },
+      { id: "d", subscriptions: [] },
+    ];
+    const edges = diagramEdges(members, null);
+    const s = lineSet({ mode: "selected", selectedId: "b", edges, members });
+    expect(members.map((m) => cardState(m.id, "b", s))).toEqual([
+      "linked",
+      "selected",
+      "failure",
+      "dimmed",
+    ]);
   });
 });

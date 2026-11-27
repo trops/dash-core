@@ -43,6 +43,7 @@ import {
 } from "./widgetDiagram";
 import { BotChecksModal } from "./BotChecksModal";
 import { LINES, linesOrDefault } from "./teamFlow";
+import { TeamChartLegend } from "./TeamChartLegend";
 import { liveChecks } from "./checksView";
 import { useGoals } from "../../hooks/useGoals";
 import { applyWiringChanges } from "../../utils/listenerResolution";
@@ -1042,6 +1043,7 @@ export const BotsView = ({
           onChange={setLines}
           options={LINES}
         />
+        <TeamChartLegend />
         {viewSwitch}
         {teamSetupButton}
         <Button title="Add bot" size="sm" onClick={addBot} />

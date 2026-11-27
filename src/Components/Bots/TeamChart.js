@@ -9,6 +9,7 @@ import {
   DEFAULT_LINES,
   arrowKeys,
   botConnections,
+  cardState,
   cardText,
   curveBetween,
   elbowBetween,
@@ -21,6 +22,7 @@ import {
   workOrder,
 } from "./teamFlow";
 import { TeamConnectionsPanel } from "./TeamConnectionsPanel";
+import { SelectedMarker, useSelectionStyles } from "./TeamChartLegend";
 import { WidgetWirePopover } from "./WidgetWirePopover";
 import { BOT_RESULTS, widgetEdges, widgetSub } from "./widgetDiagram";
 
@@ -95,7 +97,11 @@ function useBoxes(rootRef) {
  * besides the neighbour arrows; "flow" every bot-to-bot handoff; "all" adds
  * the widgets and their lines.
  *
- * Selecting a bot lights up its links, dims the rest and opens its
+ * Selecting a bot (cardState / useSelectionStyles, explained by
+ * TeamChartLegend beside the Lines toggle) draws it strongest: a thick
+ * accent border with a ring, an accent-tinted card and a "Selected" marker;
+ * the bots linked to it get a thin accent border (the ones getting its
+ * failures a dashed red one) and the rest are dimmed. It also opens its
  * connections panel (TeamConnectionsPanel, `showPanel`), where everything
  * it's connected to is listed and edited: a bot is added or removed as a
  * trigger (`onSaveTrigger` / `onRemoveTrigger`), a widget through
@@ -130,8 +136,8 @@ export const TeamChart = ({
   onOpenJob = null,
   width: fixedWidth = 0,
 }) => {
-  const { muted, strong, hairline, selectedBg, selectedBorder, fieldBg } =
-    useConfigTokens();
+  const { muted, strong, hairline, fieldBg } = useConfigTokens();
+  const sel = useSelectionStyles();
   const canvasRef = useRef(null);
   const width = useWidth(canvasRef, fixedWidth);
   const boxes = useBoxes(canvasRef);
@@ -173,18 +179,21 @@ export const TeamChart = ({
 
   // ── Cards ─────────────────────────────────────────────────────────────
   const dimmed = (id) => shown.dim && !shown.lit.has(id);
-  const frameOf = (id, live) => {
-    if (id === selectedId) return `border-2 ${selectedBorder}`;
-    if (shown.failLit.has(id)) return "border border-dashed border-red-400";
-    if (shown.dim && shown.lit.has(id)) return "border border-indigo-400";
+  // The selected bot's style always wins (it used to share the list rows'
+  // neutral border and surface, which read as no highlight at all).
+  const frameOf = (state, live) => {
+    if (state === "selected" || state === "failure" || state === "linked") {
+      return sel.frame[state];
+    }
     if (live && live.needs) return "border border-amber-400";
-    return `border ${hairline}`;
+    return sel.frame.none;
   };
 
   const card = (bot, { helper = false, stacked = false } = {}) => {
     if (!bot) return null;
     const isLead = bot.role === "lead";
-    const active = bot.id === selectedId;
+    const state = cardState(bot.id, selectedId, shown);
+    const active = state === "selected";
     const status = statusOf(bot.id);
     const dot = STATUS_DOT[status] || STATUS_DOT.Idle;
     const waiting = (approvalsFor(bot.id) || []).length > 0;
@@ -204,15 +213,17 @@ export const TeamChart = ({
         key={bot.id}
         data-node={bot.id}
         data-testid={`diagram-card-${bot.id}`}
-        data-dim={dimmed(bot.id) ? "true" : undefined}
+        data-dim={state === "dimmed" ? "true" : undefined}
+        data-state={state || undefined}
         className={`relative rounded-xl flex flex-col min-w-0 ${frameOf(
-          bot.id,
+          state,
           live,
-        )} ${active ? selectedBg : fieldBg}`}
+        )} ${active ? sel.bg.selected : fieldBg}`}
         style={{
           flex: isLead ? "0 1 auto" : stacked ? "0 0 auto" : "1 1 0",
           width: isLead ? LEAD_W : undefined,
-          opacity: dimmed(bot.id) ? 0.4 : 1,
+          opacity: state === "dimmed" ? sel.dimOpacity : 1,
+          boxShadow: active ? sel.ring : undefined,
         }}
       >
         <button
@@ -294,6 +305,9 @@ export const TeamChart = ({
             Needs approval
           </button>
         ) : null}
+        {active ? (
+          <SelectedMarker className="absolute right-3" style={{ top: -9 }} />
+        ) : null}
       </div>
     );
   };
@@ -371,9 +385,7 @@ export const TeamChart = ({
       data-node={`w:${w.key}`}
       data-testid={`diagram-widget-${w.itemId}`}
       className={`rounded-xl border border-dashed px-3 py-2 flex flex-col min-w-0 ${
-        shown.dim && shown.lit.has(`w:${w.key}`)
-          ? "border-indigo-400"
-          : hairline
+        shown.dim && shown.lit.has(`w:${w.key}`) ? sel.frame.linked : hairline
       } ${fieldBg}`}
       style={{
         flex: "1 1 160px",

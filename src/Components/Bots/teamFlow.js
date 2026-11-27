@@ -300,6 +300,32 @@ export function lineSet({
   };
 }
 
+/**
+ * How a card on the diagram is drawn while a bot is selected (DASH-139):
+ * "selected" (the picked bot: the strongest style, decided first — it is in
+ * `lit` too, and in `failLit` when it sends failures to itself), "failure"
+ * (gets the selected bot's failures), "linked" (any other link: gets work
+ * from / sends to / a helper), "dimmed" (unrelated), or null when nothing is
+ * selected. Ids compare as strings, so a numeric id and its string form
+ * match.
+ *
+ * @param {string|number} id
+ * @param {string|number|null} selectedId
+ * @param {{ lit: Set, failLit: Set }} shown  lineSet()
+ */
+export function cardState(id, selectedId, shown) {
+  if (selectedId === null || selectedId === undefined || selectedId === "") {
+    return null;
+  }
+  const key = String(id);
+  const has = (set) =>
+    !!set && (set.has(id) || [...set].some((v) => String(v) === key));
+  if (key === String(selectedId)) return "selected";
+  if (has(shown && shown.failLit)) return "failure";
+  if (has(shown && shown.lit)) return "linked";
+  return "dimmed";
+}
+
 // ── Line geometry (from measured card boxes { x, y, w, h }) ────────────
 
 /**
