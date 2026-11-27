@@ -193,7 +193,9 @@ const JobStep = ({ job, step, approvals = [] }) => {
                 has the whole answer.
               </span>
             ) : null}
-            {handoff && showJson ? <HandoffJson handoff={handoff} /> : null}
+            {handoff && showJson ? (
+              <HandoffJson handoff={handoff} job={job} />
+            ) : null}
             {goal ? <JobCheckRows goal={goal} title="Checks" /> : null}
             {step.status === "failed" && step.refusal ? (
               <BlockedCard

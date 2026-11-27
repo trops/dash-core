@@ -12,8 +12,11 @@ import {
   within,
 } from "@testing-library/react";
 import {
+  carriedFields,
+  carriedJson,
   handoffCard,
   handoffJson,
+  shortDir,
   keyLabel,
   shortenMarkdown,
   shortenText,
@@ -134,6 +137,60 @@ describe("stepView", () => {
     expect(keyLabel("nextStep")).toBe("Next step");
     expect(keyLabel("test_plan")).toBe("Test plan");
     expect(handoffJson({ a: 1 })).toBe('{\n  "a": 1\n}');
+  });
+
+  it("shows what the job carries apart from what the bot wrote", () => {
+    const job = {
+      item: { id: "DASH-97", title: "titleCase", source: "jira" },
+      workspace: { dir: "/w/sandbox/DASH-97", branch: "fix/DASH-97" },
+      picks: { repo: "a" },
+    };
+    // A handoff without item or workspace: the job's are still shown.
+    const card = handoffCard(
+      { status: "ok", summary: "Commented", commented: true },
+      job,
+    );
+    expect(card.item).toBeNull();
+    expect(card.workspace).toBeNull();
+    expect(card.fromJob).toEqual({
+      item: {
+        id: "DASH-97",
+        title: "titleCase",
+        source: "jira",
+        label: "Ticket",
+      },
+      workspace: {
+        dir: "/w/sandbox/DASH-97",
+        branch: "fix/DASH-97",
+        text: "…/DASH-97 on fix/DASH-97",
+      },
+    });
+    // The bot's own value stays in its own rows; the job's still shows.
+    const own = handoffCard(
+      { item: "OTHER-1", workspace: { dir: "/w/other" } },
+      job,
+    );
+    expect(own.item.id).toBe("OTHER-1");
+    expect(own.workspace.text).toBe("…/other");
+    expect(own.fromJob.item.id).toBe("DASH-97");
+    // Only the item and workspace, never picks or other job fields.
+    expect(carriedFields(job)).toEqual({
+      item: job.item,
+      workspace: job.workspace,
+    });
+    expect(carriedFields({ item: { id: "A-1" } })).toEqual({
+      item: { id: "A-1" },
+    });
+    expect(carriedFields({ picks: { repo: "a" } })).toBeNull();
+    expect(carriedFields(null)).toBeNull();
+    expect(handoffCard({ status: "ok" }, { id: "j" }).fromJob).toBeNull();
+    expect(carriedJson({ workspace: { dir: "/w" } })).toBe(
+      '{\n  "workspace": {\n    "dir": "/w"\n  }\n}',
+    );
+    expect(carriedJson({})).toBe("");
+    expect(shortDir("/a/b/c/")).toBe("…/c");
+    expect(shortDir("C:\\x\\y")).toBe("…/y");
+    expect(shortDir("sandbox")).toBe("sandbox");
   });
 });
 
@@ -282,5 +339,52 @@ describe("a step on the Jobs page (DASH-123)", () => {
     expect(within(first).queryByTestId("handoff-json")).toBeNull();
     // The cut-off one has nothing to show.
     expect(within(second).queryByText("Show handoff JSON")).toBeNull();
+  });
+
+  it("marks the job's item and workspace on the card and in the JSON", async () => {
+    const reporter = {
+      status: "ok",
+      summary: "Commented on the ticket",
+      outcome: "passed",
+      commented: true,
+      ticketStatus: "Done",
+    };
+    const withWs = {
+      ...job,
+      workspace: { dir: "/w/sandbox/DASH-97", branch: "fix/DASH-97" },
+    };
+    window.mainApi.bots.listJobs = jest.fn(async () => [withWs]);
+    window.mainApi.bots.getJob = jest.fn(async () => ({
+      ...withWs,
+      steps: [{ ...job.steps[0], summary: "Done.", handoff: reporter }],
+    }));
+    render(<JobsPage workspaces={[{ id: 1, name: "Factory" }]} />);
+    const detail = await screen.findByTestId("job-detail");
+    const card = await within(detail).findByTestId("handoff-card");
+    // Not in the bot's own rows: it didn't write them.
+    expect(within(card).queryByTestId("handoff-item")).toBeNull();
+    const fromJob = within(card).getByTestId("handoff-from-job");
+    expect(fromJob.textContent).toMatch(/^From the job/);
+    expect(within(fromJob).getByTestId("handoff-job-item").textContent).toBe(
+      "DASH-97 · from the job",
+    );
+    const ws = within(fromJob).getByTestId("handoff-job-workspace");
+    expect(ws.textContent).toBe("…/DASH-97 on fix/DASH-97 · from the job");
+    expect(ws.getAttribute("title")).toBe("/w/sandbox/DASH-97");
+    fireEvent.click(within(fromJob).getByTestId("handoff-job-item-link"));
+    expect(opened).toEqual(["https://x.test/browse/DASH-97"]);
+    // The JSON: the bot's exactly as it wrote it, the job's in its own block.
+    fireEvent.click(within(detail).getByText("Show handoff JSON"));
+    expect(within(detail).getByTestId("handoff-json").textContent).toBe(
+      JSON.stringify(reporter, null, 2),
+    );
+    expect(
+      JSON.parse(
+        within(detail).getByTestId("handoff-json-from-job").textContent,
+      ),
+    ).toEqual({
+      item: { id: "DASH-97", url: "https://x.test/browse/DASH-97" },
+      workspace: { dir: "/w/sandbox/DASH-97", branch: "fix/DASH-97" },
+    });
   });
 });
