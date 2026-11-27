@@ -500,6 +500,7 @@ answers from today's runs.
 **Implementation notes (B2, Bots view UI, 2026-10-02):**
 
 - `useTeamBots(workspaceId)` loads the team (lead + members), running, pause state, approvals and each bot's last run, and keeps them live from `onRunActive` / `onApprovalPending` / `onStream`. `DashboardStage` calls it once and feeds both the header badge and `BotsView`; `BotsTab` (Dashboard Config) uses it for its summary.
+- The header's **Bots** count (`botsBadge.js`, pure; `useTeamBots().badge`, `attention` = its count) is the team's asks waiting for an OK plus bots whose last run failed (not running now, within 7 days). Its tooltip/label says which and for whom ("1 bot's last run failed: Coder", "1 ask waits for your OK: Reviewer (answer Allow or Deny)"); clicking it opens that bot's Activity. A failure dismissed in Bot notifications (×) leaves the count until the bot fails again (`dismissedNeeds` sends `dash:bot-needs-dismissed`); asks can't be dismissed and stay until answered. It doesn't count the team's setup status (that is the "Setup ·" badge).
 - Mode is per dashboard and only applies in preview: entering edit mode returns to Dashboard; popouts never offer it. Dashboard Config's **Open in Bots view** closes the modal and leaves edit mode through the existing unsaved-edits guard.
 - Components shipped as `BotsView` (team list + selected bot), `BotChat` (conversation; named to avoid clashing with `botConversation.js` on case-insensitive filesystems) and `BotRunHistory`. The team list is inline in `BotsView` rather than a separate `TeamList`.
 - `BotDetail` gained `onDirtyChange` for the Settings tab's unsaved-changes guard.
@@ -1426,6 +1427,7 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.36    | 2026-11-27 | John   | DASH-130: install dialog in theme colours, Required marks and bot initials, "Install, fill in later" / "Install and open Set up"; clickable PR links in the repo checks |
 | 1.37    | 2026-11-27 | John   | DASH-125: Check setup lists the commands that came with a package and are off, with one "Review and turn on"; a job waiting on one says its command ("Turn on npm test") |
 | 1.38    | 2026-11-27 | John   | DASH-129: copy for installers — settings say what they're for, "Show how bots use it" hides {name}; the standard handoff's format under Learn more, and on at install for packages that declare it |
+| 1.39    | 2026-11-27 | John   | DASH-119 follow-up: the Bots switch's count says what it counts and for whom, opens that bot, and a failure dismissed in Bot notifications leaves it |
 
 ---
 

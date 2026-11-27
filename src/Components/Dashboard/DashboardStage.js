@@ -3405,6 +3405,20 @@ const DashboardStageInner = ({
                         : null
                     }
                     botsAttention={team.attention}
+                    botsAttentionLabel={team.badge ? team.badge.label : ""}
+                    onBotsAttentionClick={
+                      (popout || previewMode) &&
+                      workspaceSelected &&
+                      team.badge &&
+                      team.badge.target
+                        ? () =>
+                            focusBot(
+                              workspaceSelected.id,
+                              team.badge.target.botId,
+                              team.badge.target.tab,
+                            )
+                        : null
+                    }
                     goalsAttention={goalsAttention}
                     goalsWorking={goalsWorking}
                   />

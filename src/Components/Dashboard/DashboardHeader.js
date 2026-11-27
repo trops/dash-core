@@ -32,6 +32,10 @@ export const DashboardHeader = ({
   stageMode = "dashboard",
   onStageModeChange = null,
   botsAttention = 0,
+  // What the count is, for whom ("1 bot's last run failed: Coder"), as the
+  // badge's tooltip and label; clicking the badge opens that bot.
+  botsAttentionLabel = "",
+  onBotsAttentionClick = null,
   // Goals waiting for the user (goals-ledger PRD), shown on "Jobs" in
   // amber; otherwise the jobs being worked on, in grey (DASH-12).
   goalsAttention = 0,
@@ -79,8 +83,26 @@ export const DashboardHeader = ({
                         Bots
                         {botsAttention > 0 && (
                           <span
-                            aria-label={`${botsAttention} need attention`}
-                            className="inline-flex items-center justify-center rounded-full bg-amber-500 text-gray-900 text-xs font-semibold px-1.5 h-5"
+                            aria-label={
+                              botsAttentionLabel ||
+                              `${botsAttention} need attention`
+                            }
+                            title={
+                              botsAttentionLabel
+                                ? `${botsAttentionLabel}${onBotsAttentionClick ? " — click to open" : ""}`
+                                : undefined
+                            }
+                            data-testid="bots-attention-badge"
+                            onClick={
+                              onBotsAttentionClick
+                                ? (e) => {
+                                    // Opens the bot, not just the Bots view.
+                                    e.stopPropagation();
+                                    onBotsAttentionClick();
+                                  }
+                                : undefined
+                            }
+                            className={`inline-flex items-center justify-center rounded-full bg-amber-500 text-gray-900 text-xs font-semibold px-1.5 h-5${onBotsAttentionClick ? " cursor-pointer" : ""}`}
                           >
                             {botsAttention}
                           </span>

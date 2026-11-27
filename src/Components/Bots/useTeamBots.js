@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sameWorkspace } from "./teamUtils";
-import { botStatus, attentionCount } from "./botConversation";
+import { botStatus } from "./botConversation";
+import { botsBadge } from "./botsBadge";
+import {
+  DISMISSED_EVENT,
+  isDismissedKey,
+  readDismissed,
+} from "./BotNotifications/dismissedNeeds";
 
 /**
  * useTeamBots — a dashboard's team, live (bot-teams PRD TEAM-011).
@@ -51,6 +57,8 @@ export function useTeamBots(workspaceId) {
   const [approvals, setApprovals] = useState(EMPTY);
   const [lastRunByBot, setLastRunByBot] = useState({});
   const [loading, setLoading] = useState(true);
+  // Failure cards dismissed in the Bot notifications panel: off the badge.
+  const [dismissed, setDismissed] = useState(() => readDismissed());
   const active = workspaceId !== null && workspaceId !== undefined;
 
   const loadLastRun = useCallback(async (botId) => {
@@ -105,6 +113,27 @@ export function useTeamBots(workspaceId) {
     return () =>
       window.removeEventListener("dash:bots-pause-changed", onChange);
   }, [refresh]);
+
+  // A card dismissed (or un-dismissed) in the panel, here or in another
+  // window.
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onDismissed = (e) =>
+      setDismissed(
+        e && e.detail && e.detail.dismissed
+          ? e.detail.dismissed
+          : readDismissed(),
+      );
+    const onStorage = (e) => {
+      if (e && isDismissedKey(e.key)) setDismissed(readDismissed());
+    };
+    window.addEventListener(DISMISSED_EVENT, onDismissed);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(DISMISSED_EVENT, onDismissed);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   // Live updates from the main process.
   useEffect(() => {
@@ -181,6 +210,13 @@ export function useTeamBots(workspaceId) {
     // All bots paused: a started job's next try waits (a bot paused on
     // its own still finishes jobs it started, DASH-12).
     const allPaused = !!(paused && paused.global);
+    const badge = botsBadge({
+      bots,
+      approvals,
+      lastRunByBot,
+      running,
+      dismissed,
+    });
     const approvalsFor = (botId) =>
       approvals.filter((a) => a && a.request && a.request.botId === botId);
     return {
@@ -194,11 +230,10 @@ export function useTeamBots(workspaceId) {
       statusOf,
       allPaused,
       approvalsFor,
-      attention: attentionCount({
-        botIds: bots.map((b) => b.id),
-        approvals,
-        lastRunByBot,
-      }),
+      // The Bots switch's badge: its count, what it counts and for whom,
+      // and the bot it opens.
+      badge,
+      attention: badge.count,
       approve,
       refresh,
       reloadRuns: loadLastRun,
@@ -209,6 +244,7 @@ export function useTeamBots(workspaceId) {
     paused,
     approvals,
     lastRunByBot,
+    dismissed,
     loading,
     approve,
     refresh,
