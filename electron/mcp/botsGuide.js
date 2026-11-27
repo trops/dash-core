@@ -30,7 +30,7 @@ A bot starts when another bot on its team finishes: subscriptions [{ bot: "Plann
 ## 4. Answers that hand on
 End every answer with one \`\`\`json block, last: the **handoff**. Dash reads every answer one way: the whole answer when it's JSON, else its last \`\`\`json block (picks, the work item and the checks all read it like this). Say so in the instructions with the exact keys.
 
-**Check the setup** with check_team_setup (or the team page's Check setup button) after building or changing a team: it finds a provider that doesn't start, a setting with no value, a repo the GitHub token can't read or push to, and a repo check that isn't on its repo, each with its fix. A team with the standard handoff runs it before each new job, and a job with a bad setup doesn't start (it shows as failed, listing the problems).
+**Check the setup** with check_team_setup (or the team page's Check setup button) after building or changing a team: it finds a provider that doesn't start, an AI login that's expired or missing (for Claude: run \`claude auth login\`), a setting with no value, a repo the GitHub token can't read or push to, and a repo check that isn't on its repo, each with its fix. A team with the standard handoff runs it before each new job, and a job with a bad setup doesn't start (it shows as failed, listing the problems).
 
 **Test the team** after a change: set a test item (a sandbox ticket) and run test_team (or Test team on the team's page). The whole chain runs on it with outward actions off (comments, transitions, merges and pushes are skipped and logged on the job, showing what they would have sent). A change to a team's bots or settings marks it "untested change" until a self-test ends done.
 

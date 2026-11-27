@@ -211,6 +211,8 @@ function buildTeamManifest({
         ...(["none", "read-only"].includes(bot.builtinTools)
           ? { builtinTools: bot.builtinTools }
           : {}),
+        // Strict (DASH-116), only when set; else its team's default.
+        ...(typeof bot.strict === "boolean" ? { strict: bot.strict } : {}),
         schedules: (bot.schedules || [])
           .filter((s) => s && typeof s.cron === "string")
           .map((s) => ({ cron: s.cron, prompt: s.prompt || "" })),
@@ -555,6 +557,9 @@ function validateTeamManifest(input) {
       ) {
         errors.push(`${where}: unknown approvalPolicy`);
       }
+      if (e.strict != null && typeof e.strict !== "boolean") {
+        errors.push(`${where}: strict must be true or false`);
+      }
       const schedules = Array.isArray(e.schedules) ? e.schedules : [];
       if (
         schedules.length > LIMITS.schedules ||
@@ -629,6 +634,7 @@ function validateTeamManifest(input) {
           ...(["none", "read-only"].includes(e.builtinTools)
             ? { builtinTools: e.builtinTools }
             : {}),
+          ...(typeof e.strict === "boolean" ? { strict: e.strict } : {}),
           schedules: schedules.map((s) => ({
             cron: s && s.cron,
             prompt: (s && s.prompt) || "",
@@ -863,6 +869,8 @@ function planTeamInstall(
           ...(["none", "read-only"].includes(e.builtinTools)
             ? { builtinTools: e.builtinTools }
             : {}),
+          // Strict as the file says (DASH-116).
+          ...(typeof e.strict === "boolean" ? { strict: e.strict } : {}),
           workspaceId,
           mcpServers,
           toolSelections,

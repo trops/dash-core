@@ -24,6 +24,7 @@
 "use strict";
 
 const { rootCause } = require("./botEvents");
+const { refusalsOf } = require("./refusals");
 const {
   checksFlow,
   isChecksFlow,
@@ -227,7 +228,7 @@ function createCheckJobs(deps) {
             stepId: WORK_STEP,
             status: "passed",
             summary: `Answered again (try ${task.round || 1})`,
-            output: workOutput(record.output, record.refusals),
+            output: workOutput(record.output, refusalsOf(record)),
             bot: { botId, botName: bot.name },
           });
         } catch (_e) {
@@ -262,7 +263,7 @@ function createCheckJobs(deps) {
           botId,
           botName: bot.name,
           summary: "Did the work",
-          output: workOutput(record.output, record.refusals),
+          output: workOutput(record.output, refusalsOf(record)),
         },
       });
     } catch (_e) {

@@ -4,6 +4,8 @@
  * Deterministic, and each problem says its fix:
  *   setting     a setting a bot uses has no value (or a table no rows)
  *   provider    a provider a bot uses isn't there, or doesn't start
+ *   ai-login    the AI a bot runs on (or the user's default) isn't signed
+ *               in: an expired or missing login, a refused key (DASH-114)
  *   repo-read   a repo in the team's tables can't be read with the token
  *   repo-push   …or can't be pushed to, when a bot on the team pushes
  *   repo-check  a repo check a step names isn't on a repo's base branch
@@ -20,6 +22,7 @@
 
 const { withTeamValues } = require("./teamValues");
 const { pickFile, CHECKS_DIR } = require("../checks/kinds/repo");
+const { aiLabel } = require("./aiLogin");
 const { strictCommandWarnings } = require("./strictMode");
 
 const REPO_URL_RE =
@@ -166,6 +169,9 @@ async function gh(fetch, token, path) {
  * @param {{ bots: object[], team: object|null, home?: string|null }} p
  *   the team's bots (as saved, with their {names}) and its settings
  * @param {{ providerFailures?: (bot) => Promise<{serverName, message}[]>,
+ *           aiProviderOf?: (bot) => string|null,
+ *           defaultAiProvider?: string|null,
+ *           aiLogin?: (providerId) => Promise<{ ok, problem?, fix? }>,
  *           gitToken?: (bot) => Promise<string|null>,
  *           fetch?: Function }} deps
  * @returns {Promise<{ ok: boolean, problems: object[], checked: object }>}
@@ -210,6 +216,47 @@ async function preflight(
           message: `${bot.name}'s provider ${f.serverName} isn't working (${String(f.message || "it didn't start").slice(0, 300)}): fix it on the Providers page`,
         });
       }
+    }
+  }
+
+  // AI logins (DASH-114): one cheap call per AI provider the bots run on,
+  // and the user's default, so an expired login fails here, not mid-job.
+  if (deps.aiLogin) {
+    const users = new Map();
+    const use = (id, who) => {
+      if (!id) return;
+      if (!users.has(id)) users.set(id, []);
+      if (who) users.get(id).push(who);
+    };
+    if (deps.defaultAiProvider) use(deps.defaultAiProvider, null);
+    for (const bot of list) {
+      let id = null;
+      try {
+        id = deps.aiProviderOf ? deps.aiProviderOf(bot) : null;
+      } catch (_e) {
+        id = null;
+      }
+      use(id, bot.name);
+    }
+    for (const [id, who] of users) {
+      let res;
+      try {
+        res = await deps.aiLogin(id);
+      } catch (e) {
+        // A check that can't run says nothing about the login.
+        res = { ok: true, error: (e && e.message) || String(e) };
+      }
+      if (!res || res.ok) continue;
+      const label = aiLabel(id);
+      const runs = who.length
+        ? `${who.join(", ")} ${who.length === 1 ? "runs" : "run"} on ${label}, which`
+        : `Your default AI, ${label},`;
+      add({
+        kind: "ai-login",
+        provider: id,
+        bots: who,
+        message: `${runs} ${res.problem || "can't sign in"}: ${res.fix || "sign in to it again"}`,
+      });
     }
   }
 

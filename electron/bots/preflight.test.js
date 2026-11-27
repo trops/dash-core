@@ -10,6 +10,7 @@ const assert = require("node:assert/strict");
 const os = require("os");
 const { preflight, preflightText, teamRepos, pushes } = require("./preflight");
 const { mergeTeamValues } = require("./teamValues");
+const { checkAiLogin } = require("./aiLogin");
 
 function team({ rows, extra = [], values = {} } = {}) {
   const r = mergeTeamValues(null, {
@@ -185,6 +186,85 @@ describe("preflight", () => {
       res.problems[0].message,
       "Ticket Bot's provider Atlassian MCP isn't working (401 Unauthorized): fix it on the Providers page",
     );
+  });
+
+  it("an expired AI login, a working one, and a missing one (DASH-114)", async () => {
+    const asked = [];
+    const logins = {
+      "claude-code": {
+        ok: false,
+        expired: true,
+        problem:
+          "has a login that reached its time limit (2026-11-01T00:00:00.000Z) and can't be renewed",
+        fix: "run `claude auth login` in a terminal, then try again",
+      },
+      openai: { ok: true },
+      anthropic: {
+        ok: false,
+        missing: true,
+        problem: "has no API key saved",
+        fix: "add one in Settings › AI, or switch back to your Claude subscription",
+      },
+    };
+    const onAnthropic = { name: "Reviewer", instructions: "Review." };
+    const onOpenAI = { name: "Writer", instructions: "Write." };
+    const res = await preflight(
+      { bots: [ticketBot, coder, onAnthropic, onOpenAI], team: team() },
+      deps(fakeGitHub({ "trops/sandbox": {}, "trops/sandbox-2": {} }), {
+        providerFailures: async () => [],
+        aiProviderOf: (bot) =>
+          bot === onAnthropic
+            ? "anthropic"
+            : bot === onOpenAI
+              ? "openai"
+              : "claude-code",
+        defaultAiProvider: "claude-code",
+        aiLogin: async (id) => (asked.push(id), logins[id]),
+      }),
+    );
+    // One call per provider, the default included.
+    assert.deepEqual(asked.sort(), ["anthropic", "claude-code", "openai"]);
+    const ai = res.problems.filter((p) => p.kind === "ai-login");
+    assert.equal(res.ok, false);
+    assert.deepEqual(
+      ai.map((p) => p.message),
+      [
+        "Ticket Bot, Coder run on Claude Code, which has a login that reached its time limit (2026-11-01T00:00:00.000Z) and can't be renewed: run `claude auth login` in a terminal, then try again",
+        "Reviewer runs on the Anthropic API, which has no API key saved: add one in Settings › AI, or switch back to your Claude subscription",
+      ],
+    );
+    assert.match(preflightText(res.problems), /claude auth login/);
+  });
+
+  it("the user's default AI is checked even when no bot runs on it", async () => {
+    const res = await preflight(
+      { bots: [], team: null },
+      {
+        defaultAiProvider: "claude-code",
+        aiLogin: async () => ({
+          ok: false,
+          problem: "isn't logged in",
+          fix: "run `claude auth login` in a terminal, then try again",
+        }),
+      },
+    );
+    assert.equal(
+      res.problems[0].message,
+      "Your default AI, Claude Code, isn't logged in: run `claude auth login` in a terminal, then try again",
+    );
+    // A check that can't run, or none given, says nothing.
+    const broken = await preflight(
+      { bots: [ticketBot], team: null },
+      {
+        aiProviderOf: () => "claude-code",
+        aiLogin: async () => {
+          throw new Error("boom");
+        },
+      },
+    );
+    assert.deepEqual(broken.problems, []);
+    const none = await preflight({ bots: [ticketBot], team: null }, {});
+    assert.deepEqual(none.problems, []);
   });
 
   it("a repo the token can't read, or push to when a bot pushes (DASH-90's 403)", async () => {
@@ -417,6 +497,157 @@ describe("botController: the setup gate before a job (DASH-108)", () => {
       }),
       null,
     );
+  });
+
+  it("an expired AI login fails the job with a Setup check step (DASH-114)", async () => {
+    const message =
+      "Ticket Bot runs on Claude Code, which has a login that reached its time limit (2026-11-01T00:00:00.000Z) and can't be renewed: run `claude auth login` in a terminal, then try again";
+    const { self, jobs } = fakeSelf({
+      setup: { ok: false, problems: [{ kind: "ai-login", message }] },
+    });
+    const res = await botController._preflightGate.call(self, "t", ticket, {
+      jobId: null,
+      willStart: true,
+      opts: { trigger: "schedule" },
+    });
+    assert.equal(res.skipped, true);
+    assert.equal(self.ran.length, 0);
+    assert.equal(jobs[0].steps[0].botName, "Setup check");
+    assert.equal(jobs[0].steps[0].status, "failed");
+    assert.match(jobs[0].steps[0].summary, /claude auth login/);
+  });
+
+  it("checkSetup asks each AI provider once, the default included, and caches like the rest", async () => {
+    const asked = [];
+    let login = { ok: true };
+    const self = {
+      _store: {
+        list: () => [
+          { id: "a", name: "A", workspaceId: "ws1" },
+          { id: "b", name: "B", workspaceId: "ws1", provider: "anthropic" },
+        ],
+        getTeamSettings: () => null,
+        getSettings: () => ({}),
+      },
+      _modelPick: (bot) => ({ providerId: bot.provider || "claude-code" }),
+      _gitTokenFor: async () => null,
+      _aiLogin: async (id) => (asked.push(id), login),
+    };
+    self.checkSetup = botController.checkSetup;
+    self._setupBeforeJob = botController._setupBeforeJob;
+    const realNow = Date.now;
+    let t = realNow();
+    Date.now = () => t;
+    try {
+      const good = await self._setupBeforeJob("ws1");
+      assert.equal(good.ok, true);
+      assert.deepEqual(asked.sort(), ["anthropic", "claude-code"]);
+      // Good: kept 10 minutes.
+      t += 9 * 60 * 1000;
+      await self._setupBeforeJob("ws1");
+      assert.equal(asked.length, 2);
+      t += 2 * 60 * 1000;
+      login = {
+        ok: false,
+        expired: true,
+        problem: "has a login that reached its time limit",
+        fix: "run `claude auth login` in a terminal, then try again",
+      };
+      const bad = await self._setupBeforeJob("ws1");
+      assert.equal(asked.length, 4);
+      assert.equal(bad.ok, false);
+      assert.equal(bad.problems[0].kind, "ai-login");
+      assert.match(bad.text, /claude auth login/);
+      // Bad: kept 1 minute.
+      t += 30 * 1000;
+      await self._setupBeforeJob("ws1");
+      assert.equal(asked.length, 4);
+      t += 31 * 1000;
+      await self._setupBeforeJob("ws1");
+      assert.equal(asked.length, 6);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+});
+
+describe("checkAiLogin: one cheap call per AI provider (DASH-114)", () => {
+  const now = () => Date.parse("2026-11-27T12:00:00Z");
+  const cli = (status) => ({
+    resolveCli: () => "/usr/local/bin/claude",
+    readAuthStatus: async () => status,
+    now,
+  });
+
+  it("Claude Code: an expired login, a working one, none, and no CLI", async () => {
+    const expired = await checkAiLogin(
+      "claude-code",
+      cli({ loggedIn: true, loginExpiresAt: "2026-11-20T00:00:00Z" }),
+    );
+    assert.equal(expired.ok, false);
+    assert.equal(expired.expired, true);
+    assert.match(expired.fix, /claude auth login/);
+    const good = await checkAiLogin(
+      "claude-code",
+      cli({ loggedIn: true, loginExpiresAt: "2026-12-27T00:00:00Z" }),
+    );
+    assert.equal(good.ok, true);
+    const out = await checkAiLogin("claude-code", cli({ loggedIn: false }));
+    assert.equal(out.ok, false);
+    assert.match(out.fix, /claude auth login/);
+    const missing = await checkAiLogin("claude-code", {
+      resolveCli: () => null,
+      now,
+    });
+    assert.equal(missing.ok, false);
+    assert.equal(missing.missing, true);
+    // An older CLI without `auth status`: can't tell, doesn't block.
+    assert.equal((await checkAiLogin("claude-code", cli(null))).ok, true);
+  });
+
+  it("an API key: refused, working, missing, and GitHub-style hiccups", async () => {
+    const calls = [];
+    const fetchWith = (status) => async (url, opts) => {
+      calls.push({ url, headers: opts.headers });
+      if (status === "down") throw new Error("ENOTFOUND");
+      return { status };
+    };
+    const refused = await checkAiLogin("anthropic", {
+      apiKey: "sk-old",
+      fetch: fetchWith(401),
+    });
+    assert.equal(refused.ok, false);
+    assert.match(refused.problem, /HTTP 401/);
+    assert.equal(calls[0].url, "https://api.anthropic.com/v1/models?limit=1");
+    assert.equal(calls[0].headers["x-api-key"], "sk-old");
+    const good = await checkAiLogin("openai", {
+      apiKey: "sk-ok",
+      fetch: fetchWith(200),
+    });
+    assert.equal(good.ok, true);
+    assert.equal(calls[1].url, "https://api.openai.com/v1/models");
+    assert.equal(calls[1].headers.Authorization, "Bearer sk-ok");
+    const missing = await checkAiLogin("xai", { fetch: fetchWith(200) });
+    assert.equal(missing.ok, false);
+    assert.equal(missing.missing, true);
+    assert.equal(calls.length, 2);
+    // Can't reach it, or a 5xx: can't tell, doesn't block.
+    assert.equal(
+      (
+        await checkAiLogin("anthropic", {
+          apiKey: "k",
+          fetch: fetchWith("down"),
+        })
+      ).ok,
+      true,
+    );
+    assert.equal(
+      (await checkAiLogin("anthropic", { apiKey: "k", fetch: fetchWith(529) }))
+        .ok,
+      true,
+    );
+    // A provider it doesn't know: nothing to check.
+    assert.equal((await checkAiLogin("someday", {})).ok, true);
   });
 });
 

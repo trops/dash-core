@@ -139,6 +139,7 @@ const {
   untestedMark,
 } = require("../bots/selfTest");
 const { preflight, preflightText } = require("../bots/preflight");
+const { checkAiLogin } = require("../bots/aiLogin");
 const {
   TEAM_SERVER,
   TEAM_TOOLS,
@@ -2841,6 +2842,17 @@ const botController = {
         },
         gitToken: (bot) => this._gitTokenFor(bot),
         ...(this._preflightFetch ? { fetch: this._preflightFetch } : {}),
+        // The AI logins the bots (and the user's default) run on (DASH-114).
+        ...(typeof this._aiLogin === "function"
+          ? {
+              aiProviderOf: (bot) => this._modelPick(bot).providerId,
+              defaultAiProvider: resolveBotProviderId(
+                null,
+                backendProvider(readAi(this._store.getSettings())),
+              ),
+              aiLogin: (providerId) => this._aiLogin(providerId),
+            }
+          : {}),
       },
     );
     const out = {
@@ -2851,6 +2863,39 @@ const botController = {
     this._lastSetup = this._lastSetup || new Map();
     this._lastSetup.set(String(workspaceId), { ...out, ms: Date.now() });
     return out;
+  },
+
+  /**
+   * One cheap check that an AI provider is signed in (DASH-114): Claude
+   * Code's `claude auth status`, or a free models call with the API key.
+   * Cached with the rest of the setup check (_setupBeforeJob).
+   */
+  async _aiLogin(providerId) {
+    let apiKey = null;
+    let baseURL = null;
+    if (providerId !== DEFAULT_BOT_PROVIDER) {
+      try {
+        const win = this._getMainWindow ? this._getMainWindow() : null;
+        const { providers = [] } =
+          this._providers.listProviders(win, this._appId) || {};
+        const match =
+          providers.find((p) => p.type === providerId && p.isDefaultForType) ||
+          providers.find((p) => p.type === providerId);
+        apiKey =
+          (match && match.credentials && match.credentials.apiKey) || null;
+      } catch (_e) {
+        apiKey = null;
+      }
+      baseURL = getProvider(providerId).baseURL || null;
+    }
+    return checkAiLogin(providerId, {
+      resolveCli: () => require("./cliController").resolveCliBinary() || null,
+      readAuthStatus: (cli) => readClaudeAuthStatus(cli),
+      apiKey,
+      baseURL,
+      fetch:
+        this._preflightFetch || (typeof fetch === "function" ? fetch : null),
+    });
   },
 
   /**
@@ -2933,16 +2978,36 @@ const botController = {
       item,
       test: true,
     });
-    // Its setup is checked as for any job (DASH-108); it runs in the
-    // background, and the Jobs page shows it.
-    Promise.resolve(
+    // Its setup is checked as for any job (DASH-108), an expired AI login
+    // too (DASH-114): a bad one fails the test job with a "Setup check"
+    // step. It runs in the background, and the Jobs page shows it.
+    const run = () =>
       this._run(first.id, {
         prompt: testPrompt(item),
         trigger: "you",
         jobId: job.id,
         preflighted: true,
-      }),
-    ).catch(() => {});
+      });
+    const checked =
+      typeof this._setupBeforeJob === "function"
+        ? Promise.resolve(this._setupBeforeJob(workspaceId)).then((setup) => {
+            if (!setup || setup.ok !== false) return run();
+            this._jobs.startStep(job.id, {
+              botId: first.id,
+              botName: "Setup check",
+              why: "Before the job starts, Dash checks the team's setup.",
+            });
+            this._jobs.endStep(job.id, {
+              botId: first.id,
+              record: {
+                status: "failed",
+                error: preflightText(setup.problems),
+              },
+            });
+            return null;
+          })
+        : run();
+    Promise.resolve(checked).catch(() => {});
     return { jobId: job.id, botId: first.id, item };
   },
 
@@ -5641,6 +5706,13 @@ const botController = {
       via: opts.via || null,
       // A team's self-test (DASH-109): its outward commands are blocked.
       ...(selfTest ? { selfTest: true } : {}),
+      // A job's run on a team with the standard handoff: what its setup
+      // refuses fails the run (DASH-115). Other runs are told no.
+      ...(jobId &&
+      typeof this.usesHandoffs === "function" &&
+      this.usesHandoffs(bot.workspaceId)
+        ? { failOnRefusal: true }
+        : {}),
       // A command its test blocked, listed with what it skipped (DASH-115).
       ...(selfTest && this._jobs.noteSkipped
         ? { onTestSkip: (n) => this._jobs.noteSkipped(jobId, n) }

@@ -211,8 +211,25 @@ function refusalAsked(question, refusals) {
   return null;
 }
 
+/**
+ * A run record's refusals as a list: kept as JSON (sealed at rest like its
+ * warnings), or a list already.
+ */
+function refusalsOf(record) {
+  const v = record && record.refusals;
+  if (Array.isArray(v)) return v;
+  if (typeof v !== "string" || !v) return [];
+  try {
+    const list = JSON.parse(v);
+    return Array.isArray(list) ? list : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
 module.exports = {
   MAX_WHAT,
+  refusalsOf,
   makeRefusal,
   keepRefusal,
   refusalAsked,
