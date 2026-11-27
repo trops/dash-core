@@ -108,6 +108,8 @@ export const TrackerSetting = ({
   workspaceId = null,
   disabled = false,
   title = null,
+  // How bots use it (DASH-129): shown when the form's toggle is open.
+  showHow = false,
 }) => {
   const { muted, hairline } = useConfigTokens();
   const status = useStatusTokens();
@@ -398,9 +400,11 @@ export const TrackerSetting = ({
       {s.description ? (
         <span className={`text-xs ${muted}`}>{s.description}</span>
       ) : null}
-      <span className={`text-xs ${muted}`}>
-        {`${botName ? `${botName} uses it` : "Bots use it"} as {${s.name}}: the choice in words, with the search to run.`}
-      </span>
+      {showHow ? (
+        <span className={`text-xs ${muted}`}>
+          {`${botName ? `${botName} uses it` : "Bots use it"} as {${s.name}}: the choice in words, with the search to run.`}
+        </span>
+      ) : null}
       {problem ? (
         <span className={`text-xs ${status.warning.text}`}>
           {`${problem.charAt(0).toUpperCase()}${problem.slice(1)} yet: ${who} can't do its job until it has one.`}

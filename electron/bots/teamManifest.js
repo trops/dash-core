@@ -153,6 +153,9 @@ function buildTeamManifest({
   workspace = null,
   // The team's declared settings (DASH-57): their values stay here.
   settings = [],
+  // Its bots pass work in the standard format (DASH-101): on when it's
+  // installed (DASH-129).
+  usesHandoffs = false,
 }) {
   const members = (Array.isArray(bots) ? bots : []).filter(
     (b) => b && b.role !== "lead",
@@ -347,6 +350,7 @@ function buildTeamManifest({
       listeners,
       resultWidgets,
       ...(declared.length ? { settings: declared } : {}),
+      ...(usesHandoffs === true ? { usesHandoffs: true } : {}),
     },
     notIncluded,
   };
@@ -813,6 +817,8 @@ function validateTeamManifest(input) {
       ...(settingsRead.settings.length
         ? { settings: settingsRead.settings }
         : {}),
+      // Its bots pass work in the standard format (DASH-129).
+      ...(input.usesHandoffs === true ? { usesHandoffs: true } : {}),
     },
   };
 }
@@ -919,6 +925,8 @@ function planTeamInstall(
     name: manifest.name,
     // Its settings, for the install form (DASH-57).
     settings: (manifest.settings || []).map((d) => ({ ...d })),
+    // The standard handoff, turned on at install (DASH-129).
+    usesHandoffs: manifest.usesHandoffs === true,
     // Each bot's own (DASH-136), for the form's section per bot.
     botSettings: botSettingsOf(
       manifest.members.filter((m) => picked.has(m.role)),

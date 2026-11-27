@@ -155,7 +155,7 @@ export const BotOwnSettings = ({
     <div className="flex flex-col gap-2" data-testid="bot-own-settings">
       {showLabel ? <SectionLabel text="Settings for its job" /> : null}
       <span className={`text-xs ${muted}`}>
-        {`What ${who} needs to do its own job, like the folder it works in. Use one as {name} in its instructions, folders or checks; it's filled in when it runs. What it decides goes to the next bot in its handoff. What it may do (push, merge…) is its access, never a setting.`}
+        {`What ${who} needs to do its own job, like the folder it works in. What it decides goes to the next bot. What it may do (push, merge…) is its access, never a setting.`}
       </span>
       {settings.length ? (
         <TeamSettingsForm

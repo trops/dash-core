@@ -13,8 +13,12 @@
  * per repo. Bots use {repo.url}; each job uses the row it picked.
  *
  * The same form shows one bot's own settings (DASH-136) when `botName` is
- * given: "Workspace Bot uses it as {workFolder}". A required setting is
- * marked Required.
+ * given. A required setting is marked Required.
+ *
+ * Its copy is for the person installing the team (DASH-129): each field
+ * says what it's for (its description, else who uses it). How bots use it
+ * ("Workspace Bot uses it as {workFolder}", a table's row keys) waits
+ * behind one "Show how bots use it" under the form.
  *
  * A tracker (DASH-135) is where a bot's tickets come from: a source, then
  * pickers (TrackerSetting.js).
@@ -39,6 +43,7 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { noteSetupChanged } from "./teamSetupStore";
 import { TrackerSetting } from "./TrackerSetting";
 import { trackerEmpty } from "../../utils/trackerSetting";
+import { MoreDetail } from "./MoreDetail";
 
 const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 
@@ -92,6 +97,8 @@ export const TeamSettingsForm = ({
 }) => {
   const { muted } = useConfigTokens();
   const status = useStatusTokens();
+  // How bots use each one ({name}, DASH-129): behind one toggle.
+  const [showHow, setShowHow] = useState(false);
   if (!settings.length) return null;
   const empty = new Set(emptySettings(settings, values).map((s) => s.name));
   const users = (s) =>
@@ -120,14 +127,14 @@ export const TeamSettingsForm = ({
   return (
     <div className="flex flex-col gap-3" data-testid="team-settings-form">
       {settings.map((s) => {
+        // What it's for first; how bots use it only when asked.
         const hint = [
           s.description || null,
-          users(s)
-            ? `${botName ? `${botName} uses it` : `Used by ${users(s).join(", ")}`} as {${s.name}}`
-            : `Bots use it as {${s.name}}`,
+          !botName && users(s) ? `Used by ${users(s).join(", ")}.` : null,
+          showHow ? howText(s, botName, users(s)) : null,
         ]
           .filter(Boolean)
-          .join(" · ");
+          .join(" ");
         if (s.type === "table") {
           return (
             <TableSetting
@@ -135,6 +142,7 @@ export const TeamSettingsForm = ({
               setting={s}
               rows={rowsOf(values, s)}
               usedBy={users(s)}
+              showHow={showHow}
               empty={empty.has(s.name)}
               emptyText={emptyText("rows")}
               title={title(s)}
@@ -151,6 +159,7 @@ export const TeamSettingsForm = ({
               value={has(values, s.name) ? values[s.name] : s.default || null}
               botName={botName}
               workspaceId={workspaceId}
+              showHow={showHow}
               title={title(s)}
               disabled={disabled}
               onChange={(v) => onChange && onChange(s.name, v)}
@@ -170,7 +179,7 @@ export const TeamSettingsForm = ({
                 disabled={disabled}
                 onChange={(on) => onChange && onChange(s.name, !!on)}
               />
-              <span className={`text-xs ${muted}`}>{hint}</span>
+              {hint ? <span className={`text-xs ${muted}`}>{hint}</span> : null}
             </div>
           );
         }
@@ -215,7 +224,7 @@ export const TeamSettingsForm = ({
                 />
               ) : null}
             </div>
-            <span className={`text-xs ${muted}`}>{hint}</span>
+            {hint ? <span className={`text-xs ${muted}`}>{hint}</span> : null}
             {empty.has(s.name) ? (
               <span className={`text-xs ${status.warning.text}`}>
                 {emptyText("value")}
@@ -224,9 +233,24 @@ export const TeamSettingsForm = ({
           </div>
         );
       })}
+      <MoreDetail
+        open={showHow}
+        onToggle={setShowHow}
+        testId="team-settings-how"
+      />
     </div>
   );
 };
+
+/** How bots use a setting (DASH-129's "Show how bots use it"). */
+export function howText(s, botName = null, usedBy = null) {
+  const who = botName
+    ? `${botName} uses it`
+    : usedBy && usedBy.length
+      ? `${usedBy.join(", ")} ${usedBy.length === 1 ? "uses" : "use"} it`
+      : "Bots use it";
+  return `${who} as {${s.name}} in instructions, folders and checks; Dash fills in the value when they run.`;
+}
 
 /**
  * A table setting (DASH-84): its rows, each a key and its columns; rows can
@@ -241,6 +265,8 @@ export const TableSetting = ({
   onChange,
   emptyText = "No rows yet: bots that use it can't run until it has one.",
   title = null,
+  // How bots use it (DASH-129): shown when the form's toggle is open.
+  showHow = false,
 }) => {
   const { muted, hairline } = useConfigTokens();
   const status = useStatusTokens();
@@ -257,15 +283,19 @@ export const TableSetting = ({
       )}
       <span className={`text-xs ${muted}`}>
         {[
-          s.description || null,
-          `${
-            usedBy && usedBy.length
-              ? `Used by ${usedBy.join(", ")}`
-              : "Bots use it"
-          } as ${sample} …: each job uses the row a bot names in its answer ("${field}": a row's key)`,
+          s.description ||
+            "One row each. Each job uses the row a bot picks for it.",
+          usedBy && usedBy.length ? `Used by ${usedBy.join(", ")}.` : null,
+          showHow
+            ? `${
+                usedBy && usedBy.length
+                  ? `${usedBy.join(", ")} ${usedBy.length === 1 ? "uses" : "use"} it`
+                  : "Bots use it"
+              } as ${sample} …: each job uses the row a bot names in its answer ("${field}": a row's key).`
+            : null,
         ]
           .filter(Boolean)
-          .join(" · ")}
+          .join(" ")}
       </span>
       {rows.map((r, i) => (
         <div
@@ -443,8 +473,8 @@ export const TeamSettingsPanel = forwardRef(function TeamSettingsPanel(
       <div className="flex flex-col gap-0.5">
         <SectionLabel text="Team settings" />
         <span className={`text-xs ${muted}`}>
-          This team's bots use these as {"{name}"} in their instructions, checks
-          and folders. A change reaches every bot on its next run.
+          Settings this team's bots share. A change reaches every bot on its
+          next run.
         </span>
       </div>
       <TeamSettingsForm

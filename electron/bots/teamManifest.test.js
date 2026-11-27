@@ -623,3 +623,39 @@ describe("trigger notes travel with the team (TEAM-014)", () => {
     assert.equal("note" in subs.reader[0], false);
   });
 });
+
+describe("the standard handoff travels with the team (DASH-129)", () => {
+  it("a team that uses it says so, and its install turns it on", () => {
+    const { manifest } = buildTeamManifest({
+      name: "Daily Brief",
+      bots: team,
+      providers,
+      usesHandoffs: true,
+    });
+    assert.equal(manifest.usesHandoffs, true);
+    const read = validateTeamManifest(JSON.parse(JSON.stringify(manifest)));
+    assert.equal(read.valid, true);
+    assert.equal(read.manifest.usesHandoffs, true);
+    const plan = planTeamInstall(read.manifest, {
+      workspaceId: "ws2",
+      providers,
+    });
+    assert.equal(plan.usesHandoffs, true);
+  });
+
+  it("a team that doesn't leaves it out, and its install leaves it off", () => {
+    const { manifest } = buildTeamManifest({
+      name: "Daily Brief",
+      bots: team,
+      providers,
+    });
+    assert.equal("usesHandoffs" in manifest, false);
+    const read = validateTeamManifest({ ...manifest, usesHandoffs: "yes" });
+    assert.equal("usesHandoffs" in read.manifest, false);
+    assert.equal(
+      planTeamInstall(read.manifest, { workspaceId: "ws2", providers })
+        .usesHandoffs,
+      false,
+    );
+  });
+});

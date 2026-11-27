@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState } from "react";
 import { Switch, useStatusTokens } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { offCommandsLine } from "../../utils/offCommands";
+import { MoreDetail } from "./MoreDetail";
 
 /**
  * TeamJobSettings — "How jobs run" on a team's page (DASH-120): its "One
  * job at a time" (DASH-81), on unless turned off: a job that would start
  * while the team has one going waits its turn (a schedule's run is skipped
- * instead). And its standard handoff (DASH-101), off unless turned on.
+ * instead). And its standard handoff (DASH-101), off unless turned on, or
+ * on from install for a package that declares it (DASH-129).
  * They're about how the bots hand work to each other, so they're the
  * team's, and they apply right away; each switch's error shows under its
  * own row.
@@ -35,10 +37,15 @@ export const ONE_JOB_HELP = {
 export const usesHandoffsOf = (settings) =>
   !!(settings && settings.usesHandoffs === true);
 
+// What the switch is for, in an installer's words (DASH-129); how it
+// works is under "Learn more" (HANDOFF_DETAIL).
 export const HANDOFF_HELP = {
-  on: "Each bot ends its answer with a handoff (one JSON block). Dash checks it first and sends a wrong one back to the bot, ends the job when there's nothing to do or the work was split, asks you when a bot has a question, and tells the next bot the job's work item, workspace and picks.",
-  off: "Off: each bot gets the raw answer of the bot before it, and its own instructions say what to copy forward.",
+  on: "Dash checks each handoff, stops when there's nothing to do, and brings a bot's question to you as a card.",
+  off: "Off: each bot gets the answer of the bot before it as it is, and its own instructions say what to pass on.",
 };
+
+export const HANDOFF_DETAIL =
+  "Each bot ends its answer with a handoff: one JSON block with its status, the ticket or issue it worked on, and what it picked. Dash checks it first and sends a wrong one back to the bot, ends the job when there's nothing to do or the work was split, asks you when a bot has a question, and tells the next bot the job's ticket, workspace and picks. Packages that say their bots use it turn it on when they're installed.";
 
 export const SELF_TEST_HELP =
   "Runs the whole team on a test item with outward actions off: no comments, transitions, pushes or merges. It checks setup first, then opens the job so you can follow it.";
@@ -173,6 +180,13 @@ export const TeamJobSettings = ({ workspaceId }) => {
             <span className={`text-xs ${muted}`}>
               {handoffs ? HANDOFF_HELP.on : HANDOFF_HELP.off}
             </span>
+            <MoreDetail
+              label="Learn more"
+              hideLabel="Show less"
+              testId="handoff-learn-more"
+            >
+              {HANDOFF_DETAIL}
+            </MoreDetail>
             {errorLine(handoffError, "handoff-error")}
           </span>
           <Switch
