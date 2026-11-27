@@ -720,6 +720,52 @@ describe("what a step needs from you, on the job page (DASH-113)", () => {
     );
   });
 
+  it("a plan's handoff shows as labelled rows, the answer and JSON behind links (DASH-124)", async () => {
+    const answer = [
+      "Confirmed. Let me check for existing tests, then comment.",
+      "- **Cause**: buildLink drops the title",
+      "```json",
+      JSON.stringify({
+        status: "ok",
+        repo: "sandbox-web",
+        acceptance: ["Preview shows the title", "No title: the site name"],
+        plan: { cause: 'buildLink ignores "title"', fix: "Add og:title" },
+      }),
+      "```",
+    ].join("\n\n");
+    const g = goalFor("ready");
+    g.tasks[0].history = [{ ...work, output: { answer } }];
+    liveApi({
+      job: jobWith({ status: "needs-you", goalId: "g1" }),
+      goal: g,
+    });
+    render(<JobsPage workspaces={WORKSPACES} />);
+    const card = await screen.findByTestId("job-waiting");
+    const plan = within(card).getByTestId("job-plan");
+    expect(plan).toHaveTextContent("Repo");
+    expect(plan).toHaveTextContent("sandbox-web");
+    expect(plan).toHaveTextContent('CausebuildLink ignores "title"');
+    expect(plan).toHaveTextContent("Done when");
+    expect(within(plan).getAllByRole("listitem")).toHaveLength(2);
+    // Never the raw block; the prose only on request.
+    expect(card).not.toHaveTextContent("```");
+    expect(card).not.toHaveTextContent('"status"');
+    expect(within(card).queryByTestId("job-work")).toBeNull();
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Show PR Bot's full answer" }),
+    );
+    expect(within(card).getByTestId("job-work")).toHaveTextContent(
+      "buildLink drops the title",
+    );
+    expect(within(card).getByTestId("job-work")).not.toHaveTextContent("```");
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Show handoff JSON" }),
+    );
+    expect(within(card).getByTestId("handoff-json")).toHaveTextContent(
+      '"repo": "sandbox-web"',
+    );
+  });
+
   it("Edit <bot>'s checks opens its checks window over the job; Save returns to the same step (DASH-124)", async () => {
     const { calls } = liveApi({
       job: jobWith({ status: "needs-you", goalId: "g1" }),

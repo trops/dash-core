@@ -6,6 +6,8 @@
  *
  *   ApproveCard       a "You approve" check: its work, Approve / Send back
  *                     (a note), Edit <bot>'s checks (DASH-124)
+ *   ApprovalWork      that work: its handoff's fields as labelled rows,
+ *                     its full answer and JSON behind links
  *   AskCard           a handoff "ask": the question and an answer box
  *   CameCard          checks that need a look: Send it back / Close
  *   ToolApprovalCard  a tool approval: Allow once / Always allow / Deny
@@ -40,7 +42,9 @@ import { jobTitleText, refusalSectionText } from "./jobText";
 import { useGoal } from "../../hooks/useGoals";
 import { useJobs } from "../../hooks/useJobs";
 import { JobChecksWindow } from "./JobChecksWindow";
+import { HandoffJson, StepProse } from "./StepMessage";
 import {
+  approvalView,
   botPassText,
   botPassesOf,
   canAlwaysAllow,
@@ -77,6 +81,105 @@ const Head = ({ children }) => {
   );
 };
 
+/** One row of the plan: its value, a list, and why (muted). */
+const PlanValue = ({ row }) => {
+  const { muted } = useConfigTokens();
+  if (row.list) {
+    const List = row.key === "steps" ? "ol" : "ul";
+    return (
+      <List
+        className={`${row.key === "steps" ? "list-decimal" : "list-disc"} pl-4 flex flex-col gap-0.5`}
+      >
+        {row.list.map((t, i) => (
+          <li key={i} className="break-words">
+            {t}
+          </li>
+        ))}
+      </List>
+    );
+  }
+  return (
+    <span className="whitespace-pre-wrap break-words">
+      {row.text}
+      {row.note ? <span className={muted}>{` · ${row.note}`}</span> : null}
+    </span>
+  );
+};
+
+/**
+ * The bot's work on the approve card: its handoff's fields as labelled
+ * rows (mockup 6), then its full answer (Markdown) and the handoff's JSON
+ * behind links. With no fields, the answer itself, as Markdown. The json
+ * block is never shown as text.
+ */
+export const ApprovalWork = ({ botName, work, handoff = null }) => {
+  const { muted, strong, hairline, fieldBg } = useConfigTokens();
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [showJson, setShowJson] = useState(false);
+  const view = approvalView(work, handoff);
+  const box = `p-3 rounded-md border text-sm ${hairline} ${fieldBg} ${strong}`;
+  const prose = view.prose ? (
+    <div data-testid="job-work" className={`max-h-72 overflow-y-auto ${box}`}>
+      <StepProse text={view.prose} />
+    </div>
+  ) : null;
+  return (
+    <div className="flex flex-col gap-2">
+      {view.rows.length ? (
+        <div
+          data-testid="job-plan"
+          className={`grid gap-x-4 gap-y-2 ${box}`}
+          style={{ gridTemplateColumns: "auto minmax(0, 1fr)" }}
+        >
+          {view.rows.map((r) => (
+            <React.Fragment key={r.key}>
+              <span className={`text-xs pt-0.5 ${muted}`}>{r.label}</span>
+              <div className="min-w-0" data-testid="job-plan-row">
+                <PlanValue row={r} />
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+      ) : (
+        prose || (
+          <div data-testid="job-work" className={box}>
+            <span className={muted}>Its answer was empty.</span>
+          </div>
+        )
+      )}
+      {view.cut ? (
+        <span className={`text-xs ${muted}`} data-testid="job-work-cut">
+          Its handoff was cut off. Its activity has the whole answer.
+        </span>
+      ) : null}
+      {view.rows.length && showAnswer ? prose : null}
+      {view.handoff && showJson ? <HandoffJson handoff={view.handoff} /> : null}
+      {(view.rows.length && view.prose) || view.handoff ? (
+        <span className="flex flex-row flex-wrap gap-2">
+          {view.rows.length && view.prose ? (
+            <Button3
+              title={
+                showAnswer
+                  ? `Hide ${botName || "the bot"}'s full answer`
+                  : `Show ${botName || "the bot"}'s full answer`
+              }
+              size="sm"
+              onClick={() => setShowAnswer(!showAnswer)}
+            />
+          ) : null}
+          {view.handoff ? (
+            <Button3
+              title={showJson ? "Hide handoff JSON" : "Show handoff JSON"}
+              size="sm"
+              onClick={() => setShowJson(!showJson)}
+            />
+          ) : null}
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
 /**
  * A "you" check (DASH-124): there's no separate approver — the bot's
  * check whose Who decides is "You approve" waits here. Its work, a note for
@@ -86,6 +189,7 @@ const Head = ({ children }) => {
 export const ApproveCard = ({
   botName,
   work,
+  handoff = null,
   since,
   now,
   checkName = null,
@@ -94,7 +198,7 @@ export const ApproveCard = ({
   onSendBack,
   onEditChecks = null,
 }) => {
-  const { muted, strong, hairline, fieldBg } = useConfigTokens();
+  const { muted } = useConfigTokens();
   const [reason, setReason] = useState("");
   const line = [
     youCheckLine(botName, checkName),
@@ -112,12 +216,7 @@ export const ApproveCard = ({
           </span>
         ) : null}
       </div>
-      <div
-        data-testid="job-work"
-        className={`max-h-72 overflow-y-auto p-3 rounded-md border text-sm whitespace-pre-wrap ${hairline} ${fieldBg} ${strong}`}
-      >
-        {work || <span className={muted}>Its answer was empty.</span>}
-      </div>
+      <ApprovalWork botName={botName} work={work} handoff={handoff} />
       <TextArea
         label={`Note for ${botName} if you send it back`}
         rows={2}
@@ -339,6 +438,7 @@ export const GoalNeedsYouCard = ({
   onAction,
   now,
   editChecks = true,
+  handoff = null,
 }) => {
   const [editing, setEditing] = useState(false);
   const need = goalNeedsYou(goal);
@@ -350,6 +450,7 @@ export const GoalNeedsYouCard = ({
         <ApproveCard
           botName={bot.name}
           work={need.now.work}
+          handoff={handoff}
           since={need.now.since}
           now={now}
           checkName={need.check ? need.check.name : null}
@@ -601,6 +702,7 @@ export const StepNeedsYou = ({
       <GoalNeedsYouCard
         key="goal"
         goal={goal}
+        handoff={step.handoff || null}
         busy={busy}
         onAction={(taskId, action) =>
           act(() => {
