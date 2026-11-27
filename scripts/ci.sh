@@ -121,7 +121,7 @@ no_temp_leaks node --test electron/testUtils/tempDir.test.js scripts/checkTempLe
 
 # 5a1. The release script (DASH-48): resumable, worktree-safe git workflow
 step "Testing the release script"
-no_temp_leaks node --test scripts/release.test.js scripts/pickReleaseVersion.test.js
+no_temp_leaks node --test scripts/release.test.js scripts/pickReleaseVersion.test.js scripts/dashCheckCli.test.js
 
 # 6. Run MCP tests
 #   CAP-002: built-in providers (Web Fetch) — builtinServers/

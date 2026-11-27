@@ -58,6 +58,8 @@ checks: { steps, onFail, maxTries, handsOn }. The bot's answer is held until eve
 - when: a step that runs only when a team setting says so, e.g. { kind: "you", name: "Approve the plan", when: "{approvePlans}" }. Dash fills it in each run and leaves the step out when it reads no, so plan approval turns on and off from Team settings.
 - **Nothing to do:** with the standard handoff, the bot says "status": "none". Without it, when there's no work (an empty queue on a schedule), the check returns pass with handOn false: a script returns { pass: true, handOn: false, reason }, a command prints {"reason": "...", "handOn": false} last and exits 0. The run ends quietly: no completed event, nothing downstream runs, no job is kept.
 
+Writing a check of your own: get_setup_guide("checks") has the contract, templates and how to try it.
+
 Anything code can decide belongs in a check, not in the instructions: "tests pass", "the branch exists", "CI is green", "the folder is gone".
 
 ## 6. Team settings, not hard-coded values
