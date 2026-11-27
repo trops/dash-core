@@ -611,3 +611,127 @@ describe("TeamChart — What it can do's Edit (DASH-126, wired in DASH-118)", ()
     expect(onOpen).toHaveBeenCalledWith("reader", "settings");
   });
 });
+
+describe("TeamChart — the selected bot stands out (DASH-139 follow-up)", () => {
+  const stateOf = (id) =>
+    screen.getByTestId(`diagram-card-${id}`).getAttribute("data-state");
+
+  it("the selected card is drawn differently from linked and dimmed cards", () => {
+    setup({ selectedId: "reader" });
+    const sel = screen.getByTestId("diagram-card-reader");
+    const linked = screen.getByTestId("diagram-card-planner");
+    const failure = screen.getByTestId("diagram-card-checker");
+    const dimmed = screen.getByTestId("diagram-card-lead");
+    expect(stateOf("reader")).toBe("selected");
+    expect(stateOf("planner")).toBe("linked");
+    expect(stateOf("checker")).toBe("failure");
+    expect(stateOf("lead")).toBe("dimmed");
+    // Selected: thick border, a ring, a tinted card, the marker, not dimmed.
+    expect(sel.className).toContain("border-2");
+    expect(sel.className).toContain("dr-role-accent-soft");
+    expect(sel.style.boxShadow).not.toBe("");
+    expect(sel.style.opacity).toBe("1");
+    expect(sel).not.toHaveAttribute("data-dim");
+    expect(within(sel).getByTestId("selected-marker")).toHaveTextContent(
+      "Selected",
+    );
+    // Linked: a thin border, no ring, no tint, no marker.
+    expect(linked.className).not.toContain("border-2");
+    expect(linked.className).not.toContain("dr-role-accent-soft");
+    expect(linked.style.boxShadow).toBe("");
+    expect(within(linked).queryByTestId("selected-marker")).toBeNull();
+    expect(linked.className).not.toBe(sel.className);
+    // Failure listener: dashed red.
+    expect(failure.className).toContain("border-dashed");
+    // Dimmed: faded, plain border.
+    expect(dimmed.style.opacity).toBe("0.4");
+    expect(dimmed).toHaveAttribute("data-dim", "true");
+    expect(dimmed.className).not.toBe(linked.className);
+    // Only the selected card is marked.
+    // One on the card, one in the panel heading.
+    expect(screen.getAllByTestId("selected-marker")).toHaveLength(2);
+  });
+
+  it("the panel heading names the selected bot, and follows a new selection", () => {
+    const { rerender } = setup({ selectedId: "reader" });
+    expect(screen.getByTestId("connections-heading")).toHaveTextContent(
+      "Record Reader",
+    );
+    rerender(
+      <TeamChart
+        lead={lead}
+        members={[checker, reader, planner]}
+        selectedId="planner"
+        onSelect={() => {}}
+        width={1000}
+      />,
+    );
+    expect(screen.getByTestId("connections-heading")).toHaveTextContent(
+      "Schema Planner",
+    );
+    expect(stateOf("planner")).toBe("selected");
+    expect(stateOf("reader")).toBe("linked");
+    expect(
+      within(screen.getByTestId("diagram-card-planner")).getByTestId(
+        "selected-marker",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("diagram-card-reader")).queryByTestId(
+        "selected-marker",
+      ),
+    ).toBeNull();
+  });
+
+  it("nothing selected: no card has a selection state or marker", () => {
+    setup();
+    expect(stateOf("reader")).toBeNull();
+    expect(screen.queryAllByTestId("selected-marker")).toHaveLength(0);
+  });
+});
+
+describe("TeamChart — the panel and the diagram scroll on their own", () => {
+  const scrollsAlone = (el) => {
+    expect(el.style.overflowY).toBe("auto");
+    expect(el.style.overscrollBehavior).toBe("contain");
+  };
+
+  it("side by side: the diagram and the panel are each their own scroll container", () => {
+    setup({ selectedId: "reader", fill: true });
+    scrollsAlone(screen.getByTestId("team-diagram-scroll"));
+    scrollsAlone(screen.getByTestId("connections-panel"));
+    expect(screen.getByTestId("connections-panel").className).toContain(
+      "h-full",
+    );
+  });
+
+  it("the host's banners scroll with the diagram", () => {
+    setup({ fill: true, before: <div>Set up this team</div> });
+    expect(screen.getByTestId("team-diagram-scroll")).toHaveTextContent(
+      "Set up this team",
+    );
+  });
+
+  it("narrow: the panel goes under the diagram and they scroll as one", () => {
+    const spy = jest
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(600);
+    try {
+      const { container } = setup({ selectedId: "reader", fill: true });
+      const root = container.firstChild;
+      expect(root).toHaveAttribute("data-layout", "stacked");
+      scrollsAlone(root);
+      expect(screen.getByTestId("connections-panel").style.overflowY).not.toBe(
+        "auto",
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("not filling (other hosts): no scroll containers", () => {
+    setup({ selectedId: "reader" });
+    expect(screen.getByTestId("team-diagram-scroll").style.overflowY).toBe("");
+    expect(screen.getByTestId("connections-panel").style.overflowY).toBe("");
+  });
+});

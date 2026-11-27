@@ -9,6 +9,7 @@ import {
   DEFAULT_LINES,
   arrowKeys,
   botConnections,
+  cardState,
   cardText,
   curveBetween,
   elbowBetween,
@@ -21,6 +22,7 @@ import {
   workOrder,
 } from "./teamFlow";
 import { TeamConnectionsPanel } from "./TeamConnectionsPanel";
+import { SelectedMarker, useSelectionStyles } from "./TeamChartLegend";
 import { WidgetWirePopover } from "./WidgetWirePopover";
 import { BOT_RESULTS, widgetEdges, widgetSub } from "./widgetDiagram";
 
@@ -30,6 +32,8 @@ const MIN_CARD = 168;
 const PER_ROW = 4;
 const LEAD_W = 300;
 const W_POP_W = 384;
+// Below this width the panel goes under the diagram (one scroll).
+const SPLIT_MIN = 780;
 
 /** The element's width, kept up to date (a fixed `width` wins — tests). */
 function useWidth(ref, fixed) {
@@ -95,7 +99,11 @@ function useBoxes(rootRef) {
  * besides the neighbour arrows; "flow" every bot-to-bot handoff; "all" adds
  * the widgets and their lines.
  *
- * Selecting a bot lights up its links, dims the rest and opens its
+ * Selecting a bot (cardState / useSelectionStyles, explained by
+ * TeamChartLegend beside the Lines toggle) draws it strongest: a thick
+ * accent border with a ring, an accent-tinted card and a "Selected" marker;
+ * the bots linked to it get a thin accent border (the ones getting its
+ * failures a dashed red one) and the rest are dimmed. It also opens its
  * connections panel (TeamConnectionsPanel, `showPanel`), where everything
  * it's connected to is listed and edited: a bot is added or removed as a
  * trigger (`onSaveTrigger` / `onRemoveTrigger`), a widget through
@@ -129,11 +137,18 @@ export const TeamChart = ({
   onOpenChecks = null,
   onOpenJob = null,
   width: fixedWidth = 0,
+  // Fill the parent's height: the diagram and the panel each scroll on
+  // their own (side by side), or together when the panel is underneath.
+  fill = false,
+  // Shown above the diagram, scrolling with it (the host's banners).
+  before = null,
 }) => {
-  const { muted, strong, hairline, selectedBg, selectedBorder, fieldBg } =
-    useConfigTokens();
+  const { muted, strong, hairline, fieldBg } = useConfigTokens();
+  const sel = useSelectionStyles();
   const canvasRef = useRef(null);
+  const rootRef = useRef(null);
   const width = useWidth(canvasRef, fixedWidth);
+  const rootWidth = useWidth(rootRef, 0);
   const boxes = useBoxes(canvasRef);
   // The open bot → widget dialog: { from, widget (key), event }.
   const [wpop, setWpop] = useState(null);
@@ -173,18 +188,21 @@ export const TeamChart = ({
 
   // ── Cards ─────────────────────────────────────────────────────────────
   const dimmed = (id) => shown.dim && !shown.lit.has(id);
-  const frameOf = (id, live) => {
-    if (id === selectedId) return `border-2 ${selectedBorder}`;
-    if (shown.failLit.has(id)) return "border border-dashed border-red-400";
-    if (shown.dim && shown.lit.has(id)) return "border border-indigo-400";
+  // The selected bot's style always wins (it used to share the list rows'
+  // neutral border and surface, which read as no highlight at all).
+  const frameOf = (state, live) => {
+    if (state === "selected" || state === "failure" || state === "linked") {
+      return sel.frame[state];
+    }
     if (live && live.needs) return "border border-amber-400";
-    return `border ${hairline}`;
+    return sel.frame.none;
   };
 
   const card = (bot, { helper = false, stacked = false } = {}) => {
     if (!bot) return null;
     const isLead = bot.role === "lead";
-    const active = bot.id === selectedId;
+    const state = cardState(bot.id, selectedId, shown);
+    const active = state === "selected";
     const status = statusOf(bot.id);
     const dot = STATUS_DOT[status] || STATUS_DOT.Idle;
     const waiting = (approvalsFor(bot.id) || []).length > 0;
@@ -204,15 +222,17 @@ export const TeamChart = ({
         key={bot.id}
         data-node={bot.id}
         data-testid={`diagram-card-${bot.id}`}
-        data-dim={dimmed(bot.id) ? "true" : undefined}
+        data-dim={state === "dimmed" ? "true" : undefined}
+        data-state={state || undefined}
         className={`relative rounded-xl flex flex-col min-w-0 ${frameOf(
-          bot.id,
+          state,
           live,
-        )} ${active ? selectedBg : fieldBg}`}
+        )} ${active ? sel.bg.selected : fieldBg}`}
         style={{
           flex: isLead ? "0 1 auto" : stacked ? "0 0 auto" : "1 1 0",
           width: isLead ? LEAD_W : undefined,
-          opacity: dimmed(bot.id) ? 0.4 : 1,
+          opacity: state === "dimmed" ? sel.dimOpacity : 1,
+          boxShadow: active ? sel.ring : undefined,
         }}
       >
         <button
@@ -294,6 +314,9 @@ export const TeamChart = ({
             Needs approval
           </button>
         ) : null}
+        {active ? (
+          <SelectedMarker className="absolute right-3" style={{ top: -9 }} />
+        ) : null}
       </div>
     );
   };
@@ -371,9 +394,7 @@ export const TeamChart = ({
       data-node={`w:${w.key}`}
       data-testid={`diagram-widget-${w.itemId}`}
       className={`rounded-xl border border-dashed px-3 py-2 flex flex-col min-w-0 ${
-        shown.dim && shown.lit.has(`w:${w.key}`)
-          ? "border-indigo-400"
-          : hairline
+        shown.dim && shown.lit.has(`w:${w.key}`) ? sel.frame.linked : hairline
       } ${fieldBg}`}
       style={{
         flex: "1 1 160px",
@@ -493,102 +514,129 @@ export const TeamChart = ({
 
   const helperBots = members.filter((b) => helpers.has(b.id));
 
+  // Side by side: two scroll containers (wheel over one never scrolls the
+  // other or the page). Narrow: the panel goes under the diagram and the
+  // whole thing scrolls as one. Not filling: the old wrapping layout.
+  const split = fill && (!rootWidth || rootWidth >= SPLIT_MIN);
+  const contain = { overflowY: "auto", overscrollBehavior: "contain" };
+  const rootProps = !fill
+    ? { className: "w-full flex flex-row flex-wrap" }
+    : split
+      ? { className: "w-full h-full flex-1 min-h-0 flex flex-row" }
+      : {
+          className: "w-full h-full flex-1 min-h-0 flex flex-col",
+          style: contain,
+        };
+
   return (
-    <div className="w-full flex flex-row flex-wrap">
+    <div
+      ref={rootRef}
+      data-layout={fill ? (split ? "split" : "stacked") : undefined}
+      {...rootProps}
+    >
       <div
-        ref={canvasRef}
-        className="relative min-w-0 p-4 flex flex-col gap-3"
-        style={{ flex: "999 1 480px" }}
-        data-testid="team-diagram"
+        data-testid="team-diagram-scroll"
+        className={`min-w-0 ${split ? "h-full min-h-0" : ""}`}
+        style={{
+          flex: split ? "999 1 0" : fill ? "0 0 auto" : "999 1 480px",
+          ...(split ? contain : {}),
+        }}
       >
-        <svg
-          className="absolute inset-0 pointer-events-none"
-          width="100%"
-          height="100%"
-          aria-hidden="true"
+        {before}
+        <div
+          ref={canvasRef}
+          className="relative min-w-0 p-4 flex flex-col gap-3"
+          data-testid="team-diagram"
         >
-          {arrowPaths.map((p) => (
-            <g
-              key={`arrow-${p.key}`}
-              data-testid="diagram-arrow"
-              data-hot={p.hot ? "true" : undefined}
-              className={lineClass(p.hot)}
-            >
-              <path
-                d={p.d}
-                stroke="currentColor"
-                strokeWidth={p.hot ? 2 : 1.5}
-                fill="none"
-              />
-              <path d={p.head} fill="currentColor" />
-            </g>
-          ))}
-          {linePaths.map((p) => (
-            <g
-              key={`line-${p.key}`}
-              data-testid={p.widget ? "diagram-widget-edge" : "diagram-edge"}
-              data-hot={p.hot ? "true" : undefined}
-              className={lineClass(p.hot)}
-              opacity={shown.dim && !p.hot ? 0.4 : 1}
-            >
-              <path
-                d={p.d}
-                stroke="currentColor"
-                strokeWidth={p.hot ? 2 : 1.5}
-                strokeDasharray={p.widget ? "4 4" : undefined}
-                fill="none"
-              />
-              <path d={p.head} fill="currentColor" />
-            </g>
-          ))}
-        </svg>
+          <svg
+            className="absolute inset-0 pointer-events-none"
+            width="100%"
+            height="100%"
+            aria-hidden="true"
+          >
+            {arrowPaths.map((p) => (
+              <g
+                key={`arrow-${p.key}`}
+                data-testid="diagram-arrow"
+                data-hot={p.hot ? "true" : undefined}
+                className={lineClass(p.hot)}
+              >
+                <path
+                  d={p.d}
+                  stroke="currentColor"
+                  strokeWidth={p.hot ? 2 : 1.5}
+                  fill="none"
+                />
+                <path d={p.head} fill="currentColor" />
+              </g>
+            ))}
+            {linePaths.map((p) => (
+              <g
+                key={`line-${p.key}`}
+                data-testid={p.widget ? "diagram-widget-edge" : "diagram-edge"}
+                data-hot={p.hot ? "true" : undefined}
+                className={lineClass(p.hot)}
+                opacity={shown.dim && !p.hot ? 0.4 : 1}
+              >
+                <path
+                  d={p.d}
+                  stroke="currentColor"
+                  strokeWidth={p.hot ? 2 : 1.5}
+                  strokeDasharray={p.widget ? "4 4" : undefined}
+                  fill="none"
+                />
+                <path d={p.head} fill="currentColor" />
+              </g>
+            ))}
+          </svg>
 
-        {lead ? <div className="flex flex-row">{card(lead)}</div> : null}
+          {lead ? <div className="flex flex-row">{card(lead)}</div> : null}
 
-        {members.length ? (
-          <>
-            {columns.length ? <SectionLabel text="Work flow" /> : null}
-            {rows.map(flowRow)}
-          </>
-        ) : (
-          <div className={`text-sm text-center py-8 ${muted}`}>
-            No bots on this dashboard yet. Add one with Add bot.
-          </div>
-        )}
-
-        {helperBots.length ? (
-          <>
-            <SectionLabel text="Helpers" />
-            <div className="flex flex-row flex-wrap" style={{ gap: GUTTER }}>
-              {helperBots.map((b) => (
-                <div
-                  key={`h-${b.id}`}
-                  className="flex min-w-0"
-                  style={{
-                    flex: `0 1 calc((100% - ${GUTTER * (perRow - 1)}px) / ${perRow})`,
-                  }}
-                >
-                  {card(b, { helper: true })}
-                </div>
-              ))}
+          {members.length ? (
+            <>
+              {columns.length ? <SectionLabel text="Work flow" /> : null}
+              {rows.map(flowRow)}
+            </>
+          ) : (
+            <div className={`text-sm text-center py-8 ${muted}`}>
+              No bots on this dashboard yet. Add one with Add bot.
             </div>
-          </>
-        ) : null}
+          )}
 
-        {shown.showWidgets && widgets.length ? (
-          <>
-            <SectionLabel text="Widgets" />
-            <div className="flex flex-row flex-wrap gap-3">
-              {widgets.map(widgetCard)}
-            </div>
-          </>
-        ) : null}
+          {helperBots.length ? (
+            <>
+              <SectionLabel text="Helpers" />
+              <div className="flex flex-row flex-wrap" style={{ gap: GUTTER }}>
+                {helperBots.map((b) => (
+                  <div
+                    key={`h-${b.id}`}
+                    className="flex min-w-0"
+                    style={{
+                      flex: `0 1 calc((100% - ${GUTTER * (perRow - 1)}px) / ${perRow})`,
+                    }}
+                  >
+                    {card(b, { helper: true })}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
 
-        {widgets.length && !shown.showWidgets ? (
-          <span className={`text-xs ${muted}`}>
-            {`Widgets aren't drawn here unless Lines is "All, with widgets". A selected bot's widgets are in its panel.`}
-          </span>
-        ) : null}
+          {shown.showWidgets && widgets.length ? (
+            <>
+              <SectionLabel text="Widgets" />
+              <div className="flex flex-row flex-wrap gap-3">
+                {widgets.map(widgetCard)}
+              </div>
+            </>
+          ) : null}
+
+          {widgets.length && !shown.showWidgets ? (
+            <span className={`text-xs ${muted}`}>
+              {`Widgets aren't drawn here unless Lines is "All, with widgets". A selected bot's widgets are in its panel.`}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {selected && showPanel ? (
@@ -597,6 +645,7 @@ export const TeamChart = ({
           bot={selected}
           connections={connections}
           canEdit={canWire}
+          scroll={split}
           onClose={() => onSelect && onSelect(null)}
           onOpenPage={() => onOpen && onOpen(selected.id, "activity")}
           onOpenConversation={() =>
