@@ -49,6 +49,9 @@ import { applyWiringChanges } from "../../utils/listenerResolution";
 import { applyBulkUserPrefs } from "../../utils/applyBulkUserPrefs";
 import { findWidgetTarget } from "../LeadWorkspace/useWidgetTarget";
 import { dropBotForm, keepBotForm } from "./botFormDrafts";
+import { useTeamSetup } from "./useTeamSetup";
+import { TeamSetupBadge, TeamSetupBanner } from "./TeamSetupBanner";
+import { needsSetupIds } from "../../utils/teamSetupStatus";
 
 /**
  * BotsView — a dashboard's team, full stage (bot-teams PRD TEAM-011).
@@ -465,6 +468,26 @@ export const BotsView = ({
   ]);
 
   const afterChange = () => team && team.refresh && team.refresh();
+
+  // The team's setup (DASH-119): a badge in the header, a banner until it's
+  // ready, "Needs setup" on those bots; "Finish setup ›" opens the first
+  // one's Settings (or, with no one bot to fix, the team on the Bots page).
+  const setup = useTeamSetup(workspaceId, team ? team.bots || all : []);
+  const setupIds = needsSetupIds(setup);
+  const finishSetup = (first) => {
+    if (first && all.some((b) => b.id === first.botId)) {
+      openBot(first.botId, "settings");
+      return;
+    }
+    guarded(() =>
+      window.dispatchEvent(
+        new CustomEvent("dash:open-page", { detail: { page: "bots" } }),
+      ),
+    );
+  };
+  const setupBanner = (
+    <TeamSetupBanner status={setup} onFinish={finishSetup} finishWithoutBot />
+  );
 
   // Diagram wiring (TEAM-014 slice 2): a trigger is a subscription on the
   // target bot, saved with the bot like the Settings picker does.
@@ -930,6 +953,7 @@ export const BotsView = ({
         {teamLabel}
         {viewSwitch}
       </div>
+      {setup.ready ? null : <div className="px-1 pb-2">{setupBanner}</div>}
       {lead ? (
         row(lead)
       ) : (
@@ -987,6 +1011,7 @@ export const BotsView = ({
         className={`flex flex-row flex-wrap items-center gap-3 px-4 py-3 border-b ${hairline}`}
       >
         {teamLabel}
+        <TeamSetupBadge status={setup} />
         <span className={`flex-1 text-xs ${muted}`}>
           {widgets.length
             ? `· ${widgets.length} widget${widgets.length === 1 ? "" : "s"} on this dashboard`
@@ -1004,6 +1029,7 @@ export const BotsView = ({
         <Button title="Add bot" size="sm" onClick={addBot} />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
+        {setup.ready ? null : <div className="px-4 pt-3">{setupBanner}</div>}
         {lead ? null : (
           <div
             className={`flex flex-row items-center gap-3 px-3 py-2 text-xs ${muted}`}
@@ -1021,6 +1047,7 @@ export const BotsView = ({
           lines={lines}
           statusOf={(id) => (team ? team.statusOf(id) : "Idle")}
           approvalsFor={(id) => (team ? team.approvalsFor(id) : [])}
+          setupFor={(id) => setupIds.has(String(id))}
           onSelect={selectOnDiagram}
           onOpen={openBot}
           // Off while a bot's Settings is open: saving from the diagram
@@ -1095,6 +1122,7 @@ export const BotsView = ({
     >
       {isNarrow ? (
         <div className="flex flex-col gap-2">
+          {setupBanner}
           {picker}
           {teamActions}
         </div>
@@ -1138,6 +1166,7 @@ export const BotsView = ({
                 onDirtyChange={setDirty}
                 onTabChange={setTab}
                 onOpenSettings={onOpenSettings}
+                onOpenBot={(id, t) => openBot(id, t)}
                 onClose={sideBySide ? closeDetail : null}
                 actions={
                   <Button3

@@ -34,9 +34,12 @@ const wsName = (w) => (w && (w.name || w.label)) || `Dashboard ${w && w.id}`;
  * @param {"all"|"needs"|"running"|"paused"} [p.filter]
  * @param {object} [p.open]        { [teamKey]: boolean } — the user's toggles
  * @param {string|null} [p.selected]  "team:<key>" | "bot:<id>"
+ * @param {(workspaceId: string) => object|null} [p.setupOf]  a dashboard
+ *   team's setup status (teamSetupStatus, DASH-119)
  * @returns {object[]} teams: { key, kind: "dash"|"team"|"empty"|"lone",
- *   name, sub, open, lead, members, allMembers, needs, running,
- *   workspace?, dashboards? }
+ *   name, sub, open, lead, members, allMembers, needs, running, setup,
+ *   workspace?, dashboards? } — setup: the status when the team isn't
+ *   ready, else null
  */
 export function botsTree({
   bots = [],
@@ -47,6 +50,7 @@ export function botsTree({
   filter = "all",
   open = {},
   selected = null,
+  setupOf = () => null,
 } = {}) {
   const q = String(query || "")
     .trim()
@@ -69,6 +73,12 @@ export function botsTree({
     const everyone = [t.lead, ...t.allMembers].filter(Boolean);
     const needs = count(everyone, "Needs approval");
     const running = count(everyone, "Running");
+    // A dashboard's team that isn't set up yet (DASH-119).
+    let setup = null;
+    if (t.kind === "team" && t.workspace) {
+      const s = setupOf(idOf(t.workspace.id));
+      setup = s && s.ready === false ? s : null;
+    }
     // Searching: a team whose name (or lead) matches keeps every bot;
     // otherwise only the bots that match.
     const teamHit = hit(t.name) || (t.lead && hit(t.lead.name));
@@ -88,6 +98,7 @@ export function botsTree({
       lead: leadShown ? t.lead : null,
       needs,
       running,
+      setup,
       // "On no dashboard" starts open (frame 23): its bots are talked to
       // directly.
       open: narrowed

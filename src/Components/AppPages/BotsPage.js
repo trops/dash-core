@@ -24,6 +24,8 @@ import { useProfiles } from "../../hooks/useProfiles";
 import { SpendingView } from "./SpendingView";
 import { AuditLogView } from "./AuditLogView";
 import { BotPage } from "../Bots/BotPage";
+import { useTeamSetups } from "../Bots/useTeamSetup";
+import { TeamSetupBadge } from "../Bots/TeamSetupBanner";
 
 const isDashTeamBot = (bot) => !!bot && bot.system === "dash-team";
 // The page's views (bot-factory US-019 AC5: spending by bot, dashboard and
@@ -105,6 +107,8 @@ export const BotsPage = ({
   const [statusFilter, setStatusFilter] = useState("all");
   // "team:<key>" | "bot:<id>"; null = the first team that needs the user.
   const [selected, setSelected] = useState(null);
+  // The tab a picked bot's page opens on ("Finish setup" opens Settings).
+  const [botTab, setBotTab] = useState("activity");
   // The user's open/closed teams.
   const [openTeams, setOpenTeams] = useState({});
   // The Dash team's Settings, from its overview.
@@ -148,6 +152,17 @@ export const BotsPage = ({
       }),
     [all.approvals, all.bots, dashTeam, workspaces],
   );
+  // Each dashboard team's setup status (DASH-119): its row's badge, and
+  // its page's banner.
+  const setups = useTeamSetups(
+    (workspaces || [])
+      .filter((w) => w && w.id !== undefined && w.id !== null)
+      .map((w) => ({
+        workspaceId: w.id,
+        bots: all.bots.filter((b) => String(b.workspaceId) === String(w.id)),
+      })),
+  );
+  const setupOf = (id) => setups.get(String(id)) || null;
   // Nothing picked yet: the first team that needs the user, else the first
   // dashboard's team, else the first.
   const fullTree = botsTree({
@@ -155,6 +170,7 @@ export const BotsPage = ({
     dashTeam,
     workspaces,
     statusOf: all.statusOf,
+    setupOf,
   });
   // A pick that's gone (deleted elsewhere, its team folded away) falls
   // back to the default.
@@ -179,6 +195,7 @@ export const BotsPage = ({
     filter: statusFilter,
     open: openTeams,
     selected: current,
+    setupOf,
   });
 
   const selBotId =
@@ -209,20 +226,23 @@ export const BotsPage = ({
   const pick = (key) =>
     guard(() => {
       setDashSettings(false);
+      setBotTab("activity");
       setSelected(key);
     });
   // A team row: picks it and opens or closes it (frame 23's Play).
   const pickTeam = (team) =>
     guard(() => {
       setDashSettings(false);
+      setBotTab("activity");
       setSelected(team.key);
       setOpenTeams((o) => ({ ...o, [team.key]: !team.open }));
     });
   // A bot inside a closed team (from Needs you, or a team's table): its
-  // team opens too.
-  const pickBot = (botId, teamKey) =>
+  // team opens too. `tab`: the tab its page opens on.
+  const pickBot = (botId, teamKey, tab = "activity") =>
     guard(() => {
       setDashSettings(false);
+      setBotTab(tab);
       setSelected(`bot:${botId}`);
       if (teamKey) setOpenTeams((o) => ({ ...o, [teamKey]: true }));
     });
@@ -243,12 +263,13 @@ export const BotsPage = ({
     // Management only (frames 14, 15, 24).
     detail = (
       <BotPage
-        key={selBot.id}
+        key={`${selBot.id}:${botTab}`}
         botId={selBot.id}
-        initialTab="activity"
+        initialTab={botTab}
         workspaces={workspaces}
         onOpenInBotsView={onOpenBotInBotsView}
         onOpenSettings={onOpenAppSettings}
+        onOpenBot={(id, tab) => pickBot(id, `team:${selBot.workspaceId}`, tab)}
         actions={
           profiles.hasProfiles ? (
             <OverflowMenu
@@ -279,6 +300,8 @@ export const BotsPage = ({
         spentOf={spentOf}
         need={needs.find((n) => n.teamKey === selTeam.key) || null}
         onPickBot={(id) => pickBot(id, selTeam.key)}
+        setup={selTeam.setup}
+        onOpenBotSettings={(id) => pickBot(id, selTeam.key, "settings")}
         onOpenConversation={() =>
           openWorkspace(
             selTeam.kind === "dash"
@@ -483,6 +506,7 @@ export const BotsPage = ({
                       {team.sub}
                     </span>
                   </span>
+                  <TeamSetupBadge status={team.setup} compact />
                   {team.needs ? (
                     <StatusBadge
                       state="warning"

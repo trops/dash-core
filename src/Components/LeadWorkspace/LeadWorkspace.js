@@ -16,6 +16,8 @@ import {
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { useAllBots } from "../AppPages/useAllBots";
+import { useTeamSetup } from "../Bots/useTeamSetup";
+import { TeamSetupBanner } from "../Bots/TeamSetupBanner";
 import { useTeamLeads } from "../AiAssistant/components/RecipientPicker";
 import { AskStep, isAsking } from "../Create/AskStep";
 import { BotChat } from "../Bots/BotChat";
@@ -408,6 +410,23 @@ export const LeadWorkspace = ({
   const picked = findContact(groups, key);
   const missing = !loading && !picked;
   const contact = loading ? null : picked;
+  // A team lead's conversation: its team's setup (DASH-119). A task given
+  // to a team that isn't set up says why it can't start, and where.
+  const leadTeamWs = (() => {
+    if (!contact || contact.kind !== "lead") return null;
+    const b = (all.bots || []).find((x) => x && x.id === contact.botId);
+    return b ? b.workspaceId : null;
+  })();
+  const leadTeamBots = useMemo(
+    () =>
+      leadTeamWs === null || leadTeamWs === undefined
+        ? EMPTY
+        : (all.bots || []).filter(
+            (b) => b && String(b.workspaceId) === String(leadTeamWs),
+          ),
+    [all.bots, leadTeamWs],
+  );
+  const leadTeamSetup = useTeamSetup(leadTeamWs, leadTeamBots);
   // What a new conversation opened by a door is about — a page's New
   // (release 6c, frame 41: the Dash Lead, "Making:") or an empty cell
   // (frame 38: "For:") — until another conversation is opened.
@@ -3395,6 +3414,23 @@ export const LeadWorkspace = ({
                     {aboutShown.text}
                   </span>
                 </span>
+              </div>
+            ) : null}
+            {/* A lead's team that isn't set up (DASH-119): its tasks can't
+              start yet. "Finish setup ›" opens the first bot's Settings. */}
+            {contact && contact.kind === "lead" && !leadTeamSetup.ready ? (
+              <div className="flex-shrink-0 px-6 pt-3">
+                <TeamSetupBanner
+                  status={leadTeamSetup}
+                  onFinish={(first) => {
+                    onClose();
+                    window.dispatchEvent(
+                      new CustomEvent("dash:open-bot", {
+                        detail: { botId: first.botId, tab: "settings" },
+                      }),
+                    );
+                  }}
+                />
               </div>
             ) : null}
             {/* Where no conversation shows them (a bot's own chat, the start):

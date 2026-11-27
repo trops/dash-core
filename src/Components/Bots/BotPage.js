@@ -22,6 +22,8 @@ import { LeadActivity, McpTaskSettings } from "./McpTasksPanel";
 import { botStatus } from "./botConversation";
 import { STATUS_DOT } from "./teamUtils";
 import { useBotContacts } from "./useBotContacts";
+import { useTeamSetup } from "./useTeamSetup";
+import { cantStartText } from "../../utils/teamSetupStatus";
 
 /**
  * BotPage — everything about one bot in one place (app-navigation NAV-016):
@@ -42,6 +44,8 @@ import { useBotContacts } from "./useBotContacts";
  * @param {(dirty: boolean) => void} [onDirtyChange]  Settings has unsaved edits
  * @param {(tab: string) => void} [onTabChange]  the tab now showing
  * @param {(section: string) => void} [onOpenSettings]  an error's next step
+ * @param {(botId, tab) => void} [onOpenBot]  another bot's page (Run now on
+ *   a team that isn't set up: "Finish setup ›"); else a dash:open-bot event
  *   ("Open Settings › Providers") — the app's settings, not this bot's
  * @param {React.ReactNode} [actions]  more header buttons (the Bots view's ⋯)
  * @param {React.ReactNode} [below]  shown under the header (that menu's row)
@@ -71,6 +75,7 @@ export const BotPage = ({
   onDirtyChange = null,
   onTabChange = null,
   onOpenSettings = null,
+  onOpenBot = null,
   actions = null,
   below = null,
 }) => {
@@ -87,6 +92,8 @@ export const BotPage = ({
     if (onTabChange) onTabChange(next);
   };
   const [runStatus, setRunStatus] = useState(null);
+  // Run now refused: the team isn't set up (DASH-119), { botId } to fix.
+  const [runFix, setRunFix] = useState(null);
   const [dirty, setDirtyState] = useState(false);
   const setDirty = (v) => {
     setDirtyState(v);
@@ -101,6 +108,19 @@ export const BotPage = ({
 
   const bots = c.bots || EMPTY;
   const bot = bots.find((b) => b.id === botId) || null;
+  // Its team's setup (DASH-119): Run now says why it can't start.
+  const teamWs =
+    bot && bot.role !== "lead" && bot.system !== "dash-team"
+      ? bot.workspaceId
+      : null;
+  const teamBots = useMemo(
+    () =>
+      teamWs === null || teamWs === undefined || teamWs === ""
+        ? EMPTY
+        : bots.filter((b) => b && String(b.workspaceId) === String(teamWs)),
+    [bots, teamWs],
+  );
+  const teamSetup = useTeamSetup(teamWs, teamBots);
   // Deleted elsewhere mid-edit: its unsaved edits went with it.
   const gone = !bot && !c.loading;
   useEffect(() => {
@@ -223,6 +243,14 @@ export const BotPage = ({
     const b = window.mainApi && window.mainApi.bots;
     if (!b || !b.run) return;
     const wasPaused = isPaused;
+    // A team that isn't set up can't take work: say why, and where.
+    const cant = cantStartText(teamSetup);
+    if (cant) {
+      setRunStatus(cant);
+      setRunFix(teamSetup.first || null);
+      return;
+    }
+    setRunFix(null);
     setRunStatus("Running…");
     try {
       const res = await b.run(bot.id);
@@ -343,6 +371,31 @@ export const BotPage = ({
           data-testid="bot-page-run-status"
         >
           {runStatus}
+          {runFix ? (
+            <>
+              {" "}
+              <button
+                type="button"
+                data-testid="bot-page-run-fix"
+                className={`underline ${strong}`}
+                onClick={() => {
+                  const id = runFix.botId;
+                  setRunFix(null);
+                  setRunStatus(null);
+                  if (String(id) === String(bot.id)) go("settings");
+                  else if (onOpenBot) onOpenBot(id, "settings");
+                  else
+                    window.dispatchEvent(
+                      new CustomEvent("dash:open-bot", {
+                        detail: { botId: id, tab: "settings" },
+                      }),
+                    );
+                }}
+              >
+                Finish setup ›
+              </button>
+            </>
+          ) : null}
         </span>
       ) : null}
 

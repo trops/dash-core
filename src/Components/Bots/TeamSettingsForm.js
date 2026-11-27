@@ -26,6 +26,7 @@ import {
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
+import { noteSetupChanged } from "./teamSetupStore";
 
 const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 
@@ -360,6 +361,7 @@ export const TeamSettingsPanel = ({ workspaceId }) => {
       if (r && r.errors && r.errors.length) setErrors(r.errors);
       else {
         setSaved(true);
+        noteSetupChanged(workspaceId);
         await load();
       }
     } catch (e) {
