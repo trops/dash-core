@@ -274,7 +274,7 @@ const BOT_FIELDS = {
             check: {
               type: "object",
               description:
-                "For kind 'check', as the Bots tab saves it. { kind: 'command', command, passWhen?, timeoutSec? }: runs in its job's workspace (else its first folder) and gets its answer as JSON on stdin and in $DASH_INPUT (with the job's item and workspace), and DASH_ITEM_ID, DASH_WORKSPACE, DASH_BRANCH in its environment; passWhen is { type: 'exit0' } (the default), { type: 'contains', text } (exit 0 and the output has it) or { type: 'matches', pattern } (the output matches the regex). { kind: 'tool', server, tool, args?, answerRules? }: a read-only provider tool. { kind: 'rules', rules }. { kind: 'script', script, timeoutSec? }: function check(input) returns { pass, reason }. { kind: 'package', package: 'plan-has-sections' | '@scope/name', inputs? }: a check package (Dash ships plan-has-sections, node-tests-pass, jira-ticket-exists, github-issue-exists). Built in (no AI): { kind: 'git-on-branch', branch? }, { kind: 'git-committed', base? }, { kind: 'pr-ci', prKey?: 'prUrl', timeoutSec?, ifNoChecks?: 'pass'|'fail' }, { kind: 'handoff-has', keys }. { kind: 'repo', name, ifMissing?: 'fail'|'skip', fallback?, from?: 'base'|'workspace', base?, timeoutSec? }: runs the repo's .dash/checks/<name> (any extension) like a command, read from its base branch so the work can't change it; fallback is any other check, run when the repo has none. A script, or a command's last output line as JSON, may pass with handOn: false ({ pass: true, handOn: false, reason }): the work ends there, the rest of the checks don't run, and nothing is handed on (no completed or failed event) — for a bot that found nothing to do.",
+                "For kind 'check', as the Bots tab saves it. { kind: 'command', command, passWhen?, timeoutSec? }: runs in its job's workspace (else its first folder) and gets its answer as JSON on stdin and in $DASH_INPUT (with the job's item and workspace), and DASH_ITEM_ID, DASH_WORKSPACE, DASH_BRANCH in its environment; passWhen is { type: 'exit0' } (the default), { type: 'contains', text } (exit 0 and the output has it) or { type: 'matches', pattern } (the output matches the regex). { kind: 'tool', server, tool, args?, answerRules? }: a read-only provider tool. { kind: 'rules', rules }. { kind: 'script', script, timeoutSec? }: function check(input) returns { pass, reason }. { kind: 'package', package: 'plan-has-sections' | '@scope/name', inputs? }: a check package (Dash ships plan-has-sections, node-tests-pass, jira-ticket-exists, github-issue-exists). Built in (no AI): { kind: 'git-on-branch', branch? }, { kind: 'git-committed', base? }, { kind: 'pr-ci', prKey?: 'prUrl', timeoutSec?, ifNoChecks?: 'pass'|'fail' }, { kind: 'handoff-has', keys }. { kind: 'repo', name, ifMissing?: 'fail'|'skip', fallback?, from?: 'base'|'workspace', base?, timeoutSec? }: runs the repo's .dash/checks/<name> (<name>.check.js, <name>.check.json, or any extension) like a command, read from its base branch so the work can't change it; fallback is any other check, run when the repo has none. { kind: 'recipe', recipe: { name, steps } }: a check made of @trops/dash-check building blocks, no code: each step is { use: 'helper.id', with?: { params }, when?, message? } or { expect: 'handoff.files', matcher: 'toHaveLengthAtLeast', args: [1], not?, when?, message? }; params can use {team settings}, {item.*} and {repo.*}; it's validated when saved, and list_check_helpers lists every helper and matcher with its params. A script, or a command's last output line as JSON, may pass with handOn: false ({ pass: true, handOn: false, reason }): the work ends there, the rest of the checks don't run, and nothing is handed on (no completed or failed event) — for a bot that found nothing to do.",
             },
             bot: {
               type: "string",
@@ -1076,6 +1076,16 @@ function checkStepWhat(step, nameOf) {
       return `${name}: ${(c.rules || []).length} rule(s)`;
     case "script":
       return `${name}: a script`;
+    case "recipe": {
+      // dash-check building blocks (DASH-133): each step in a word.
+      const r = c.recipe && typeof c.recipe === "object" ? c.recipe : {};
+      const rows = (Array.isArray(r.steps) ? r.steps : []).map((x) =>
+        x && x.use
+          ? oneLine(x.use)
+          : `expect ${oneLine((x && x.expect) || "")} ${oneLine((x && x.matcher) || "")}`,
+      );
+      return `${name}: a recipe (${rows.join(", ")})`;
+    }
     default:
       return name;
   }

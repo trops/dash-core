@@ -39,7 +39,9 @@ function teamCheckOf(teamSettings, name) {
 function cleanTeamCheck(c) {
   if (!isObj(c)) return null;
   const file = String(c.file || "");
-  if (!NAME_RE.test(file) || !/\.(sh|js|cjs|mjs|py)$/.test(file)) return null;
+  // A dash-check recipe drafted on Add check (DASH-133): name.check.json.
+  if (!NAME_RE.test(file) || !/\.(sh|js|cjs|mjs|py)$|\.check\.json$/.test(file))
+    return null;
   if (
     typeof c.code !== "string" ||
     !c.code.trim() ||
