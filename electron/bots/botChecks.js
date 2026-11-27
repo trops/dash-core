@@ -27,6 +27,7 @@ const {
   clampRounds,
 } = require("../flows/flowModel");
 const { repoCheckError } = require("../checks/kinds/repo");
+const { factoryCheckError } = require("../checks/kinds/factory");
 
 const CHECKS_FLOW_KIND = "bot-checks";
 const ON_FAIL = ["retry", "you", "stop"];
@@ -144,6 +145,10 @@ function checksError(input, selfId = null) {
     }
     if (s.kind === "check" && s.check.kind === "repo") {
       const bad = repoCheckError(s.check);
+      if (bad) return bad;
+    }
+    if (s.kind === "check") {
+      const bad = factoryCheckError(s.check);
       if (bad) return bad;
     }
     if (s.kind === "reviewer" && !s.botId) {

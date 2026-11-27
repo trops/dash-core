@@ -23,6 +23,10 @@ export const KINDS = [
   { value: "script", label: "Script" },
   { value: "tool", label: "Tool call" },
   { value: "repo", label: "Repo check" },
+  { value: "git-on-branch", label: "On its branch" },
+  { value: "git-committed", label: "Work is committed" },
+  { value: "pr-ci", label: "The PR's CI passes" },
+  { value: "handoff-has", label: "The handoff has" },
 ];
 
 export const KIND_INTRO = {
@@ -34,6 +38,24 @@ export const KIND_INTRO = {
   tool: "Ask a provider for a fact and check the answer. Only tools that can't change anything are offered.",
   repo: "Run a check the repo keeps in .dash/checks, like CI. It's read from the base branch, so the work being checked can't change it.",
 };
+
+Object.assign(KIND_INTRO, {
+  "git-on-branch":
+    "Built in: the job's workspace is on its branch (the handoff's workspace.branch). No AI, no shell to write.",
+  "git-committed":
+    "Built in: at least one commit past the base branch, and nothing uncommitted. No AI, no shell to write.",
+  "pr-ci":
+    "Built in: the PR in the handoff (prUrl) has CI that passed. It waits for CI, using the bot's GitHub provider.",
+  "handoff-has":
+    "Built in: the bot's handoff has each of these keys, not empty.",
+});
+
+const CI_LIMITS = [
+  { value: "600", label: "10 min" },
+  { value: "1200", label: "20 min" },
+  { value: "1800", label: "30 min" },
+  { value: "3600", label: "1 hour" },
+];
 
 const IF_MISSING_OPTIONS = [
   { value: "fail", label: "Fail, saying it's missing" },
@@ -448,6 +470,73 @@ export const CheckKindEditor = ({
             </pre>
           </PanelSection>
         </>
+      ) : null}
+
+      {check.kind === "git-on-branch" ? (
+        <InputText
+          label="Branch (empty: the job's workspace.branch)"
+          value={check.branch || ""}
+          inputClassName="font-mono"
+          placeholder="{workspace.branch}"
+          onChange={(v) => patch({ branch: v.trim() || undefined })}
+        />
+      ) : null}
+
+      {check.kind === "git-committed" ? (
+        <InputText
+          label="Base branch (empty: the repo's default)"
+          value={check.base || ""}
+          inputClassName="font-mono"
+          placeholder="{repo.baseBranch}"
+          onChange={(v) => patch({ base: v.trim() || undefined })}
+        />
+      ) : null}
+
+      {check.kind === "pr-ci" ? (
+        <div className="flex flex-row gap-2">
+          <div className="flex-1">
+            <InputText
+              label="The PR link's key in the handoff"
+              value={check.prKey || "prUrl"}
+              inputClassName="font-mono"
+              onChange={(v) => patch({ prKey: v.trim() || "prUrl" })}
+            />
+          </div>
+          <div className="flex-1">
+            <SelectInput
+              label="When the repo has no CI"
+              value={check.ifNoChecks || "pass"}
+              options={[
+                { value: "pass", label: "Pass, saying so" },
+                { value: "fail", label: "Fail" },
+              ]}
+              onChange={(v) => patch({ ifNoChecks: v })}
+            />
+          </div>
+          <div className="w-32">
+            <SelectInput
+              label="Waits up to"
+              value={String(check.timeoutSec || 1200)}
+              options={CI_LIMITS}
+              onChange={(v) => patch({ timeoutSec: Number(v) })}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {check.kind === "handoff-has" ? (
+        <TextArea
+          label="Keys, one per line (plan.cause reaches in)"
+          value={(check.keys || []).join("\n")}
+          onChange={(v) =>
+            patch({
+              keys: String(v)
+                .split("\n")
+                .map((k) => k.trim())
+                .filter(Boolean),
+            })
+          }
+        />
       ) : null}
 
       {check.kind === "script" ? (

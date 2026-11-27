@@ -371,3 +371,37 @@ describe("a check kept in the repo (DASH-102)", () => {
     ).toMatch(/can't be a check's name/);
   });
 });
+
+describe("the built-in factory checks (DASH-103)", () => {
+  it("are offered by name and say what they check", () => {
+    const values = STEP_CHOICES.map((c) => c.value);
+    for (const k of [
+      "git-on-branch",
+      "git-committed",
+      "pr-ci",
+      "handoff-has",
+    ]) {
+      expect(values).toContain(k);
+      expect(newCheck(k).check.kind).toBe(k);
+      expect(choiceOf(newCheck(k))).toBe(k);
+    }
+    expect(stepSub(newCheck("git-committed"))).toBe(
+      "Built in · committed past the base branch · no AI",
+    );
+    expect(
+      stepSub({
+        ...newCheck("handoff-has"),
+        check: { kind: "handoff-has", keys: ["prUrl", "pr"] },
+      }),
+    ).toBe("Built in · the handoff has prUrl, pr · no AI");
+  });
+
+  it("a handoff-has check needs its keys", () => {
+    const step = {
+      ...newCheck("handoff-has"),
+      id: "a",
+      check: { kind: "handoff-has", keys: [] },
+    };
+    expect(draftError({ steps: [step] }, "me")).toMatch(/needs the keys/);
+  });
+});
