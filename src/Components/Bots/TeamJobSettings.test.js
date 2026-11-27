@@ -88,3 +88,25 @@ describe("Self-test (DASH-109)", () => {
     );
   });
 });
+
+describe("How jobs run (DASH-120)", () => {
+  it("has a heading, and each switch's error under its own row", async () => {
+    window.mainApi = {
+      bots: {
+        getTeamSettings: jest.fn(async () => ({})),
+        setOneJobAtATime: jest.fn(async () => {}),
+        setUsesHandoffs: jest.fn(async () => ({ error: "No can do." })),
+      },
+    };
+    render(<TeamJobSettings workspaceId="7" />);
+    expect(screen.getByText("How jobs run")).toBeInTheDocument();
+    expect(
+      screen.getByText("Bots pass work in a standard format (recommended)"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Standard handoff" }));
+    const err = await screen.findByTestId("handoff-error");
+    expect(err).toHaveTextContent("No can do.");
+    expect(screen.getByTestId("team-handoff-setting")).toContainElement(err);
+    expect(screen.queryByTestId("one-job-error")).toBeNull();
+  });
+});

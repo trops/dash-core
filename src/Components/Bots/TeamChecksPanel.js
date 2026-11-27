@@ -1,14 +1,20 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Button3 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 
 /**
- * TeamChecksPanel (DASH-110) — on a team's page:
- *   - "Set up checks" for each of the team's repos with no .dash/checks:
- *     Dash drafts setup and validate from the repo's own setup and CI,
- *     tries them in a fresh clone, and opens one PR;
+ * Repo checks on a team's page (DASH-110), step 3 of its Set up checklist
+ * (DASH-120):
+ *   - each repo that has .dash/checks, and which;
+ *   - "Set up checks" for each of the team's repos with none: Dash drafts
+ *     setup and validate from the repo's own setup and CI, tries them in a
+ *     fresh clone, and opens one PR;
  *   - the team's own checks: a PR still open, or one closed without
  *     merging, where you keep it as a team check or remove it.
+ *
+ *   useRepoChecks(workspaceId)  the data and its actions
+ *   RepoChecksRows              the rows, given useRepoChecks' result
+ *   repoChecksSummary(data)     { shown, missing, closed } for the step
  */
 
 const botsApi = () =>
@@ -21,24 +27,37 @@ export const STATE_TEXT = {
   team: "This team only",
 };
 
-export const TeamChecksPanel = ({ workspaceId }) => {
-  const { muted, hairline } = useConfigTokens();
+/** What the checklist's step needs: shown when the team has repos. */
+export function repoChecksSummary(data) {
+  const repos = (data && data.repos) || [];
+  const withChecks = (data && data.withChecks) || [];
+  const checks = (data && data.checks) || [];
+  return {
+    shown: repos.length + withChecks.length + checks.length > 0,
+    missing: repos.length,
+    closed: checks.filter((c) => c && c.state === "pr-closed").length,
+  };
+}
+
+export function useRepoChecks(workspaceId) {
   const [repos, setRepos] = useState([]);
+  const [withChecks, setWithChecks] = useState([]);
   const [checks, setChecks] = useState([]);
   const [busy, setBusy] = useState(null);
   const [note, setNote] = useState(null);
   const current = useRef(workspaceId);
   current.current = workspaceId;
 
-  const load = () => {
+  const load = useCallback(() => {
     const api = botsApi();
     if (!api || workspaceId == null) return;
     if (api.reposWithoutChecks) {
       Promise.resolve(api.reposWithoutChecks(workspaceId))
-        .then(
-          (r) =>
-            current.current === workspaceId && setRepos((r && r.repos) || []),
-        )
+        .then((r) => {
+          if (current.current !== workspaceId) return;
+          setRepos((r && r.repos) || []);
+          setWithChecks((r && r.withChecks) || []);
+        })
         .catch(() => {});
     }
     if (api.teamChecks) {
@@ -49,8 +68,14 @@ export const TeamChecksPanel = ({ workspaceId }) => {
         )
         .catch(() => {});
     }
-  };
-  useEffect(load, [workspaceId]);
+  }, [workspaceId]);
+  useEffect(() => {
+    setRepos([]);
+    setWithChecks([]);
+    setChecks([]);
+    setNote(null);
+    load();
+  }, [load]);
 
   const act = async (what, fn) => {
     setBusy(what);
@@ -85,14 +110,26 @@ export const TeamChecksPanel = ({ workspaceId }) => {
       return r;
     });
 
-  if (!repos.length && !checks.length && !note) return null;
+  return { repos, withChecks, checks, busy, note, setUp, resolve, load };
+}
+
+export const RepoChecksRows = ({ data }) => {
+  const { muted } = useConfigTokens();
+  if (!data) return null;
+  const { repos, withChecks, checks, busy, note, setUp, resolve } = data;
   return (
-    <section
-      aria-label="Checks"
-      data-testid="team-checks-panel"
-      className={`flex flex-col gap-2 rounded-xl border px-4 py-3 ${hairline}`}
-    >
-      <span className="text-sm font-semibold">Checks</span>
+    <div className="flex flex-col gap-2" data-testid="team-checks-panel">
+      {(withChecks || []).map((r) => (
+        <div
+          key={`has:${r.key}`}
+          className="text-sm"
+          data-testid={`repo-has-checks-${r.key}`}
+        >
+          {`${r.slug} · ${r.checks.length} check${r.checks.length === 1 ? "" : "s"}${
+            r.checks.length ? ` (${r.checks.join(", ")})` : ""
+          }`}
+        </div>
+      ))}
       {repos.map((r) => (
         <div
           key={r.key}
@@ -139,8 +176,8 @@ export const TeamChecksPanel = ({ workspaceId }) => {
         </div>
       ))}
       {note ? <span className="text-xs">{note}</span> : null}
-    </section>
+    </div>
   );
 };
 
-export default TeamChecksPanel;
+export default RepoChecksRows;

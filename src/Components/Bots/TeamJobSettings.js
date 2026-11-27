@@ -1,14 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Button, Switch } from "@trops/dash-react";
+import { Switch, useStatusTokens } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { rememberSetupCheck } from "./teamSetupStore";
 
 /**
- * TeamJobSettings — a team's "One job at a time" (DASH-81), on its page in
- * the Bots view. On unless turned off: a job that would start while the team
- * has one going waits its turn (a schedule's run is skipped instead). And
- * its "Standard handoff" (DASH-101), off unless turned on. They're the
- * team's settings, so they apply right away.
+ * TeamJobSettings — "How jobs run" on a team's page (DASH-120): its "One
+ * job at a time" (DASH-81), on unless turned off: a job that would start
+ * while the team has one going waits its turn (a schedule's run is skipped
+ * instead). And its standard handoff (DASH-101), off unless turned on.
+ * They're about how the bots hand work to each other, so they're the
+ * team's, and they apply right away; each switch's error shows under its
+ * own row.
+ *
+ * The self-test and Check setup moved to the Set up checklist
+ * (TeamSetupChecklist); their helpers stay here.
  */
 
 function botsApi() {
@@ -65,30 +69,28 @@ export function setupView(res) {
   };
 }
 
+export const HANDOFF_TITLE =
+  "Bots pass work in a standard format (recommended)";
+
 export const TeamJobSettings = ({ workspaceId }) => {
   const { muted, hairline } = useConfigTokens();
+  const status = useStatusTokens();
   const [on, setOn] = useState(true);
   const [handoffs, setHandoffs] = useState(false);
-  const [error, setError] = useState(null);
-  const [setup, setSetup] = useState(null);
-  const [settings, setSettings] = useState(null);
-  const [testId, setTestId] = useState("");
-  const [testNote, setTestNote] = useState(null);
-  const [checking, setChecking] = useState(false);
+  const [oneError, setOneError] = useState(null);
+  const [handoffError, setHandoffError] = useState(null);
   const current = useRef(workspaceId);
   current.current = workspaceId;
 
   useEffect(() => {
     const api = botsApi();
-    setError(null);
-    setSetup(null);
+    setOneError(null);
+    setHandoffError(null);
     if (!api || !api.getTeamSettings || workspaceId == null) return;
     Promise.resolve(api.getTeamSettings(workspaceId))
       .then((s) => {
         if (current.current === workspaceId) {
           setOn(oneJobAtATimeOf(s));
-          setSettings(s || null);
-          setTestId((s && s.testItem && s.testItem.id) || "");
           setHandoffs(usesHandoffsOf(s));
         }
       })
@@ -98,160 +100,76 @@ export const TeamJobSettings = ({ workspaceId }) => {
   const change = async (next) => {
     const api = botsApi();
     if (!api || !api.setOneJobAtATime) return;
-    setError(null);
+    setOneError(null);
     setOn(next);
     try {
       await api.setOneJobAtATime(workspaceId, next);
     } catch (err) {
       setOn(!next);
-      setError((err && err.message) || "Couldn't change it. Try again.");
+      setOneError((err && err.message) || "Couldn't change it. Try again.");
     }
   };
 
   const changeHandoffs = async (next) => {
     const api = botsApi();
     if (!api || !api.setUsesHandoffs) return;
-    setError(null);
+    setHandoffError(null);
     setHandoffs(next);
     try {
       const r = await api.setUsesHandoffs(workspaceId, next);
       if (r && r.error) throw new Error(r.error);
     } catch (err) {
       setHandoffs(!next);
-      setError((err && err.message) || "Couldn't change it. Try again.");
+      setHandoffError((err && err.message) || "Couldn't change it. Try again.");
     }
   };
 
-  const checkSetup = async () => {
-    const api = botsApi();
-    if (!api || !api.checkSetup) {
-      setSetup({ error: "This version of Dash can't check a setup yet." });
-      return;
-    }
-    setChecking(true);
-    try {
-      const r = await api.checkSetup(workspaceId);
-      // The team's setup status everywhere counts it (DASH-119).
-      rememberSetupCheck(workspaceId, r);
-      if (current.current === workspaceId) setSetup(r || null);
-    } catch (err) {
-      if (current.current === workspaceId) {
-        setSetup({ error: (err && err.message) || "Couldn't check it." });
-      }
-    } finally {
-      if (current.current === workspaceId) setChecking(false);
-    }
-  };
-  const shown = setupView(setup);
-
-  const runTest = async () => {
-    const api = botsApi();
-    if (!api || !api.testTeam) {
-      setTestNote("This version of Dash can't run a self-test yet.");
-      return;
-    }
-    setTestNote(null);
-    try {
-      const want = testId.trim();
-      if (
-        want &&
-        (!settings || !settings.testItem || settings.testItem.id !== want)
-      ) {
-        const s = await api.setTestItem(workspaceId, { id: want });
-        if (s && s.error) throw new Error(s.error);
-        setSettings(s);
-      }
-      const r = await api.testTeam(workspaceId);
-      if (r && r.error) throw new Error(r.error);
-      setTestNote(
-        `The self-test started on ${r.item.id}: follow it on the Jobs page.`,
-      );
-    } catch (e) {
-      setTestNote((e && e.message) || "Couldn't start it.");
-    }
-  };
+  const errorLine = (text, id) =>
+    text ? (
+      <span className={`text-xs ${status.error.text}`} data-testid={id}>
+        {text}
+      </span>
+    ) : null;
 
   return (
     <section
-      aria-label="Jobs"
+      aria-label="How jobs run"
       data-testid="team-job-settings"
-      className={`flex flex-col rounded-xl border overflow-hidden ${hairline}`}
+      className="flex flex-col gap-2"
     >
-      <div className="flex flex-row items-center gap-4 px-4 py-3">
-        <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-          <span className="text-sm font-semibold">One job at a time</span>
-          <span className={`text-xs ${muted}`}>
-            {on ? ONE_JOB_HELP.on : ONE_JOB_HELP.off}
-          </span>
-          {error ? <span className="text-xs">{error}</span> : null}
-        </span>
-        <Switch checked={on} onChange={change} ariaLabel="One job at a time" />
-      </div>
-      <div
-        className={`flex flex-row items-center gap-4 px-4 py-3 border-t ${hairline}`}
-        data-testid="team-handoff-setting"
-      >
-        <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-          <span className="text-sm font-semibold">Standard handoff</span>
-          <span className={`text-xs ${muted}`}>
-            {handoffs ? HANDOFF_HELP.on : HANDOFF_HELP.off}
-          </span>
-        </span>
-        <Switch
-          checked={handoffs}
-          onChange={changeHandoffs}
-          ariaLabel="Standard handoff"
-        />
-      </div>
-      <div
-        className={`flex flex-col gap-2 px-4 py-3 border-t ${hairline}`}
-        data-testid="team-self-test"
-      >
-        <div className="flex flex-row items-center gap-4">
+      <span className="text-sm font-semibold">How jobs run</span>
+      <div className={`flex flex-col rounded-xl border ${hairline}`}>
+        <div className="flex flex-row items-center gap-4 px-4 py-3">
           <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-            <span className="text-sm font-semibold">Self-test</span>
-            <span className={`text-xs ${muted}`}>{SELF_TEST_HELP}</span>
-            <span className="text-xs" data-testid="self-test-line">
-              {selfTestLine(settings)}
+            <span className="text-sm font-semibold">One job at a time</span>
+            <span className={`text-xs ${muted}`}>
+              {on ? ONE_JOB_HELP.on : ONE_JOB_HELP.off}
             </span>
+            {errorLine(oneError, "one-job-error")}
           </span>
-          <input
-            aria-label="Test item"
-            className={`w-32 text-sm px-2 py-1 rounded border bg-transparent ${hairline}`}
-            placeholder="DASH-97"
-            value={testId}
-            onChange={(e) => setTestId(e.target.value)}
+          <Switch
+            checked={on}
+            onChange={change}
+            ariaLabel="One job at a time"
           />
-          <Button title="Test team" size="sm" onClick={runTest} />
         </div>
-        {testNote ? <span className="text-xs">{testNote}</span> : null}
-      </div>
-      <div
-        className={`flex flex-col gap-2 px-4 py-3 border-t ${hairline}`}
-        data-testid="team-setup-check"
-      >
-        <div className="flex flex-row items-center gap-4">
+        <div
+          className={`flex flex-row items-center gap-4 px-4 py-3 border-t ${hairline}`}
+          data-testid="team-handoff-setting"
+        >
           <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-            <span className="text-sm font-semibold">Setup</span>
-            <span className={`text-xs ${muted}`}>{SETUP_HELP}</span>
+            <span className="text-sm font-semibold">{HANDOFF_TITLE}</span>
+            <span className={`text-xs ${muted}`}>
+              {handoffs ? HANDOFF_HELP.on : HANDOFF_HELP.off}
+            </span>
+            {errorLine(handoffError, "handoff-error")}
           </span>
-          <Button
-            title={checking ? "Checking…" : "Check setup"}
-            size="sm"
-            onClick={checking ? undefined : checkSetup}
+          <Switch
+            checked={handoffs}
+            onChange={changeHandoffs}
+            ariaLabel="Standard handoff"
           />
         </div>
-        {shown ? (
-          <div
-            className="flex flex-col gap-1 text-xs"
-            data-testid="setup-result"
-          >
-            <span className="font-semibold">{shown.title}</span>
-            {shown.lines.map((l, i) => (
-              <span key={i}>{`• ${l}`}</span>
-            ))}
-          </div>
-        ) : null}
       </div>
     </section>
   );

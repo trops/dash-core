@@ -356,6 +356,23 @@ async function reposWithoutChecks(ctl, workspaceId) {
     repos: repos
       .filter((r) => r.readable && !r.hasChecks)
       .map((r) => ({ key: r.key, slug: r.slug })),
+    // The repos that have them, and which (the team page's Repo checks
+    // step, DASH-120).
+    withChecks: repos
+      .filter((r) => r.hasChecks)
+      .map((r) => ({
+        key: r.key,
+        slug: r.slug,
+        checks: [
+          ...new Set(
+            r.checks
+              .filter(
+                (c) => c !== "helpers" && !/\.(sample|bad)\.json$/.test(c),
+              )
+              .map(checkNameOf),
+          ),
+        ],
+      })),
   };
 }
 
