@@ -121,8 +121,9 @@ These four phases are sequential and cannot be skipped, combined, or reordered.
    ```bash
    git add <each new file explicitly by path>
    ```
-   The CI script uses `git add -u` which only stages tracked files — any new file not
-   staged here will be silently excluded from the commit. Do not use `git add .` or `git add -A`.
+   The CI script commits only tracked files you changed (or staged) **before** it ran —
+   any new file not staged here is left out (`check:untracked` stops the release).
+   Do not use `git add .` or `git add -A`.
 
 ### Phase 3 — VALIDATE
 
@@ -244,6 +245,19 @@ npm run ci:release -- -m "Your commit message"
 ```
 
 Each flag is cumulative. `--release` runs all prior steps automatically.
+
+### What validation and the release touch (DASH-153)
+
+- `npm run ci` never rewrites a file you didn't change. Run by hand, Prettier formats only
+  the files you changed, then `prettier --check`s everything; on GitHub Actions and in
+  `.dash/checks/validate.sh` it only checks, so an unformatted file fails.
+- The commit step commits exactly the files that were changed before validation ran. If
+  validation (or anything else) changed another tracked file, it stops, commits nothing,
+  and names the file: undo it with `git checkout HEAD -- <file>`.
+- `package-lock.json` is committed only when a dependency in package.json changed on the
+  branch (or only its version moved). An `npm install` that rewrote it stops the release.
+  `RELEASE_ALLOW_LOCKFILE=1` overrides that; it's a person's call (say, after
+  `npm audit fix`), not a bot's.
 
 ### Resuming and rerunning (DASH-48)
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Pin: ci.sh must run scripts/check-untracked-sources.js BEFORE the
- * `git add -u` line so untracked new files in source directories never
- * silently get dropped from a release commit.
+ * release stages files (`git add -u` once, named files since DASH-153)
+ * so untracked new files in source directories never silently get
+ * dropped from a release commit.
  *
  * Why this pin exists: in May 2026 dash-core shipped v0.1.484 with
  * electron/utils/transform.js requiring `./safeJsExecutor`, but the
@@ -107,17 +108,24 @@ const releaseSrc = fs.readFileSync(
 const preCommitAt = releaseSrc.search(
   /run\("bash",\s*\["-c",\s*opts\.preCommit\]\)/,
 );
-const gitAddAt = releaseSrc.search(/run\("git",\s*\["add",\s*"-u"\]\)/);
-assert.ok(preCommitAt !== -1, "release.js must run opts.preCommit");
+// DASH-153: release.js stages named files (`git add -- ...files`), never
+// `git add -u`.
+const gitAddAt = releaseSrc.search(
+  /run\("git",\s*\["add",\s*"--",\s*\.\.\.files\]\)/,
+);
 assert.ok(
   gitAddAt !== -1,
-  "release.js must contain `git add -u` (sanity check)",
+  "release.js must stage its named files with `git add -- ...files` (sanity check)",
+);
+assert.ok(
+  !/\["add",\s*"-u"\]/.test(releaseSrc),
+  "release.js must not stage with `git add -u` (DASH-153)",
 );
 assert.ok(
   preCommitAt < gitAddAt,
-  "release.js must run --pre-commit BEFORE `git add -u`",
+  "release.js must run --pre-commit BEFORE it stages files",
 );
 
 console.log(
-  "PASS  untracked-sources gate: ci.sh passes it to release.js as --pre-commit, run before `git add -u`",
+  "PASS  untracked-sources gate: ci.sh passes it to release.js as --pre-commit, run before staging",
 );
