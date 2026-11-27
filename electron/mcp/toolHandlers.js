@@ -6,6 +6,7 @@
  */
 const { randomUUID } = require("crypto");
 const { BOTS_GUIDE } = require("./botsGuide");
+const { CHECKS_GUIDE } = require("./checksGuide");
 const {
   layoutOf,
   withLayout,
@@ -2477,6 +2478,8 @@ Some widgets require providers (external service connections). Check the "provid
 
 // Building a team of bots (DASH-80): long, so it lives in its own file.
 GUIDE_CONTENT.bots = BOTS_GUIDE;
+// Writing a check (DASH-107).
+GUIDE_CONTENT.checks = CHECKS_GUIDE;
 
 async function handleGetSetupGuide({ topic }) {
   const key = topic || "overview";

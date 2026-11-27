@@ -18,10 +18,13 @@
   },
   "files": [
     "dist",
-    "scripts/scanWidgetManifestCli.js"
+    "scripts/scanWidgetManifestCli.js",
+    "scripts/dashCheckCli.js",
+    "skills"
   ],
   "bin": {
-    "dash-scan-manifest": "scripts/scanWidgetManifestCli.js"
+    "dash-scan-manifest": "scripts/scanWidgetManifestCli.js",
+    "dash-check": "scripts/dashCheckCli.js"
   },
   "scripts": {
     "build": "npm run build:renderer && npm run build:electron",
