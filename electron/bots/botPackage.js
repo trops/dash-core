@@ -166,9 +166,10 @@ function registryManifestFor(pkg, meta) {
     visibility: meta.visibility === "public" ? "public" : "private",
     type: isTeam ? PACKAGE_TYPE_TEAM : PACKAGE_TYPE_BOT,
     providerTypes: providerTypesOf(embedded),
-    // The check packages it uses (DASH-106): installed with it.
-    checkPackages: checkPackagesOf(embedded),
   };
+  // The check packages it uses (DASH-106): installed with it.
+  const checkPackages = checkPackagesOf(embedded);
+  if (checkPackages.length) manifest.checkPackages = checkPackages;
   if (isTeam) {
     manifest.team = {
       members: pkg.members.map((m) => ({
