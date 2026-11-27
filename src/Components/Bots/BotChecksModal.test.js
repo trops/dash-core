@@ -61,53 +61,84 @@ function open(props = {}) {
 const rows = () => screen.getAllByTestId(/^check-row-/);
 const panel = () => within(screen.getByTestId("selected-check"));
 
+const save = () =>
+  fireEvent.click(screen.getByRole("button", { name: "Save checks" }));
+
 describe("BotChecksModal", () => {
-  it("shows the bot's run, then its checks in order, the first selected", () => {
+  it("lists its checks in order with a cost each, the first selected", () => {
     open();
     expect(screen.getByText("Writer's checks")).toBeInTheDocument();
-    expect(screen.getByText("Writer runs")).toBeInTheDocument();
+    expect(screen.getByText("Its checks")).toBeInTheDocument();
     expect(rows().map((r) => r.textContent)).toEqual([
       expect.stringContaining("No bananas"),
       expect.stringContaining("You approve"),
     ]);
+    expect(rows()[0]).toHaveTextContent("Free · instant rule");
+    expect(rows()[1]).toHaveTextContent("Free · waits for you");
     expect(panel().getByLabelText("Name")).toHaveValue("No bananas");
     // Its banned-words rule, from the shared check editor.
     expect(panel().getByText("From your list: 1 word")).toBeInTheDocument();
+    expect(
+      panel().getByRole("radio", { name: /Automatic: a rule or command/ }),
+    ).toBeChecked();
   });
 
-  it("Save sends the edited checks", async () => {
+  it("one fixed size wherever it opens (DASH-127)", () => {
+    open();
+    const win = screen.getByTestId("bot-checks-modal");
+    expect(win.style.width).toBe("1040px");
+    expect(win.style.height).toBe("760px");
+  });
+
+  it("no Hands on here: it moved to the bot's Settings tab", () => {
+    open();
+    expect(screen.queryByTestId("hands-on")).toBeNull();
+    expect(screen.queryByText("Sender")).toBeNull();
+  });
+
+  it("Save checks sends the edited checks", async () => {
     const { onSave } = open();
     fireEvent.change(panel().getByLabelText("Name"), {
       target: { value: "No fruit" },
     });
     fireEvent.click(screen.getByRole("radio", { name: "It comes to you" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    save();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    const { checks, adds, removes } = onSave.mock.calls[0][0];
+    const { checks } = onSave.mock.calls[0][0];
     expect(checks.steps[0].name).toBe("No fruit");
     expect(checks.onFail).toBe("you");
-    expect(adds).toEqual([]);
-    expect(removes).toEqual([]);
+    expect(checks.handsOn).toBe("answer");
   });
 
-  it("+ adds a check where it is; Move up reorders", async () => {
+  it("+ Add check adds one at the end; ▲▼ reorder, the ends can't move out", async () => {
     const { onSave } = open();
+    fireEvent.click(screen.getByRole("button", { name: "+ Add check" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Add a check here (2)" }),
-    );
-    fireEvent.click(
-      within(screen.getByTestId("add-menu-1")).getByRole("button", {
-        name: "A command or test",
+      within(screen.getByTestId("add-check")).getByRole("button", {
+        name: "A command",
       }),
     );
     expect(rows()).toHaveLength(3);
-    expect(rows()[1]).toHaveTextContent("A command passes");
+    expect(rows()[2]).toHaveTextContent("A command passes");
+    expect(rows()[2]).toHaveTextContent("No AI cost");
     fireEvent.change(panel().getByLabelText("Command"), {
       target: { value: "npm test" },
     });
-    fireEvent.click(panel().getByRole("button", { name: "Move up" }));
-    expect(rows()[0]).toHaveTextContent("npm test");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      screen.getByRole("button", { name: "Move No bananas up" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Move A command passes down" }),
+    ).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move A command passes up" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move A command passes up" }),
+    );
+    // Still the one selected, at the top now.
+    expect(panel().getByLabelText("Name")).toHaveValue("A command passes");
+    save();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0][0].checks.steps.map((s) => s.name)).toEqual([
       "A command passes",
@@ -124,21 +155,15 @@ describe("BotChecksModal", () => {
     expect(rows()[0]).toHaveTextContent("You approve");
   });
 
-  it("a reviewer needs a bot, and not itself; it says so instead of saving", async () => {
+  it("Who decides: a bot reviews lists only other bots, and starts on one", async () => {
     const { onSave } = open();
-    fireEvent.change(panel().getByLabelText("Kind"), {
-      target: { value: "reviewer" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "needs the bot that reviews",
-    );
-    expect(onSave).not.toHaveBeenCalled();
-    // The bot itself isn't offered.
-    const who = panel().getByLabelText("Who reviews");
+    fireEvent.click(panel().getByRole("radio", { name: /A bot reviews/ }));
+    const who = panel().getByLabelText("Which bot (bots on this team)");
     expect(within(who).queryByText("Writer")).toBeNull();
+    expect(who).toHaveValue("s");
+    expect(rows()[0]).toHaveTextContent("AI · cost not known yet");
     fireEvent.change(who, { target: { value: "e" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    save();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0][0].checks.steps[0]).toMatchObject({
       kind: "reviewer",
@@ -146,37 +171,74 @@ describe("BotChecksModal", () => {
     });
   });
 
+  it("with no other bot on the team, a bot can't review: it's you", () => {
+    open({ members: [writer] });
+    expect(
+      panel().getByRole("radio", { name: /A bot reviews/ }),
+    ).toBeDisabled();
+    expect(
+      panel().getByText("There's no other bot on this team, so you approve."),
+    ).toBeInTheDocument();
+  });
+
+  it("a reviewer with no bot says so instead of saving", async () => {
+    const bot = {
+      ...writer,
+      checks: {
+        ...writer.checks,
+        steps: [{ id: "r1", kind: "reviewer", name: "Reviewer", botId: "" }],
+      },
+    };
+    const { onSave } = open({ bot });
+    save();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "needs the bot that reviews",
+    );
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("Automatic: its kinds are cards; Built in picks one and shows its keys", async () => {
+    const { onSave } = open();
+    // A rule on the answer is one of the Built in checks.
+    expect(screen.getByTestId("selectable-card-Built in")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const built = panel().getByLabelText("Built-in check");
+    expect(built).toHaveValue("rules");
+    fireEvent.change(built, { target: { value: "handoff-has" } });
+    // Its name was the default, so it follows the kind.
+    expect(rows()[0]).toHaveTextContent("No bananas");
+    const keys = within(screen.getByTestId("handoff-keys"));
+    expect(keys.getByText("summary")).toBeInTheDocument();
+    fireEvent.change(keys.getByLabelText("Add a key"), {
+      target: { value: "plan," },
+    });
+    fireEvent.click(keys.getByRole("button", { name: "Remove summary" }));
+    save();
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].checks.steps[0].check).toMatchObject({
+      kind: "handoff-has",
+      keys: ["plan"],
+    });
+  });
+
+  it("You approve has no settings of its own", () => {
+    open();
+    fireEvent.click(rows()[1].querySelector("button"));
+    expect(panel().getByRole("radio", { name: /You approve/ })).toBeChecked();
+    expect(panel().queryByTestId("selectable-card-Built in")).toBeNull();
+  });
+
   it("removing every check saves none", async () => {
     const { onSave } = open();
     fireEvent.click(panel().getByRole("button", { name: "Remove this check" }));
-    fireEvent.click(rows()[0]);
-    fireEvent.click(
-      within(rows()[0]).getByRole("button", { name: /You approve/ }),
-    );
+    fireEvent.click(rows()[0].querySelector("button"));
     fireEvent.click(panel().getByRole("button", { name: "Remove this check" }));
     expect(screen.getByText(/No checks yet/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    save();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0][0].checks).toBeNull();
-  });
-
-  it("hands on: lists where its work goes; × and + Add change it on Save", async () => {
-    const { onSave } = open();
-    const hands = within(screen.getByTestId("hands-on"));
-    expect(hands.getByText("Sender")).toBeInTheDocument();
-    fireEvent.click(
-      hands.getByRole("button", { name: "Stop handing on to Sender" }),
-    );
-    fireEvent.change(hands.getByRole("combobox", { name: "Hand on to" }), {
-      target: { value: "bot:e" },
-    });
-    expect(hands.getByText("Editor")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(onSave).toHaveBeenCalled());
-    const { adds, removes } = onSave.mock.calls[0][0];
-    expect(adds.map((t) => t.key)).toEqual(["bot:e"]);
-    expect(removes.map((t) => t.key)).toEqual(["bot:s"]);
-    expect(removes[0].eventType).toBe(ev("w", "completed"));
   });
 
   it("Cancel closes without saving", () => {
@@ -189,7 +251,7 @@ describe("BotChecksModal", () => {
   it("a save that fails says why and stays open", async () => {
     const onSave = jest.fn(() => Promise.reject(new Error("disk full")));
     open({ onSave });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    save();
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Couldn't save all of it: disk full",
     );
@@ -201,7 +263,7 @@ describe("BotChecksModal", () => {
       { refused: true },
     );
     open({ onSave: jest.fn(() => Promise.reject(refused)) });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    save();
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /^Save or cancel your edits to Home first/,
     );
@@ -234,13 +296,72 @@ describe("a command that came with a package (DASH-57)", () => {
     const held = screen.getByTestId("held-check");
     expect(held).toHaveTextContent("it's off");
     expect(held).toHaveTextContent("npm test");
-    expect(
-      screen.getByText("Off · came with the package · npm test"),
-    ).toBeInTheDocument();
+    expect(rows()[0]).toHaveTextContent("Tests pass (off)");
     fireEvent.click(within(held).getByRole("button", { name: "Turn on" }));
     expect(screen.queryByTestId("held-check")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save checks" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0][0].checks.steps[0].held).toBeUndefined();
+  });
+});
+
+describe("cost and time from its recent jobs (DASH-127)", () => {
+  afterEach(() => {
+    delete window.mainApi;
+  });
+
+  it("a command's last run time and a reviewer's average cost", async () => {
+    const bot = {
+      ...writer,
+      checks: {
+        ...writer.checks,
+        steps: [
+          {
+            id: "c1",
+            kind: "check",
+            name: "Tests",
+            check: { kind: "command", command: "npm test" },
+          },
+          { id: "rv", kind: "reviewer", name: "Review", botId: "e" },
+        ],
+      },
+    };
+    window.mainApi = {
+      goals: {
+        list: jest.fn(() =>
+          Promise.resolve([
+            {
+              id: "g1",
+              flow: {
+                botId: "w",
+                steps: [{ id: "rv", kind: "bot", botId: "e", judgment: true }],
+              },
+              tasks: [
+                {
+                  history: [
+                    { stepId: "work", status: "passed", at: 0 },
+                    { stepId: "c1", status: "passed", at: 120000 },
+                  ],
+                },
+              ],
+            },
+          ]),
+        ),
+      },
+      bots: {
+        getRuns: jest.fn(() =>
+          Promise.resolve([
+            { checks: { goalId: "g1", state: "review" }, cost: { usd: 0.05 } },
+          ]),
+        ),
+      },
+    };
+    open({ bot });
+    await waitFor(() =>
+      expect(rows()[0]).toHaveTextContent("No AI cost · ~2 min"),
+    );
+    expect(rows()[1]).toHaveTextContent("AI · ~$0.05 a run");
+    expect(window.mainApi.goals.list).toHaveBeenCalledWith(1);
+    expect(window.mainApi.bots.getRuns).toHaveBeenCalledWith("e", 50);
   });
 });

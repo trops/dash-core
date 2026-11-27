@@ -421,3 +421,40 @@ describe("a check package step (DASH-106)", () => {
     expect(stepSub(set)).toBe("Package · plan-has-sections · no AI");
   });
 });
+
+describe("Who decides and the automatic kinds (DASH-127)", () => {
+  const {
+    AUTO_KINDS,
+    WHO,
+    autoKindOf,
+    newCheck: fresh,
+    whoOf,
+  } = require("./checksView");
+
+  it("three choices, automatic first, each with its why", () => {
+    expect(WHO.map((w) => w.label)).toEqual([
+      "Automatic: a rule or command (no AI)",
+      "A bot reviews",
+      "You approve",
+    ]);
+    expect(WHO.every((w) => w.hint)).toBe(true);
+  });
+
+  it("whoOf and autoKindOf say where a step sits", () => {
+    expect(whoOf(fresh("you"))).toBe("you");
+    expect(whoOf(fresh("reviewer"))).toBe("reviewer");
+    expect(whoOf(fresh("command"))).toBe("rule");
+    expect(autoKindOf(fresh("rules"))).toBe("builtin");
+    expect(autoKindOf(fresh("pr-ci"))).toBe("builtin");
+    expect(autoKindOf(fresh("command"))).toBe("command");
+    expect(autoKindOf(fresh("compare"))).toBe("compare");
+    expect(autoKindOf(fresh("you"))).toBe(null);
+  });
+
+  it("each card starts as a kind newCheck makes", () => {
+    expect(AUTO_KINDS).toHaveLength(6);
+    for (const k of AUTO_KINDS) {
+      expect(autoKindOf(fresh(k.start))).toBe(k.value);
+    }
+  });
+});

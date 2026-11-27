@@ -1,96 +1,96 @@
-import React, { useContext, useMemo, useState } from "react";
+import React, { useContext, useState } from "react";
 import {
   AlertBanner,
   Button,
   Button3,
   ButtonIcon,
-  FontAwesomeIcon,
   InputText,
   Modal,
   RadioGroup,
-  SegmentedControl,
   SelectInput,
+  SelectableCard,
   SubHeading3,
+  TextArea,
   ThemeContext,
   getStylesForItem,
   themeObjects,
   useStatusTokens,
 } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
-import { CheckKindEditor, KIND_INTRO } from "../Flows/CheckKindEditor";
-import { PanelSection } from "../Flows/SidePanel";
-import { BotAvatar } from "./BotAvatar";
-import { AddCheckScreen } from "./AddCheckScreen";
-import { triggerSummary } from "./teamUtils";
 import {
+  CheckKindEditor,
+  KIND_INTRO,
+  checkOfKind,
+} from "../Flows/CheckKindEditor";
+import { AddCheckScreen } from "./AddCheckScreen";
+import { checkCost } from "./checkCost";
+import { useCheckStats } from "./useCheckStats";
+import {
+  AUTO_KINDS,
+  BUILT_IN_CHOICES,
   MAX_CHECKS,
-  STEP_CHOICES,
   TONE,
   TRIES,
+  WHO,
   addStep,
+  autoKindOf,
   changeKind,
   choiceOf,
   draftError,
   draftOf,
-  handsOnChoices,
-  handsOnTargets,
   moveStep,
   newCheck,
   removeStep,
   savedChecks,
   stepSub,
   stepTone,
-  targetChanges,
-  updateStep,
   turnOnStep,
+  updateStep,
+  whoOf,
 } from "./checksView";
-
-const HANDS_ON_OPTIONS = [
-  { value: "answer", label: "Its whole answer" },
-  { value: "summary", label: "Only the summary" },
-];
 
 // What a check gets: the bot's answer (electron/bots/botChecks.js workOutput).
 const FIELD_ROWS = [{ path: "input.answer", kind: "text" }];
 
-/** The coloured square for a step's kind. */
-const ToneIcon = ({ step }) => {
-  const tone = TONE[stepTone(step)];
-  return (
-    <span
-      className={`flex-shrink-0 h-6 w-6 rounded flex items-center justify-center text-white text-xs ${tone.bg}`}
-      title={tone.label}
-    >
-      <FontAwesomeIcon icon={tone.icon} />
-    </span>
-  );
-};
+/**
+ * One size wherever the window opens (DASH-127): from the bot, over a job,
+ * while adding a check. Capped to the app window on small screens.
+ */
+export const CHECKS_WINDOW = { width: 1040, height: 760 };
+const LIST_WIDTH = 300;
+
+/** A new step of a STEP_CHOICES kind, ready to edit. */
+function startOf(choice) {
+  const step = newCheck(choice);
+  // A script starts from the template, like the flow editor's.
+  return choice === "script"
+    ? { ...step, check: checkOfKind("script", FIELD_ROWS) }
+    : step;
+}
 
 /**
- * BotChecksModal — "<Bot>'s checks" (bot-checks PRD CHK-002, frame 2): the
- * bot's run, then its checks top to bottom with + between them (drag a
- * check to move it), the selected check on the right, what happens when a
- * check fails, and what it hands on to whom. Nothing is saved until Save.
+ * BotChecksModal — "<Bot>'s checks" (bot-checks PRD CHK-002; DASH-127
+ * screens 7, 4b, 4c). Left, "Its checks": top to bottom, each with its
+ * rough cost and time, moved by drag (⋮⋮) or ▲▼, then what happens when
+ * one fails. Right, "The selected check": its name and who decides, each
+ * choice's settings inside its own box. Nothing else: where its work goes
+ * is on the bot's Settings tab ("Sends its work to"). Nothing is saved
+ * until Save checks.
  *
  * @param {object} bot
- * @param {object[]} members   the team (for reviewers and hands on)
- * @param {object[]} widgets   diagramWidgets()
- * @param {object[]} wEdges    widgetEdges()
- * @param {(save) => Promise} onSave  { checks, adds, removes }
+ * @param {object[]} members   the team (who can review)
+ * @param {(save) => Promise} onSave  { checks }
  * @param {() => void} onClose
- * @param {boolean} [handsOn]  show "Hands on" (off when opened over a job:
- *   only its checks change there, DASH-124)
  * @param {string} [footerNote]  a line by the buttons ("Changes apply from
  *   Planner's next run.")
+ * @param {boolean} [handsOn]  no longer used: "Hands on" moved to the
+ *   bot's Settings tab (DASH-127). Callers may still pass it.
  */
 export const BotChecksModal = ({
   bot,
   members = [],
-  widgets = [],
-  wEdges = [],
   onSave,
   onClose,
-  handsOn = true,
   footerNote = null,
 }) => {
   const { currentTheme = {} } = useContext(ThemeContext) || {};
@@ -104,35 +104,52 @@ export const BotChecksModal = ({
   const [selected, setSelected] = useState(
     bot && bot.checks && (bot.checks.steps || []).length ? 0 : null,
   );
-  const [adding, setAdding] = useState(null);
+  const [adding, setAdding] = useState(false);
   const [dragFrom, setDragFrom] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const before = useMemo(
-    () => handsOnTargets(bot, members, widgets, wEdges),
-    // Only what it had when the window opened.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-  const [targets, setTargets] = useState(before);
+  const stats = useCheckStats(bot);
   if (!bot) return null;
 
-  const others = members.filter((m) => m && m.id !== bot.id);
+  // Bots on its team, not itself: who can review.
+  const others = members.filter(
+    (m) =>
+      m &&
+      m.id !== bot.id &&
+      (m.workspaceId === undefined ||
+        bot.workspaceId === undefined ||
+        String(m.workspaceId) === String(bot.workspaceId)),
+  );
   const nameOf = (id) => (members.find((m) => m.id === id) || {}).name || null;
-  const step = selected != null ? draft.steps[selected] : null;
-  const choices = handsOnChoices(bot, members, widgets, targets);
+  const step = !adding && selected != null ? draft.steps[selected] : null;
   const full = draft.steps.length >= MAX_CHECKS;
+  const last = draft.steps.length - 1;
 
-  const add = (at, choice) => {
-    setDraft((d) => addStep(d, at, newCheck(choice)));
+  const addAtEnd = (s) => {
+    const at = draft.steps.length;
+    // A reviewer starts on the team's only other bot.
+    const ready =
+      s && s.kind === "reviewer" && !s.botId && others.length
+        ? { ...s, botId: others[0].id }
+        : s;
+    setDraft((d) => addStep(d, at, ready));
     setSelected(at);
-    setAdding(null);
+    setAdding(false);
     setError("");
   };
   const move = (from, to) => {
-    if (from === to) return;
+    if (from === to || to < 0 || to > last) return;
     setDraft((d) => moveStep(d, from, to));
-    setSelected(to);
+    if (selected === from) setSelected(to);
+    else if (selected != null) {
+      // The selected one keeps its place in the new order.
+      const order = moveStep(
+        { steps: draft.steps.map((_, i) => i) },
+        from,
+        to,
+      ).steps;
+      setSelected(order.indexOf(selected));
+    }
   };
   // Changes go to the step by its id: an answer that comes back later
   // (Write it with AI) still lands on its own step after a move, or nowhere
@@ -149,6 +166,22 @@ export const BotChecksModal = ({
       if (i < 0 || !d.steps[i].check) return d;
       return updateStep(d, i, { check: { ...d.steps[i].check, ...p } });
     });
+  // The selected step turned into another kind (its name kept if yours).
+  const turnInto = (choice) => {
+    if (!step || choice === choiceOf(step)) return;
+    let next = changeKind(step, choice);
+    if (choice === "script") {
+      next = { ...next, check: checkOfKind("script", FIELD_ROWS) };
+    }
+    if (next.kind === "reviewer" && !next.botId && others.length) {
+      next = { ...next, botId: others[0].id };
+    }
+    setDraft((d) => updateStep(d, selected, next));
+  };
+  const pickWho = (who) => {
+    if (!step || who === whoOf(step)) return;
+    turnInto(who === "rule" ? "rules" : who);
+  };
 
   const save = async () => {
     const problem = draftError(draft, bot.id);
@@ -159,10 +192,7 @@ export const BotChecksModal = ({
     setError("");
     setSaving(true);
     try {
-      await onSave({
-        checks: savedChecks(draft),
-        ...targetChanges(before, targets),
-      });
+      await onSave({ checks: savedChecks(draft) });
     } catch (err) {
       // Refused before anything changed (the dashboard is being edited):
       // its own words. Otherwise part of it may have saved.
@@ -175,56 +205,23 @@ export const BotChecksModal = ({
     }
   };
 
-  // The + between steps, and the kinds it offers when open.
-  const plus = (at) => (
-    <div key={`plus-${at}`} className="flex flex-col items-start pl-3">
-      <span className={`w-px h-3 border-l ${hairline}`} />
-      {adding === at ? (
-        <div
-          className={`flex flex-col gap-3 p-3 rounded-lg border ${hairline} ${fieldBg}`}
-          data-testid={`add-menu-${at}`}
-        >
-          {/* Add check (DASH-110): who decides, suggestions, describe it. */}
-          <AddCheckScreen
-            bot={bot}
-            onAdd={(s) => {
-              setDraft((d) => addStep(d, at, s));
-              setSelected(at);
-              setAdding(null);
-            }}
-            onCancel={() => setAdding(null)}
-          />
-          <span className={`text-xs ${muted}`}>Or start a blank one:</span>
-          <div className="flex flex-row flex-wrap gap-1">
-            {STEP_CHOICES.map((c) => (
-              <Button3
-                key={c.value}
-                title={c.label}
-                size="sm"
-                onClick={() => add(at, c.value)}
-              />
-            ))}
-          </div>
-        </div>
-      ) : (
-        <ButtonIcon
-          icon="plus"
-          size="xs"
-          ariaLabel={
-            at === draft.steps.length
-              ? "Add a check"
-              : `Add a check here (${at + 1})`
-          }
-          disabled={full}
-          onClick={() => setAdding(at)}
-        />
-      )}
-      <span className={`w-px h-3 border-l ${hairline}`} />
-    </div>
+  const arrow = (up, name, disabled, onClick) => (
+    <button
+      type="button"
+      className={`px-1.5 text-xs leading-none rounded border ${hairline} ${fieldBg} ${
+        disabled ? "opacity-30 cursor-default" : "cursor-pointer"
+      }`}
+      aria-label={`Move ${name} ${up ? "up" : "down"}`}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {up ? "▲" : "▼"}
+    </button>
   );
 
   const row = (s, i) => {
-    const active = i === selected;
+    const active = !adding && i === selected;
+    const name = s.name || TONE[stepTone(s)].label;
     return (
       <div
         key={s.id || i}
@@ -237,61 +234,271 @@ export const BotChecksModal = ({
           setDragFrom(null);
         }}
         onDragEnd={() => setDragFrom(null)}
-        className={`flex flex-row items-center gap-3 p-3 rounded-lg border ${
-          active ? `${selectedBorder} ${selectedBg}` : `${hairline} ${fieldBg}`
+        className={`flex flex-row items-center gap-2 p-2 rounded-lg border ${
+          active ? `${selectedBorder} ${selectedBg}` : "border-transparent"
         } ${dragFrom === i ? "opacity-50" : ""}`}
       >
-        <button
-          type="button"
-          className="flex-1 min-w-0 flex flex-row items-center gap-3 text-left"
-          onClick={() => setSelected(i)}
-          aria-current={active ? "true" : undefined}
-        >
-          <ToneIcon step={s} />
-          <span className="flex-1 min-w-0 flex flex-col">
-            <span className={`text-sm font-semibold truncate ${strong}`}>
-              {s.name || TONE[stepTone(s)].label}
-            </span>
-            <span className={`text-xs truncate ${muted}`}>
-              {stepSub(s, nameOf)}
-            </span>
-          </span>
-        </button>
         <span
-          className={`cursor-grab ${muted}`}
-          title="Drag to move it"
+          className={`cursor-grab select-none text-sm px-0.5 ${muted}`}
+          title="Drag to reorder"
           aria-hidden="true"
         >
-          <FontAwesomeIcon icon="grip-vertical" />
+          ⋮⋮
+        </span>
+        <span className={`text-xs w-4 text-right ${muted}`}>{i + 1}</span>
+        <button
+          type="button"
+          className="flex-1 min-w-0 flex flex-col text-left"
+          onClick={() => {
+            setSelected(i);
+            setAdding(false);
+          }}
+          aria-current={active ? "true" : undefined}
+          title={stepSub(s, nameOf)}
+        >
+          <span className={`text-sm truncate ${strong}`}>
+            {`${name}${s.held ? " (off)" : ""}`}
+          </span>
+          <span className={`text-xs truncate ${muted}`}>
+            {checkCost(s, stats[s.id])}
+          </span>
+        </button>
+        <span className="flex flex-col gap-0.5">
+          {arrow(true, name, i === 0, () => move(i, i - 1))}
+          {arrow(false, name, i === last, () => move(i, i + 1))}
         </span>
       </div>
     );
   };
 
-  const choice = step ? choiceOf(step) : null;
-  const kindOptions = [
-    ...STEP_CHOICES,
-    ...(choice === "script" ? [{ value: "script", label: "A script" }] : []),
-  ];
+  // One "Who decides" choice: its box, and its settings inside once picked.
+  const whoBox = (w, settings) => {
+    const on = !!step && whoOf(step) === w.value;
+    const noReviewer = w.value === "reviewer" && !others.length;
+    return (
+      <div
+        key={w.value}
+        className={`flex flex-col gap-3 p-3 rounded-lg border ${
+          on ? `${selectedBorder} ${selectedBg}` : hairline
+        } ${noReviewer && !on ? "opacity-60" : ""}`}
+        data-testid={`who-${w.value}`}
+      >
+        <label className="flex flex-row items-start gap-3 cursor-pointer">
+          <input
+            type="radio"
+            name={`who-${stepId}`}
+            className="mt-1"
+            checked={on}
+            disabled={noReviewer && !on}
+            onChange={() => pickWho(w.value)}
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className={`text-sm font-semibold ${strong}`}>{w.label}</span>
+            <span className={`text-xs ${muted}`}>
+              {noReviewer
+                ? "There's no other bot on this team, so you approve."
+                : w.hint}
+            </span>
+          </span>
+        </label>
+        {on && settings ? (
+          <div className="pl-7 flex flex-col gap-3">{settings}</div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const autoSettings = () => {
+    if (!step || whoOf(step) !== "rule") return null;
+    const card = autoKindOf(step);
+    const choice = choiceOf(step);
+    return (
+      <>
+        <div
+          role="group"
+          aria-label="Kind of automatic check"
+          className="grid grid-cols-2 gap-2"
+        >
+          {AUTO_KINDS.map((k) => (
+            <SelectableCard
+              key={k.value}
+              label={k.label}
+              description={k.hint}
+              selected={card === k.value}
+              onSelect={() => card !== k.value && turnInto(k.start)}
+            />
+          ))}
+        </div>
+        {card === "builtin" ? (
+          <div className="max-w-md">
+            <SelectInput
+              label="Built-in check"
+              value={choice}
+              options={BUILT_IN_CHOICES}
+              onChange={(v) => v && turnInto(v)}
+            />
+          </div>
+        ) : null}
+        {step.kind === "check" && step.check ? (
+          <>
+            <span className={`text-sm ${muted}`}>
+              {KIND_INTRO[step.check.kind]}
+            </span>
+            <CheckKindEditor
+              key={`${step.id}-${step.check.kind}`}
+              check={step.check}
+              onPatch={patchCheck}
+              workspaceId={bot.workspaceId}
+              fieldRows={FIELD_ROWS}
+              name={step.name}
+              runsIn={`${bot.name}'s folder`}
+              onError={setError}
+              uniqueKey={`${bot.id}-${step.id}`}
+            />
+          </>
+        ) : null}
+      </>
+    );
+  };
+
+  const reviewerSettings = () =>
+    step && step.kind === "reviewer" ? (
+      <>
+        <div className="max-w-xs">
+          <SelectInput
+            label="Which bot (bots on this team)"
+            value={step.botId || ""}
+            placeholder="Choose a bot"
+            options={others.map((m) => ({ value: m.id, label: m.name }))}
+            onChange={(botId) => patchStep({ botId })}
+          />
+        </div>
+        <TextArea
+          label="What it looks for (optional)"
+          value={step.note || ""}
+          rows={3}
+          placeholder="e.g. it covers every acceptance item"
+          onChange={(v) => patchStep({ note: v })}
+        />
+        <span className={`text-xs ${muted}`}>
+          It reads the work and says pass or fail, with why. It can&apos;t
+          change the work.
+        </span>
+      </>
+    ) : null;
+
+  const selectedCheck = step ? (
+    <>
+      <InputText
+        label="Name"
+        value={step.name || ""}
+        onChange={(v) => patchStep({ name: v })}
+      />
+      {step.held ? (
+        <div className="flex flex-col gap-2" data-testid="held-check">
+          <AlertBanner
+            variant="warning"
+            size="compact"
+            message="This command came with the package, so it's off: Dash won't run it on this computer until you turn it on. Until then, its jobs wait for you to approve the work."
+          />
+          <code className="font-mono text-xs break-all">
+            {(step.check &&
+              (step.check.command ||
+                (step.check.fallback && step.check.fallback.command) ||
+                step.check.package)) ||
+              ""}
+          </code>
+          <div>
+            <Button
+              title="Turn on"
+              size="sm"
+              onClick={() => setDraft((d) => turnOnStep(d, selected))}
+            />
+          </div>
+        </div>
+      ) : null}
+      <fieldset className="flex flex-col gap-2 border-0 m-0 p-0">
+        <legend className={`text-sm font-semibold pb-2 ${strong}`}>
+          Who decides
+        </legend>
+        {WHO.map((w) =>
+          whoBox(
+            w,
+            w.value === "rule"
+              ? autoSettings()
+              : w.value === "reviewer"
+                ? reviewerSettings()
+                : null,
+          ),
+        )}
+      </fieldset>
+      <div className="flex flex-row pt-2">
+        <span className="flex-1" />
+        <Button3
+          title="Remove this check"
+          size="sm"
+          onClick={() => {
+            setDraft((d) => removeStep(d, selected));
+            setSelected(null);
+          }}
+        />
+      </div>
+    </>
+  ) : (
+    <span className={`text-sm ${muted}`}>
+      Pick a check on the left to change it, or add one.
+    </span>
+  );
+
+  const addScreen = (
+    <div className="flex flex-col gap-4" data-testid="add-check">
+      {/* Add check (DASH-110): who decides, suggestions, describe it. */}
+      <AddCheckScreen
+        bot={bot}
+        canReview={others.length > 0}
+        onAdd={addAtEnd}
+        onCancel={() => setAdding(false)}
+      />
+      <div className="flex flex-col gap-2">
+        <span className={`text-xs ${muted}`}>Or start a blank one:</span>
+        <div className="flex flex-row flex-wrap gap-1">
+          {AUTO_KINDS.map((k) => (
+            <Button3
+              key={k.value}
+              title={k.label}
+              size="sm"
+              onClick={() => addAtEnd(startOf(k.start))}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <Modal
       isOpen
       setIsOpen={(o) => !o && onClose()}
-      width="w-2/3"
-      height="h-5/6"
+      width="max-w-full"
+      height="max-h-full"
     >
       <div
-        className={`flex flex-col h-full min-h-0 rounded-lg border ${hairline} ${panel.backgroundColor || ""} ${panel.textColor || strong}`}
+        className={`flex flex-col min-h-0 rounded-lg border ${hairline} ${panel.backgroundColor || ""} ${panel.textColor || strong}`}
+        style={{
+          width: CHECKS_WINDOW.width,
+          height: CHECKS_WINDOW.height,
+          maxWidth: "calc(100vw - 32px)",
+          maxHeight: "calc(100vh - 32px)",
+        }}
         data-testid="bot-checks-modal"
       >
         <div
-          className={`flex flex-row items-start gap-3 px-6 py-4 border-b ${hairline}`}
+          className={`flex-shrink-0 flex flex-row items-start gap-3 px-5 py-4 border-b ${hairline}`}
         >
           <div className="flex-1 min-w-0 flex flex-col gap-1">
             <SubHeading3 title={`${bot.name}'s checks`} padding={false} />
             <span className={`text-sm ${muted}`}>
-              {`They prove ${bot.name}'s work is done, every time it runs. Top to bottom; the first fail stops them.`}
+              {`They prove ${bot.name}'s work is done, every time it runs. Top to bottom; the first that fails stops them.`}
             </span>
           </div>
           <ButtonIcon
@@ -303,255 +510,92 @@ export const BotChecksModal = ({
         </div>
 
         <div className="flex-1 min-h-0 flex flex-row">
-          <div className="flex-1 min-w-0 min-h-0 overflow-y-auto flex flex-col gap-0 p-6">
-            <div
-              className={`flex flex-row items-center gap-3 p-3 rounded-lg border ${hairline}`}
+          <div
+            className={`flex-shrink-0 min-h-0 overflow-y-auto flex flex-col gap-1 p-3 border-r ${hairline}`}
+            style={{ width: LIST_WIDTH }}
+            data-testid="checks-list"
+          >
+            <span
+              className={`px-2 pt-1 pb-1.5 text-xs font-semibold uppercase tracking-wide ${muted}`}
             >
-              <BotAvatar bot={bot} />
-              <span className="flex-1 min-w-0 flex flex-col">
-                <span className={`text-sm font-semibold ${strong}`}>
-                  {`${bot.name} runs`}
-                </span>
-                <span className={`text-xs ${muted}`}>
-                  {`${triggerSummary(bot)}, or when the lead or you ask`}
-                </span>
-              </span>
-            </div>
-            {draft.steps.map((s, i) => [plus(i), row(s, i)])}
-            {plus(draft.steps.length)}
+              Its checks
+            </span>
+            {draft.steps.map(row)}
             {!draft.steps.length ? (
-              <span className={`text-sm ${muted}`}>
-                {`No checks yet: ${bot.name}'s work goes straight on. Add one with +.`}
+              <span className={`px-2 text-sm ${muted}`}>
+                {`No checks yet: ${bot.name}'s work goes straight on.`}
+              </span>
+            ) : draft.steps.length > 1 ? (
+              <span className={`px-2 text-xs ${muted}`}>
+                Drag ⋮⋮ or use ▲▼. Cheapest first saves money: a fail stops the
+                rest.
               </span>
             ) : null}
-
-            <PanelSection label="If a check fails">
-              <RadioGroup
-                value={draft.onFail}
-                onChange={(onFail) => setDraft((d) => ({ ...d, onFail }))}
-                options={[
-                  {
-                    value: "retry",
-                    label: `${bot.name} tries again, told what failed`,
-                  },
-                  { value: "you", label: "It comes to you" },
-                  { value: "stop", label: "It fails" },
-                ]}
+            <div className="pt-2">
+              <Button3
+                title="+ Add check"
+                size="sm"
+                disabled={full || adding}
+                onClick={() => setAdding(true)}
               />
-              {draft.onFail !== "you" ? (
-                <span className={`text-xs ${muted}`}>
-                  {`When it fails, ${bot.name}'s Failed event goes out with the reason, so whatever listens for it runs.`}
-                </span>
-              ) : null}
-              {draft.onFail === "retry" ? (
-                <div className="w-72 pt-2">
-                  <SelectInput
-                    label="Tries, at most"
-                    value={String(draft.maxTries)}
-                    options={[...new Set([...TRIES, draft.maxTries])]
-                      .sort((a, b) => a - b)
-                      .map((n) => ({
-                        value: String(n),
-                        label: `${n}, then it fails`,
-                      }))}
-                    onChange={(v) =>
-                      setDraft((d) => ({ ...d, maxTries: Number(v) || 3 }))
-                    }
-                  />
-                </div>
-              ) : null}
-            </PanelSection>
+            </div>
 
-            {handsOn ? (
-              <PanelSection label="Hands on" testId="hands-on">
-                <div className="flex flex-col gap-2">
-                  <SegmentedControl
-                    ariaLabel="What it hands on"
-                    size="sm"
-                    value={draft.handsOn}
-                    onChange={(handsOn) => setDraft((d) => ({ ...d, handsOn }))}
-                    options={HANDS_ON_OPTIONS}
-                  />
-                  <div className="flex flex-row flex-wrap items-center gap-2">
-                    <span className={`text-sm ${muted}`}>to</span>
-                    {targets.map((t) => (
-                      <span
-                        key={t.key}
-                        className={`flex flex-row items-center gap-1 rounded-full border pl-3 pr-1 py-0.5 text-sm ${hairline}`}
-                      >
-                        <span>{t.name}</span>
-                        <ButtonIcon
-                          icon="xmark"
-                          size="xs"
-                          ariaLabel={`Stop handing on to ${t.name}`}
-                          onClick={() =>
-                            setTargets((list) =>
-                              list.filter((x) => x.key !== t.key),
-                            )
-                          }
-                        />
-                      </span>
-                    ))}
-                    {choices.length ? (
-                      <div className="w-56">
-                        <SelectInput
-                          ariaLabel="Hand on to"
-                          placeholder="+ Add"
-                          value=""
-                          options={choices.map((c) => ({
-                            value: c.key,
-                            label:
-                              c.type === "bot" ? c.name : `${c.name} (widget)`,
-                          }))}
-                          onChange={(key) => {
-                            const c = choices.find((x) => x.key === key);
-                            if (c) setTargets((list) => [...list, c]);
-                          }}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                  <span className={`text-xs ${muted}`}>
-                    {`Nothing here is fine: then the checks only prove ${bot.name}'s own work. To send it to another widget, drag ${bot.name} onto it on the diagram.`}
-                  </span>
-                </div>
-              </PanelSection>
+            <div className={`my-3 border-t ${hairline}`} />
+            <span className={`text-sm font-semibold ${strong}`}>
+              If a check fails
+            </span>
+            <RadioGroup
+              value={draft.onFail}
+              onChange={(onFail) => setDraft((d) => ({ ...d, onFail }))}
+              options={[
+                {
+                  value: "retry",
+                  label: `${bot.name} tries again, told what failed`,
+                },
+                { value: "you", label: "It comes to you" },
+                { value: "stop", label: "The job fails" },
+              ]}
+            />
+            {draft.onFail !== "you" ? (
+              <span className={`text-xs ${muted}`}>
+                {`When it fails, ${bot.name}'s Failed event goes out with the reason, so whatever listens for it runs.`}
+              </span>
+            ) : null}
+            {draft.onFail === "retry" ? (
+              <div className="pt-2">
+                <SelectInput
+                  label="Tries, at most"
+                  value={String(draft.maxTries)}
+                  options={[...new Set([...TRIES, draft.maxTries])]
+                    .sort((a, b) => a - b)
+                    .map((n) => ({
+                      value: String(n),
+                      label: `${n}, then it fails`,
+                    }))}
+                  onChange={(v) =>
+                    setDraft((d) => ({ ...d, maxTries: Number(v) || 3 }))
+                  }
+                />
+              </div>
             ) : null}
           </div>
 
           <aside
             aria-label="The selected check"
-            className={`w-96 flex-shrink-0 min-h-0 overflow-y-auto flex flex-col gap-3 p-4 border-l ${hairline}`}
+            className="flex-1 min-w-0 min-h-0 overflow-y-auto flex flex-col gap-3 px-5 py-4"
             data-testid="selected-check"
           >
             <span
               className={`text-xs font-semibold uppercase tracking-wide ${muted}`}
             >
-              The selected check
+              {adding ? "Add a check" : "The selected check"}
             </span>
-            {step ? (
-              <>
-                <InputText
-                  label="Name"
-                  value={step.name || ""}
-                  onChange={(v) => patchStep({ name: v })}
-                />
-                <SelectInput
-                  label="Kind"
-                  value={choice}
-                  options={kindOptions}
-                  onChange={(v) => {
-                    if (v && v !== choice) {
-                      setDraft((d) =>
-                        updateStep(d, selected, changeKind(step, v)),
-                      );
-                    }
-                  }}
-                />
-                {step.held ? (
-                  <div className="flex flex-col gap-2" data-testid="held-check">
-                    <AlertBanner
-                      variant="warning"
-                      size="compact"
-                      message="This command came with the package, so it's off: Dash won't run it on this computer until you turn it on. Until then, its jobs wait for you to approve the work."
-                    />
-                    <code className="font-mono text-xs break-all">
-                      {(step.check &&
-                        (step.check.command ||
-                          (step.check.fallback &&
-                            step.check.fallback.command) ||
-                          step.check.package)) ||
-                        ""}
-                    </code>
-                    <div>
-                      <Button
-                        title="Turn on"
-                        size="sm"
-                        onClick={() => setDraft((d) => turnOnStep(d, selected))}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-                {step.kind === "check" && step.check ? (
-                  <>
-                    <span className={`text-sm ${muted}`}>
-                      {KIND_INTRO[step.check.kind]}
-                    </span>
-                    <CheckKindEditor
-                      key={`${step.id}-${step.check.kind}`}
-                      check={step.check}
-                      onPatch={patchCheck}
-                      workspaceId={bot.workspaceId}
-                      fieldRows={FIELD_ROWS}
-                      name={step.name}
-                      runsIn={`${bot.name}'s folder`}
-                      onError={setError}
-                      uniqueKey={`${bot.id}-${step.id}`}
-                    />
-                  </>
-                ) : null}
-                {step.kind === "reviewer" ? (
-                  <>
-                    <SelectInput
-                      label="Who reviews"
-                      value={step.botId || ""}
-                      placeholder="Choose a bot"
-                      options={others.map((m) => ({
-                        value: m.id,
-                        label: m.name,
-                      }))}
-                      onChange={(botId) => patchStep({ botId })}
-                    />
-                    <InputText
-                      label="What it looks for (optional)"
-                      value={step.note || ""}
-                      onChange={(v) => patchStep({ note: v })}
-                    />
-                    <span className={`text-sm ${muted}`}>
-                      It reads the work and says pass or fail, with why. It
-                      can't change the work.
-                    </span>
-                  </>
-                ) : null}
-                {step.kind === "you" ? (
-                  <span className={`text-sm ${muted}`}>
-                    {`It waits in Jobs for you to approve it, or send it back to ${bot.name} with a reason.`}
-                  </span>
-                ) : null}
-                <div className="flex flex-row flex-wrap gap-2 pt-2">
-                  <Button3
-                    title="Move up"
-                    size="sm"
-                    disabled={selected === 0}
-                    onClick={() => move(selected, selected - 1)}
-                  />
-                  <Button3
-                    title="Move down"
-                    size="sm"
-                    disabled={selected === draft.steps.length - 1}
-                    onClick={() => move(selected, selected + 1)}
-                  />
-                  <span className="flex-1" />
-                  <Button3
-                    title="Remove this check"
-                    size="sm"
-                    onClick={() => {
-                      setDraft((d) => removeStep(d, selected));
-                      setSelected(null);
-                    }}
-                  />
-                </div>
-              </>
-            ) : (
-              <span className={`text-sm ${muted}`}>
-                Pick a check on the left to change it, or add one with +.
-              </span>
-            )}
+            {adding ? addScreen : selectedCheck}
           </aside>
         </div>
 
         <div
-          className={`flex flex-row items-center gap-3 px-6 py-3 border-t ${hairline}`}
+          className={`flex-shrink-0 flex flex-row items-center gap-3 px-5 py-3 border-t ${hairline}`}
         >
           {error ? (
             <span
@@ -572,7 +616,7 @@ export const BotChecksModal = ({
           )}
           <Button3 title="Cancel" size="sm" onClick={onClose} />
           <Button
-            title={saving ? "Saving…" : "Save"}
+            title={saving ? "Saving…" : "Save checks"}
             size="sm"
             disabled={saving}
             onClick={save}

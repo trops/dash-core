@@ -11,7 +11,7 @@
  *
  * Pure: no React, no IPC.
  */
-import { handsOnTargets, stepTone } from "./checksView";
+import { handsOnTargets } from "./checksView";
 import { arrowHead } from "./teamDiagram";
 import { triggerSummary } from "./teamUtils";
 
@@ -394,14 +394,9 @@ export function cardText(bot, members = [], edges = [], selectedId = null) {
   return { after, failsTo, failures };
 }
 
-/** A check's rough cost, for the panel's list (DASH-127 refines it). */
-export function checkCost(step) {
-  const t = stepTone(step);
-  if (t === "reviewer") return "AI cost";
-  if (t === "you") return "you decide";
-  if (t === "command") return "no AI cost";
-  return "free";
-}
+// A check's rough cost and time: the same words as the checks window's list
+// (DASH-127).
+export { checkCost } from "./checkCost";
 
 // ── The connections panel ──────────────────────────────────────────────
 

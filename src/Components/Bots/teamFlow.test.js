@@ -284,13 +284,15 @@ describe("teamFlow — card text", () => {
     });
   });
 
-  it("checkCost: a rough cost per kind", () => {
-    expect(checkCost({ kind: "check", check: { kind: "rules" } })).toBe("free");
-    expect(checkCost({ kind: "check", check: { kind: "command" } })).toBe(
-      "no AI cost",
+  it("checkCost: the checks window's words (DASH-127)", () => {
+    expect(checkCost({ kind: "check", check: { kind: "rules" } })).toBe(
+      "Free · instant rule",
     );
-    expect(checkCost({ kind: "reviewer" })).toBe("AI cost");
-    expect(checkCost({ kind: "you" })).toBe("you decide");
+    expect(checkCost({ kind: "check", check: { kind: "command" } })).toBe(
+      "No AI cost · time not known yet",
+    );
+    expect(checkCost({ kind: "reviewer" })).toBe("AI · cost not known yet");
+    expect(checkCost({ kind: "you" })).toBe("Free · waits for you");
   });
 });
 

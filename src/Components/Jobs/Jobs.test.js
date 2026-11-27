@@ -741,7 +741,7 @@ describe("what a step needs from you, on the job page (DASH-113)", () => {
     );
     // Only its checks change here.
     expect(within(modal).queryByTestId("hands-on")).toBeNull();
-    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+    fireEvent.click(within(modal).getByRole("button", { name: "Save checks" }));
     await waitFor(() =>
       expect(screen.queryByTestId("bot-checks-modal")).toBeNull(),
     );
