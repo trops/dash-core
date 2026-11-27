@@ -32,6 +32,14 @@ function botUpdatePatch(existing, member, extra = {}) {
     publishes: Array.isArray(planned.publishes)
       ? planned.publishes
       : existing.publishes,
+    // Its own settings as the new version declares them (DASH-136); the
+    // values filled in here stay (one taken away goes with it).
+    ...(Array.isArray(planned.settings)
+      ? {
+          settings: planned.settings,
+          settingValues: keptValues(planned.settings, existing.settingValues),
+        }
+      : {}),
     ...extra,
   };
   // The package's model only when this computer has that AI (the plan
@@ -49,6 +57,16 @@ function botUpdatePatch(existing, member, extra = {}) {
     .filter((n) => !(n.options || []).some((name) => connected.has(name)))
     .map((n) => n.type);
   return { patch, missingProviders };
+}
+
+/** The values kept for the settings still declared. */
+function keptValues(settings, values) {
+  const names = new Set((settings || []).map((d) => d && d.name));
+  const out = {};
+  for (const [k, v] of Object.entries(values || {})) {
+    if (names.has(k)) out[k] = v;
+  }
+  return out;
 }
 
 module.exports = { botUpdatePatch };

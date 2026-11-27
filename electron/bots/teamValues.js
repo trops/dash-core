@@ -99,7 +99,7 @@ function isFolderPath(s) {
  * The declared settings, checked: { settings, errors }. Unknown fields are
  * dropped; a bad one is reported and left out.
  */
-function cleanSettings(input) {
+function cleanSettings(input, { of = "a team" } = {}) {
   const errors = [];
   const settings = [];
   if (input === undefined || input === null) return { settings, errors };
@@ -107,7 +107,7 @@ function cleanSettings(input) {
     return { settings, errors: ["settings must be a list"] };
   }
   if (input.length > MAX_SETTINGS) {
-    errors.push(`a team can have at most ${MAX_SETTINGS} settings`);
+    errors.push(`${of} can have at most ${MAX_SETTINGS} settings`);
   }
   const seen = new Set();
   input.slice(0, MAX_SETTINGS).forEach((s, i) => {
@@ -137,6 +137,9 @@ function cleanSettings(input) {
     if (typeof s.description === "string" && s.description.trim()) {
       out.description = s.description.trim().slice(0, MAX_DESCRIPTION);
     }
+    // Required (DASH-136): setup lists it until it has a value, whether or
+    // not the bot's text uses it yet.
+    if (s.required === true) out.required = true;
     if (type === "table") {
       const read = cleanColumns(s, where);
       if (read.error) {
@@ -299,7 +302,7 @@ function cleanRows(s, raw) {
  * declared names are kept; "" clears one (its default is used).
  * `current` are the values kept so far (a patch keeps the rest).
  */
-function cleanValues(settings, input, current = {}) {
+function cleanValues(settings, input, current = {}, { of = "this team" } = {}) {
   const errors = [];
   const values = {};
   const list = Array.isArray(settings) ? settings : [];
@@ -312,7 +315,7 @@ function cleanValues(settings, input, current = {}) {
   for (const [name, raw] of Object.entries(input)) {
     const s = byName.get(name);
     if (!s) {
-      errors.push(`"${name}" isn't one of this team's settings`);
+      errors.push(`"${name}" isn't one of ${of}'s settings`);
       continue;
     }
     if (raw === null || raw === "") {
@@ -492,6 +495,7 @@ function withTeamValues(
   Object.assign(text, ctxText);
   const values = (team && isObj(team.values) && team.values) || {};
   const tables = new Map();
+  const ownTables = new Set();
   for (const t of declared) {
     if (!t || t.type !== "table" || !NAME_RE.test(String(t.name || ""))) {
       continue;
@@ -501,6 +505,7 @@ function withTeamValues(
       picks && typeof picks[t.name] === "string" ? picks[t.name] : null;
     const row = key ? rows.find((r) => r && r.key === key) || null : null;
     tables.set(t.name, { setting: t, rows, key, row });
+    if (t.owner === "bot") ownTables.add(t.name);
     // Every row, for the bot that picks one (DASH-104).
     const listed = rowsText(t, rows, home);
     if (listed) text[`${t.name}.rows`] = listed;
@@ -543,7 +548,12 @@ function withTeamValues(
     .filter(
       (s) => s && s.type !== "table" && empty.has(s.name) && used.has(s.name),
     )
-    .map((s) => ({ name: s.name, label: s.label || s.name }));
+    .map((s) => ({
+      name: s.name,
+      label: s.label || s.name,
+      // A bot's own setting (DASH-136): filled in on its Settings tab.
+      ...(s.owner === "bot" ? { owner: "bot" } : {}),
+    }));
   // {item.…} or {workspace.…} with none on the job yet: the run can't start.
   for (const name of CONTEXT_NAMES) {
     if (tables.has(name) || !used.has(name)) continue;
@@ -599,6 +609,9 @@ function withTeamValues(
       }
     }
   }
+  for (const m of missing) {
+    if (ownTables.has(m.name)) m.owner = "bot";
+  }
   return { bot: out, missing };
 }
 
@@ -631,21 +644,34 @@ function usesContext(bot) {
   return JSON.stringify(texts).search(re) !== -1;
 }
 
+/** Where a missing setting is filled in: its bot's Settings tab, or the team's page. */
+const fillWhere = (m) =>
+  m && m.owner === "bot"
+    ? "this bot's Settings tab"
+    : "the dashboard (Bots › Team settings)";
+
 /** The run's error when settings it uses can't be filled in. */
 function missingMessage(missing) {
   const all = missing || [];
-  const plain = all.filter((m) => !m.reason);
   const parts = [];
-  const list = plain.map((m) =>
-    m.label && m.label !== m.name ? `${m.label} ({${m.name}})` : `{${m.name}}`,
-  );
-  if (list.length) {
+  // The bot's own settings (DASH-136), then its team's.
+  for (const owner of ["bot", "team"]) {
+    const plain = all.filter(
+      (m) => !m.reason && (owner === "bot") === (m.owner === "bot"),
+    );
+    const list = plain.map((m) =>
+      m.label && m.label !== m.name
+        ? `${m.label} ({${m.name}})`
+        : `{${m.name}}`,
+    );
+    if (!list.length) continue;
+    const whose = owner === "bot" ? "This bot's" : "This team's";
     parts.push(
-      `This team's setting${list.length === 1 ? "" : "s"} ${list.join(
+      `${whose} setting${list.length === 1 ? "" : "s"} ${list.join(
         ", ",
       )} ${list.length === 1 ? "has" : "have"} no value: fill ${
         list.length === 1 ? "it" : "them"
-      } in on the dashboard (Bots › Team settings), then run again.`,
+      } in on ${fillWhere(plain[0])}, then run again.`,
     );
   }
   const keysText = (keys) =>
@@ -653,9 +679,10 @@ function missingMessage(missing) {
   for (const m of all) {
     if (!m.reason) continue;
     const t = `${m.label} ({${m.name}.…})`;
+    const whose = m.owner === "bot" ? "This bot's" : "The team's";
     if (m.reason === "no-rows") {
       parts.push(
-        `The team's table ${t} has no rows: add them on the dashboard (Bots › Team settings).`,
+        `${whose} table ${t} has no rows: add them on ${fillWhere(m)}.`,
       );
     } else if (m.reason === "unpicked") {
       parts.push(
@@ -667,7 +694,7 @@ function missingMessage(missing) {
       );
     } else if (m.reason === "empty-cell") {
       parts.push(
-        `${t}: row "${m.key}" has no ${m.fieldLabel} ({${m.name}.${m.field}}): fill it in on the dashboard (Bots › Team settings).`,
+        `${t}: row "${m.key}" has no ${m.fieldLabel} ({${m.name}.${m.field}}): fill it in on ${fillWhere(m)}.`,
       );
     } else if (m.reason === "no-item") {
       parts.push(
@@ -721,6 +748,63 @@ function mergeTeamValues(
   return { declared, values: read.values, errors };
 }
 
+/**
+ * A bot's own settings (DASH-136) with some declared and values set, the
+ * same way as a team's: { settings, settingValues, errors }. Nothing
+ * changes when there are errors.
+ */
+function mergeBotSettings(
+  bot,
+  { declare = null, values = null, remove = null } = {},
+) {
+  const errors = [];
+  const current = cleanSettings(bot && bot.settings, { of: "a bot" }).settings;
+  let declared = current;
+  if (declare !== null && declare !== undefined) {
+    const read = cleanSettings(declare, { of: "a bot" });
+    errors.push(...read.errors);
+    const byName = new Map(current.map((d) => [d.name, d]));
+    for (const d of read.settings) byName.set(d.name, d);
+    declared = [...byName.values()];
+  }
+  if (Array.isArray(remove) && remove.length) {
+    const gone = new Set(remove.map(String));
+    for (const n of gone) {
+      if (!declared.some((d) => d.name === n)) {
+        errors.push(`"${n}" isn't one of this bot's settings`);
+      }
+    }
+    declared = declared.filter((d) => !gone.has(d.name));
+  }
+  if (declared.length > MAX_SETTINGS) {
+    errors.push(`a bot can have at most ${MAX_SETTINGS} settings`);
+  }
+  const read = cleanValues(declared, values, bot && bot.settingValues, {
+    of: "this bot",
+  });
+  errors.push(...read.errors);
+  return { settings: declared, settingValues: read.values, errors };
+}
+
+/**
+ * A bot definition's own settings, cleaned (DASH-136): { settings,
+ * settingValues, errors }. Values of names it doesn't declare (a setting
+ * taken away) are dropped quietly; a bad declaration or value is an error.
+ */
+function normalizeBotSettings(def) {
+  const read = cleanSettings(def && def.settings, { of: "a bot" });
+  const names = new Set(read.settings.map((d) => d.name));
+  const raw = def && isObj(def.settingValues) ? def.settingValues : {};
+  const kept = {};
+  for (const [k, v] of Object.entries(raw)) if (names.has(k)) kept[k] = v;
+  const v = cleanValues(read.settings, kept, {}, { of: "this bot" });
+  return {
+    settings: read.settings,
+    settingValues: v.values,
+    errors: [...read.errors, ...v.errors].map((e) => `settings: ${e}`),
+  };
+}
+
 /** A folder that comes from a setting ("{workFolder}/repo"): it travels. */
 function usesSetting(str, names) {
   const s = String(str || "");
@@ -737,6 +821,8 @@ module.exports = {
   cleanSettings,
   cleanValues,
   mergeTeamValues,
+  mergeBotSettings,
+  normalizeBotSettings,
   settingTexts,
   fill,
   namesUsed,

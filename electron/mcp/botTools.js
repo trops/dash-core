@@ -40,6 +40,7 @@ const { botEventType, botRef } = require("../bots/botEvents");
 const { deletesOrSends } = require("../bots/riskyTools");
 const { cleanFrom, TASK_EXPIRES_MS } = require("../bots/mcpTasks");
 const { cleanBotChecks, checksError } = require("../bots/botChecks");
+const { mergeBotSettings } = require("../bots/teamValues");
 
 const BUILTIN = ["none", "read-only", "all"];
 const POLICIES = ["ask", "ask-every", "allow", "unattended"];
@@ -118,8 +119,65 @@ const PROVIDER_SCHEMA = {
   required: ["name"],
 };
 
+// A setting as set_team_settings and a bot's settings declare it.
+const SETTING_ITEM = {
+  type: "object",
+  properties: {
+    name: { type: "string" },
+    label: { type: "string" },
+    type: {
+      type: "string",
+      enum: ["text", "url", "folder", "command", "boolean", "number", "table"],
+    },
+    default: {},
+    required: {
+      type: "boolean",
+      description:
+        "A bot's own setting only (DASH-136): its team's setup lists the bot until this has a value.",
+    },
+    description: { type: "string" },
+    columns: {
+      type: "array",
+      description: "For a table: its fields (not 'key', which every row has).",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          label: { type: "string" },
+          type: {
+            type: "string",
+            enum: ["text", "url", "folder", "command", "boolean", "number"],
+          },
+          description: { type: "string" },
+        },
+        required: ["name"],
+      },
+    },
+    pick: {
+      type: "string",
+      description:
+        "For a table: the answer's field that names the job's row (default: the table's name).",
+    },
+  },
+  required: ["name"],
+};
+
 // The fields create_bot and update_bot share.
 const BOT_FIELDS = {
+  settings: {
+    type: "object",
+    description:
+      "The bot's own settings (DASH-136): the settings for its own job (a work folder, the repos it picks from), declared like set_team_settings' ({ declare, values, remove }) and kept on this bot. It uses them as {name} like team settings; its own win over a team setting of the same name. Mark one 'required' when the bot can't do its job without it: the team's setup lists the bot until it has a value. Permissions (push, merge…) are never settings: they're the bot's own access.",
+    properties: {
+      declare: { type: "array", items: SETTING_ITEM },
+      values: {
+        type: "object",
+        description:
+          "Values by setting name; '' clears one. A table's value is its rows: [{ key, ...columns }].",
+      },
+      remove: { type: "array", items: { type: "string" } },
+    },
+  },
   name: { type: "string", description: "The bot's name." },
   instructions: {
     type: "string",
@@ -416,58 +474,7 @@ const BOT_TOOLS = [
         },
         declare: {
           type: "array",
-          items: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              label: { type: "string" },
-              type: {
-                type: "string",
-                enum: [
-                  "text",
-                  "url",
-                  "folder",
-                  "command",
-                  "boolean",
-                  "number",
-                  "table",
-                ],
-              },
-              default: {},
-              description: { type: "string" },
-              columns: {
-                type: "array",
-                description:
-                  "For a table: its fields (not 'key', which every row has).",
-                items: {
-                  type: "object",
-                  properties: {
-                    name: { type: "string" },
-                    label: { type: "string" },
-                    type: {
-                      type: "string",
-                      enum: [
-                        "text",
-                        "url",
-                        "folder",
-                        "command",
-                        "boolean",
-                        "number",
-                      ],
-                    },
-                    description: { type: "string" },
-                  },
-                  required: ["name"],
-                },
-              },
-              pick: {
-                type: "string",
-                description:
-                  "For a table: the answer's field that names the job's row (default: the table's name).",
-              },
-            },
-            required: ["name"],
-          },
+          items: SETTING_ITEM,
           description: "Settings to add or replace.",
         },
         values: {
@@ -704,6 +711,15 @@ function botView(bot, { workspaces, grant, paused }) {
     whilePaused: bot.whilePaused || "queue",
     publishes: Array.isArray(bot.publishes) ? bot.publishes : [],
     checks: cleanBotChecks(bot.checks),
+    // Its own settings (DASH-136), only when it has some.
+    ...(Array.isArray(bot.settings) && bot.settings.length
+      ? {
+          settings: {
+            declared: bot.settings,
+            values: bot.settingValues || {},
+          },
+        }
+      : {}),
     instructions: bot.instructions || "",
   };
 }
@@ -957,6 +973,26 @@ function readFields(
     const r = readChecks(args.checks, { members, selfId });
     if (r.problems.length) problems.push(...r.problems);
     else fields.checks = { checks: r.checks };
+  }
+  // Its own settings (DASH-136): a change to what it has.
+  if (has("settings")) {
+    const change = args.settings;
+    if (!change || typeof change !== "object" || Array.isArray(change)) {
+      problems.push("settings must be { declare?, values?, remove? }.");
+    } else {
+      const merged = mergeBotSettings(current, {
+        declare: change.declare === undefined ? null : change.declare,
+        values: change.values === undefined ? null : change.values,
+        remove: change.remove === undefined ? null : change.remove,
+      });
+      if (merged.errors.length) problems.push(...merged.errors);
+      else {
+        fields.settings = {
+          settings: merged.settings,
+          settingValues: merged.settingValues,
+        };
+      }
+    }
   }
   return { fields, access, problems, notes };
 }
@@ -1459,6 +1495,16 @@ function describeNew(
     }.`,
   );
   lines.push(`Checks: ${checksText(def.checks, nameOf)}.`);
+  // Its own settings (DASH-136).
+  if (Array.isArray(def.settings) && def.settings.length) {
+    lines.push(
+      "Its own settings:",
+      ...describeSettings(
+        { declared: [], values: {} },
+        { declared: def.settings, values: def.settingValues || {} },
+      ).lines,
+    );
+  }
   lines.push(
     startPaused
       ? "It's saved paused: the user turns it on in Dash."
@@ -1670,6 +1716,27 @@ function describeChanges(
           checksText(to, nameOf),
           count(to) < count(from) || (asksYou(from) && !asksYou(to)),
         );
+        break;
+      }
+      case "settings": {
+        // Its own settings (DASH-136): a folder it now may work in is more
+        // access, as for a team's.
+        const said = describeSettings(
+          {
+            declared: Array.isArray(bot.settings) ? bot.settings : [],
+            values: bot.settingValues || {},
+          },
+          { declared: next.settings, values: next.settingValues },
+          {
+            usedBy: Object.fromEntries(
+              (next.settings || []).map((d) => [d.name, [bot.name || "it"]]),
+            ),
+          },
+        );
+        lines.push(
+          ...said.lines.map((l) => l.replace(/^- /, "- Its setting: ")),
+        );
+        if (said.wider.length) wider.push(...said.wider);
         break;
       }
       default:
@@ -2427,6 +2494,7 @@ function makeBotToolHandlers({
         ...pick("whilePaused"),
         ...pick("publishes"),
         ...pick("checks"),
+        ...pick("settings"),
       };
       // Only tools named in runWithoutAsking ever run without asking.
       const grants = {};
@@ -2584,6 +2652,10 @@ function makeBotToolHandlers({
         whilePaused: { whilePaused: bot.whilePaused || "queue" },
         publishes: { publishes: bot.publishes || [] },
         checks: { checks: cleanBotChecks(bot.checks) },
+        settings: {
+          settings: Array.isArray(bot.settings) ? bot.settings : [],
+          settingValues: bot.settingValues || {},
+        },
       };
       const changes = {};
       for (const [k, frag] of Object.entries(read.fields)) {

@@ -19,6 +19,7 @@ import { StarRating } from "./StarRating";
 import { InstallProgressModal } from "./InstallProgressModal";
 import { RegistryAuthModal } from "../../Registry/RegistryAuthModal";
 import { DashboardInstallOptionsModal } from "./DashboardInstallOptionsModal";
+import { botsWithSettings } from "../../Bots/BotSettings";
 import { teamLines, installedText } from "./dashboardBots";
 import { unavailableRequiredWidgets } from "./registryDashboardCompat";
 
@@ -690,6 +691,11 @@ export const RegistryDashboardDetail = ({
             (preview?.team || pkg.team).settings) ||
           []
         }
+        teamBots={botsWithSettings(
+          ((preview?.team || pkg.team) &&
+            (preview?.team || pkg.team).members) ||
+            [],
+        )}
       />
 
       {/* Progress Modal */}

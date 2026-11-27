@@ -65,10 +65,18 @@ const {
 } = require("../bots/teamManifest");
 const {
   mergeTeamValues,
+  mergeBotSettings,
+  normalizeBotSettings,
   withTeamValues,
   pickFrom,
   namesUsed,
 } = require("../bots/teamValues");
+// Settings a bot owns (DASH-136): on top of its team's when it runs.
+const {
+  withBotSettings,
+  botSetupStatus,
+  splitInstallValues,
+} = require("../../src/utils/botSettings");
 const {
   contextFrom,
   mergeItem,
@@ -1347,10 +1355,19 @@ const botController = {
   _tableKeys(workspaceId) {
     try {
       const team = this._store.getTeamSettings(workspaceId) || {};
-      return (Array.isArray(team.declared) ? team.declared : [])
+      // Its bots' own tables too (DASH-136).
+      const own = this._store
+        .list()
+        .filter((b) => isOnTeam(b, workspaceId))
+        .flatMap((b) => (Array.isArray(b.settings) ? b.settings : []));
+      const keys = [
+        ...(Array.isArray(team.declared) ? team.declared : []),
+        ...own,
+      ]
         .filter((d) => d && d.type === "table")
         .map((d) => d.pick || d.name)
         .filter((n) => typeof n === "string");
+      return [...new Set(keys)];
     } catch (_e) {
       return [];
     }
@@ -1791,7 +1808,24 @@ const botController = {
     // One check for every save, before anything is written (consolidation
     // Phase 1d): the whole bot it makes — a partial save merged onto it.
     const current = isNew ? null : this._store.get(definition.id);
-    const whole = isNew ? definition : { ...current, ...definition };
+    let whole = isNew ? definition : { ...current, ...definition };
+    // Its own settings (DASH-136), kept clean: a value for a setting taken
+    // away goes with it.
+    if (
+      definition &&
+      (definition.settings !== undefined ||
+        definition.settingValues !== undefined)
+    ) {
+      const own = normalizeBotSettings(whole);
+      if (!own.errors.length) {
+        definition = {
+          ...definition,
+          settings: own.settings,
+          settingValues: own.settingValues,
+        };
+        whole = { ...whole, ...definition };
+      }
+    }
     const { errors, warnings } = checkBot(
       whole,
       this._botCheckContext(current),
@@ -2484,6 +2518,39 @@ const botController = {
   },
 
   /**
+   * Which of a team's bots still need a setting filled in (DASH-136):
+   * botSettings.botSetupStatus over its bots and its team settings —
+   * [{ botId, name, missing: [{ name, label, owner, type }] }].
+   */
+  setupStatus(workspaceId) {
+    if (workspaceId === null || workspaceId === undefined) return [];
+    const bots = this._store.list().filter((b) => isOnTeam(b, workspaceId));
+    return botSetupStatus(bots, this._store.getTeamSettings(workspaceId));
+  },
+
+  /**
+   * Change a bot's own settings (DASH-136): `{ declare, values, remove }`,
+   * as for a team (teamValues.mergeBotSettings). Saves nothing when there
+   * are errors.
+   * @returns {{ settings, settingValues } | { errors: string[] }}
+   */
+  setBotSettings(botId, change = {}) {
+    const bot = this._store.get(botId);
+    if (!bot) return { errors: [`No bot "${botId}".`] };
+    const merged = mergeBotSettings(bot, change || {});
+    if (merged.errors.length) return { errors: merged.errors };
+    const saved = this.save({
+      id: bot.id,
+      settings: merged.settings,
+      settingValues: merged.settingValues,
+    });
+    return {
+      settings: (saved && saved.settings) || merged.settings,
+      settingValues: (saved && saved.settingValues) || merged.settingValues,
+    };
+  },
+
+  /**
    * Change a team's settings: `{ declare, values, remove }`
    * (teamValues.mergeTeamValues). Saves nothing when there are errors.
    * @returns {{ declared, values, usedBy } | { errors: string[] }}
@@ -2511,12 +2578,13 @@ const botController = {
   },
 
   /** A job remembers the table rows an answer picked (DASH-84). */
-  _rememberPicks(jobId, workspaceId, output) {
+  _rememberPicks(jobId, workspaceId, output, bot = null) {
     if (!jobId || workspaceId == null || !this._jobs.setPicks) return;
     try {
       const picks = pickFrom(
         String(output),
-        this._store.getTeamSettings(workspaceId),
+        // Its own tables too (DASH-136).
+        withBotSettings(this._store.getTeamSettings(workspaceId), bot),
       );
       if (Object.keys(picks).length) this._jobs.setPicks(jobId, picks);
     } catch (_e) {
@@ -2601,10 +2669,12 @@ const botController = {
   _runPicks(botId, jobId, prompt) {
     try {
       const bot = this._store.get(botId);
-      const team =
+      const team = withBotSettings(
         bot && bot.workspaceId != null
           ? this._store.getTeamSettings(bot.workspaceId)
-          : null;
+          : null,
+        bot,
+      );
       return {
         ...(jobId && this._jobs && this._jobs.picksOf
           ? this._jobs.picksOf(jobId)
@@ -2625,8 +2695,16 @@ const botController = {
    */
   resolvedBot(id, ctx = null) {
     const bot = this._store.get(id);
-    if (!bot || bot.workspaceId == null) return bot || null;
-    const team = this._store.getTeamSettings(bot.workspaceId);
+    if (!bot) return null;
+    const ownSettings = Array.isArray(bot.settings) && bot.settings.length;
+    if (bot.workspaceId == null && !ownSettings) return bot;
+    // Its team's settings, and its own on top (DASH-136).
+    const team = withBotSettings(
+      bot.workspaceId == null
+        ? null
+        : this._store.getTeamSettings(bot.workspaceId),
+      bot,
+    );
     const c = ctx || {};
     const picks = {
       ...(c.jobId && this._jobs && this._jobs.picksOf
@@ -4021,9 +4099,49 @@ const botController = {
     }
   },
 
-  _installTeamPlan(plan, source, embedded = null, values = null) {
+  /**
+   * A plan's bots with their own settings' values from the install form
+   * (DASH-136): { plan, errors }. `botValues`: { [role]: { [name]: value } }.
+   */
+  _withBotInstallValues(plan, botValues = {}) {
+    const errors = [];
+    const members = plan.members.map((m) => {
+      const declared = m.definition && m.definition.settings;
+      if (!Array.isArray(declared) || !declared.length) return m;
+      const own = mergeBotSettings(
+        { settings: declared, settingValues: {} },
+        { values: (botValues && botValues[m.role]) || null },
+      );
+      for (const e of own.errors) {
+        errors.push(`${m.definition.name || m.role}: ${e}`);
+      }
+      return {
+        ...m,
+        definition: {
+          ...m.definition,
+          settings: own.settings,
+          settingValues: own.settingValues,
+        },
+      };
+    });
+    return { plan: { ...plan, members }, errors };
+  },
+
+  _installTeamPlan(plan, source, embedded = null, allValues = null) {
     if (!plan.members.length)
       return { error: "Pick at least one bot to install." };
+    // The team's values, and each bot's own under "@bots" (DASH-136):
+    // each bot's checked before anything is created, like the team's.
+    const split = splitInstallValues(allValues);
+    const values = split.team;
+    const own = this._withBotInstallValues(plan, split.bots);
+    if (own.errors.length) {
+      return {
+        error: `The team wasn't installed:\n${own.errors.map((p) => `- ${p}`).join("\n")}`,
+        errors: own.errors,
+      };
+    }
+    plan = own.plan;
     // Its settings (DASH-57): checked before anything is created.
     const dashboardOf =
       plan.members[0] && plan.members[0].definition.workspaceId;
@@ -4178,6 +4296,16 @@ const botController = {
         }
       }
     }
+    // Bots whose own settings still need a value (DASH-136).
+    const botsNeedSettings = botSetupStatus(
+      Object.values(created),
+      dashboardOf != null ? this._store.getTeamSettings(dashboardOf) : null,
+    )
+      .map((b) => ({
+        ...b,
+        missing: b.missing.filter((m) => m.owner === "bot"),
+      }))
+      .filter((b) => b.missing.length);
     // Commands that came with it: off until turned on (DASH-57).
     const heldChecks = [];
     for (const m of plan.members) {
@@ -4196,6 +4324,7 @@ const botController = {
       droppedWiring: plan.droppedWiring || [],
       unwired,
       ...(needsSettings.length ? { needsSettings } : {}),
+      ...(botsNeedSettings.length ? { botsNeedSettings } : {}),
       ...(heldChecks.length ? { heldChecks } : {}),
     };
   },
@@ -5650,7 +5779,7 @@ const botController = {
       // The rows of the team's tables its answer picked (DASH-84): the
       // job's later runs fill {repo.*} from them.
       if (record && record.status === "completed" && record.output) {
-        this._rememberPicks(jobId, bot.workspaceId, record.output);
+        this._rememberPicks(jobId, bot.workspaceId, record.output, bot);
         // What it's about and where its files are (DASH-100).
         this._rememberContext(jobId, botId, record.output);
       }

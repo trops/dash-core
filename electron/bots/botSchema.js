@@ -13,6 +13,7 @@
 "use strict";
 
 const { checksError } = require("./botChecks");
+const { normalizeBotSettings } = require("./teamValues");
 
 const SCHEMA_VERSION = 1;
 
@@ -213,6 +214,20 @@ function validateBotDefinition(def) {
   if (Array.isArray(def.publishes)) {
     const err = publishesError(def.publishes);
     if (err) errors.push(err);
+  }
+  // Its own settings (DASH-136): declared like a team's, values kept here.
+  if (def.settings != null || def.settingValues != null) {
+    if (def.settings != null && !Array.isArray(def.settings)) {
+      errors.push("settings must be a list");
+    } else if (
+      def.settingValues != null &&
+      (typeof def.settingValues !== "object" ||
+        Array.isArray(def.settingValues))
+    ) {
+      errors.push("settingValues must be an object");
+    } else {
+      errors.push(...normalizeBotSettings(def).errors);
+    }
   }
   // Its own checks (bot-checks PRD): { steps, onFail, maxTries, handsOn }.
   const checksErr = checksError(def.checks, def.id || null);
