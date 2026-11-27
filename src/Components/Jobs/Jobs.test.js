@@ -264,7 +264,7 @@ describe("JobsPage", () => {
     render(<JobsPage workspaces={WORKSPACES} />);
     fireEvent.click(await screen.findByText("Spool shelf"));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Turn on Drafter" }),
+      await screen.findByRole("button", { name: "Resume Drafter" }),
     );
     expect(calls.resume).toEqual(["dra"]);
     fireEvent.click(screen.getByText("Walnut U desk, 60 inches wide"));
@@ -470,5 +470,257 @@ describe("a team's self-test job (DASH-109)", () => {
       'Reporter: addOrEditJiraIssueComment on Atlassian MCP {"x":1}',
     ]);
     expect(skippedLines({ ...job, test: false })).toEqual([]);
+  });
+});
+
+describe("what a step needs from you, on the job page (DASH-113)", () => {
+  const flow = {
+    kind: "bot-checks",
+    botId: "pr",
+    steps: [
+      { id: "step_work", kind: "bot", name: "PR Bot", botId: "pr" },
+      { id: "step_you", kind: "you", name: "You approve" },
+    ],
+  };
+  const work = {
+    stepId: "step_work",
+    status: "passed",
+    botName: "PR Bot",
+    round: 1,
+    at: T,
+    output: { answer: "Opened the plan." },
+  };
+  const goalFor = (taskStatus, extra = []) => ({
+    id: "g1",
+    workspaceId: "1",
+    title: "PR Bot: the plan",
+    flow,
+    createdAt: T,
+    tasks: [
+      {
+        id: "t1",
+        status: taskStatus,
+        stepId: "step_you",
+        round: 1,
+        history: [work, ...extra],
+      },
+    ],
+  });
+  const jobWith = (step) => ({
+    id: "job_x",
+    workspaceId: "1",
+    leadId: "lead1",
+    leadName: "Code Lead",
+    title: "Fix the slug",
+    startedBy: { kind: "you" },
+    status: step.status === "needs-you" ? "needs-you" : "running",
+    createdAt: T,
+    updatedAt: T,
+    steps: [
+      {
+        id: "s1",
+        botId: "pr",
+        botName: "PR Bot",
+        why: { kind: "handon", by: "Coder" },
+        ...step,
+      },
+    ],
+  });
+
+  // A live mainApi: jobs-changed, goals:changed and approvals-changed
+  // listeners kept, so a test can move things on while the page is open.
+  function liveApi({ job, goal = null, approvals = [] }) {
+    const state = { job, goal, approvals };
+    const jobFns = [];
+    const goalFns = [];
+    const apprFns = [];
+    const calls = { taskAction: [], approve: [], resume: [] };
+    window.mainApi = {
+      on: jest.fn((ch, fn) => {
+        if (ch === "goals:changed") goalFns.push(fn);
+        return String(goalFns.length);
+      }),
+      removeListener: jest.fn(),
+      goals: {
+        get: jest.fn(async () => state.goal),
+        taskAction: jest.fn(async (taskId, action) => {
+          calls.taskAction.push([taskId, action]);
+          return { ok: true };
+        }),
+      },
+      bots: {
+        listJobs: jest.fn(async () => [state.job]),
+        getJob: jest.fn(async () => state.job),
+        listApprovals: jest.fn(async () => state.approvals),
+        approve: jest.fn(async (id, d) => {
+          calls.approve.push([id, d]);
+          return { ok: true };
+        }),
+        resumeBot: jest.fn(async (id) => calls.resume.push(id)),
+        onJobsChanged: jest.fn((fn) => {
+          jobFns.push(fn);
+          return "j";
+        }),
+        onApprovalsChanged: jest.fn((fn) => {
+          apprFns.push(fn);
+          return "a";
+        }),
+        removeListener: jest.fn(),
+      },
+    };
+    const move = async ({ job: j, goal: g, approvals: a }) => {
+      const { act } = require("@testing-library/react");
+      await act(async () => {
+        if (j) state.job = j;
+        if (g) state.goal = g;
+        if (a) state.approvals = a;
+        if (j) jobFns.forEach((fn) => fn({ jobId: j.id, workspaceId: "1" }));
+        if (g) goalFns.forEach((fn) => fn({}, { goalId: g.id }));
+        if (a) apprFns.forEach((fn) => fn({ approvals: a }));
+      });
+    };
+    return { calls, move };
+  }
+
+  it("a step that starts waiting while the page is open shows its action, without remounting", async () => {
+    const { move, calls } = liveApi({
+      job: jobWith({ status: "checking", goalId: "g1" }),
+      goal: goalFor("new"),
+    });
+    render(<JobsPage workspaces={WORKSPACES} />);
+    const detail = await screen.findByTestId("job-detail");
+    await within(detail).findByTestId("job-step");
+    expect(screen.queryByTestId("job-waiting")).toBeNull();
+    expect(screen.queryByTestId("job-needs-you")).toBeNull();
+    // Its "you" check comes up: the job and its goal change.
+    await move({
+      job: jobWith({ status: "needs-you", goalId: "g1" }),
+      goal: goalFor("ready"),
+    });
+    const card = await within(detail).findByTestId("job-waiting");
+    // The same detail, not a new one.
+    expect(screen.getByTestId("job-detail")).toBe(detail);
+    expect(screen.getByTestId("job-needs-you")).toHaveTextContent(
+      "Needs you · PR Bot is waiting for you",
+    );
+    fireEvent.click(within(card).getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(calls.taskAction).toEqual([["t1", "done"]]));
+    // Approved: the step updates in place.
+    await move({
+      job: jobWith({ status: "done", goalId: "g1" }),
+      goal: goalFor("done"),
+    });
+    await waitFor(() => expect(screen.queryByTestId("job-waiting")).toBeNull());
+  });
+
+  it("a tool approval that arrives while it runs shows Allow once / Deny on the step", async () => {
+    const { move, calls } = liveApi({ job: jobWith({ status: "running" }) });
+    render(<JobsPage workspaces={WORKSPACES} />);
+    await screen.findByTestId("job-detail");
+    expect(screen.queryByTestId("job-approval")).toBeNull();
+    await move({
+      approvals: [
+        {
+          id: "appr_1",
+          request: {
+            botId: "pr",
+            serverName: "GitHub",
+            toolName: "create_pull_request",
+            input: { title: "Fix the slug" },
+          },
+        },
+      ],
+    });
+    const card = await screen.findByTestId("job-approval");
+    expect(screen.getByTestId("job-needs-you")).toHaveTextContent(
+      "PR Bot asks to use a tool",
+    );
+    fireEvent.click(within(card).getByRole("button", { name: "Allow once" }));
+    await waitFor(() =>
+      expect(calls.approve).toEqual([["appr_1", { allow: true }]]),
+    );
+    await move({ approvals: [] });
+    await waitFor(() =>
+      expect(screen.queryByTestId("job-approval")).toBeNull(),
+    );
+    expect(
+      within(screen.getByTestId("job-detail")).queryByText("Deny"),
+    ).toBeNull();
+  });
+
+  it("a handoff ask shows its question and an answer box", async () => {
+    const { calls } = liveApi({
+      job: jobWith({
+        status: "needs-you",
+        goalId: "g1",
+        summary: "It asks: Which branch?",
+      }),
+      goal: goalFor("needs-you", [
+        {
+          stepId: "step_handoff",
+          status: "needs-you",
+          ask: "Which branch?",
+          round: 1,
+          at: T,
+        },
+      ]),
+    });
+    render(<JobsPage workspaces={WORKSPACES} />);
+    const card = await screen.findByTestId("job-asking");
+    expect(within(card).getByTestId("job-question")).toHaveTextContent(
+      "Which branch?",
+    );
+    expect(screen.getByTestId("job-needs-you")).toHaveTextContent(
+      "PR Bot asks you a question",
+    );
+    fireEvent.change(within(card).getByRole("textbox"), {
+      target: { value: "main" },
+    });
+    fireEvent.click(within(card).getByRole("button", { name: "Send answer" }));
+    await waitFor(() =>
+      expect(calls.taskAction).toEqual([
+        ["t1", { type: "answer", reason: "main" }],
+      ]),
+    );
+  });
+
+  it("a 'you' check offers Approve and Send back with a note", async () => {
+    const { calls } = liveApi({
+      job: jobWith({ status: "needs-you", goalId: "g1" }),
+      goal: goalFor("ready"),
+    });
+    render(<JobsPage workspaces={WORKSPACES} />);
+    const card = await screen.findByTestId("job-waiting");
+    expect(within(card).getByTestId("job-work")).toHaveTextContent(
+      "Opened the plan.",
+    );
+    fireEvent.click(within(card).getByRole("button", { name: "Send back…" }));
+    fireEvent.change(within(card).getByRole("textbox"), {
+      target: { value: "Smaller." },
+    });
+    fireEvent.click(within(card).getByRole("button", { name: "Send back" }));
+    await waitFor(() =>
+      expect(calls.taskAction).toEqual([
+        ["t1", { type: "send-back", reason: "Smaller." }],
+      ]),
+    );
+  });
+
+  it("a paused bot offers Resume, and the header links to its step", async () => {
+    const { calls } = liveApi({
+      job: jobWith({ status: "needs-you", waiting: "paused" }),
+    });
+    render(<JobsPage workspaces={WORKSPACES} />);
+    const card = await screen.findByTestId("job-paused");
+    const header = screen.getByTestId("job-needs-you");
+    expect(header).toHaveTextContent("PR Bot is paused");
+    const step = document.getElementById("job-step-s1");
+    step.scrollIntoView = jest.fn();
+    fireEvent.click(within(header).getByRole("button", { name: "Go to it" }));
+    expect(step.scrollIntoView).toHaveBeenCalled();
+    fireEvent.click(
+      within(card).getByRole("button", { name: "Resume PR Bot" }),
+    );
+    await waitFor(() => expect(calls.resume).toEqual(["pr"]));
   });
 });

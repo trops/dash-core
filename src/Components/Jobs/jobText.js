@@ -241,3 +241,38 @@ export function waitingStep(job) {
     ((job && job.steps) || []).find((s) => s.status === "needs-you") || null
   );
 }
+
+const approvalOfStep = (step, approvals) =>
+  (approvals || []).find(
+    (a) =>
+      a &&
+      a.request &&
+      step &&
+      ["running", "checking", "needs-you"].includes(step.status) &&
+      String(a.request.botId) === String(step.botId),
+  ) || null;
+
+/**
+ * The step a job waits on you at (DASH-113): one that needs you, or one
+ * whose bot waits on a tool approval (its step still runs). null if none.
+ */
+export function needsYouStep(job, approvals = []) {
+  const steps = (job && job.steps) || [];
+  return (
+    steps.find((s) => s.status === "needs-you") ||
+    steps.find((s) => approvalOfStep(s, approvals)) ||
+    null
+  );
+}
+
+/** The header's words for it: "Drafter asks you a question". */
+export function needsYouText(step, approvals = []) {
+  if (!step) return "";
+  const bot = step.botName || "A bot";
+  if (approvalOfStep(step, approvals)) return `${bot} asks to use a tool`;
+  if (step.waiting === "paused") return `${bot} is paused`;
+  if (/^It asks:/.test(String(step.summary || ""))) {
+    return `${bot} asks you a question`;
+  }
+  return `${bot} is waiting for you`;
+}
