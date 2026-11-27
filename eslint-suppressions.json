@@ -1,0 +1,833 @@
+{
+  "src/Components/AiAssistant/ChatCore.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/AppPages/BotsPage.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/AppPages/DashTeamPanel.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/AppPages/DashboardsPage.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/AppPages/ProviderUseDialog.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/AppPages/ThemesPage.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/AppPages/WidgetPreview.js": {
+    "dash/no-palette-classes": {
+      "count": 3
+    }
+  },
+  "src/Components/AppPages/WidgetsPage.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    }
+  },
+  "src/Components/AppPages/botSummary.js": {
+    "dash/no-palette-classes": {
+      "count": 8
+    }
+  },
+  "src/Components/AppPages/useProviderStatus.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/AppUpdatesModal.js": {
+    "dash/no-palette-classes": {
+      "count": 53
+    }
+  },
+  "src/Components/Bots/AddCheckScreen.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/Components/Bots/BotMonitor.js": {
+    "dash/no-palette-classes": {
+      "count": 5
+    }
+  },
+  "src/Components/Bots/BotRunHistory.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    }
+  },
+  "src/Components/Bots/BotsView.js": {
+    "dash/no-palette-classes": {
+      "count": 6
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 4
+    }
+  },
+  "src/Components/Bots/ChecksSection.js": {
+    "dash/no-palette-classes": {
+      "count": 3
+    }
+  },
+  "src/Components/Bots/NewBotModal.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Bots/PublishBotDialog.js": {
+    "dash/no-palette-classes": {
+      "count": 5
+    }
+  },
+  "src/Components/Bots/TeamBudgetDialog.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/Bots/TeamChart.js": {
+    "dash/no-palette-classes": {
+      "count": 6
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/Bots/TeamChartLegend.js": {
+    "dash/no-palette-classes": {
+      "count": 3
+    }
+  },
+  "src/Components/Bots/TeamConnectionsPanel.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Bots/TeamSetupChecklist.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/Components/Bots/checksView.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    }
+  },
+  "src/Components/Bots/teamUtils.js": {
+    "dash/no-palette-classes": {
+      "count": 5
+    }
+  },
+  "src/Components/Dashboard/ConfigListRow.js": {
+    "dash/no-palette-classes": {
+      "count": 7
+    }
+  },
+  "src/Components/Dashboard/DashboardConfigModal.js": {
+    "dash/no-palette-classes": {
+      "count": 31
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/Dashboard/DashboardFooter.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    }
+  },
+  "src/Components/Dashboard/DashboardHeader.js": {
+    "dash/no-palette-classes": {
+      "count": 8
+    }
+  },
+  "src/Components/Dashboard/DashboardMonitor.js": {
+    "dash/no-palette-classes": {
+      "count": 27
+    }
+  },
+  "src/Components/Dashboard/DashboardStage.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 4
+    }
+  },
+  "src/Components/Dashboard/Modal/ApplicationSettingsModal.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/Dashboard/Modal/PanelApplicationSettings.js": {
+    "dash/no-palette-classes": {
+      "count": 14
+    }
+  },
+  "src/Components/Dashboard/OnboardingModal.js": {
+    "dash/no-palette-classes": {
+      "count": 32
+    }
+  },
+  "src/Components/Dashboard/Panel/PanelDashboardLoader.js": {
+    "dash/no-palette-classes": {
+      "count": 3
+    }
+  },
+  "src/Components/Dashboard/Panel/PanelWelcome.js": {
+    "dash/no-palette-classes": {
+      "count": 8
+    }
+  },
+  "src/Components/Dashboard/PermissionsTab.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/Dashboard/PinnedSidebar.js": {
+    "dash/no-palette-classes": {
+      "count": 8
+    }
+  },
+  "src/Components/Dashboard/WidgetCodeModal.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/Dashboard/WidgetPopoutStage.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    }
+  },
+  "src/Components/Dashboard/WidgetsTab.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/Jobs/JobsPage.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/Jobs/NeedsYouCards.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/Layout/Builder/Enhanced/EnhancedWidgetDropdown.js": {
+    "dash/no-palette-classes": {
+      "count": 75
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/Layout/Builder/Enhanced/ProviderBadge.js": {
+    "dash/no-palette-classes": {
+      "count": 18
+    }
+  },
+  "src/Components/Layout/Builder/Enhanced/WidgetDropdown.js": {
+    "dash/no-palette-classes": {
+      "count": 26
+    }
+  },
+  "src/Components/Layout/Builder/GridItem/GridItemLayoutContainer.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Layout/Builder/GridItem/LayoutContainerGridItem.js": {
+    "dash/no-palette-classes": {
+      "count": 16
+    }
+  },
+  "src/Components/Layout/Builder/GridItem/WidgetContainerGridItem.js": {
+    "dash/no-palette-classes": {
+      "count": 16
+    }
+  },
+  "src/Components/Layout/Builder/GridItem/WorkspaceContainerGridItem.js": {
+    "dash/no-palette-classes": {
+      "count": 16
+    }
+  },
+  "src/Components/Layout/Builder/LayoutBuilderConfigPanel.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Layout/Builder/LayoutBuilderGridItem.js": {
+    "dash/no-palette-classes": {
+      "count": 19
+    }
+  },
+  "src/Components/Layout/Builder/LayoutBuilderWidgetConfigPanel.js": {
+    "dash/no-palette-classes": {
+      "count": 14
+    }
+  },
+  "src/Components/Layout/Builder/LayoutGridContainer.js": {
+    "dash/no-palette-classes": {
+      "count": 20
+    }
+  },
+  "src/Components/Layout/Builder/Menu/LayoutBuilderConfigContainerMenuItem.js": {
+    "dash/no-palette-classes": {
+      "count": 3
+    }
+  },
+  "src/Components/Layout/Builder/Menu/LayoutBuilderConfigMenuItem.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    }
+  },
+  "src/Components/Layout/Builder/Menu/LayoutItemEditHeader.js": {
+    "dash/no-palette-classes": {
+      "count": 11
+    }
+  },
+  "src/Components/Layout/Builder/Menu/LayoutQuickAddMenu.js": {
+    "dash/no-palette-classes": {
+      "count": 11
+    },
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/Components/Layout/Builder/Modal/LayoutBuilderAddItemModal.js": {
+    "dash/no-palette-classes": {
+      "count": 10
+    }
+  },
+  "src/Components/Layout/Builder/Modal/LayoutBuilderEditItemModal.js": {
+    "dash/no-palette-classes": {
+      "count": 5
+    }
+  },
+  "src/Components/Layout/Builder/Modal/LayoutBuilderEventModal.js": {
+    "dash/no-palette-classes": {
+      "count": 33
+    }
+  },
+  "src/Components/Layout/Builder/Modal/MergeCellsModal.js": {
+    "dash/no-palette-classes": {
+      "count": 55
+    }
+  },
+  "src/Components/Layout/Builder/Modal/Panel/GridEditTile.js": {
+    "dash/no-palette-classes": {
+      "count": 10
+    }
+  },
+  "src/Components/Layout/Builder/Modal/Panel/GridEditor.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    }
+  },
+  "src/Components/Layout/Builder/Modal/Panel/PanelEditItemGrid.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Layout/Builder/Modal/Panel/PanelEditItemProviders.js": {
+    "dash/no-palette-classes": {
+      "count": 20
+    }
+  },
+  "src/Components/Layout/Builder/Modal/SplitCellModal.js": {
+    "dash/no-palette-classes": {
+      "count": 30
+    }
+  },
+  "src/Components/Layout/Builder/Modal/WidgetConfigPanel.js": {
+    "dash/no-palette-classes": {
+      "count": 19
+    }
+  },
+  "src/Components/Layout/LayoutContainer.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/Layout/LayoutManager/LayoutManagerModal.js": {
+    "dash/no-palette-classes": {
+      "count": 90
+    }
+  },
+  "src/Components/Layout/LayoutManager/Panel/Pane/LayoutTitlePane.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/LeadWorkspace/BotTestOutput.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/LeadWorkspace/LeadWorkspace.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/LeadWorkspace/WidgetWizard/StepLooks.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/LeadWorkspace/WidgetWizard/useLiveTools.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/LeadWorkspace/useWorkspacePlan.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/MarkdownForm/MarkdownFormEditor.js": {
+    "dash/no-palette-classes": {
+      "count": 54
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/Menu/MainMenuSection.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Menu/MenuSlideOverlay.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    },
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/Components/Menu/Modal/AddMenuItemModal.js": {
+    "dash/no-palette-classes": {
+      "count": 8
+    }
+  },
+  "src/Components/Menu/SideMenu.js": {
+    "dash/no-palette-classes": {
+      "count": 28
+    },
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/Components/Navigation/DashNavbar.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    }
+  },
+  "src/Components/Navigation/DashSidebar.js": {
+    "no-restricted-imports": {
+      "count": 1
+    }
+  },
+  "src/Components/Navigation/PageTabBar.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Navigation/WidgetSidebar.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/Provider/AdvancedMcpConfig.js": {
+    "dash/no-palette-classes": {
+      "count": 8
+    }
+  },
+  "src/Components/Provider/McpServerPicker.js": {
+    "dash/no-palette-classes": {
+      "count": 23
+    }
+  },
+  "src/Components/Provider/MissingProviderPrompt.js": {
+    "dash/no-palette-classes": {
+      "count": 14
+    }
+  },
+  "src/Components/Provider/ProviderForm.js": {
+    "dash/no-palette-classes": {
+      "count": 28
+    }
+  },
+  "src/Components/Provider/ProviderSelector.js": {
+    "dash/no-palette-classes": {
+      "count": 21
+    }
+  },
+  "src/Components/Registry/RegistryAuthModal.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/Registry/RegistryAuthPrompt.js": {
+    "dash/no-palette-classes": {
+      "count": 20
+    }
+  },
+  "src/Components/Registry/RegistrySignInBanner.js": {
+    "dash/no-palette-classes": {
+      "count": 5
+    }
+  },
+  "src/Components/Settings/AppSettingsModal.js": {
+    "dash/no-palette-classes": {
+      "count": 6
+    }
+  },
+  "src/Components/Settings/SectionLayout.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Settings/details/BotDetail.js": {
+    "dash/no-palette-classes": {
+      "count": 3
+    },
+    "react-hooks/rules-of-hooks": {
+      "count": 1
+    }
+  },
+  "src/Components/Settings/details/CustomMcpServerForm.js": {
+    "dash/no-palette-classes": {
+      "count": 24
+    }
+  },
+  "src/Components/Settings/details/DiscoverDashboardsDetail.js": {
+    "dash/no-palette-classes": {
+      "count": 5
+    }
+  },
+  "src/Components/Settings/details/DiscoverThemesDetail.js": {
+    "dash/no-palette-classes": {
+      "count": 5
+    }
+  },
+  "src/Components/Settings/details/DiscoverWidgetsDetail.js": {
+    "dash/no-palette-classes": {
+      "count": 7
+    }
+  },
+  "src/Components/Settings/details/InstallProgressModal.js": {
+    "dash/no-palette-classes": {
+      "count": 11
+    }
+  },
+  "src/Components/Settings/details/InstallWidgetPicker.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Settings/details/McpCatalogDetail.js": {
+    "dash/no-palette-classes": {
+      "count": 17
+    }
+  },
+  "src/Components/Settings/details/NewProviderPicker.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Settings/details/ProviderDetail.js": {
+    "dash/no-palette-classes": {
+      "count": 7
+    }
+  },
+  "src/Components/Settings/details/PublishDashboardModal.js": {
+    "dash/no-palette-classes": {
+      "count": 62
+    }
+  },
+  "src/Components/Settings/details/PublishThemeModal.js": {
+    "dash/no-palette-classes": {
+      "count": 29
+    }
+  },
+  "src/Components/Settings/details/PublishWidgetModal.js": {
+    "dash/no-palette-classes": {
+      "count": 26
+    }
+  },
+  "src/Components/Settings/details/RegistryDashboardDetail.js": {
+    "dash/no-palette-classes": {
+      "count": 16
+    }
+  },
+  "src/Components/Settings/details/RegistryPackageDetail.js": {
+    "dash/no-palette-classes": {
+      "count": 16
+    }
+  },
+  "src/Components/Settings/details/RegistryThemeDetail.js": {
+    "dash/no-palette-classes": {
+      "count": 10
+    }
+  },
+  "src/Components/Settings/details/StarRating.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/Settings/details/ToolSelector.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    }
+  },
+  "src/Components/Settings/details/WebSocketProviderForm.js": {
+    "dash/no-palette-classes": {
+      "count": 23
+    }
+  },
+  "src/Components/Settings/details/WidgetPackageDetail.js": {
+    "dash/no-palette-classes": {
+      "count": 8
+    }
+  },
+  "src/Components/Settings/sections/AccountSection.js": {
+    "dash/no-palette-classes": {
+      "count": 12
+    }
+  },
+  "src/Components/Settings/sections/GrantManuallyModal.js": {
+    "dash/no-palette-classes": {
+      "count": 23
+    }
+  },
+  "src/Components/Settings/sections/McpServerSection.js": {
+    "dash/no-palette-classes": {
+      "count": 5
+    }
+  },
+  "src/Components/Settings/sections/NotificationsSection.js": {
+    "dash/no-palette-classes": {
+      "count": 5
+    }
+  },
+  "src/Components/Settings/sections/PrivacySecuritySection.js": {
+    "dash/no-palette-classes": {
+      "count": 39
+    }
+  },
+  "src/Components/Settings/sections/ProvidersSection.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/Components/Settings/sections/SaveProfileModal.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Components/Settings/sections/UpdateAllWidgetsModal.js": {
+    "dash/no-palette-classes": {
+      "count": 26
+    }
+  },
+  "src/Components/Settings/sections/WidgetGrantRow.js": {
+    "dash/no-palette-classes": {
+      "count": 15
+    }
+  },
+  "src/Components/Theme/LivePreview.js": {
+    "dash/no-palette-classes": {
+      "count": 7
+    }
+  },
+  "src/Components/Theme/Panel/Pane/CustomHexColorPane.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/Theme/Panel/Pane/ThemePickerGridPane.js": {
+    "dash/no-palette-classes": {
+      "count": 6
+    }
+  },
+  "src/Components/Theme/Panel/Pane/ThemeTitlePane.js": {
+    "dash/no-palette-classes": {
+      "count": 7
+    }
+  },
+  "src/Components/Theme/Panel/Pane/TokenColorPickerPane.js": {
+    "dash/no-palette-classes": {
+      "count": 16
+    }
+  },
+  "src/Components/Theme/Panel/PanelThemePicker.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/Theme/Studio/BaseColorRail.js": {
+    "dash/no-palette-classes": {
+      "count": 6
+    }
+  },
+  "src/Components/Theme/Studio/ChannelEditorModal.js": {
+    "dash/no-palette-classes": {
+      "count": 23
+    }
+  },
+  "src/Components/Theme/Studio/ComponentInspector.js": {
+    "dash/no-palette-classes": {
+      "count": 17
+    }
+  },
+  "src/Components/Theme/Studio/ComponentList.js": {
+    "dash/no-palette-classes": {
+      "count": 13
+    }
+  },
+  "src/Components/Theme/Studio/PanelThemeStudio.js": {
+    "dash/no-palette-classes": {
+      "count": 12
+    }
+  },
+  "src/Components/Theme/Studio/componentScenarios.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/Theme/Wizard/ThemeQuickCreate.js": {
+    "dash/no-palette-classes": {
+      "count": 16
+    }
+  },
+  "src/Components/WidgetPreflightReview.js": {
+    "dash/no-palette-classes": {
+      "count": 34
+    }
+  },
+  "src/Components/Workspace/WorkspaceFooter.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Components/Workspace/WorkspaceMenu.js": {
+    "dash/no-palette-classes": {
+      "count": 3
+    }
+  },
+  "src/Context/App/AppWrapper.js": {
+    "dash/no-palette-classes": {
+      "count": 10
+    }
+  },
+  "src/Context/Modal/ContextSettingsModal.js": {
+    "dash/no-palette-classes": {
+      "count": 17
+    }
+  },
+  "src/Context/Modal/Panel/PanelEditContext.js": {
+    "dash/no-palette-classes": {
+      "count": 5
+    }
+  },
+  "src/Context/Modal/Panel/PanelEditForm.js": {
+    "dash/no-palette-classes": {
+      "count": 3
+    }
+  },
+  "src/ErrorBoundary.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Models/ComponentConfigModel.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Models/DashboardModel.js": {
+    "dash/no-palette-classes": {
+      "count": 9
+    }
+  },
+  "src/Widget/ExternalWidget.js": {
+    "dash/no-palette-classes": {
+      "count": 4
+    }
+  },
+  "src/Widget/MissingWidgetsModal.js": {
+    "dash/no-palette-classes": {
+      "count": 9
+    }
+  },
+  "src/Widget/Widget.js": {
+    "dash/no-palette-classes": {
+      "count": 7
+    }
+  },
+  "src/Widget/WidgetFactory.js": {
+    "dash/no-palette-classes": {
+      "count": 15
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/Widget/WidgetNotFound.js": {
+    "dash/no-palette-classes": {
+      "count": 13
+    }
+  },
+  "src/Widgets/Bots/BotActivityWidget.js": {
+    "dash/no-palette-classes": {
+      "count": 2
+    }
+  },
+  "src/Widgets/Bots/BotResultsWidget.js": {
+    "dash/no-palette-classes": {
+      "count": 1
+    }
+  },
+  "src/hooks/useAiBackend.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/hooks/useMcpProvider.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/hooks/useRegistryAuth.js": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/utils/layout.js": {
+    "dash/no-palette-classes": {
+      "count": 15
+    }
+  },
+  "src/utils/resolveComponentKey.test.js": {
+    "no-extra-args": {
+      "count": 1
+    }
+  }
+}
