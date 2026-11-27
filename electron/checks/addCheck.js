@@ -6,8 +6,12 @@
  *                   Dash's built-in kinds and its packages, each a step
  *                   ready to add, inputs filled from the team's settings
  *   draftPrompt     what the team's lead is asked, to write a check from a
- *                   description (with the checks guide)
- *   parseDraft      its answer: the file, a plain summary, a bad sample
+ *                   description (with the checks guide and the helpers'
+ *                   palette): a dash-check recipe (DASH-133), not a script
+ *   parseDraft      its answer: the recipe (validated with validateRecipe;
+ *                   one that isn't valid is refused with its errors) as
+ *                   .dash/checks/<name>.check.json, a plain summary, a bad
+ *                   sample
  *   tryDraft        a draft must pass on a good input and fail, saying
  *                   why, on a bad one before it can be saved
  *   draftRepoChecks "Set up checks": setup and validate from a repo's
@@ -20,8 +24,45 @@ const os = require("os");
 const path = require("path");
 const { runPackageFiles } = require("./kinds/package");
 const { CHECKS_GUIDE } = require("../mcp/checksGuide");
+const {
+  recipeLib,
+  recipeError,
+  builtInPalette,
+  builtInHelper,
+  runRecipe,
+} = require("./dashCheck");
 
-const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.(sh|js|cjs|mjs|py)$/;
+const FILE_RE =
+  /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(\.(sh|js|cjs|mjs|py)|\.check\.json)$/;
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+
+/** A check's name from its file: validate.check.json, validate.sh → validate. */
+function checkNameOf(file) {
+  return String(file || "").replace(/(\.check)?\.[^.]+$/, "");
+}
+
+/** The palette in a few lines, for the lead: each helper and matcher. */
+function paletteText() {
+  const { helpers, matchers } = builtInPalette();
+  const param = ([k, p]) =>
+    `${k}${p.required ? "" : "?"}: ${p.type}${p.default !== undefined ? ` = ${JSON.stringify(p.default)}` : ""}`;
+  return [
+    "Helpers (use):",
+    ...helpers.map(
+      (h) =>
+        `- ${h.id}(${Object.entries(h.params || {})
+          .map(param)
+          .join(
+            ", ",
+          )}): ${h.label}${h.description ? `. ${h.description}` : ""}`,
+    ),
+    "Matchers (expect):",
+    ...matchers.map(
+      (m) =>
+        `- ${m.id}(${(m.params || []).map((p) => `${p.name}: ${p.type}`).join(", ")}): ${m.sentence}`,
+    ),
+  ].join("\n");
+}
 
 // What a bot's words say it does, and the checks that prove that kind of work.
 const ROLES = [
@@ -169,7 +210,11 @@ function draftPrompt(ask, { bot = null, sample = null } = {}) {
   return [
     `Write a Dash check for ${bot && bot.name ? `the bot "${bot.name}"` : "a bot"}: ${String(ask || "").slice(0, 1500)}`,
     "",
-    "Follow this guide exactly:",
+    "Write it as a dash-check recipe (JSON, no code), made only of these helpers and matchers:",
+    "",
+    paletteText(),
+    "",
+    "Follow this guide exactly (section 2 is the recipe format):",
     "",
     CHECKS_GUIDE,
     "",
@@ -178,36 +223,60 @@ function draftPrompt(ask, { bot = null, sample = null } = {}) {
       : "There's no real input yet: the input is { input: { answer }, item, workspace } as the guide says.",
     "",
     "Answer with exactly three parts and nothing else:",
-    '<check file="name.ext">the whole file</check>  (a .sh, .js or .py file for .dash/checks)',
+    '<recipe name="name">the recipe, { "name": …, "steps": [ … ] }, as JSON</recipe>  (name: letters, numbers, "-" and "_"; it is saved as .dash/checks/name.check.json)',
     "<summary>one or two plain sentences: what it checks, and what it says when it fails</summary>",
     "<bad_sample>a JSON input on which the check must FAIL</bad_sample>",
   ].join("\n");
 }
 
-/** The lead's answer: { file, code, summary, badSample } or { error }. */
+const unfence = (t) => t.replace(/^\s*```[a-z]*\n?|\n?```\s*$/g, "").trim();
+
+/**
+ * The lead's answer: { file, code, recipe, summary, badSample } or
+ * { error, errors? }. A recipe that isn't valid is refused, with its errors.
+ */
 function parseDraft(text) {
   const t = String(text || "");
-  const c = /<check\s+file="([^"]+)">\s*([\s\S]*?)<\/check>/i.exec(t);
-  if (!c) return { error: 'The answer has no <check file="…"> part.' };
-  const file = c[1].trim();
-  if (!FILE_RE.test(file))
+  const c = /<recipe(?:\s+name="([^"]*)")?\s*>([\s\S]*?)<\/recipe>/i.exec(t);
+  if (!c) return { error: "The answer has no <recipe> part." };
+  let recipe;
+  try {
+    recipe = JSON.parse(unfence(c[2]));
+  } catch (e) {
+    return { error: `The recipe isn't JSON: ${e.message}` };
+  }
+  const v = recipeLib().validateRecipe(recipe, { getHelper: builtInHelper });
+  if (!v.valid) {
     return {
-      error: `"${file}" isn't a check's file name (name.sh, name.js or name.py)`,
+      error: `The recipe isn't valid: ${recipeError(recipe)}`,
+      errors: v.errors,
+      recipe,
     };
-  const code = c[2].replace(/^```[a-z]*\n?|\n?```\s*$/g, "").trim() + "\n";
+  }
+  const given = (c[1] || "").trim();
+  const name = given || recipeLib().slug(recipe.name);
+  if (!NAME_RE.test(name) || name.includes("..")) {
+    return {
+      error: `"${name}" can't be a check's name (letters, numbers, ".", "-" and "_")`,
+    };
+  }
   const s = /<summary>([\s\S]*?)<\/summary>/i.exec(t);
   const b = /<bad_sample>([\s\S]*?)<\/bad_sample>/i.exec(t);
   let badSample = null;
   if (b) {
     try {
-      badSample = JSON.parse(
-        b[1].replace(/^```[a-z]*\n?|\n?```\s*$/g, "").trim(),
-      );
+      badSample = JSON.parse(unfence(b[1]));
     } catch (_e) {
       badSample = null;
     }
   }
-  return { file, code, summary: s ? s[1].trim() : "", badSample };
+  return {
+    file: `${name}.check.json`,
+    code: `${JSON.stringify(recipe, null, 2)}\n`,
+    recipe,
+    summary: s ? s[1].trim() : "",
+    badSample,
+  };
 }
 
 /**
@@ -230,6 +299,8 @@ async function tryDraft(
   }
   if (!cwd || !fs.existsSync(cwd))
     return { ok: false, problem: "There's no folder to try it in." };
+  if (/\.check\.json$/.test(draft.file))
+    return tryRecipe(draft, { good, bad, cwd, env });
   const name = draft.file.replace(/\.[^.]+$/, "");
   const pkg = {
     manifest: { name, run: draft.file },
@@ -258,6 +329,33 @@ async function tryDraft(
     ok: !problem,
     good: { pass: g.pass, reason: g.reason, output: g.output || "" },
     bad: { pass: b.pass, reason: b.reason, output: b.output || "" },
+    ...(problem ? { problem } : {}),
+  };
+}
+
+/** Try a recipe draft (DASH-133): in this process, on both inputs. */
+async function tryRecipe(draft, { good, bad, cwd, env }) {
+  let recipe;
+  try {
+    recipe = JSON.parse(draft.code);
+  } catch (e) {
+    return { ok: false, problem: `The recipe isn't JSON: ${e.message}` };
+  }
+  const invalid = recipeError(recipe);
+  if (invalid)
+    return { ok: false, problem: `The recipe isn't valid: ${invalid}` };
+  const run = (input) =>
+    runRecipe(recipe, input || {}, { cwd, ...(env ? { env } : {}) });
+  const g = await run(good);
+  const b = await run(bad || { input: { answer: "" } });
+  let problem = null;
+  if (!g.pass) problem = `It fails on the good input: ${g.reason}`;
+  else if (b.pass)
+    problem = "It passes on the bad input too, so it doesn't catch anything.";
+  return {
+    ok: !problem,
+    good: { pass: g.pass, reason: g.reason, output: "", details: g.details },
+    bad: { pass: b.pass, reason: b.reason, output: "", details: b.details },
     ...(problem ? { problem } : {}),
   };
 }
@@ -405,5 +503,6 @@ module.exports = {
   tryDraft,
   draftRepoChecks,
   workflowRuns,
+  checkNameOf,
   FILE_RE,
 };

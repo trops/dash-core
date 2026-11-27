@@ -385,7 +385,23 @@ const guideTools = [
             "overview",
           ],
           description:
-            "Topic to get help with. 'bots' is how to build a team of bots that works (chains, checks, team settings, safety). 'checks' is how to write a deterministic check: the contract, check.json, templates, trying it by hand with dash-check. Use 'overview' or omit for a general capabilities guide.",
+            "Topic to get help with. 'bots' is how to build a team of bots that works (chains, checks, team settings, safety). 'checks' is how to write a deterministic check: the layers (primitives, helpers, recipes, .check.js files), the contract, templates, trying it by hand with dash-check. Use 'overview' or omit for a general capabilities guide.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "list_check_helpers",
+    description:
+      "List the building blocks a check is made of (@trops/dash-check): every helper (git.committedSince, node.testsPass, handoff.has, github.ciPassed…) and matcher (toBe, toHaveLengthAtLeast…), each with its id, group, label, sentence, typed params with defaults, and what it reads. Use it to write a recipe ({ kind: 'recipe', recipe: { name, steps: [{ use, with }, { expect, matcher, args }] } } on a bot's check step, or .dash/checks/<name>.check.json in a repo). With 'workspace' (a repo's folder on this computer), the repo's own helpers too, read from its base branch's .dash/checks/helpers, with any that don't load and why. Reads only; get_setup_guide({ topic: 'checks' }) explains the layers.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: {
+          type: "string",
+          description:
+            "A repo's folder (an absolute path): also list its own helpers, from its base branch.",
         },
       },
       required: [],

@@ -16,6 +16,7 @@ const {
   draftPrompt,
   parseDraft,
   tryDraft,
+  checkNameOf,
   draftRepoChecks,
   workflowRuns,
 } = require("./addCheck");
@@ -183,19 +184,87 @@ describe("describe it: a drafted check", () => {
     assert.match(p, /<bad_sample>/);
   });
 
-  it("reads the lead's answer", () => {
+  it("asks for a recipe, with the helpers' palette (DASH-133)", () => {
+    const p = draftPrompt("the work is committed");
+    assert.match(p, /dash-check recipe/);
+    assert.match(p, /- git\.committedSince\(base\?: text/);
+    assert.match(p, /- toHaveLengthAtLeast\(n: number\)/);
+    assert.match(p, /<recipe name="name">/);
+  });
+
+  it("reads the lead's answer: a recipe, saved as name.check.json", () => {
+    const recipe = {
+      name: "every item has a test",
+      steps: [
+        { use: "handoff.eachHas", with: { list: "tests", keys: ["file"] } },
+      ],
+    };
     const d = parseDraft(
-      'Here.\n<check file="plan-tests.js">\n```js\nconsole.log(1)\n```\n</check>\n<summary>Every item has a test.</summary>\n<bad_sample>{"input": {"answer": ""}}</bad_sample>',
+      `Here.\n<recipe name="plan-tests">\n\`\`\`json\n${JSON.stringify(recipe)}\n\`\`\`\n</recipe>\n<summary>Every item has a test.</summary>\n<bad_sample>{"input": {"answer": ""}}</bad_sample>`,
     );
-    assert.equal(d.file, "plan-tests.js");
-    assert.equal(d.code, "console.log(1)\n");
+    assert.equal(d.error, undefined, d.error);
+    assert.equal(d.file, "plan-tests.check.json");
+    assert.deepEqual(d.recipe, recipe);
+    assert.deepEqual(JSON.parse(d.code), recipe);
     assert.equal(d.summary, "Every item has a test.");
     assert.deepEqual(d.badSample, { input: { answer: "" } });
-    assert.match(parseDraft("nope").error, /no <check/);
+    assert.equal(checkNameOf(d.file), "plan-tests");
+    // No name: the recipe's, as a slug.
+    const unnamed = parseDraft(`<recipe>${JSON.stringify(recipe)}</recipe>`);
+    assert.equal(unnamed.file, "every-item-has-a-test.check.json");
+  });
+
+  it("refuses a draft that isn't a valid recipe, with its errors", () => {
+    assert.match(parseDraft("nope").error, /no <recipe>/);
     assert.match(
-      parseDraft('<check file="../x.sh">x</check>').error,
-      /isn't a check's file name/,
+      parseDraft("<recipe>{ not json }</recipe>").error,
+      /isn't JSON/,
     );
+    const bad = parseDraft(
+      '<recipe name="x">{"name": "x", "steps": [{"use": "git.nope"}, {"expect": "handoff.files", "matcher": "toBeHuge"}]}</recipe>',
+    );
+    assert.match(
+      bad.error,
+      /The recipe isn't valid: steps\[0\]\.use: There's no helper git\.nope/,
+    );
+    assert.deepEqual(
+      bad.errors.map((e) => e.path),
+      ["steps[0].use", "steps[1].matcher"],
+    );
+    assert.match(
+      parseDraft(
+        '<recipe name="../x">{"name": "x", "steps": [{"expect": "item.id", "matcher": "toBeDefined"}]}</recipe>',
+      ).error,
+      /can't be a check's name/,
+    );
+  });
+
+  it("Try it runs a recipe draft on both inputs", async () => {
+    const recipe = {
+      name: "lists files",
+      steps: [
+        {
+          expect: "handoff.files",
+          matcher: "toHaveLengthAtLeast",
+          args: [1],
+          message: "The handoff lists no changed files",
+        },
+      ],
+    };
+    const d = { file: "lists.check.json", code: JSON.stringify(recipe) };
+    const ok = await tryDraft(d, {
+      good: answer({ files: ["a.js"] }),
+      bad: answer({ files: [] }),
+      cwd: work,
+    });
+    assert.equal(ok.ok, true, ok.problem);
+    assert.equal(ok.bad.reason, "The handoff lists no changed files");
+    const lax = await tryDraft(d, {
+      good: answer({ files: ["a.js"] }),
+      bad: answer({ files: ["b.js"] }),
+      cwd: work,
+    });
+    assert.match(lax.problem, /passes on the bad input too/);
   });
 
   it("Try it: passes on the good input, fails with a reason on the bad", async () => {

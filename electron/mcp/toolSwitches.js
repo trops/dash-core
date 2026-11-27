@@ -91,6 +91,8 @@ const TOOL_GROUPS = [
       "apply_theme",
       "search_registry_themes",
       "get_setup_guide",
+      // The check composer's palette (DASH-133).
+      "list_check_helpers",
     ],
   },
 ];

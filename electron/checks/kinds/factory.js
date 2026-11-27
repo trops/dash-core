@@ -19,12 +19,58 @@
  *
  * The workspace is the job's (input.workspace.dir), else the folder the
  * check runs in.
+ *
+ * Each runs through @trops/dash-check's helpers (DASH-133): git.onBranch,
+ * git.committedSince, github.ciPassed and handoff.has, so a recipe, a
+ * .check.js file and these built-ins share one implementation. The helper
+ * decides pass or fail; Dash says it in its own words (its reasons, which
+ * the tests pin), from what the helper read.
  */
 "use strict";
 
 const fs = require("fs");
 const { execFile } = require("child_process");
 const { readHandoff } = require("../../bots/botHandoff");
+
+/** The library, loaded when first used. */
+const core = () => require("@trops/dash-check");
+const helpers = () => require("@trops/dash-check/helpers");
+
+/** A context for a helper: the job's data, in `dir`. */
+function contextFor(input, { cwd, env, fetch, now, sleep } = {}) {
+  return core().createContext(input || {}, {
+    cwd: cwd || process.cwd(),
+    env: env || {},
+    ...(fetch ? { fetch } : {}),
+    ...(now ? { now } : {}),
+    ...(sleep ? { sleep } : {}),
+  });
+}
+
+/** Run one helper: its failures and notes (it never throws). */
+function runHelper(fn, ctx, params) {
+  return core().collect(() => fn(ctx, params));
+}
+
+/** Record what an adapter call gives or throws, still giving it back. */
+function spy(obj, name, rec, key) {
+  const real = obj[name];
+  obj[name] = async (...args) => {
+    try {
+      const v = await real(...args);
+      rec[key] = v;
+      return v;
+    } catch (e) {
+      rec[`${key}Error`] = e;
+      throw e;
+    }
+  };
+}
+
+/** The environment a helper's git runs with: the user's, plus the check's. */
+function gitEnv(deps) {
+  return { ...process.env, ...(deps.env || {}) };
+}
 
 const FACTORY_KINDS = [
   "git-on-branch",
@@ -35,7 +81,6 @@ const FACTORY_KINDS = [
 const DEFAULT_CI_SEC = 20 * 60;
 const MAX_CI_SEC = 60 * 60;
 const DEFAULT_NO_CHECKS_SEC = 180;
-const POLL_MS = 15 * 1000;
 const PR_URL_RE =
   /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)\/?$/;
 const REPO_RE =
@@ -116,18 +161,25 @@ async function gitOnBranch(check, input, deps) {
         "No branch to check: the job's workspace has none. Name it in the handoff's workspace.branch, or set the check's branch.",
     };
   }
-  const cur = await git(
-    ["rev-parse", "--abbrev-ref", "HEAD"],
-    g.dir,
-    deps.exec,
+  const ctx = contextFor(
+    { workspace: { dir: g.dir, branch: want } },
+    { cwd: g.dir, env: gitEnv(deps) },
   );
-  if (!cur.ok)
-    return { pass: false, reason: `Can't read ${g.dir}'s branch: ${cur.err}` };
-  if (cur.out !== want) {
+  const rec = {};
+  spy(ctx.git, "branch", rec, "branch");
+  const r = await runHelper(helpers().git.onBranch, ctx, { branch: want });
+  if (rec.branchError) {
     return {
       pass: false,
-      reason: `${g.dir} is on ${cur.out === "HEAD" ? "no branch (a detached HEAD)" : cur.out}, not ${want}`,
-      details: { dir: g.dir, branch: cur.out, want },
+      reason: `Can't read ${g.dir}'s branch: ${rec.branchError.message}`,
+    };
+  }
+  if (r.failures.length) {
+    const cur = rec.branch;
+    return {
+      pass: false,
+      reason: `${g.dir} is on ${cur === "HEAD" ? "no branch (a detached HEAD)" : cur}, not ${want}`,
+      details: { dir: g.dir, branch: cur, want },
     };
   }
   return {
@@ -169,36 +221,37 @@ async function gitCommitted(check, input, deps) {
         "No base branch to count from (origin/HEAD, origin/main or origin/master): set the check's base",
     };
   }
-  const count = await git(
-    ["rev-list", "--count", `origin/${base}..HEAD`],
-    g.dir,
-    deps.exec,
-  );
-  if (!count.ok) {
+  const ref = `origin/${base}`;
+  const ctx = contextFor({}, { cwd: g.dir, env: gitEnv(deps) });
+  const rec = {};
+  spy(ctx.git, "commitsSince", rec, "commits");
+  spy(ctx.git, "uncommitted", rec, "dirty");
+  const r = await runHelper(helpers().git.committedSince, ctx, {
+    base: ref,
+    min: 1,
+  });
+  if (rec.commitsError) {
     return {
       pass: false,
-      reason: `Can't compare with origin/${base}: ${count.err}`,
+      reason: `Can't compare with ${ref}: ${rec.commitsError.message}`,
     };
   }
-  const n = Number(count.out) || 0;
+  const n = Number(rec.commits) || 0;
   if (n < 1) {
     return {
       pass: false,
-      reason: `No commits past origin/${base}: commit the work (git add -A; git commit)`,
+      reason: `No commits past ${ref}: commit the work (git add -A; git commit)`,
       details: { dir: g.dir, base, commits: 0 },
     };
   }
-  const status = await git(["status", "--porcelain"], g.dir, deps.exec);
-  if (!status.ok)
+  if (rec.dirtyError) {
     return {
       pass: false,
-      reason: `Can't read ${g.dir}'s status: ${status.err}`,
+      reason: `Can't read ${g.dir}'s status: ${rec.dirtyError.message}`,
     };
-  if (status.out) {
-    const files = status.out
-      .split("\n")
-      .map((l) => l.slice(3))
-      .filter(Boolean);
+  }
+  const files = Array.isArray(rec.dirty) ? rec.dirty : [];
+  if (files.length) {
     const shown = files.slice(0, 5).join(", ");
     return {
       pass: false,
@@ -211,9 +264,16 @@ async function gitCommitted(check, input, deps) {
       },
     };
   }
+  if (r.failures.length) {
+    return {
+      pass: false,
+      reason: r.failures.map((f) => f.message).join("; "),
+      details: { dir: g.dir, base, commits: n },
+    };
+  }
   return {
     pass: true,
-    reason: `${n} commit${n === 1 ? "" : "s"} past origin/${base}, nothing uncommitted`,
+    reason: `${n} commit${n === 1 ? "" : "s"} past ${ref}, nothing uncommitted`,
     details: { dir: g.dir, base, commits: n },
   };
 }
@@ -224,13 +284,6 @@ function at(obj, key) {
     .split(".")
     .reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), obj);
 }
-
-const isEmpty = (v) =>
-  v === undefined ||
-  v === null ||
-  (typeof v === "string" && !v.trim()) ||
-  (Array.isArray(v) && !v.length) ||
-  (typeof v === "object" && !Array.isArray(v) && !Object.keys(v).length);
 
 /** The handoff as one object: Dash's keys and the bot's own data. */
 function handoffObject(input) {
@@ -257,7 +310,7 @@ function handoffObject(input) {
   };
 }
 
-function handoffHas(check, input) {
+async function handoffHas(check, input) {
   const keys = (Array.isArray(check.keys) ? check.keys : [])
     .map(str)
     .filter(Boolean);
@@ -270,7 +323,23 @@ function handoffHas(check, input) {
         : "The answer has no handoff (a ```json block)",
     };
   }
-  const missing = keys.filter((k) => isEmpty(at(obj, k)));
+  // Dash's handoff (its own keys and the bot's), given to the helper.
+  const r = await runHelper(
+    helpers().handoff.has,
+    contextFor({ handoff: obj }),
+    {
+      keys,
+    },
+  );
+  const missing = r.failures
+    .map((f) => String(f.label || "").replace(/^handoff\./, ""))
+    .filter((k) => keys.includes(k));
+  if (r.failures.length && !missing.length) {
+    return {
+      pass: false,
+      reason: r.failures.map((f) => f.message).join("; "),
+    };
+  }
   if (missing.length) {
     return {
       pass: false,
@@ -331,115 +400,124 @@ async function prCi(check, input, deps) {
   const doFetch = deps.fetch || (typeof fetch === "function" ? fetch : null);
   if (!doFetch)
     return { pass: false, reason: "Dash can't reach GitHub from here" };
-  const now = deps.now || Date.now;
-  const sleep = deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   const limit = ciSeconds(check.timeoutSec, DEFAULT_CI_SEC, MAX_CI_SEC);
   const noChecks = ciSeconds(check.noChecksSec, DEFAULT_NO_CHECKS_SEC, limit);
   const slug = `${pr.owner}/${pr.repo}`;
-  const api = async (p) => {
-    try {
-      const res = await doFetch(`https://api.github.com/repos/${slug}/${p}`, {
-        headers: {
-          Accept: "application/vnd.github+json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      let body = null;
-      try {
-        body = await res.json();
-      } catch (_e) {
-        body = null;
-      }
-      return { code: res.status, body };
-    } catch (e) {
-      return { code: 0, body: null, error: (e && e.message) || String(e) };
-    }
-  };
   const who = token
     ? "the GitHub provider's token"
     : "Dash (no GitHub provider is signed in for this bot)";
-  const p = await api(`pulls/${pr.number}`);
-  if (p.code !== 200) {
+  // The helper reads the PR from the handoff Dash found it in.
+  const ctx = contextFor(
+    { handoff: { prUrl: pr.url } },
+    {
+      cwd: deps.cwd,
+      env: token ? { GH_TOKEN: token } : {},
+      fetch: doFetch,
+      now: deps.now,
+      sleep: deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms))),
+    },
+  );
+  const rec = {};
+  const realPr = ctx.github.pr;
+  ctx.github.pr = async (...a) => {
+    let body;
+    try {
+      body = await realPr(...a);
+    } catch (e) {
+      rec.prError = e;
+      throw e;
+    }
+    rec.pr = body;
+    // Dash's rule: a merged PR's CI still counts; a closed one's doesn't.
+    if (body && body.state !== "open" && !body.merged) {
+      rec.notOpen = true;
+      throw new Error(`${pr.url} isn't open`);
+    }
+    return body;
+  };
+  spy(ctx.github, "waitForChecks", rec, "wait");
+  const r = await runHelper(helpers().github.ciPassed, ctx, {
+    prKey: "prUrl",
+    timeoutSec: limit,
+    noChecksAfterSec: noChecks,
+    ifNoChecks: check.ifNoChecks === "fail" ? "fail" : "pass",
+  });
+  if (rec.prError) {
+    const code = rec.prError.code;
     return {
       pass: false,
-      reason: p.code
-        ? `Can't read PR #${pr.number} on ${slug} (HTTP ${p.code}): check ${who}`
-        : `Can't reach GitHub: ${p.error}`,
+      reason: code
+        ? `Can't read PR #${pr.number} on ${slug} (HTTP ${code}): check ${who}`
+        : rec.prError.message,
     };
   }
-  const state = p.body && p.body.state;
-  if (state !== "open" && !(p.body && p.body.merged)) {
+  if (rec.notOpen) {
     return {
       pass: false,
-      reason: `${pr.url} isn't open (it's ${state || "unknown"})`,
+      reason: `${pr.url} isn't open (it's ${(rec.pr && rec.pr.state) || "unknown"})`,
     };
   }
-  const sha = p.body && p.body.head && p.body.head.sha;
+  const sha = rec.pr && rec.pr.head && rec.pr.head.sha;
   if (!sha)
     return { pass: false, reason: `Couldn't read ${pr.url}'s last commit` };
-  const started = now();
-  for (;;) {
-    let runs;
-    let c = await api(`commits/${sha}/check-runs?per_page=100`);
-    if (c.code === 200) {
-      runs = (c.body && c.body.check_runs) || [];
-    } else {
-      const first = c.code;
-      c = await api(`actions/runs?head_sha=${sha}&per_page=100`);
-      if (c.code !== 200) {
-        return {
-          pass: false,
-          reason: `${who.replace(/^the/, "The")} can't read CI on ${slug} (check runs: HTTP ${first}, Actions runs: HTTP ${c.code}). Give it read access to Checks or Actions.`,
-        };
-      }
-      runs = (c.body && c.body.workflow_runs) || [];
-    }
-    const elapsed = (now() - started) / 1000;
-    if (!runs.length) {
-      if (elapsed >= noChecks) {
-        const pass = check.ifNoChecks !== "fail";
-        return {
-          pass,
-          reason: `${pr.url} has no CI checks after ${mins(noChecks)}`,
-          details: { pr: pr.url, sha, checks: 0 },
-        };
-      }
-    } else if (runs.every((r) => r.status === "completed")) {
-      const bad = runs.filter(
-        (r) => !["success", "skipped", "neutral"].includes(r.conclusion),
-      );
-      if (bad.length) {
-        return {
-          pass: false,
-          reason: `CI failed on ${pr.url}: ${bad.map((r) => `${r.name} (${r.conclusion})`).join(", ")}`,
-          details: {
-            pr: pr.url,
-            sha,
-            failed: bad.map((r) => ({
-              name: r.name,
-              conclusion: r.conclusion,
-              url: r.html_url || null,
-            })),
-          },
-        };
-      }
-      return {
-        pass: true,
-        reason: `${pr.url}: ${runs.length} CI check${runs.length === 1 ? "" : "s"} passed`,
-        details: { pr: pr.url, sha, checks: runs.length },
-      };
-    }
-    if (elapsed >= limit) {
-      const waiting = runs
-        .filter((r) => r.status !== "completed")
-        .map((r) => r.name);
-      return {
-        pass: false,
-        reason: `CI still running on ${pr.url} after ${mins(limit)}${waiting.length ? `: ${waiting.join(", ")}` : ""}`,
-      };
-    }
-    await sleep(POLL_MS);
+  if (rec.waitError) {
+    const m = /HTTP (\d+) for check runs and HTTP (\d+) for Actions runs/.exec(
+      String(rec.waitError.message || ""),
+    );
+    return {
+      pass: false,
+      reason: m
+        ? `${who.replace(/^the/, "The")} can't read CI on ${slug} (check runs: HTTP ${m[1]}, Actions runs: HTTP ${m[2]}). Give it read access to Checks or Actions.`
+        : `Can't read CI on ${slug}: ${rec.waitError.message}`,
+    };
   }
+  const w = rec.wait;
+  if (!w) {
+    return {
+      pass: false,
+      reason: r.failures.map((f) => f.message).join("; ") || "CI wasn't read",
+    };
+  }
+  if (w.noChecks) {
+    return {
+      pass: r.failures.length === 0,
+      reason: `${pr.url} has no CI checks after ${mins(noChecks)}`,
+      details: { pr: pr.url, sha, checks: 0 },
+    };
+  }
+  if (w.timedOut) {
+    const waiting = w.pending.map((x) => x.name);
+    return {
+      pass: false,
+      reason: `CI still running on ${pr.url} after ${mins(limit)}${waiting.length ? `: ${waiting.join(", ")}` : ""}`,
+    };
+  }
+  if (w.failed.length) {
+    return {
+      pass: false,
+      reason: `CI failed on ${pr.url}: ${w.failed.map((x) => `${x.name} (${x.conclusion})`).join(", ")}`,
+      details: {
+        pr: pr.url,
+        sha,
+        failed: w.failed.map((x) => ({
+          name: x.name,
+          conclusion: x.conclusion,
+          url: x.url || null,
+        })),
+      },
+    };
+  }
+  if (r.failures.length) {
+    return {
+      pass: false,
+      reason: r.failures.map((f) => f.message).join("; "),
+    };
+  }
+  return {
+    pass: true,
+    reason: `${pr.url}: ${w.runs.length} CI check${w.runs.length === 1 ? "" : "s"} passed`,
+    details: { pr: pr.url, sha, checks: w.runs.length },
+  };
 }
 
 /**

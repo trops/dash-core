@@ -15,6 +15,7 @@ const {
   parseDraft,
   tryDraft,
   draftRepoChecks,
+  checkNameOf,
 } = require("../checks/addCheck");
 const {
   teamCheckOf,
@@ -91,7 +92,12 @@ async function suggest(ctl, botId) {
   const repos = await repoChecksOf(ctl, bot.workspaceId, token);
   const names = [
     ...new Set(
-      repos.flatMap((r) => r.checks.map((c) => c.replace(/\.[^.]+$/, ""))),
+      repos.flatMap((r) =>
+        r.checks
+          // A check's sample inputs and the repo's helpers aren't checks.
+          .filter((c) => c !== "helpers" && !/\.(sample|bad)\.json$/.test(c))
+          .map(checkNameOf),
+      ),
     ),
   ];
   const { packages, builtIns } = ctl.listCheckPackages();
@@ -197,7 +203,7 @@ async function save(
       error: `Try it first: ${tried.problem || "it didn't pass"}`,
       tried,
     };
-  const name = d.file.replace(/\.[^.]+$/, "");
+  const name = checkNameOf(d.file);
   const ws = bot.workspaceId;
   const team = ctl._store.getTeamSettings(ws) || {};
   let pr = null;

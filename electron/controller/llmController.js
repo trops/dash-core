@@ -61,6 +61,7 @@ const dashToolHandlerMap = {
   add_provider: toolHandlers.handleAddProvider,
   remove_provider: toolHandlers.handleRemoveProvider,
   get_setup_guide: toolHandlers.handleGetSetupGuide,
+  list_check_helpers: toolHandlers.handleListCheckHelpers,
   set_layout: toolHandlers.handleSetLayout,
   update_layout: toolHandlers.handleUpdateLayout,
   move_widget: toolHandlers.handleMoveWidget,

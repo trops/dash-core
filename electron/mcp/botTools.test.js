@@ -1419,6 +1419,59 @@ describe("checks over MCP (DASH-52)", () => {
     assert.equal(state.saves.length, 0);
   });
 
+  it("update_bot takes a recipe step, and refuses one that isn't valid (DASH-133)", async () => {
+    const { handlers, state } = setup();
+    const recipe = {
+      name: "the work is listed",
+      steps: [
+        { use: "git.committedSince", with: { base: "{repo.baseBranch}" } },
+        {
+          expect: "handoff.files",
+          matcher: "toHaveLengthAtLeast",
+          args: [1],
+          message: "The handoff lists no changed files",
+        },
+      ],
+    };
+    const w = body(
+      await handlers.update_bot({
+        bot: "Writer",
+        checks: {
+          steps: [
+            { kind: "check", name: "Ready", check: { kind: "recipe", recipe } },
+          ],
+        },
+      }),
+    );
+    assert.equal(w.status, "waiting", JSON.stringify(w));
+    assert.deepEqual(state.checks[0].checks.steps[0].check.recipe, recipe);
+    assert.match(
+      w.summary,
+      /"Ready": a recipe \(git\.committedSince, expect handoff\.files toHaveLengthAtLeast\)/,
+    );
+    const bad = body(
+      await handlers.update_bot({
+        bot: "Writer",
+        checks: {
+          steps: [
+            {
+              kind: "check",
+              check: {
+                kind: "recipe",
+                recipe: { name: "x", steps: [{ use: "git.nope" }] },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    assert.equal(bad.status, "invalid");
+    assert.match(
+      bad.reasons[0],
+      /the recipe isn't valid: .*no helper git\.nope/,
+    );
+  });
+
   it("a wrong kind or onFail is refused", async () => {
     const { handlers } = setup();
     const b1 = body(

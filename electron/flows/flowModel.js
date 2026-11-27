@@ -38,6 +38,8 @@ const CHECK_KINDS = [
   "handoff-has",
   // A check package (DASH-106): checks/kinds/package.js.
   "package",
+  // dash-check building blocks on the step (DASH-133): checks/kinds/recipe.js.
+  "recipe",
 ];
 // Dash's own checks, put in a bot's checks flow by Dash, never saved on a
 // bot (DASH-101: the Handoff check).

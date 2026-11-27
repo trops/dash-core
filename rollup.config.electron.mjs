@@ -35,6 +35,14 @@ const EXTERNAL = [
     "@anthropic-ai/sdk",
     "@modelcontextprotocol/sdk/client/index.js",
     "@modelcontextprotocol/sdk/client/stdio.js",
+    // @trops/dash-check (DASH-133): its subpaths too. Kept external so a
+    // check's own node (`node -r @trops/dash-check/lib/register.js`) and
+    // Dash share one copy, found in the consumer's node_modules.
+    "@trops/dash-check",
+    "@trops/dash-check/helpers",
+    "@trops/dash-check/recipe",
+    "@trops/dash-check/cli",
+    "@trops/dash-check/lib/register.js",
     "adm-zip",
     "algoliasearch",
     "clsx",

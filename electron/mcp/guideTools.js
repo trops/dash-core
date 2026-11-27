@@ -1,15 +1,21 @@
 /**
  * guideTools.js
  *
- * Registers the get_setup_guide MCP tool with the MCP Dash server.
+ * Registers the get_setup_guide and list_check_helpers MCP tools with the
+ * MCP Dash server.
  * Call registerGuideTools() during app startup.
  */
 const { registerTool } = require("../controller/mcpDashServerController");
 const { guideTools } = require("./toolDefinitions");
-const { handleGetSetupGuide } = require("./toolHandlers");
+const {
+  handleGetSetupGuide,
+  handleListCheckHelpers,
+} = require("./toolHandlers");
 
 const handlerMap = {
   get_setup_guide: handleGetSetupGuide,
+  // The check composer's palette (DASH-133).
+  list_check_helpers: handleListCheckHelpers,
 };
 
 function registerGuideTools() {

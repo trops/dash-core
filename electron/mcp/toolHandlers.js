@@ -2490,6 +2490,33 @@ async function handleGetSetupGuide({ topic }) {
   };
 }
 
+/**
+ * list_check_helpers (DASH-133): the check composer's palette, from
+ * @trops/dash-check: every helper and matcher with its metadata, plus a
+ * repo's own helpers (its base branch's .dash/checks/helpers) when a
+ * workspace folder is given.
+ */
+async function handleListCheckHelpers({ workspace } = {}) {
+  try {
+    const { listPalette } = require("../checks/dashCheck");
+    const palette = await listPalette({ workspace: workspace || null });
+    return {
+      content: [{ type: "text", text: JSON.stringify(palette, null, 2) }],
+      ...(palette.error ? { isError: true } : {}),
+    };
+  } catch (e) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `The helpers couldn't be listed: ${(e && e.message) || e}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
 // --- Layout Tool Handlers ---
 
 /**
@@ -3040,6 +3067,7 @@ module.exports = {
   handleAddProvider,
   handleRemoveProvider,
   handleGetSetupGuide,
+  handleListCheckHelpers,
   handleSetLayout,
   handleUpdateLayout,
   handleMoveWidget,

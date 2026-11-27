@@ -20,6 +20,7 @@ const { runToolCall } = require("./kinds/toolCall");
 const { runRepoCheck } = require("./kinds/repo");
 const { runPackageCheck } = require("./kinds/package");
 const { FACTORY_KINDS, runFactoryCheck } = require("./kinds/factory");
+const { runRecipeCheck } = require("./kinds/recipe");
 const { handoffCheck } = require("../bots/botHandoff");
 
 const KIND_LABELS = {
@@ -29,6 +30,7 @@ const KIND_LABELS = {
   tool: "Tool call",
   repo: "Repo check",
   package: "Check package",
+  recipe: "Recipe",
   "git-on-branch": "On its branch",
   "git-committed": "Work is committed",
   "pr-ci": "The PR's CI passes",
@@ -84,6 +86,9 @@ async function runCheck(check, input, deps = {}) {
         cwd: deps.cwd,
         tmpDir: deps.tmpDir,
         ...(deps.env ? { env: deps.env } : {}),
+        // A dash-check file's ctx.tool (DASH-133): read-only tools only.
+        ...(deps.callTool ? { callTool: deps.callTool } : {}),
+        ...(deps.isReadOnly ? { isReadOnly: deps.isReadOnly } : {}),
         // When the repo has none: its fallback, run as any check is.
         runFallback: async (fb, inp) => {
           const r = await runCheck(fb, inp, { ...deps, secret: null });
@@ -105,6 +110,17 @@ async function runCheck(check, input, deps = {}) {
         ...(deps.fetch ? { fetch: deps.fetch } : {}),
         ...(deps.sleep ? { sleep: deps.sleep } : {}),
         ...(deps.exec ? { exec: deps.exec } : {}),
+      });
+    } else if (kind === "recipe") {
+      // dash-check building blocks, kept on the step (DASH-133).
+      res = await runRecipeCheck(check, input, {
+        cwd: deps.cwd,
+        ...(deps.env ? { env: deps.env } : {}),
+        callTool: deps.callTool,
+        isReadOnly: deps.isReadOnly,
+        selfTest: !!deps.selfTest,
+        ...(deps.fetch ? { fetch: deps.fetch } : {}),
+        ...(deps.sleep ? { sleep: deps.sleep } : {}),
       });
     } else if (kind === "package") {
       // A check package (DASH-106): Dash's, or installed from the registry.

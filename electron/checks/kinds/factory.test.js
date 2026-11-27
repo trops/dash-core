@@ -429,3 +429,76 @@ describe("the built-in kinds", () => {
     assert.equal(res.kind, "handoff-has");
   });
 });
+
+describe("the built-ins run on dash-check's helpers (DASH-133)", () => {
+  it("each kind calls its helper, which decides pass or fail", async () => {
+    const lib = require("@trops/dash-check/helpers");
+    const calls = [];
+    const real = {
+      onBranch: lib.git.onBranch,
+      committedSince: lib.git.committedSince,
+      has: lib.handoff.has,
+      ciPassed: lib.github.ciPassed,
+    };
+    const wrap = (group, name) => {
+      const fn = lib[group][name];
+      lib[group][name] = async (ctx, params) => {
+        calls.push({ id: fn.meta.id, params });
+        return fn(ctx, params);
+      };
+    };
+    wrap("git", "onBranch");
+    wrap("git", "committedSince");
+    wrap("handoff", "has");
+    wrap("github", "ciPassed");
+    try {
+      await runFactoryCheck({ kind: "git-on-branch" }, inWork(), {});
+      await runFactoryCheck(
+        { kind: "git-committed", base: "main" },
+        inWork(),
+        {},
+      );
+      await runFactoryCheck(
+        { kind: "handoff-has", keys: ["summary"] },
+        answer({ summary: "ok" }),
+        {},
+      );
+      const gh = fakeGitHub({
+        "pulls/12": OPEN,
+        "commits/abc/check-runs": {
+          code: 200,
+          body: {
+            check_runs: [
+              { name: "validate", status: "completed", conclusion: "success" },
+            ],
+          },
+        },
+      });
+      await runFactoryCheck({ kind: "pr-ci", timeoutSec: 60 }, PR, {
+        fetch: gh.fetch,
+        ...clock(),
+      });
+    } finally {
+      lib.git.onBranch = real.onBranch;
+      lib.git.committedSince = real.committedSince;
+      lib.handoff.has = real.has;
+      lib.github.ciPassed = real.ciPassed;
+    }
+    assert.deepEqual(
+      calls.map((c) => c.id),
+      ["git.onBranch", "git.committedSince", "handoff.has", "github.ciPassed"],
+    );
+    assert.deepEqual(calls[0].params, { branch: "fix/DASH-93" });
+    assert.deepEqual(calls[1].params, { base: "origin/main", min: 1 });
+    assert.deepEqual(calls[2].params, { keys: ["summary"] });
+    assert.equal(calls[3].params.prKey, "prUrl");
+    assert.equal(calls[3].params.timeoutSec, 60);
+    assert.equal(calls[3].params.ifNoChecks, "pass");
+  });
+
+  it("the pr-ci self-test skip stays", async () => {
+    const res = await runCheck({ kind: "pr-ci" }, PR, { selfTest: true });
+    assert.equal(res.pass, true);
+    assert.match(res.reason, /Skipped in a test/);
+  });
+});

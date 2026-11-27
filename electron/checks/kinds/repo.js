@@ -21,6 +21,15 @@
  *
  * How it's run: its #! line when it has one, else by extension (.js .cjs
  * .mjs → node, .sh → bash, .py → python3), else sh.
+ *
+ * A dash-check file (DASH-133) is found by the same name: `validate` finds
+ * .dash/checks/validate.check.js or validate.check.json (before
+ * validate.<ext>). A .check.js file runs in its own node with the
+ * library's runner; a .check.json recipe runs in Dash's process with the
+ * library's helpers (in its own node when it uses the repo's own, from
+ * .dash/checks/helpers). Both read from the base branch (helpers too), get
+ * the same input and environment, a read-only ctx.tool, and come back with
+ * each check's and each step's result in details.
  */
 "use strict";
 
@@ -46,8 +55,17 @@ function stepInputEnv(inputs) {
   return inputEnv(ok);
 }
 const { runPackageFiles } = require("./package");
+const {
+  runCheckFile,
+  runRecipe,
+  recipeError,
+  helpersUsed,
+  isBuiltInHelper,
+} = require("../dashCheck");
 
 const CHECKS_DIR = ".dash/checks";
+// A repo's own dash-check helpers (DASH-133), inside CHECKS_DIR.
+const HELPERS_DIR = "helpers";
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const IF_MISSING = ["fail", "skip"];
 const FROM = ["base", "workspace"];
@@ -88,10 +106,25 @@ function repoCheckError(check) {
   return null;
 }
 
-/** Which file is the check: its exact name, else name.<ext> (sorted). */
+/** A dash-check file (DASH-133): "js" (.check.js), "recipe" (.check.json) or null. */
+function libKind(file) {
+  const f = String(file || "");
+  if (/\.check\.c?js$/.test(f)) return "js";
+  if (/\.check\.json$/.test(f)) return "recipe";
+  return null;
+}
+
+/**
+ * Which file is the check: its exact name, else name.check.js,
+ * name.check.cjs or name.check.json (dash-check, DASH-133), else
+ * name.<ext> (sorted).
+ */
 function pickFile(names, name) {
   const files = (names || []).map((n) => path.posix.basename(n));
   if (files.includes(name)) return name;
+  for (const ext of [".check.js", ".check.cjs", ".check.json"]) {
+    if (files.includes(`${name}${ext}`)) return `${name}${ext}`;
+  }
   const withExt = files
     .filter(
       (f) =>
@@ -179,6 +212,24 @@ async function findCheck(check, opts) {
     if (body.length > MAX_FILE)
       return { error: `${CHECKS_DIR}/${file} is too big to run` };
     const out = tmp();
+    if (libKind(file)) {
+      // A dash-check file, with the repo's helpers beside it (DASH-133).
+      const helpers = {};
+      const hdir = path.join(dir, HELPERS_DIR);
+      try {
+        for (const f of fs.readdirSync(hdir)) {
+          const p = path.join(hdir, f);
+          if (/\.c?js$/.test(f) && fs.statSync(p).isFile())
+            helpers[f] = fs.readFileSync(p);
+        }
+      } catch (_e) {
+        // No helpers of its own.
+      }
+      return {
+        ...placeLibFile(out, file, body, helpers),
+        shown: `${CHECKS_DIR}/${file}`,
+      };
+    }
     const dest = path.join(out, file);
     fs.writeFileSync(dest, body, { mode: 0o755 });
     return { file: dest, shown: `${CHECKS_DIR}/${file}`, dir: out };
@@ -232,6 +283,29 @@ async function findCheck(check, opts) {
   if (body.length > MAX_FILE)
     return { error: `${CHECKS_DIR}/${file} is too big to run` };
   const out = tmp();
+  if (libKind(file)) {
+    // A dash-check file: the base branch's helpers too, so the branch can't
+    // change those either (DASH-133).
+    const helpers = {};
+    const inside = await git(
+      ["ls-tree", "--name-only", `${ref}:${CHECKS_DIR}/${HELPERS_DIR}`],
+      opts,
+    );
+    for (const f of (inside ? inside.toString().split("\n") : []).filter((n) =>
+      /\.c?js$/.test(n),
+    )) {
+      const b = await git(
+        ["show", `${ref}:${CHECKS_DIR}/${HELPERS_DIR}/${f}`],
+        opts,
+      );
+      if (b != null) helpers[f] = b;
+    }
+    return {
+      ...placeLibFile(out, file, body, helpers),
+      shown: `${CHECKS_DIR}/${file} on ${ref}`,
+      ref,
+    };
+  }
   const dest = path.join(out, file);
   fs.writeFileSync(dest, body, { mode: 0o755 });
   return {
@@ -243,12 +317,80 @@ async function findCheck(check, opts) {
 }
 
 /**
+ * A dash-check file laid out as in its repo: <out>/.dash/checks/<file>,
+ * its helpers in <out>/.dash/checks/helpers/, so its relative requires and
+ * the repo's own helpers are the copies Dash read.
+ */
+function placeLibFile(out, file, body, helpers = {}) {
+  const checks = path.join(out, CHECKS_DIR);
+  fs.mkdirSync(path.join(checks, HELPERS_DIR), { recursive: true });
+  for (const [f, b] of Object.entries(helpers)) {
+    fs.writeFileSync(path.join(checks, HELPERS_DIR, f), b);
+  }
+  const dest = path.join(checks, file);
+  fs.writeFileSync(dest, body);
+  return { file: dest, dir: out, root: out, lib: libKind(file) };
+}
+
+/**
+ * Run a dash-check file (DASH-133): a .check.js file in its own node with
+ * the library's runner; a .check.json recipe in this process when it uses
+ * only the library's helpers, else in its own node with the repo's.
+ */
+async function runLibFile(found, check, input, opts) {
+  const common = {
+    cwd: opts.cwd,
+    env: { ...(opts.env || {}), ...stepInputEnv(check.inputs) },
+    tmpDir: opts.tmpDir,
+    timeoutSec: check.timeoutSec,
+    shown: found.shown,
+    ...(opts.spawn ? { spawn: opts.spawn } : {}),
+    ...(opts.callTool ? { callTool: opts.callTool } : {}),
+    ...(opts.isReadOnly ? { isReadOnly: opts.isReadOnly } : {}),
+  };
+  if (found.lib === "js") {
+    return runCheckFile(found.file, input, common);
+  }
+  let recipe;
+  try {
+    recipe = JSON.parse(fs.readFileSync(found.file, "utf8"));
+  } catch (e) {
+    return {
+      pass: false,
+      reason: `${found.shown} isn't valid JSON (${e.message})`,
+    };
+  }
+  const bad = recipeError(recipe, { repoHelpers: true });
+  if (bad) {
+    return {
+      pass: false,
+      reason: `${found.shown} isn't a valid recipe: ${bad}`,
+    };
+  }
+  if (helpersUsed(recipe).every(isBuiltInHelper)) {
+    return runRecipe(recipe, input, {
+      ...common,
+      extra: { file: found.shown, recipe: recipe.name },
+    });
+  }
+  const res = await runCheckFile(found.file, input, {
+    ...common,
+    root: found.root,
+  });
+  return {
+    ...res,
+    details: { ...(res.details || {}), recipe: recipe.name },
+  };
+}
+
+/**
  * Run a repo check.
  * @param {object} check   { kind: "repo", name, fallback?, ifMissing?, from?, base? }
  * @param {object} input   the standard input (stepInput.js)
  * @param {{ cwd: string, env?: object, tmpDir?: string, spawn?: Function,
- *           exec?: Function,
+ *           exec?: Function, callTool?, isReadOnly?,
  *           runFallback?: (check, input) => Promise<object> }} opts
+ *   callTool and isReadOnly answer a dash-check file's ctx.tool
  */
 async function runRepoCheck(check, input, opts = {}) {
   const bad = repoCheckError(check);
@@ -303,6 +445,31 @@ async function runRepoCheck(check, input, opts = {}) {
     // The team's copy (DASH-110): saved to the repo by a PR not merged yet,
     // or kept for this team only.
     const tc = opts.teamCheck ? opts.teamCheck(name) : null;
+    if (tc && libKind(tc.file)) {
+      // A dash-check team copy (DASH-133): run as the repo's file would be.
+      const label = `Team copy of .dash/checks/${tc.file}${tc.state === "pr-open" ? ` (PR open${tc.pr && tc.pr.url ? `: ${tc.pr.url}` : ""})` : ""}`;
+      const out = fs.mkdtempSync(
+        path.join(opts.tmpDir || os.tmpdir(), "dash-repo-check-"),
+      );
+      try {
+        const res = await runLibFile(
+          { ...placeLibFile(out, tc.file, tc.code), shown: label },
+          check,
+          input,
+          { ...opts, cwd },
+        );
+        return {
+          ...res,
+          details: {
+            ...(res.details || {}),
+            teamCopy: tc.file,
+            state: tc.state,
+          },
+        };
+      } finally {
+        fs.rmSync(out, { recursive: true, force: true });
+      }
+    }
     if (tc) {
       const label =
         tc.state === "pr-open"
@@ -353,6 +520,7 @@ async function runRepoCheck(check, input, opts = {}) {
     };
   }
   try {
+    if (found.lib) return await runLibFile(found, check, input, opts);
     let first = "";
     try {
       first = fs.readFileSync(found.file, "utf8").split(/\r?\n/, 1)[0] || "";
@@ -395,5 +563,6 @@ module.exports = {
   repoCheckError,
   pickFile,
   runnerFor,
+  libKind,
   CHECKS_DIR,
 };
