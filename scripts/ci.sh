@@ -115,6 +115,12 @@ node scripts/inject-secrets.js
 step "Running Jest tests"
 npx jest --watchAll=false
 
+# 5. Every node:test file is in this script's lists (DASH-111): jest skips
+# electron/ and scripts/, so one that isn't named here never runs. The same
+# check the Dash Code Factory's bots run (.dash/checks/ci-test-list.js).
+step "Checking every node test file is in ci.sh"
+node .dash/checks/ci-test-list.js
+
 # 5a. Temp-dir hygiene: the self-cleaning temp helper + the leak guard
 step "Running temp-dir helper + leak guard tests"
 no_temp_leaks node --test electron/testUtils/tempDir.test.js scripts/checkTempLeaks.test.js
