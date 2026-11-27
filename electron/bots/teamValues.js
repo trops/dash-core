@@ -28,6 +28,9 @@
  * The answer only names a row; what's filled in is always what the user
  * typed in the settings, so text from a ticket never becomes a command.
  *
+ * {repo.rows} (DASH-104) is every row, one line each ("key: its first
+ * url or text column"), for the bot that picks a row: it needs no pick.
+ *
  * Kept on the dashboard's team settings (BotStore teams[workspaceId]):
  *   declared  the settings, as above
  *   values    { [name]: value } (a value left out uses the default)
@@ -200,6 +203,11 @@ function cleanColumns(s, where) {
     if (c.name === "key") {
       return {
         error: `${where} (${s.name}): "key" is the row's own key, not a column`,
+      };
+    }
+    if (c.name === "rows") {
+      return {
+        error: `${where} (${s.name}): "rows" is every row ({${s.name}.rows}), not a column`,
       };
     }
     if (seen.has(c.name)) {
@@ -493,6 +501,9 @@ function withTeamValues(
       picks && typeof picks[t.name] === "string" ? picks[t.name] : null;
     const row = key ? rows.find((r) => r && r.key === key) || null : null;
     tables.set(t.name, { setting: t, rows, key, row });
+    // Every row, for the bot that picks one (DASH-104).
+    const listed = rowsText(t, rows, home);
+    if (listed) text[`${t.name}.rows`] = listed;
     if (!row) continue;
     text[`${t.name}.key`] = row.key;
     for (const c of t.columns || []) {
@@ -543,6 +554,20 @@ function withTeamValues(
   }
   for (const [name, t] of tables) {
     if (!used.has(name)) continue;
+    // Only {table.rows}: it needs no picked row, only rows.
+    const fields = [...used]
+      .filter((u) => u.startsWith(`${name}.`))
+      .map((u) => u.slice(name.length + 1));
+    if (fields.length && fields.every((f) => f === "rows")) {
+      if (!t.rows.length) {
+        missing.push({
+          name,
+          label: t.setting.label || name,
+          reason: "no-rows",
+        });
+      }
+      continue;
+    }
     const label = t.setting.label || name;
     const keys = t.rows.map((r) => r.key);
     if (!t.rows.length) {
@@ -575,6 +600,28 @@ function withTeamValues(
     }
   }
   return { bot: out, missing };
+}
+
+/**
+ * A table's rows as lines, for {table.rows}: "key: value", the value its
+ * first url column's (else its first text-like column's). "" when none.
+ */
+function rowsText(setting, rows, home = null) {
+  const cols =
+    (setting && Array.isArray(setting.columns) && setting.columns) || [];
+  const first =
+    cols.find((c) => c && c.type === "url") ||
+    cols.find((c) => c && c.type !== "boolean") ||
+    null;
+  return (rows || [])
+    .filter((r) => r && typeof r.key === "string" && r.key)
+    .map((r) => {
+      const v = first ? r[first.name] : null;
+      const shown =
+        v === undefined || v === null || v === "" ? "" : asText(first, v, home);
+      return shown ? `- ${r.key}: ${shown}` : `- ${r.key}`;
+    })
+    .join("\n");
 }
 
 /** Does the bot's text use {item.…} or {workspace.…}? */
@@ -695,6 +742,7 @@ module.exports = {
   namesUsed,
   withTeamValues,
   missingMessage,
+  rowsText,
   usesSetting,
   isFolderPath,
 };
