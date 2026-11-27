@@ -193,3 +193,22 @@ describe("setupSentence / cantStartText", () => {
     expect(cantStartText(st)).toMatch(/; Check setup found 1 problem\.$/);
   });
 });
+
+describe("an untested change (DASH-121)", () => {
+  it("is counted in the badge without making the team not ready", () => {
+    const team = { untested: { what: "Coder changed", at: "x" } };
+    const s = teamSetupStatus({ bots: [triage, coder], team });
+    expect(s.ready).toBe(true);
+    expect(s.untested).toBe("Coder changed");
+    expect(s.badge).toBe("Setup · untested change");
+    expect(s.short).toBe("Untested");
+    expect(cantStartText(s)).toBeNull();
+    expect(setupSentence(s)).toBe("");
+    // A team that needs something keeps that badge, and the change too.
+    const t = teamSetupStatus({ bots: [ticket], team });
+    expect(t.ready).toBe(false);
+    expect(t.badge).toBe("Setup · 1 bot needs you");
+    expect(t.untested).toBe("Coder changed");
+    expect(teamSetupStatus({ bots: [coder] }).untested).toBeNull();
+  });
+});

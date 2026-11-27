@@ -146,6 +146,75 @@ export function checklistSteps({
   return { steps, done, total: steps.length };
 }
 
+/**
+ * The self-test's item field (DASH-121): its label and hint, from the
+ * package when it says, never one team's own ticket.
+ *   - a setting named `testItem` (the team's, or one of its bots'): its
+ *     label, and its description as the hint;
+ *   - else, when a bot takes tickets (a tracker setting, DASH-135):
+ *     "Test ticket" / "A ticket in your sandbox project";
+ *   - else "Test item" / "A test ticket key".
+ * @param {{ bots?: object[], team?: object|null }} p  team: { declared }
+ */
+export function testItemField({ bots = [], team = null } = {}) {
+  const teamDeclared =
+    (isObj(team) && Array.isArray(team.declared) && team.declared) || [];
+  const all = [
+    ...teamDeclared,
+    ...(Array.isArray(bots) ? bots : [])
+      .filter((b) => !skipped(b))
+      .flatMap((b) => settingsOfBot(b).declared),
+  ].filter(Boolean);
+  const declared = all.find((s) => s.name === "testItem");
+  if (declared) {
+    return {
+      label: declared.label || "Test item",
+      placeholder:
+        (typeof declared.description === "string" &&
+          declared.description.trim()) ||
+        "A test ticket key",
+    };
+  }
+  if (all.some((s) => s.type === "tracker")) {
+    return {
+      label: "Test ticket",
+      placeholder: "A ticket in your sandbox project",
+    };
+  }
+  return { label: "Test item", placeholder: "A test ticket key" };
+}
+
+/**
+ * Why Run self-test can't start yet (DASH-121), or null when it can: it
+ * runs only on a setup that's filled in, saved and passed Check setup
+ * (and it checks again before it starts).
+ * @param {object} p
+ * @param {number} [p.waiting]   bots with a required setting still empty
+ * @param {number} [p.teamEmpty] the team's empty settings
+ * @param {boolean} [p.dirty]    unsaved settings on the page
+ * @param {object|null} [p.check] the last Check setup
+ * @param {string} [p.item]      the test item typed
+ */
+export function selfTestBlock({
+  waiting = 0,
+  teamEmpty = 0,
+  dirty = false,
+  check = null,
+  item = "",
+} = {}) {
+  if (dirty) return "Save your changes in step 1 first.";
+  if (waiting || teamEmpty) return "Fill in the settings in step 1 first.";
+  if (!check) return "Run Check setup in step 2 first.";
+  if (check.ok === false) {
+    const n = Array.isArray(check.problems) ? check.problems.length : 0;
+    return n
+      ? `Fix the ${plural(n, "problem", "problems")} in step 2 first.`
+      : "Fix what Check setup found in step 2 first.";
+  }
+  if (!String(item || "").trim()) return "Type a test item first.";
+  return null;
+}
+
 /** "1 of 4 done · do them in order" / "All 4 done". */
 export function checklistLine({ done, total }) {
   return done >= total

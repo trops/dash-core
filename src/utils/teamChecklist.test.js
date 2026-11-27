@@ -107,3 +107,65 @@ describe("checklistSteps", () => {
     expect(checklistLine(later)).toBe("0 of 3 done · do them in order");
   });
 });
+
+describe("the self-test's item field (DASH-121)", () => {
+  it("takes the package's testItem setting, else a ticket when a bot takes tickets, else generic", () => {
+    const { testItemField } = require("./teamChecklist");
+    expect(
+      testItemField({
+        team: {
+          declared: [
+            {
+              name: "testItem",
+              label: "Sample note",
+              description: "A note in your test folder",
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      label: "Sample note",
+      placeholder: "A note in your test folder",
+    });
+    expect(
+      testItemField({
+        bots: [{ id: "t", settings: [{ name: "source", type: "tracker" }] }],
+      }),
+    ).toEqual({
+      label: "Test ticket",
+      placeholder: "A ticket in your sandbox project",
+    });
+    const plain = testItemField({ bots: [{ id: "c" }] });
+    expect(plain).toEqual({
+      label: "Test item",
+      placeholder: "A test ticket key",
+    });
+    expect(JSON.stringify(plain)).not.toMatch(/DASH-97/);
+  });
+});
+
+describe("selfTestBlock (DASH-121)", () => {
+  it("waits for filled-in, saved settings and a passing Check setup", () => {
+    const { selfTestBlock } = require("./teamChecklist");
+    const ok = { ok: true, problems: [] };
+    expect(selfTestBlock({ dirty: true, check: ok, item: "T-1" })).toBe(
+      "Save your changes in step 1 first.",
+    );
+    expect(selfTestBlock({ waiting: 1, check: ok, item: "T-1" })).toBe(
+      "Fill in the settings in step 1 first.",
+    );
+    expect(selfTestBlock({ item: "T-1" })).toBe(
+      "Run Check setup in step 2 first.",
+    );
+    expect(
+      selfTestBlock({
+        check: { ok: false, problems: [{}, {}, {}] },
+        item: "T-1",
+      }),
+    ).toBe("Fix the 3 problems in step 2 first.");
+    expect(selfTestBlock({ check: ok, item: " " })).toBe(
+      "Type a test item first.",
+    );
+    expect(selfTestBlock({ check: ok, item: "T-1" })).toBeNull();
+  });
+});

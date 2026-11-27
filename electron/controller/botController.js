@@ -2519,6 +2519,9 @@ const botController = {
       declared,
       values: (t.values && typeof t.values === "object" && t.values) || {},
       usedBy,
+      // Changed since its last passing self-test (DASH-121): the setup
+      // status counts it.
+      untested: t.untested || null,
     };
   },
 

@@ -1234,9 +1234,20 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
   1. **Bots that need something from you:** a card per bot with a required setting of its own (or one it uses that's empty), its fields right there (TeamSettingsForm with `botName`), "1 to fill in" / "✓ Ready", and "Open <bot>'s settings ›". One Save for all cards (an unsaved bar with Discard / Save; each changed bot is saved as `bots.save({ id, settingValues })`). "The other N bots have nothing required." The team's old settings (DASH-57), when it declares some, sit under the cards with their own Save.
   2. **Check setup:** its problems, each on a bot with **Go to it** (that bot's card, else its Settings tab). The result is kept in `teamSetupStore`, so it survives leaving the page for the session.
   3. **Repo checks:** only when the team has repos: each repo with checks and which (`reposWithoutChecks` now also returns `withChecks: [{ key, slug, checks }]`), Set up checks for one without, and team checks to keep or remove (`Bots/TeamChecksPanel.js` is now `useRepoChecks` + `RepoChecksRows`).
-  4. **Run a self-test** (moved as it was; DASH-121 changes it).
+  4. **Run a self-test** (DASH-121, below).
 - [x] When every step is done, the checklist folds to its header ("All 4 done", Show steps).
 - [x] **How jobs run** (`Bots/TeamJobSettings.js`) has a visible heading and only the two switches, One job at a time and "Bots pass work in a standard format (recommended)", each with its error under its own row.
+
+## DASH-121: The self-test checks setup first, then opens its job (2026-11-27)
+
+**Status:** Implemented (mockup 2, step 4).
+
+**Why:** after Test team the page said "follow it on the Jobs page" as plain text, the test item's placeholder was one team's own ticket key (DASH-97), and a self-test could start on a broken setup and die at its first bot.
+
+- [x] Step 4 of the Set up checklist: **Run self-test** is disabled, with why, until the settings in step 1 are filled in and saved and Check setup has passed ("Run Check setup in step 2 first.", "Fix the 3 problems in step 2 first."; `teamChecklist.selfTestBlock`). On click it runs Check setup again; on problems it doesn't start ("Not started: fix the 2 problems in step 2 first.") and step 2 lists them with Go to it.
+- [x] When it starts, the Jobs page opens on the job (`openJob(jobId)`: a `dash:open-page` event `{ page: "jobs", jobId }` → DashboardStage `jobLink`), and the step keeps "Open the job ›".
+- [x] The item field's label and hint come from the package (`teamChecklist.testItemField`): a setting named `testItem` (the team's or a bot's: its label, its description as the hint); else, when a bot takes tickets (a tracker setting), "Test ticket" / "A ticket in your sandbox project"; else "Test item" / "A test ticket key". Never a real ticket key.
+- [x] The setup status counts an **untested change** (the team's bots or settings changed since its last passing self-test): `teamSetupStatus` takes it from the team settings (`getTeamValues` now returns `untested`) as `status.untested`; the team stays ready (runs aren't blocked) and the badge says "Setup · untested change", with what changed as its tooltip. `useTeamSetups` reads the team again when one of its bots is saved or a job ends done; the checklist reloads its step 4 state when a job ends.
 
 ## DASH-130: Install dialog and Checks panel polish (2026-11-27)
 
@@ -1377,7 +1388,8 @@ Decisions (the user's): channel-agnostic (no channel names); Allow once / Deny o
 | 1.31    | 2026-11-27 | John   | DASH-119: a team's setup status — badge on the tree row and Bots view header, "This team can't take work yet" banner, "Needs setup" on cards, Run now says why it can't start |
 | 1.32    | 2026-11-27 | John   | DASH-118: Team setup in the Bots view header (opens the team page at its setup), team actions under ⋯, install copy names where settings are, a fresh install lands on the team's setup |
 | 1.33    | 2026-11-27 | John   | DASH-120: "Set up this team" checklist at the top of the team page (bots' required settings edited in cards, Check setup with Go to it, repo checks, self-test); "How jobs run" with its two switches |
-| 1.34    | 2026-11-27 | John   | DASH-130: install dialog in theme colours, Required marks and bot initials, "Install, fill in later" / "Install and open Set up"; clickable PR links in the repo checks |
+| 1.34    | 2026-11-27 | John   | DASH-121: Run self-test waits for a passing Check setup, checks again, then opens its job; the item field's hint comes from the package; the setup status counts an untested change |
+| 1.35    | 2026-11-27 | John   | DASH-130: install dialog in theme colours, Required marks and bot initials, "Install, fill in later" / "Install and open Set up"; clickable PR links in the repo checks |
 
 ---
 
