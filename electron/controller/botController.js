@@ -5245,7 +5245,10 @@ const botController = {
     const held = this._gateTeamJob(botId, bot, { jobId, willStart, opts });
     if (held) return held;
     // Its setup checked before the job starts (DASH-108).
-    const checked = this._preflightGate(botId, bot, { jobId, willStart, opts });
+    const checked =
+      typeof this._preflightGate === "function"
+        ? this._preflightGate(botId, bot, { jobId, willStart, opts })
+        : null;
     if (checked) return checked;
     if (
       !jobId &&
