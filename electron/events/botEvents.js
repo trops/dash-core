@@ -87,6 +87,8 @@ const BOTS_CHECK_PACKAGES_LIST = "bots-check-packages-list";
 const BOTS_CHECK_PACKAGES_SEARCH = "bots-check-packages-search";
 const BOTS_CHECK_PACKAGE_INSTALL = "bots-check-package-install";
 const BOTS_CHECK_PACKAGE_REMOVE = "bots-check-package-remove";
+// The team's setup, checked (DASH-108).
+const BOTS_CHECK_SETUP = "bots-check-setup";
 // The team's "Wait for approvals up to" (DASH-32).
 const BOTS_GET_APPROVAL_WAIT_HOURS = "bots-get-approval-wait-hours";
 const BOTS_SET_APPROVAL_WAIT_HOURS = "bots-set-approval-wait-hours";
@@ -221,6 +223,7 @@ module.exports = {
   BOTS_CHECK_PACKAGES_SEARCH,
   BOTS_CHECK_PACKAGE_INSTALL,
   BOTS_CHECK_PACKAGE_REMOVE,
+  BOTS_CHECK_SETUP,
   BOTS_GET_APPROVAL_WAIT_HOURS,
   BOTS_SET_APPROVAL_WAIT_HOURS,
   BOTS_TASK_PASSPHRASE_STATE,

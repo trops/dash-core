@@ -321,6 +321,22 @@ const BOT_TOOLS = [
     },
   },
   {
+    name: "check_team_setup",
+    defaultOff: true,
+    description:
+      "Check a team's setup without running anything (DASH-108): every provider its bots use starts and answers, every setting they use has a value, each repo in its tables can be read (and pushed to, when a bot pushes) with the GitHub provider's token, and every repo check a step names is on the repo's base branch. Returns ok and each problem with its fix. A team with the standard handoff runs this before each new job, and doesn't start one that fails. Run it after changing a team.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        team: {
+          type: "string",
+          description: "The team's dashboard name or id.",
+        },
+      },
+      required: ["team"],
+    },
+  },
+  {
     name: "create_bot",
     defaultOff: true,
     description:
@@ -2129,6 +2145,28 @@ function makeBotToolHandlers({
       });
     },
 
+    async check_team_setup(args = {}) {
+      if (!isOn("check_team_setup")) return off("check_team_setup");
+      const workspaces = getWorkspaces();
+      const found = findTeam(workspaces, (args || {}).team);
+      if (found.reply) return found.reply;
+      if (!bots.checkSetup) {
+        return json({ error: "This version of Dash can't check a setup." });
+      }
+      const res = await bots.checkSetup(found.team.id);
+      return json({
+        team: found.team.name || "Untitled",
+        ok: !!res.ok,
+        problems: (res.problems || []).map((p) => ({
+          kind: p.kind,
+          ...(p.bot ? { bot: p.bot } : {}),
+          ...(p.repo ? { repo: p.repo } : {}),
+          message: p.message,
+        })),
+        message: res.text,
+      });
+    },
+
     async set_team_settings(args = {}) {
       if (!isOn("set_team_settings")) return off("set_team_settings");
       args = args || {};
@@ -2644,6 +2682,8 @@ function registerBotTools() {
       // The standard handoff (DASH-101).
       usesHandoffs: (id) => botController.usesHandoffs(id),
       setUsesHandoffs: (id, on) => botController.setUsesHandoffs(id, on),
+      // The team's setup, checked (DASH-108).
+      checkSetup: (id) => botController.checkSetup(id),
       setTeamValues: (id, change, opts) =>
         botController.setTeamValues(id, change, opts),
       // The user's providers and the tools each lists (null until it's

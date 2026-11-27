@@ -131,6 +131,7 @@ const { publishFingerprint } = require("../registry/fingerprint");
 const { remixOrigin, checkRemix, checkRemixAll } = require("../registry/remix");
 const { unassignTeam, isOnTeam } = require("../bots/teams");
 const { createPackageStore } = require("../checks/packageStore");
+const { preflight, preflightText } = require("../bots/preflight");
 const {
   TEAM_SERVER,
   TEAM_TOOLS,
@@ -2729,6 +2730,78 @@ const botController = {
     return (mine || ofType[0] || {}).name || null;
   },
 
+  /**
+   * The team's setup, checked (DASH-108): its providers, settings, repos
+   * (read and push with the GitHub token) and the repo checks its steps
+   * name. The team page's Check setup button, MCP's check_team_setup, and
+   * the gate before a job starts on a team with the standard handoff.
+   * @returns {Promise<{ ok, problems, checked, text, at }>}
+   */
+  async checkSetup(workspaceId) {
+    if (workspaceId === null || workspaceId === undefined) {
+      return { ok: false, error: "Which team?" };
+    }
+    const bots = this._store
+      .list()
+      .filter((b) => isOnTeam(b, workspaceId) && !isLead(b) && !isDashTeam(b));
+    const team = this._store.getTeamSettings(workspaceId) || null;
+    const win = this._getMainWindow ? this._getMainWindow() : null;
+    const res = await preflight(
+      { bots, team, home: require("os").homedir() },
+      {
+        providerFailures: async (bot) => {
+          if (!this._mcp || !this._mcp.startServer || !this._providers) {
+            return [];
+          }
+          const { failed } = await ensureBotServers({
+            bot,
+            connected: this._connectedServers(),
+            getProvider: async (name) =>
+              this._providers.getProvider(win, this._appId, name),
+            startServer: (name, mcpConfig, credentials, ws) =>
+              this._mcp.startServer(
+                win,
+                name,
+                mcpConfig,
+                credentials,
+                ws,
+                null,
+                this._appId,
+              ),
+          });
+          return failed;
+        },
+        gitToken: (bot) => this._gitTokenFor(bot),
+        ...(this._preflightFetch ? { fetch: this._preflightFetch } : {}),
+      },
+    );
+    const out = {
+      ...res,
+      text: preflightText(res.problems),
+      at: new Date().toISOString(),
+    };
+    this._lastSetup = this._lastSetup || new Map();
+    this._lastSetup.set(String(workspaceId), { ...out, ms: Date.now() });
+    return out;
+  },
+
+  /**
+   * Before a job starts on a team with the standard handoff (DASH-108):
+   * its setup, checked. A good result is kept for 10 minutes (and a bad
+   * one for 1), so a schedule doesn't ask GitHub every time.
+   */
+  async _setupBeforeJob(workspaceId) {
+    const last = this._lastSetup && this._lastSetup.get(String(workspaceId));
+    const keep = last && last.ok ? 10 * 60 * 1000 : 60 * 1000;
+    if (last && Date.now() - last.ms < keep) return last;
+    try {
+      return await this.checkSetup(workspaceId);
+    } catch (e) {
+      // A preflight that can't run doesn't stop the work.
+      return { ok: true, problems: [], error: (e && e.message) || String(e) };
+    }
+  },
+
   setUsesHandoffs(workspaceId, on) {
     if (workspaceId === null || workspaceId === undefined) {
       return { error: "Which team?" };
@@ -2752,6 +2825,50 @@ const botController = {
       }
     }
     return saved;
+  },
+
+  /**
+   * A new job on a team with the standard handoff waits for its setup to
+   * be checked (DASH-108); a bad setup doesn't start it: the job shows as
+   * failed, listing each problem with its fix. Null when there's nothing
+   * to check (a job's later run, a lead's chat, a flow step).
+   */
+  _preflightGate(botId, bot, { jobId, willStart, opts }) {
+    if (jobId || !willStart || (opts && opts.preflighted)) return null;
+    if (!bot || isDashTeam(bot) || (opts && opts.noTools)) return null;
+    if (opts && (opts.trigger === "flow" || opts.trigger === "event")) {
+      return null;
+    }
+    if (!this.usesHandoffs(bot.workspaceId)) return null;
+    // A chain's first bot (a scheduled Ticket Bot, a Run): a lead's chat
+    // isn't held up by it.
+    if (isLead(bot) || !startsChain(this._store, bot)) return null;
+    return this._setupBeforeJob(bot.workspaceId).then((setup) => {
+      if (setup.ok) return this._run(botId, { ...opts, preflighted: true });
+      const text = preflightText(setup.problems);
+      if (this._jobs) {
+        const asked = String(opts.jobTitle || opts.prompt || "").split("\n")[0];
+        const job = this._jobs.startJob({
+          workspaceId: bot.workspaceId,
+          leadId: null,
+          leadName: bot.name,
+          title: asked ? `${bot.name}: ${asked}` : bot.name,
+          request: "",
+          startedBy: chainStartedBy(bot, opts, jobStartedBy(opts)),
+          conversationId: opts.conversationId || null,
+        });
+        this._jobs.startStep(job.id, {
+          botId,
+          botName: "Setup check",
+          why: "Before the job starts, Dash checks the team's setup.",
+        });
+        this._jobs.endStep(job.id, {
+          botId,
+          record: { status: "failed", error: text },
+        });
+      }
+      return { botId, skipped: true, reason: text, setup };
+    });
   },
 
   /** Does this team have a job going, or waiting, so a new one must wait? */
@@ -5244,6 +5361,12 @@ const botController = {
     // One job at a time per team (DASH-81): held, or run as usual.
     const held = this._gateTeamJob(botId, bot, { jobId, willStart, opts });
     if (held) return held;
+    // Its setup checked before the job starts (DASH-108).
+    const checked =
+      typeof this._preflightGate === "function"
+        ? this._preflightGate(botId, bot, { jobId, willStart, opts })
+        : null;
+    if (checked) return checked;
     if (
       !jobId &&
       willStart &&

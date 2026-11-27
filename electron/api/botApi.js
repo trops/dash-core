@@ -81,6 +81,7 @@ const {
   BOTS_CHECK_PACKAGES_SEARCH,
   BOTS_CHECK_PACKAGE_INSTALL,
   BOTS_CHECK_PACKAGE_REMOVE,
+  BOTS_CHECK_SETUP,
   BOTS_GET_APPROVAL_WAIT_HOURS,
   BOTS_SET_APPROVAL_WAIT_HOURS,
   BOTS_TASK_PASSPHRASE_STATE,
@@ -432,6 +433,9 @@ const botApi = {
   /** A team's bots use the standard handoff (DASH-101). */
   setUsesHandoffs: (workspaceId, on) =>
     ipcRenderer.invoke(BOTS_SET_USES_HANDOFFS, { workspaceId, on }),
+  /** The team's setup, checked (DASH-108): { ok, problems, text }. */
+  checkSetup: (workspaceId) =>
+    ipcRenderer.invoke(BOTS_CHECK_SETUP, { workspaceId }),
   /** The team's "Wait for approvals up to", in hours (1, 4, 12 or 24). */
   getApprovalWaitHours: (workspaceId) =>
     ipcRenderer.invoke(BOTS_GET_APPROVAL_WAIT_HOURS, { workspaceId }),
