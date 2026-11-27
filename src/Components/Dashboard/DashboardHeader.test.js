@@ -51,6 +51,26 @@ describe("DashboardHeader — Dashboard | Bots switch (TEAM-011)", () => {
     expect(screen.getByLabelText("3 need attention")).toBeInTheDocument();
   });
 
+  it("the Bots count says what it counts and for whom; clicking it opens that bot (DASH-119)", () => {
+    const onStageModeChange = jest.fn();
+    const onBotsAttentionClick = jest.fn();
+    renderHeader({
+      stageMode: "dashboard",
+      onStageModeChange,
+      botsAttention: 1,
+      botsAttentionLabel: "1 bot's last run failed: Coder",
+      onBotsAttentionClick,
+    });
+    const badge = screen.getByLabelText("1 bot's last run failed: Coder");
+    expect(badge).toHaveAttribute(
+      "title",
+      "1 bot's last run failed: Coder — click to open",
+    );
+    fireEvent.click(badge);
+    expect(onBotsAttentionClick).toHaveBeenCalledTimes(1);
+    expect(onStageModeChange).not.toHaveBeenCalled();
+  });
+
   it("Jobs: amber when one needs you, grey while jobs are worked on (DASH-12)", () => {
     const { rerender } = renderHeader({
       stageMode: "dashboard",

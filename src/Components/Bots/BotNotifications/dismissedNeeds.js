@@ -11,6 +11,9 @@
  */
 
 const KEY = "dash:botNotifications:dismissed";
+// Sent on this window when the dismissed cards change (the Bots switch's
+// badge reads them again).
+export const DISMISSED_EVENT = "dash:bot-needs-dismissed";
 const DAY = 24 * 60 * 60 * 1000;
 // Older than any card can be (plans and failures show for 7 days).
 const KEEP_DAYS = 30;
@@ -53,6 +56,11 @@ export function withDismissed(dismissed, items, now = Date.now()) {
   return next;
 }
 
+/** True when a `storage` event (another window) changed the dismissed cards. */
+export function isDismissedKey(key) {
+  return key === KEY;
+}
+
 export function readDismissed() {
   try {
     const v = JSON.parse(window.localStorage.getItem(KEY) || "{}");
@@ -67,5 +75,12 @@ export function writeDismissed(dismissed) {
     window.localStorage.setItem(KEY, JSON.stringify(dismissed || {}));
   } catch (_e) {
     // private window: dismissed only until the panel closes
+  }
+  try {
+    window.dispatchEvent(
+      new CustomEvent(DISMISSED_EVENT, { detail: { dismissed } }),
+    );
+  } catch (_e) {
+    // no window (tests without a DOM)
   }
 }

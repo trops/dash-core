@@ -58,6 +58,23 @@ describe("useTeamBots", () => {
     expect(result.current.attention).toBe(2);
   });
 
+  it("a failure dismissed in Bot notifications leaves the badge (DASH-119)", async () => {
+    setup();
+    const { result } = renderHook(() => useTeamBots("7"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.attention).toBe(1);
+    expect(result.current.badge.label).toBe(
+      "1 bot's last run failed: CRM Sync",
+    );
+    const { writeDismissed } = require("./BotNotifications/dismissedNeeds");
+    act(() => writeDismissed({ "failed:b2": Date.now() }));
+    expect(result.current.attention).toBe(0);
+    expect(result.current.badge.label).toBe("");
+    act(() => writeDismissed({}));
+    expect(result.current.attention).toBe(1);
+    window.localStorage.clear();
+  });
+
   it("tracks running bots live", async () => {
     const { listeners } = setup();
     const { result } = renderHook(() => useTeamBots("7"));
