@@ -23,6 +23,8 @@ const TOOL_GROUPS = [
     tools: [
       "list_bots",
       "check_team_setup",
+      // The check composer's palette (DASH-133).
+      "list_check_helpers",
       "test_team",
       "create_bot",
       "update_bot",
@@ -91,8 +93,6 @@ const TOOL_GROUPS = [
       "apply_theme",
       "search_registry_themes",
       "get_setup_guide",
-      // The check composer's palette (DASH-133).
-      "list_check_helpers",
     ],
   },
 ];
