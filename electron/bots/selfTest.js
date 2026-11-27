@@ -59,14 +59,32 @@ function skippedAnswer(serverName, toolName, args) {
   };
 }
 
-/** A bot as it runs in a test: the outward commands blocked too. */
+/**
+ * What every bot in a test job is told (not only the first): an outward
+ * command or tool is blocked or skipped on purpose, so it carries on rather
+ * than stopping to ask someone to allow it (DASH-109, found in DASH-105:
+ * the PR Bot asked John to push for it).
+ */
+const TEST_NOTE = [
+  "SELF-TEST RUN: this job is a test of the whole team. Anything that would change something outside this computer is blocked or skipped on purpose:",
+  `- these commands never run: ${TEST_BLOCKED.join(", ")};`,
+  '- provider tools that could change something (comment, transition, create, merge…) answer "Skipped in a test".',
+  "When one is blocked or skipped, that's expected: don't ask anyone to allow it, don't try another way round it, and don't stop. Carry on as if it worked. Where you'd use its result, use a placeholder (a PR link: https://github.com/<owner>/<repo>/pull/0; a number: 0), and say in your answer what you would have done.",
+].join("\n");
+
+/** A bot as it runs in a test: the outward commands blocked too, and told why. */
 function withTestBlocks(bot) {
   if (!bot) return bot;
+  const instructions =
+    typeof bot.instructions === "string" && bot.instructions.trim()
+      ? `${bot.instructions}\n\n${TEST_NOTE}`
+      : TEST_NOTE;
   const commands =
     (bot.commands && typeof bot.commands === "object" && bot.commands) || {};
   const blocked = Array.isArray(commands.blocked) ? commands.blocked : [];
   return {
     ...bot,
+    instructions,
     commands: {
       ...commands,
       blocked: [
@@ -116,6 +134,7 @@ const UNTESTED_NOTE =
   "This team has an untested change: run a self-test (test_team, or Test team on the team's page) to check the whole chain on its test item before real work.";
 
 module.exports = {
+  TEST_NOTE,
   TEST_BLOCKED,
   skipsInTest,
   skippedAnswer,
