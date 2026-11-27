@@ -3370,7 +3370,8 @@ const botController = {
       ...j,
       // Its place in its team's queue (DASH-81).
       ...(j.status === "queued" ? { queue: this._jobs.queueInfo(j.id) } : {}),
-      steps: (j.steps || []).map(({ summary, ...st }) =>
+      // …and each step's answer and handoff (DASH-123), but a waiting one's.
+      steps: (j.steps || []).map(({ summary, handoff, ...st }) =>
         st.status === "needs-you" ? { ...st, summary } : st,
       ),
     }));

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Button3,
+  ChatMessage,
   EmptyState,
   FilterMenu,
   FontAwesomeIcon,
@@ -16,6 +17,9 @@ import { useJob, useJobs } from "../../hooks/useJobs";
 import { openRunConversation } from "../Bots/runConversation";
 import { JobCheckRows } from "../Goals/JobCheckRows";
 import { useGoal } from "../../hooks/useGoals";
+import { BotAvatar } from "../Bots/BotAvatar";
+import { HandoffCard, HandoffJson, StepProse } from "./StepMessage";
+import { handoffCard, stepParts } from "./stepView";
 import {
   BlockedCard,
   BotApprovals,
@@ -38,6 +42,7 @@ import {
   needsYouStep,
   needsYouText,
   queueText,
+  startLineText,
   startedByText,
   statusTone,
   tookText,
@@ -231,9 +236,14 @@ const StepNeedsYou = ({ step, goal, approvals, refreshGoal }) => {
 
 const ACTIVE_STEP = new Set(["running", "checking"]);
 
-/** One step of a job's timeline, with what can be done about it. */
-const JobStep = ({ job, step, last, approvals = [] }) => {
-  const { muted, strong, hairline, fieldBg } = useConfigTokens();
+/**
+ * One step of a job's timeline (DASH-123): its bot's message — avatar,
+ * name, status, why and when, its prose as Markdown in a bubble — then its
+ * handoff as a card (the JSON on request), its checks, and what can be
+ * done about it.
+ */
+const JobStep = ({ job, step, approvals = [] }) => {
+  const { muted } = useConfigTokens();
   // Its checks job, read live (goals:changed), and again whenever the
   // job's step moves — so a step that starts waiting shows its action.
   const { goal, refresh: refreshGoal } = useGoal(step.goalId || null);
@@ -241,97 +251,122 @@ const JobStep = ({ job, step, last, approvals = [] }) => {
     if (step.goalId) refreshGoal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.status, step.summary]);
-  const why = whyText(step.why);
+  const [showJson, setShowJson] = useState(false);
+  const why = whyText(step.why, job);
   const inLead =
     step.botId === job.leadId || (step.why && step.why.kind === "asked");
+  const { prose, handoff, cut } = stepParts(step);
+  const card = handoffCard(handoff, job);
+  const running = step.status === "running";
+  const meta = (
+    <span className="inline-flex flex-row flex-wrap items-center gap-2">
+      <JobBadge status={step.status} step />
+      <span data-testid="job-step-why">
+        {[why, step.startedAt ? whenText(step.startedAt) : null]
+          .filter(Boolean)
+          .join(" · ")}
+      </span>
+    </span>
+  );
   return (
-    <div
-      className="flex flex-row gap-3"
-      data-testid="job-step"
-      id={stepAnchor(step)}
-    >
-      <span className="flex flex-col items-center">
-        <JobDot status={step.status} className="mt-1.5" />
-        {last ? null : <span className={`flex-1 border-l ${hairline} mt-1`} />}
-      </span>
-      <span className="flex-1 min-w-0 flex flex-col gap-1 pb-4">
-        <span className="flex flex-row flex-wrap items-center gap-2">
-          <span className={`text-sm font-semibold ${strong}`}>
-            {step.botName}
+    <div data-testid="job-step" id={stepAnchor(step)} className="pb-4">
+      <ChatMessage
+        role="reply"
+        label={step.botName}
+        meta={meta}
+        avatar={<BotAvatar bot={{ id: step.botId, name: step.botName }} />}
+        streaming={running}
+        testId="job-step-message"
+        footer={
+          <div className="flex flex-col gap-2 pt-1">
+            {card ? <HandoffCard card={card} /> : null}
+            {cut ? (
+              <span className={`text-xs ${muted}`} data-testid="handoff-cut">
+                Its handoff was cut off when this step was saved. Its activity
+                has the whole answer.
+              </span>
+            ) : null}
+            {handoff && showJson ? <HandoffJson handoff={handoff} /> : null}
+            {goal ? <JobCheckRows goal={goal} /> : null}
+            {step.status === "failed" && step.refusal ? (
+              <BlockedCard
+                refusal={step.refusal}
+                botId={step.botId}
+                botName={step.botName}
+              />
+            ) : null}
+            <StepNeedsYou
+              step={step}
+              goal={goal}
+              approvals={approvals}
+              refreshGoal={refreshGoal}
+            />
+            <span className="flex flex-row flex-wrap gap-2">
+              {handoff ? (
+                <Button3
+                  title={showJson ? "Hide handoff JSON" : "Show handoff JSON"}
+                  size="sm"
+                  onClick={() => setShowJson(!showJson)}
+                />
+              ) : null}
+              {step.goalId ? (
+                <Button3
+                  title="See checks"
+                  size="sm"
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent("dash:open-job", {
+                        detail: {
+                          workspaceId: job.workspaceId,
+                          goalId: step.goalId,
+                        },
+                      }),
+                    )
+                  }
+                />
+              ) : null}
+              {inLead ? (
+                <Button3
+                  title="Open conversation"
+                  size="sm"
+                  onClick={() =>
+                    openRunConversation({
+                      key: `lead:${job.leadId}`,
+                      ...(step.conversationId || job.conversationId
+                        ? {
+                            recentId: step.conversationId || job.conversationId,
+                          }
+                        : {}),
+                    })
+                  }
+                />
+              ) : (
+                <Button3
+                  title="See its activity"
+                  size="sm"
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent("dash:open-bot", {
+                        detail: { botId: step.botId, tab: "activity" },
+                      }),
+                    )
+                  }
+                />
+              )}
+            </span>
+          </div>
+        }
+      >
+        {prose ? (
+          <StepProse text={prose} />
+        ) : (
+          <span className={muted}>
+            {running
+              ? "Working…"
+              : STEP_STATUS[step.status] || step.status || ""}
           </span>
-          <JobBadge status={step.status} step />
-        </span>
-        <span className={`text-xs ${muted}`}>
-          {[why, step.startedAt ? whenText(step.startedAt) : null]
-            .filter(Boolean)
-            .join(" · ")}
-        </span>
-        {step.summary ? (
-          <span
-            className={`text-sm rounded-md px-3 py-2 break-words ${fieldBg} ${strong}`}
-          >
-            {step.summary}
-          </span>
-        ) : null}
-        {goal ? <JobCheckRows goal={goal} /> : null}
-        {step.status === "failed" && step.refusal ? (
-          <BlockedCard
-            refusal={step.refusal}
-            botId={step.botId}
-            botName={step.botName}
-          />
-        ) : null}
-        <StepNeedsYou
-          step={step}
-          goal={goal}
-          approvals={approvals}
-          refreshGoal={refreshGoal}
-        />
-        <span className="flex flex-row flex-wrap gap-2">
-          {step.goalId ? (
-            <Button3
-              title="See checks"
-              size="sm"
-              onClick={() =>
-                window.dispatchEvent(
-                  new CustomEvent("dash:open-job", {
-                    detail: {
-                      workspaceId: job.workspaceId,
-                      goalId: step.goalId,
-                    },
-                  }),
-                )
-              }
-            />
-          ) : null}
-          {inLead ? (
-            <Button3
-              title="Open conversation"
-              size="sm"
-              onClick={() =>
-                openRunConversation({
-                  key: `lead:${job.leadId}`,
-                  ...(step.conversationId || job.conversationId
-                    ? { recentId: step.conversationId || job.conversationId }
-                    : {}),
-                })
-              }
-            />
-          ) : (
-            <Button3
-              title="See its activity"
-              size="sm"
-              onClick={() =>
-                window.dispatchEvent(
-                  new CustomEvent("dash:open-bot", {
-                    detail: { botId: step.botId, tab: "activity" },
-                  }),
-                )
-              }
-            />
-          )}
-        </span>
-      </span>
+        )}
+      </ChatMessage>
     </div>
   );
 };
@@ -428,27 +463,14 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
             )}
           </div>
         ) : null}
-        <span className={`text-xs ${muted}`}>
-          {[
-            dashboardName,
-            `Started by ${startedByText(job)}`,
-            whenText(job.createdAt),
-            tookText(job),
-          ]
-            .filter(Boolean)
-            .join(" · ")}
+        <span className={`text-xs ${muted}`} data-testid="job-start-line">
+          {[dashboardName, startLineText(job)].filter(Boolean).join(" · ")}
         </span>
       </div>
       <div className="flex flex-col">
         {steps.length ? (
           steps.map((s, i) => (
-            <JobStep
-              key={s.id || i}
-              job={job}
-              step={s}
-              last={i === steps.length - 1}
-              approvals={approvals}
-            />
+            <JobStep key={s.id || i} job={job} step={s} approvals={approvals} />
           ))
         ) : job.status === "queued" ? (
           <span className={`text-sm ${muted}`} data-testid="job-queue">

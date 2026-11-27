@@ -9,7 +9,9 @@
  *   item (DASH-100): { id, title?, url?, source? } what the job is about;
  *   workspace: { dir, branch? } where its files are (jobContext.js).
  *   step: { id, botId, botName, status, why, runAt, startedAt, endedAt,
- *           summary, goalId, conversationId }
+ *           summary, goalId, conversationId, handoff? }
+ *   A finished step's summary is its answer's prose (Markdown) and its
+ *   handoff the JSON object the answer ended with (stepAnswer.js).
  *
  * Step statuses: queued (a hand-on about to start), running, checking (its
  * checks are trying the work), needs-you (waiting on the user: a paused
@@ -31,6 +33,7 @@
 
 const { cleanItem, cleanWorkspace, mergeItem } = require("./jobContext");
 const { refusalsOf } = require("../bots/refusals");
+const { stepAnswer } = require("./stepAnswer");
 
 const SETTLE_MS = 2000;
 const MAX_STEPS = 100;
@@ -111,7 +114,14 @@ function summaryOf(record) {
       MAX_SUMMARY,
     );
   }
-  return clip(record.output || "", MAX_SUMMARY);
+  // An answer keeps its Markdown, without the handoff (DASH-123).
+  return stepAnswer(record.output || "").summary;
+}
+
+/** The handoff a finished run's answer ends with (DASH-123), or null. */
+function handoffOf(record) {
+  if (!record || record.status !== "completed") return null;
+  return stepAnswer(record.output || "").handoff;
 }
 
 /**
@@ -413,6 +423,7 @@ function createJobTracker({
       step.runAt = runAt || null;
       step.startedAt = iso();
       step.summary = "";
+      delete step.handoff;
       if (conversationId) step.conversationId = conversationId;
     } else {
       step = addStep(job, {
@@ -510,6 +521,10 @@ function createJobTracker({
       step.summary = summaryOf(record);
       step.endedAt = iso();
     }
+    // Its handoff, apart from its prose (DASH-123): the step's card.
+    const handoff = handoffOf(record);
+    if (handoff) step.handoff = handoff;
+    else delete step.handoff;
     // What its setup refused (DASH-115): the failed step's Blocked card.
     const refusal = refusalOf(record);
     if (refusal && step.status === "failed") step.refusal = refusal;

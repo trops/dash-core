@@ -106,6 +106,13 @@ Bots hand work to each other through events and loose results. Nothing records w
 - GeneralSection's Jobs group; backend `listJobs` light rows, the `clearOldJobs` setting, `jobTracker.clearEndedBefore`, a step's `waiting` (paused or budget).
 - Checked live: asked a lead in its conversation; the strip ran to Done; See the job opened it on the Jobs page; the dashboard's Jobs tab listed it.
 
+**A step as its bot's message (DASH-123, 2026-11-27).** Mockup: screen 4 (Job timeline) of the epic DASH-117 mockups.
+- [x] Each step is a chat message from its bot (dash-react `ChatMessage` with its `BotAvatar`, name, status, why and when); its prose is Markdown (`renderSafeMarkdown`) in the bubble, a long one shortened with Show more, never inside a ``` block.
+- [x] Its handoff (DASH-101) is a compact card: status ("Handed on · OK", "Nothing to do", "Asks you", "Split into items"), the work item (a link when it or the job has a URL), summary, question, split items, picks, and the bot's plain-valued fields as details (shortened at a word with Show more). "Show handoff JSON" shows it pretty-printed, monospace. No JSON shows by default.
+- [x] Wording: "Self-test started by you · 7:56 AM · running 7 min"; a self-test's first step "Started by the self-test"; a hand-on "Handed on by <bot>".
+- Data: a finished step keeps `summary` = its answer's prose (Markdown, newlines kept, 4000 chars) and `handoff` = the JSON object it ended with (`electron/jobs/stepAnswer.js`; at most 8000 chars as JSON, else long strings shortened, else only Dash's keys). `listJobs` leaves `handoff` out like `summary`. Steps saved before this keep one clipped line: `src/Components/Jobs/stepView.js` `splitStepText` takes their JSON out (reads it when whole; when cut off says so and points to the bot's activity).
+- Code: `src/Components/Jobs/stepView.js` (pure: `stepParts`, `splitStepText`, `handoffCard`, `shortenText`, `shortenMarkdown`, `handoffJson`), `StepMessage.js` (`StepProse`, `HandoffCard`, `HandoffJson`), `JobsPage.js` `JobStep`, `jobText.js` (`startLineText`, `whyText(why, job)`). Tests: `stepView.test.js`, `electron/jobs/jobTracker.test.js`.
+
 **Implementation notes (part 1).**
 - `electron/jobs/jobStore.js` (one sealed file per job under `userData/jobs`), `jobTracker.js` (start, steps, settle, wait for the end, restart cleanup).
 - botController `_run` starts or joins the job and ends its step (also on a rejected run); `handleEvent` / `_holdEvent` say a hand-on that didn't start or waits on the user; the checks job's `patchRun` moves the step's checks stage; `_leadAskBotRun` passes the lead's job and waits on a run already going in it (`_runsInProgress`). `causeFromEvent` / `buildBotEventMessage` carry `jobId`.
@@ -122,3 +129,4 @@ Bots hand work to each other through events and loose results. Nothing records w
 | 2026-11-21 | Jobs as chains through a lead (DASH-28, DASH-31), part 1. |
 | 2026-11-21 | Part 2: the Jobs page, the strip, the opt-in clear (DASH-31). |
 | 2026-11-21 | A task's hand-on answers apart from the lead's (DASH-33). |
+| 2026-11-27 | A step as its bot's message; its handoff as a card (DASH-123). |
