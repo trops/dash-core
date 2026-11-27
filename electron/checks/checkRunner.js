@@ -18,6 +18,7 @@ const { runCommand } = require("./kinds/command");
 const { runScript } = require("./kinds/script");
 const { runToolCall } = require("./kinds/toolCall");
 const { runRepoCheck } = require("./kinds/repo");
+const { FACTORY_KINDS, runFactoryCheck } = require("./kinds/factory");
 const { handoffCheck } = require("../bots/botHandoff");
 
 const KIND_LABELS = {
@@ -26,6 +27,10 @@ const KIND_LABELS = {
   script: "Script",
   tool: "Tool call",
   repo: "Repo check",
+  "git-on-branch": "On its branch",
+  "git-committed": "Work is committed",
+  "pr-ci": "The PR's CI passes",
+  "handoff-has": "The handoff has",
   handoff: "Handoff",
 };
 
@@ -80,6 +85,15 @@ async function runCheck(check, input, deps = {}) {
           const r = await runCheck(fb, inp, { ...deps, secret: null });
           return r;
         },
+      });
+    } else if (FACTORY_KINDS.includes(kind)) {
+      // Built in (DASH-103): git, the PR's CI and the handoff's keys.
+      res = await runFactoryCheck(check, input, {
+        cwd: deps.cwd,
+        ...(deps.env ? { env: deps.env } : {}),
+        ...(deps.fetch ? { fetch: deps.fetch } : {}),
+        ...(deps.sleep ? { sleep: deps.sleep } : {}),
+        ...(deps.exec ? { exec: deps.exec } : {}),
       });
     } else if (kind === "handoff") {
       // Dash's own (DASH-101): the answer's handoff, against its job.

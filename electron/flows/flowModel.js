@@ -25,7 +25,18 @@
 
 const STEP_KINDS = ["source", "bot", "check", "you"];
 const YOU_MODES = ["approve", "read", "custom"];
-const CHECK_KINDS = ["rules", "command", "script", "tool", "repo"];
+const CHECK_KINDS = [
+  "rules",
+  "command",
+  "script",
+  "tool",
+  "repo",
+  // Dash's built-in factory checks (DASH-103): checks/kinds/factory.js.
+  "git-on-branch",
+  "git-committed",
+  "pr-ci",
+  "handoff-has",
+];
 // Dash's own checks, put in a bot's checks flow by Dash, never saved on a
 // bot (DASH-101: the Handoff check).
 const BUILTIN_CHECK_KINDS = ["handoff"];

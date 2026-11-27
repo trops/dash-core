@@ -54,6 +54,11 @@ export const STEP_CHOICES = [
   { value: "rules", label: "A rule" },
   { value: "command", label: "A command or test" },
   { value: "repo", label: "A check in the repo" },
+  // Built in (DASH-103): about the factory, not the code.
+  { value: "git-on-branch", label: "Built in: on the job's branch" },
+  { value: "git-committed", label: "Built in: the work is committed" },
+  { value: "pr-ci", label: "Built in: the PR's CI passes" },
+  { value: "handoff-has", label: "Built in: the handoff has keys" },
   { value: "reviewer", label: "A reviewer bot" },
   { value: "you", label: "You approve" },
 ];
@@ -90,6 +95,30 @@ export function newCheck(choice, { field = "input.answer" } = {}) {
         kind: "check",
         name: "The repo's check passes",
         check: { kind: "repo", name: "validate", ifMissing: "fail" },
+      };
+    case "git-on-branch":
+      return {
+        kind: "check",
+        name: "On the job's branch",
+        check: { kind: "git-on-branch" },
+      };
+    case "git-committed":
+      return {
+        kind: "check",
+        name: "The work is committed",
+        check: { kind: "git-committed" },
+      };
+    case "pr-ci":
+      return {
+        kind: "check",
+        name: "The PR's CI passes",
+        check: { kind: "pr-ci", prKey: "prUrl", timeoutSec: 1200 },
+      };
+    case "handoff-has":
+      return {
+        kind: "check",
+        name: "The handoff has its keys",
+        check: { kind: "handoff-has", keys: ["summary"] },
       };
     case "compare":
       return {
@@ -153,6 +182,17 @@ function stepWhat(step, nameOf) {
   if (c.kind === "repo") {
     const file = c.name ? `.dash/checks/${c.name}` : "pick its file";
     return `${step.held ? "Off · came with the package · " : ""}Repo · ${file}`;
+  }
+  if (c.kind === "git-on-branch") {
+    return `Built in · on ${c.branch || "the job's branch"} · no AI`;
+  }
+  if (c.kind === "git-committed") {
+    return `Built in · committed past ${c.base ? `origin/${c.base}` : "the base branch"} · no AI`;
+  }
+  if (c.kind === "pr-ci") return "Built in · the PR's CI passes · no AI";
+  if (c.kind === "handoff-has") {
+    const keys = (c.keys || []).filter(Boolean);
+    return `Built in · the handoff has ${keys.length ? keys.join(", ") : "…"} · no AI`;
   }
   if (c.kind === "tool") {
     return c.server && c.tool
@@ -281,6 +321,12 @@ export function draftError(draft, selfId) {
       }
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(n) || n.includes("..")) {
         return `"${n}" can't be a check's name: use letters, numbers, ".", "-" and "_".`;
+      }
+    }
+    if (s.kind === "check" && s.check && s.check.kind === "handoff-has") {
+      const keys = (s.check.keys || []).map((k) => String(k).trim());
+      if (!keys.filter(Boolean).length) {
+        return `"${s.name || "The handoff has"}" needs the keys it looks for.`;
       }
     }
     if (s.kind === "check" && s.check && s.check.kind === "tool") {
