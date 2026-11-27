@@ -801,6 +801,21 @@ class BotRunner {
         onRefused,
         // Only what its setup lists (DASH-116).
         ...(strict ? { strict: true } : {}),
+        // A self-test (DASH-109): its Claude connectors' tools that could
+        // change something are skipped too, and listed on the job (DASH-140).
+        ...(opts.selfTest
+          ? {
+              selfTest: true,
+              onTestSkip: (n) => {
+                if (typeof opts.onTestSkip !== "function") return;
+                try {
+                  opts.onTestSkip({ ...n, botName: bot.name || botId });
+                } catch (_e) {
+                  // Listing it never stops the run.
+                }
+              },
+            }
+          : {}),
       };
       // Its git and gh commands sign in to GitHub with it (DASH-55).
       if (gitToken) ctx.gitToken = gitToken;

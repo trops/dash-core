@@ -167,3 +167,42 @@ describe("a strict bot's basics (DASH-140)", () => {
     assert.equal(strict("git push --force").decision, "blocked");
   });
 });
+
+describe("quoted text (DASH-140)", () => {
+  const lists = { allowed: ["git commit", "git status"] };
+  const strict = (c) => commandDecision(c, lists, { basics: true });
+
+  it("a quoted < > ; | or && is text, not a redirect or a chain", () => {
+    for (const c of [
+      'git commit -m "DASH-97: fix" -m "Co-Authored-By: Claude <noreply@anthropic.com>"',
+      'git commit -m "a; b | c && d"',
+      "git commit -m 'x > y'",
+      'git commit -m "say \\"hi\\"; ok"',
+    ]) {
+      assert.equal(strict(c).decision, "allowed", c);
+      assert.equal(commandDecision(c, lists).decision, "allowed", c);
+    }
+  });
+
+  it("$(…) and backticks inside double quotes still can't run", () => {
+    for (const c of [
+      'git commit -m "$(cat ~/.ssh/id_rsa)"',
+      'git commit -m "`whoami`"',
+      'git commit -m "${HOME}"',
+    ]) {
+      assert.equal(strict(c).decision, "ask", c);
+    }
+    // Inside single quotes they're text.
+    assert.equal(strict("git commit -m '$(x)'").decision, "allowed");
+  });
+
+  it("chains and redirects outside the quotes still count", () => {
+    assert.equal(strict('git status && git commit -m "x"').chained, true);
+    assert.equal(strict('git commit -m "x" > out').decision, "ask");
+  });
+
+  it("a quoted always-blocked command is only text", () => {
+    assert.equal(strict('git commit -m "never rm -rf /"').decision, "allowed");
+    assert.equal(blockedBy('git commit -m "x"; rm -rf /').label, "rm -rf");
+  });
+});

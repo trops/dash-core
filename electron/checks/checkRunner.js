@@ -177,6 +177,8 @@ async function runCheck(check, input, deps = {}) {
     ...(res.pass === true && res.handOn === false && res.ended
       ? { ended: res.ended }
       : {}),
+    // A failure no retry can fix (DASH-140): the job stops.
+    ...(res.pass !== true && res.stop === true ? { stop: true } : {}),
     // A handoff that asks a person (DASH-101): the job waits for them.
     ...(res.pass !== true && typeof res.ask === "string" && res.ask
       ? { ask: res.ask.slice(0, 1000) }
