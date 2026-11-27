@@ -4,9 +4,8 @@ import { useConfigTokens } from "../Dashboard/ConfigListRow";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { DASH_TEAM_CONTACT } from "../Bots/dashTeamContact";
 import { triggerSummary } from "../Bots/teamUtils";
-import { TeamSettingsPanel } from "../Bots/TeamSettingsForm";
 import { TeamJobSettings } from "../Bots/TeamJobSettings";
-import { TeamChecksPanel } from "../Bots/TeamChecksPanel";
+import { TeamSetupChecklist } from "../Bots/TeamSetupChecklist";
 import { TeamSetupBadge, TeamSetupBanner } from "../Bots/TeamSetupBanner";
 import { TeamNeedsYouCards } from "../Jobs/NeedsYouCards";
 
@@ -30,10 +29,17 @@ const howItRuns = (bot) =>
  * @param {() => void} [onDashTeamSettings]
  * @param {object|null} [setup]  the team's setup status when it isn't ready
  *   (teamSetupStatus, DASH-119): a badge by its name and a banner on top
- * @param {*} [setupFocus]  a new value scrolls to the team's setup
- *   sections (Team setup from the Bots view, a fresh install; DASH-118)
- * @param {(botId) => void} [onOpenBotSettings]  "Finish setup ›": a bot's
- *   Settings tab
+ * @param {*} [setupFocus]  a new value scrolls to the team's Set up
+ *   checklist (Team setup from the Bots view, a fresh install; DASH-118)
+ * @param {(botId) => void} [onOpenBotSettings]  a bot's Settings tab
+ * @param {() => void} [onBotsChanged]  a bot's settings were saved here
+ * @param {(dirty: boolean) => void} [onDirtyChange]  unsaved settings here
+ *
+ * A dashboard team's page (DASH-120, mockup 2), top to bottom: "Set up
+ * this team" (a numbered checklist: the bots' required settings, Check
+ * setup, repo checks, a self-test), what needs you, "How jobs run", then
+ * the bots. Other kinds (lone bots, the Dash team, dashboards with no
+ * bots) keep the setup banner and the table.
  */
 export const TeamOverview = ({
   team,
@@ -47,14 +53,14 @@ export const TeamOverview = ({
   setup = null,
   onOpenBotSettings = null,
   setupFocus = null,
+  onBotsChanged = null,
+  onDirtyChange = null,
 }) => {
   const { muted, strong, hairline } = useConfigTokens();
-  // Team setup (DASH-118): its sections in view. A team that isn't set up
-  // starts at the top instead, where its banner says what's missing.
+  // Team setup (DASH-118): its checklist in view.
   const setupRef = useRef(null);
-  const setupReady = !setup || setup.ready !== false;
   useEffect(() => {
-    if (setupFocus == null || !setupReady) return;
+    if (setupFocus == null) return;
     const el = setupRef.current;
     if (el && typeof el.scrollIntoView === "function") {
       el.scrollIntoView({ block: "start" });
@@ -65,6 +71,7 @@ export const TeamOverview = ({
   const isEmpty = team.kind === "empty";
   const isDash = team.kind === "dash";
   const lead = team.lead;
+  const hasSetup = team.kind === "team" && !!team.workspace;
 
   const title = isEmpty ? "Dashboards with no bots" : team.name;
   const line = isEmpty
@@ -176,16 +183,30 @@ export const TeamOverview = ({
         data-testid="team-overview-scroll"
       >
         <div className="flex flex-col gap-4">
-          {/* Not set up yet (DASH-119): what each bot needs, and the first
-              one's Settings. */}
-          <TeamSetupBanner
-            status={setup}
-            onFinish={
-              onOpenBotSettings
-                ? (first) => onOpenBotSettings(first.botId)
-                : null
-            }
-          />
+          {hasSetup ? (
+            // Set up this team (DASH-120); Team setup lands here (DASH-118).
+            <div ref={setupRef} data-testid="team-setup">
+              <TeamSetupChecklist
+                key={String(team.workspace.id)}
+                workspaceId={team.workspace.id}
+                bots={team.allMembers || []}
+                onOpenBotSettings={onOpenBotSettings}
+                onBotsChanged={onBotsChanged}
+                onDirtyChange={onDirtyChange}
+              />
+            </div>
+          ) : (
+            // Not set up yet (DASH-119): what each bot needs, and the first
+            // one's Settings.
+            <TeamSetupBanner
+              status={setup}
+              onFinish={
+                onOpenBotSettings
+                  ? (first) => onOpenBotSettings(first.botId)
+                  : null
+              }
+            />
+          )}
           {/* What needs you, as cards with their buttons (DASH-124):
               answered here, never "in the conversation". */}
           {isEmpty ? null : (
@@ -196,6 +217,11 @@ export const TeamOverview = ({
               testId="team-needs"
             />
           )}
+          {hasSetup ? (
+            // One job at a time (DASH-81) and the standard handoff: the
+            // team's, whatever its bots.
+            <TeamJobSettings workspaceId={team.workspace.id} />
+          ) : null}
           <span className="text-sm font-semibold">
             {isEmpty ? "Dashboards" : "Bots on this team"}
           </span>
@@ -207,23 +233,6 @@ export const TeamOverview = ({
             onRowClick={isEmpty ? null : (row) => onPickBot(row.id)}
           />
           <span className={`text-xs ${muted}`}>{note}</span>
-          {/* The team's setup (Team setup lands here, DASH-118). */}
-          {team.kind === "team" && team.workspace ? (
-            <div
-              ref={setupRef}
-              data-testid="team-setup"
-              className="flex flex-col gap-4"
-            >
-              {/* One job at a time (DASH-81): a team's, whatever its bots. */}
-              <TeamJobSettings workspaceId={team.workspace.id} />
-              <TeamChecksPanel workspaceId={team.workspace.id} />
-              {/* Its settings (DASH-57), when its bots declare some. */}
-              <TeamSettingsPanel
-                key={String(team.workspace.id)}
-                workspaceId={team.workspace.id}
-              />
-            </div>
-          ) : null}
         </div>
       </div>
     </div>

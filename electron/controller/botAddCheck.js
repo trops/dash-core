@@ -83,18 +83,6 @@ async function repoChecksOf(ctl, workspaceId, token) {
   return out;
 }
 
-/** The check names in a repo's .dash/checks listing. */
-function checkNamesIn(repo) {
-  return [
-    ...new Set(
-      ((repo && repo.checks) || [])
-        // A check's sample inputs and the repo's helpers aren't checks.
-        .filter((c) => c !== "helpers" && !/\.(sample|bad)\.json$/.test(c))
-        .map(checkNameOf),
-    ),
-  ];
-}
-
 /** Suggested checks for a bot (In repo, Built in, Ships with Dash, Registry). */
 async function suggest(ctl, botId) {
   const bot = ctl._store.get(botId);
@@ -102,7 +90,16 @@ async function suggest(ctl, botId) {
   const team = ctl._store.getTeamSettings(bot.workspaceId) || {};
   const token = await teamToken(ctl, bot.workspaceId);
   const repos = await repoChecksOf(ctl, bot.workspaceId, token);
-  const names = [...new Set(repos.flatMap(checkNamesIn))];
+  const names = [
+    ...new Set(
+      repos.flatMap((r) =>
+        r.checks
+          // A check's sample inputs and the repo's helpers aren't checks.
+          .filter((c) => c !== "helpers" && !/\.(sample|bad)\.json$/.test(c))
+          .map(checkNameOf),
+      ),
+    ),
+  ];
   const { packages, builtIns } = ctl.listCheckPackages();
   return {
     suggestions: suggestChecks({
@@ -351,12 +348,7 @@ function resolve(ctl, workspaceId, name, choice) {
   return { ok: true, removed: true };
 }
 
-/**
- * The team's repos that have no .dash/checks yet (the Set up checks
- * banner), and every repo with its check count (DASH-130: the Checks
- * panel's "<repo>: N checks" lines). `count` is null when Dash can't
- * read the repo.
- */
+/** The team's repos that have no .dash/checks yet (the Set up checks banner). */
 async function reposWithoutChecks(ctl, workspaceId) {
   const token = await teamToken(ctl, workspaceId);
   const repos = await repoChecksOf(ctl, workspaceId, token);
@@ -364,11 +356,23 @@ async function reposWithoutChecks(ctl, workspaceId) {
     repos: repos
       .filter((r) => r.readable && !r.hasChecks)
       .map((r) => ({ key: r.key, slug: r.slug })),
-    all: repos.map((r) => ({
-      key: r.key,
-      slug: r.slug,
-      count: r.readable ? checkNamesIn(r).length : null,
-    })),
+    // The repos that have them, and which (the team page's Repo checks
+    // step, DASH-120).
+    withChecks: repos
+      .filter((r) => r.hasChecks)
+      .map((r) => ({
+        key: r.key,
+        slug: r.slug,
+        checks: [
+          ...new Set(
+            r.checks
+              .filter(
+                (c) => c !== "helpers" && !/\.(sample|bad)\.json$/.test(c),
+              )
+              .map(checkNameOf),
+          ),
+        ],
+      })),
   };
 }
 
@@ -501,7 +505,6 @@ module.exports = {
   refresh,
   resolve,
   reposWithoutChecks,
-  checkNamesIn,
   setUp,
   teamCheck: (ctl, workspaceId, name) =>
     teamCheckOf(ctl._store.getTeamSettings(workspaceId), name),

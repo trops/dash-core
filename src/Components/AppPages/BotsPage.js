@@ -320,6 +320,7 @@ export const BotsPage = ({
         setup={selTeam.setup}
         onOpenBotSettings={(id) => pickBot(id, selTeam.key, "settings")}
         setupFocus={setupFocus}
+        onBotsChanged={all.refresh}
         onOpenConversation={() =>
           openWorkspace(
             selTeam.kind === "dash"
