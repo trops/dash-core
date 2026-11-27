@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { FontAwesomeIcon } from "@trops/dash-react";
 import { useConfigTokens } from "../../Dashboard/ConfigListRow";
 
@@ -43,8 +43,22 @@ export function toggleOpen(open, id) {
 }
 
 /**
+ * Tell auto-growing fields in a section that just opened to measure again.
+ * A field measured while its section was closed (display: none) reads a
+ * height of 0 and stays a sliver (DASH-127 follow-up): dash-react's
+ * TextArea autoGrow re-fits on window resize, so fire one.
+ */
+export function refitOnOpen(
+  win = typeof window !== "undefined" ? window : null,
+) {
+  if (!win || typeof win.dispatchEvent !== "function") return;
+  win.dispatchEvent(new Event("resize"));
+}
+
+/**
  * One section: its title row toggles it. Closed, its settings stay mounted
- * (nothing typed is lost) but aren't shown.
+ * (nothing typed is lost) but aren't shown; opening it re-fits the
+ * auto-growing fields measured while it was hidden.
  */
 export const SettingsSection = ({
   id,
@@ -56,6 +70,11 @@ export const SettingsSection = ({
 }) => {
   const { muted, strong, hairline, selectedBorder } = useConfigTokens();
   const bodyId = `settings-section-${id}-body`;
+  const wasOpen = useRef(open);
+  useLayoutEffect(() => {
+    if (open && !wasOpen.current) refitOnOpen();
+    wasOpen.current = open;
+  }, [open]);
   return (
     <section
       aria-label={title}

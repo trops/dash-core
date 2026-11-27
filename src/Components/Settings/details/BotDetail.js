@@ -74,6 +74,11 @@ import {
  */
 
 // Friendly, Title-case provider labels for the dropdown.
+// The Instructions box's floor (about three lines): an auto-growing box
+// measured while its Settings section was closed would otherwise collapse
+// to a sliver (DASH-127 follow-up).
+export const INSTRUCTIONS_MIN_HEIGHT = { minHeight: "4.5rem" };
+
 const PROVIDER_LABELS = {
   anthropic: "Anthropic",
   openai: "OpenAI",
@@ -1106,6 +1111,10 @@ export const BotDetail = ({
                         placeholder="Add duties, preferences or tone. Built-in instructions always apply."
                         rows={3}
                         autoGrow
+                        // Never a sliver, even if measured while its
+                        // section was closed.
+                        style={INSTRUCTIONS_MIN_HEIGHT}
+                        data-testid="bot-instructions"
                       />
                     </div>
                   ) : (
@@ -1119,6 +1128,10 @@ export const BotDetail = ({
                         // Grow with the text — the form already scrolls; no scroll
                         // inside a scroll.
                         autoGrow
+                        // Never a sliver, even if measured while its
+                        // section was closed.
+                        style={INSTRUCTIONS_MIN_HEIGHT}
+                        data-testid="bot-instructions"
                       />
                       <BuiltinInstructions botId={bot?.id || null} kind="bot" />
                     </div>

@@ -109,3 +109,34 @@ describe("BotDetail sections", () => {
     expect(screen.queryByTestId(/^settings-section-/)).toBeNull();
   });
 });
+
+// DASH-127 follow-up: the Instructions box collapsed to a sliver when its
+// section started closed (an auto-growing box measured while hidden reads 0).
+describe("BotDetail sections: the Instructions box keeps its height", () => {
+  it("has a minimum height and a few rows, in a closed section too", () => {
+    render(<BotDetail bot={coder} bots={[coder]} onSave={jest.fn()} />);
+    expect(head("Instructions, model and engine")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    const box = screen.getByTestId("bot-instructions");
+    expect(box).toHaveAttribute("data-autogrow", "true");
+    expect(box.style.minHeight).toBe("4.5rem");
+    expect(Number(box.getAttribute("rows"))).toBeGreaterThanOrEqual(3);
+  });
+
+  it("opening the section asks auto-growing fields to measure again", () => {
+    render(<BotDetail bot={coder} bots={[coder]} onSave={jest.fn()} />);
+    const onResize = jest.fn();
+    window.addEventListener("resize", onResize);
+    try {
+      fireEvent.click(head("Instructions, model and engine"));
+      expect(onResize).toHaveBeenCalledTimes(1);
+      // Closing doesn't.
+      fireEvent.click(head("Instructions, model and engine"));
+      expect(onResize).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("resize", onResize);
+    }
+  });
+});
