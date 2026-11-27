@@ -89,9 +89,11 @@ function fakeCtl() {
               reason: "a run is already in progress",
             })
           : new Promise((resolve) => {
-              active.set(botId, (output) => {
+              active.set(botId, (output, record = null) => {
                 active.delete(botId);
-                resolve({ status: "completed", output, startedAt: "t" });
+                resolve(
+                  record || { status: "completed", output, startedAt: "t" },
+                );
               });
             }),
     },
@@ -101,13 +103,16 @@ function fakeCtl() {
     _broadcastRunActive() {},
     _sendNotice() {},
     _recordRunIssues() {},
-    finish: (botId, output) => active.get(botId)(output),
+    finish: (botId, output, record) => active.get(botId)(output, record),
   };
   ctl._run = botController._run.bind(ctl);
   ctl._handOnJob = botController._handOnJob.bind(ctl);
   // One job at a time (DASH-81): its team is never busy here.
   ctl._gateTeamJob = botController._gateTeamJob.bind(ctl);
   ctl._teamBusy = () => false;
+  ctl._asUserRun = (botId, start) => start();
+  ctl.getJob = botController.getJob.bind(ctl);
+  ctl.rerunStep = botController.rerunStep.bind(ctl);
   return ctl;
 }
 const tick = () => new Promise((r) => setImmediate(r));
@@ -254,6 +259,79 @@ describe("jobs in the real _run", () => {
     ctl.finish("lead", "ok");
     await p;
     assert.equal(ctl._jobs.list().length, 0);
+  });
+});
+
+describe("running a failed job again from a step (DASH-122)", () => {
+  it("the step's bot runs again in the same job, told why it failed and the note", async () => {
+    const ctl = fakeCtl();
+    const job = ctl._jobs.startJob({
+      workspaceId: "ws1",
+      leadId: "lead",
+      title: "Walnut U desk",
+    });
+    const first = ctl._run("dra", {
+      prompt: "Draw it",
+      trigger: "event",
+      cause: { chain: [], depth: 0, jobId: job.id },
+      source: { originBotId: "des" },
+    });
+    ctl.finish("dra", null, { status: "failed", error: "No paper." });
+    await first;
+    await tick();
+    settle();
+    const failed = ctl._jobs.get(job.id);
+    assert.equal(failed.status, "failed");
+    const stepId = failed.steps[0].id;
+    // Not a step that didn't fail, nor while its bot is busy.
+    assert.equal(ctl.rerunStep(job.id, "nope").ok, false);
+    const busy = ctl._run("dra", { prompt: "other", trigger: "schedule" });
+    assert.match(ctl.rerunStep(job.id, stepId).error, /Drafter is busy/);
+    ctl.finish("dra", "ok");
+    await busy;
+    const prompts = [];
+    const run = ctl._runner.run;
+    ctl._runner.run = (botId, opts) => {
+      prompts.push(opts && opts.prompt);
+      return run(botId, opts);
+    };
+    assert.deepEqual(ctl.rerunStep(job.id, stepId, "Use A4."), { ok: true });
+    await tick();
+    const again = ctl._jobs.get(job.id);
+    assert.equal(again.status, "running");
+    assert.equal(again.steps.length, 1);
+    assert.equal(again.steps[0].status, "running");
+    assert.match(JSON.stringify(prompts), /Your last try failed: No paper\./);
+    assert.match(JSON.stringify(prompts), /A note from the user: Use A4\./);
+    ctl.finish("dra", "Drawn.");
+    await tick();
+    await tick();
+    settle();
+    assert.equal(ctl._jobs.get(job.id).status, "done");
+    assert.equal(ctl._jobs.get(job.id).steps[0].retries, 1);
+  });
+
+  it("a Setup check step can't: its fix is the setup", () => {
+    const ctl = fakeCtl();
+    const job = ctl._jobs.startJob({
+      workspaceId: "ws1",
+      leadId: "lead",
+      title: "x",
+    });
+    ctl._jobs.startStep(job.id, { botId: "dra", botName: "Setup check" });
+    ctl._jobs.endStep(job.id, {
+      botId: "dra",
+      record: {
+        status: "failed",
+        error: "setup",
+        problems: [
+          { kind: "setting", message: "Drafter uses {x}, which has no value" },
+        ],
+      },
+    });
+    settle();
+    const stepId = ctl._jobs.get(job.id).steps[0].id;
+    assert.match(ctl.rerunStep(job.id, stepId).error, /setup/);
   });
 });
 

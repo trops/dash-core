@@ -102,6 +102,37 @@ function refusalOf(record) {
   };
 }
 
+/**
+ * The setup problems a Setup check step failed on (DASH-122), cleaned for
+ * the job: [{ kind, bot?, botId?, setting?, provider?, message }], or null.
+ */
+function problemsOf(record) {
+  const list = record && Array.isArray(record.problems) ? record.problems : [];
+  const str = (v, n) => clip(typeof v === "string" ? v : "", n);
+  const out = list
+    .filter((p) => p && typeof p.message === "string" && p.message)
+    .slice(0, 10)
+    .map((p) => {
+      const o = {
+        kind: str(p.kind, 20) || "setup",
+        message: str(p.message, 400),
+      };
+      // An AI login names the bots that run on it (`bots`).
+      const bot =
+        typeof p.bot === "string" && p.bot
+          ? p.bot
+          : Array.isArray(p.bots)
+            ? p.bots.filter((b) => typeof b === "string").join(", ")
+            : "";
+      if (bot) o.bot = str(bot, 120);
+      for (const k of ["botId", "setting", "provider"]) {
+        if (typeof p[k] === "string" && p[k]) o[k] = str(p[k], 120);
+      }
+      return o;
+    });
+  return out.length ? out : null;
+}
+
 /** What a run's record says, short. */
 function summaryOf(record) {
   if (!record) return "";
@@ -529,12 +560,21 @@ function createJobTracker({
     const refusal = refusalOf(record);
     if (refusal && step.status === "failed") step.refusal = refusal;
     else delete step.refusal;
+    // The setup problems a Setup check failed on (DASH-122).
+    const problems = problemsOf(record);
+    if (problems && step.status === "failed") step.problems = problems;
+    else delete step.problems;
+    delete step.failed;
     settle(job);
     commit(job);
     return step;
   }
 
-  /** The checks on a step's work moved on (checkJobs' state for its goal). */
+  /**
+   * The checks on a step's work moved on (checkJobs' state for its goal).
+   * "failed": they failed it out (DASH-122) — `summary` is why, kept as the
+   * step's `failed` (its prose stays its answer).
+   */
   function checksMoved(goalId, state, summary = null) {
     if (!goalId) return null;
     const job = jobOf(goalIndex().get(goalId));
@@ -547,16 +587,48 @@ function createJobTracker({
           ? "needs-you"
           : state === "stopped" || state === "gone"
             ? "stopped"
-            : "checking";
-    if (step.status === next) return step;
+            : state === "failed"
+              ? "failed"
+              : "checking";
+    if (next === "failed" && summary) step.failed = clip(summary, MAX_SUMMARY);
+    if (step.status === next) {
+      if (next === "failed" && summary) commit(job);
+      return step;
+    }
     // Passed is final: a mark that lands after it (the reviewer's run ends
     // a moment after its verdict passed the work) never reopens the step.
     if (step.status === "done") return step;
     step.status = next;
-    if (summary) step.summary = clip(summary, MAX_SUMMARY);
+    if (summary && next !== "failed") step.summary = clip(summary, MAX_SUMMARY);
     if (FINAL.has(next)) step.endedAt = iso();
     if (!ACTIVE.has(next)) settle(job);
     else unsettle(job.id);
+    commit(job);
+    return step;
+  }
+
+  /**
+   * Run a step of a finished job again (DASH-122): the job opens again and
+   * the step waits (queued) for its bot's run, which startStep takes up.
+   * Only a failed or stopped step of a failed or stopped job.
+   */
+  function retryStep(jobId, stepId) {
+    const job = jobOf(jobId);
+    if (!job || !(job.status === "failed" || job.status === "stopped")) {
+      return null;
+    }
+    const step = job.steps.find((s) => s.id === stepId);
+    if (!step || !(step.status === "failed" || step.status === "stopped")) {
+      return null;
+    }
+    step.status = "queued";
+    step.waiting = "retry";
+    step.endedAt = null;
+    step.retries = (step.retries || 0) + 1;
+    for (const k of ["refusal", "problems", "failed", "handoff"]) {
+      delete step[k];
+    }
+    unsettle(job.id);
     commit(job);
     return step;
   }
@@ -826,6 +898,7 @@ function createJobTracker({
     skipStep,
     endStep,
     checksMoved,
+    retryStep,
     jobForGoal,
     isOpen,
     clearEndedBefore,

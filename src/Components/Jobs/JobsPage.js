@@ -19,6 +19,8 @@ import { JobCheckRows } from "../Goals/JobCheckRows";
 import { useGoal } from "../../hooks/useGoals";
 import { BotAvatar } from "../Bots/BotAvatar";
 import { HandoffCard, HandoffJson, StepProse } from "./StepMessage";
+import { FailureHeader } from "./FailureHeader";
+import { failureStep, failureView } from "./failureView";
 import { handoffCard, stepParts } from "./stepView";
 import {
   BlockedCard,
@@ -287,7 +289,7 @@ const JobStep = ({ job, step, approvals = [] }) => {
               </span>
             ) : null}
             {handoff && showJson ? <HandoffJson handoff={handoff} /> : null}
-            {goal ? <JobCheckRows goal={goal} /> : null}
+            {goal ? <JobCheckRows goal={goal} title="Checks" /> : null}
             {step.status === "failed" && step.refusal ? (
               <BlockedCard
                 refusal={step.refusal}
@@ -404,6 +406,10 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
   const job = full && full.id === listed.id ? full : listed;
   // Tool approvals its bots wait on, live (DASH-113).
   const { approvals } = useApprovals();
+  // Where it failed, why and the fix (DASH-122): its step's checks job,
+  // read live, says which check and how many tries.
+  const failing = failureStep(job);
+  const { goal: failingGoal } = useGoal((failing && failing.goalId) || null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [note, setNote] = useState("");
   useEffect(() => {
@@ -414,6 +420,8 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
   const going = job.status === "running" || job.status === "needs-you";
   const steps = job.steps || [];
   const needs = needsYouStep(job, approvals);
+  const failure = failureView(job, { goal: failingGoal });
+  const failedAt = failure && steps.find((s) => s.id === failure.stepId);
   return (
     <div className="flex flex-col gap-4" data-testid="job-detail">
       <div className="flex flex-col gap-1">
@@ -423,7 +431,13 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
           </span>
           <JobBadge status={job.status} />
         </span>
-        {needs ? (
+        {failure ? (
+          <FailureHeader
+            job={job}
+            view={failure}
+            onGo={failedAt ? () => goToStep(failedAt) : null}
+          />
+        ) : needs ? (
           <NeedsYouHeader
             text={needsYouText(needs, approvals)}
             onGo={() => goToStep(needs)}
@@ -505,7 +519,9 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
         ) : null}
         {canRunAgain(job) && !confirmDelete ? (
           <Button
-            title="Run again"
+            title={
+              failure && failure.rerun ? "Run the whole job again" : "Run again"
+            }
             size="sm"
             onClick={async () => {
               const api = botsApi();

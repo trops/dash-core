@@ -365,7 +365,10 @@ describe("Search and Run again", () => {
     const calls = withApi();
     render(<JobsPage workspaces={WORKSPACES} />);
     fireEvent.click(await screen.findByText("Daily brief"));
-    fireEvent.click(await screen.findByRole("button", { name: "Run again" }));
+    // Its failure header offers its failed step; this runs the whole job.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Run the whole job again" }),
+    );
     await waitFor(() =>
       expect(calls.asked).toEqual([
         "lead2",
