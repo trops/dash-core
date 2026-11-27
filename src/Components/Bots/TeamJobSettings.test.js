@@ -10,6 +10,7 @@ import {
   oneJobAtATimeOf,
   ONE_JOB_HELP,
   usesHandoffsOf,
+  setupView,
   HANDOFF_HELP,
 } from "./TeamJobSettings";
 
@@ -57,5 +58,20 @@ describe("TeamJobSettings", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Standard handoff" }));
     await waitFor(() => expect(calls).toEqual([["handoffs", "7", true]]));
     expect(screen.getByText(HANDOFF_HELP.on)).toBeInTheDocument();
+  });
+});
+
+describe("Check setup (DASH-108)", () => {
+  it("says a good setup, or each problem", () => {
+    expect(setupView(null)).toBeNull();
+    expect(setupView({ ok: true, problems: [] })).toEqual({
+      ok: true,
+      title: "The setup is good.",
+      lines: [],
+    });
+    expect(
+      setupView({ ok: false, problems: [{ message: "A" }, { message: "B" }] }),
+    ).toEqual({ ok: false, title: "2 problems to fix:", lines: ["A", "B"] });
+    expect(setupView({ error: "Nope" }).title).toBe("Nope");
   });
 });

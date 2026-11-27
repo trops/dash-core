@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Switch } from "@trops/dash-react";
+import { Button, Switch } from "@trops/dash-react";
 import { useConfigTokens } from "../Dashboard/ConfigListRow";
 
 /**
@@ -34,17 +34,37 @@ export const HANDOFF_HELP = {
   off: "Off: each bot gets the raw answer of the bot before it, and its own instructions say what to copy forward.",
 };
 
+export const SETUP_HELP =
+  "Dash checks that every provider starts, every setting has a value, each repo can be read (and pushed to) with the GitHub token, and every repo check is on its repo. With the standard handoff on, it does this before each job, and a job with a bad setup doesn't start.";
+
+/** What a setup check's result says, as one line and its problems. */
+export function setupView(res) {
+  if (!res) return null;
+  if (res.error) return { ok: false, title: res.error, lines: [] };
+  const n = (res.problems || []).length;
+  return {
+    ok: !!res.ok,
+    title: res.ok
+      ? "The setup is good."
+      : `${n} problem${n === 1 ? "" : "s"} to fix:`,
+    lines: (res.problems || []).map((p) => p.message),
+  };
+}
+
 export const TeamJobSettings = ({ workspaceId }) => {
   const { muted, hairline } = useConfigTokens();
   const [on, setOn] = useState(true);
   const [handoffs, setHandoffs] = useState(false);
   const [error, setError] = useState(null);
+  const [setup, setSetup] = useState(null);
+  const [checking, setChecking] = useState(false);
   const current = useRef(workspaceId);
   current.current = workspaceId;
 
   useEffect(() => {
     const api = botsApi();
     setError(null);
+    setSetup(null);
     if (!api || !api.getTeamSettings || workspaceId == null) return;
     Promise.resolve(api.getTeamSettings(workspaceId))
       .then((s) => {
@@ -83,6 +103,26 @@ export const TeamJobSettings = ({ workspaceId }) => {
     }
   };
 
+  const checkSetup = async () => {
+    const api = botsApi();
+    if (!api || !api.checkSetup) {
+      setSetup({ error: "This version of Dash can't check a setup yet." });
+      return;
+    }
+    setChecking(true);
+    try {
+      const r = await api.checkSetup(workspaceId);
+      if (current.current === workspaceId) setSetup(r || null);
+    } catch (err) {
+      if (current.current === workspaceId) {
+        setSetup({ error: (err && err.message) || "Couldn't check it." });
+      }
+    } finally {
+      if (current.current === workspaceId) setChecking(false);
+    }
+  };
+  const shown = setupView(setup);
+
   return (
     <section
       aria-label="Jobs"
@@ -114,6 +154,33 @@ export const TeamJobSettings = ({ workspaceId }) => {
           onChange={changeHandoffs}
           ariaLabel="Standard handoff"
         />
+      </div>
+      <div
+        className={`flex flex-col gap-2 px-4 py-3 border-t ${hairline}`}
+        data-testid="team-setup-check"
+      >
+        <div className="flex flex-row items-center gap-4">
+          <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+            <span className="text-sm font-semibold">Setup</span>
+            <span className={`text-xs ${muted}`}>{SETUP_HELP}</span>
+          </span>
+          <Button
+            title={checking ? "Checking…" : "Check setup"}
+            size="sm"
+            onClick={checking ? undefined : checkSetup}
+          />
+        </div>
+        {shown ? (
+          <div
+            className="flex flex-col gap-1 text-xs"
+            data-testid="setup-result"
+          >
+            <span className="font-semibold">{shown.title}</span>
+            {shown.lines.map((l, i) => (
+              <span key={i}>{`• ${l}`}</span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -20,7 +20,13 @@ const TOOL_GROUPS = [
   {
     id: "bots",
     label: "Bots",
-    tools: ["list_bots", "create_bot", "update_bot", "set_team_settings"],
+    tools: [
+      "list_bots",
+      "check_team_setup",
+      "create_bot",
+      "update_bot",
+      "set_team_settings",
+    ],
   },
   {
     id: "teams",
