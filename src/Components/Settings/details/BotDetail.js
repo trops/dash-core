@@ -1813,6 +1813,7 @@ export const BotDetail = ({
                   botName={name.trim()}
                   settings={ownSettings}
                   values={settingValues}
+                  workspaceId={team || null}
                   disabled={saving}
                   onChange={({ settings: next, values: nextValues }) => {
                     setOwnSettings(next);
