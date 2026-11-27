@@ -381,10 +381,11 @@ const guideTools = [
             "provider",
             "widget",
             "bots",
+            "checks",
             "overview",
           ],
           description:
-            "Topic to get help with. 'bots' is how to build a team of bots that works (chains, checks, team settings, safety). Use 'overview' or omit for a general capabilities guide.",
+            "Topic to get help with. 'bots' is how to build a team of bots that works (chains, checks, team settings, safety). 'checks' is how to write a deterministic check: the contract, check.json, templates, trying it by hand with dash-check. Use 'overview' or omit for a general capabilities guide.",
         },
       },
       required: [],
