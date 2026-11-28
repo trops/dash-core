@@ -23,7 +23,8 @@ export const WhatItCanDo = ({ bot, onEdit = null }) => {
   const chip = (text, key) => (
     <span
       key={key}
-      className={`font-mono text-xs rounded border px-1.5 py-0.5 break-all ${hairline} ${fieldBg} ${strong}`}
+      title={text}
+      className={`font-mono text-xs rounded border px-1.5 py-0.5 max-w-full truncate ${hairline} ${fieldBg} ${strong}`}
     >
       {text}
     </span>
@@ -46,7 +47,20 @@ export const WhatItCanDo = ({ bot, onEdit = null }) => {
   );
   const provider = (p) => {
     if (p.tools && p.tools.length) {
-      return chips(p.label, p.tools, `can-do-provider-${p.name}`);
+      // Its name, then its tools as chips that wrap (DASH-171): a tool
+      // name is never broken.
+      return (
+        <div
+          key={p.name}
+          className="flex flex-col gap-1"
+          data-testid={`can-do-provider-${p.name}`}
+        >
+          <span className={`font-medium ${strong}`}>{p.label}</span>
+          <span className="flex flex-row flex-wrap items-center gap-1">
+            {p.tools.map((c, i) => chip(c, `${c}-${i}`))}
+          </span>
+        </div>
+      );
     }
     return (
       <span key={p.name} className={strong}>

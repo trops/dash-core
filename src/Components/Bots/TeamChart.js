@@ -646,6 +646,7 @@ export const TeamChart = ({
           connections={connections}
           canEdit={canWire}
           scroll={split}
+          room={rootWidth}
           onClose={() => onSelect && onSelect(null)}
           onOpenPage={() => onOpen && onOpen(selected.id, "activity")}
           onOpenConversation={() =>
