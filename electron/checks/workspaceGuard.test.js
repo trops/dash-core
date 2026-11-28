@@ -112,6 +112,28 @@ describe("a job's workspace that was removed (DASH-165)", () => {
     assert.match(r.reason, GONE);
   });
 
+  it('a check with ifNoWorkspace: "run" runs in the bot\'s folder', async () => {
+    // e.g. the Reporter's "the ticket's folder is gone".
+    const r = await runCheck(
+      {
+        kind: "command",
+        command: 'test ! -e "$DASH_WS"',
+        ifNoWorkspace: "run",
+      },
+      inWs(gone),
+      { ...deps(), env: { DASH_WS: gone } },
+    );
+    assert.equal(r.pass, true, r.reason);
+    assert.equal(
+      workFolderProblem(
+        { kind: "command", command: "true", ifNoWorkspace: "run" },
+        inWs(gone),
+        plain,
+      ),
+      null,
+    );
+  });
+
   it("a check that doesn't touch a folder is unaffected", async () => {
     const r = await runCheck(
       { kind: "handoff-has", keys: ["files"] },

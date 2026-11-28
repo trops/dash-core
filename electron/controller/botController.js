@@ -43,6 +43,7 @@ const { PausedQueue, drainBot } = require("../bots/pausedQueue");
 const { BusyQueue } = require("../bots/busyQueue");
 const { startsChain, chainStartedBy } = require("../jobs/chainJobs");
 const { rerunNote, firstStep } = require("../jobs/rerunJob");
+const { openCheckGoals } = require("../jobs/openChecks");
 const {
   stopBotRun,
   whenIdle: waitUntilIdle,
@@ -3582,15 +3583,16 @@ const botController = {
     if (!job) return { ok: false };
     for (const s of job.steps) {
       if (s.status === "running") this.stop(s.botId);
-      // Its checks: their job closes, so no more retries.
-      if (s.status === "checking" && s.goalId) {
-        try {
-          goalController.close(s.goalId);
-        } catch (_e) {
-          // The step still stops below.
-        }
-        this._jobs.checksMoved(s.goalId, "stopped");
+    }
+    // Its open checks, being run or waiting on you (an approval): their
+    // job closes, so no more retries and nothing left saying it needs you.
+    for (const goalId of openCheckGoals(job.steps)) {
+      try {
+        goalController.close(goalId);
+      } catch (_e) {
+        // The step still stops below.
       }
+      this._jobs.checksMoved(goalId, "stopped");
     }
     this._jobs.stopWaiting(job.id);
     return { ok: true };
