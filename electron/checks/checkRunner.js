@@ -42,11 +42,16 @@ function helpersUsed(check) {
 /**
  * Why this check can't run where it would (DASH-165), or null. A recipe or
  * helper needs the folder only for its git, node and files helpers, and
- * then a git repo: they judge what the work changed.
+ * then a git repo: they judge what the work changed. A check with
+ * ifNoWorkspace: "run" never needs it.
  */
 function workFolderProblem(check, input, cwd) {
   const kind = check && check.kind;
   if (!FOLDER_KINDS.includes(kind)) return null;
+  // A check that doesn't need the workspace says so (ifNoWorkspace: "run"),
+  // e.g. one that proves the workspace was removed: it runs in the bot's
+  // own folder instead.
+  if (check.ifNoWorkspace === "run") return null;
   if (kind === "recipe" || kind === "helper") {
     const used = helpersUsed(check);
     if (!used.some((u) => FOLDER_HELPER.test(u))) return null;
