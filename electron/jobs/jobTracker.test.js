@@ -534,6 +534,24 @@ describe("a failed job's why and running it again (DASH-122)", () => {
     assert.equal(third, null, "a done job isn't run again");
   });
 
+  it("restartJob: the workspace goes with the earlier try; the new try names it again", () => {
+    const t = make();
+    const job = t.startJob({ workspaceId: "ws1", leadId: "l", title: "x" });
+    t.startStep(job.id, { botId: "l", botName: "Lead" });
+    t.setWorkspace(job.id, { dir: "/tmp/w/DASH-1", branch: "fix/DASH-1" });
+    t.endStep(job.id, { botId: "l", record: { status: "failed", error: "x" } });
+    settle();
+    const again = t.restartJob(job.id);
+    assert.equal(again.workspace, undefined);
+    assert.equal(t.workspaceOf(job.id), null);
+    assert.deepEqual(again.tries[0].workspace, {
+      dir: "/tmp/w/DASH-1",
+      branch: "fix/DASH-1",
+    });
+    t.setWorkspace(job.id, { dir: "/tmp/w/DASH-1", branch: "fix/DASH-1b" });
+    assert.equal(t.workspaceOf(job.id).branch, "fix/DASH-1b");
+  });
+
   it("restartJob: a try whose first bot never starts is stopped, not left open", () => {
     const t = make();
     const job = t.startJob({ workspaceId: "ws1", leadId: "l", title: "x" });
