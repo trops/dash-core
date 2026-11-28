@@ -7,6 +7,10 @@
  * saying "1 needs you" with nothing in Needs you.
  *
  *   openCheckGoals(steps)   the goal ids to close, once each
+ *   endedJobGoals(job)      every check job of an ended job (all its tries),
+ *                           to close any it left open: when it ends, and
+ *                           when the app starts (an approval a stop left
+ *                           open before this fix)
  */
 "use strict";
 
@@ -23,4 +27,22 @@ function openCheckGoals(steps) {
   return out;
 }
 
-module.exports = { openCheckGoals };
+const FINAL = new Set(["done", "failed", "stopped"]);
+
+/** @param {object} job @returns {string[]} */
+function endedJobGoals(job) {
+  if (!job || !FINAL.has(job.status)) return [];
+  const steps = [
+    ...(Array.isArray(job.tries) ? job.tries : []).flatMap((t) =>
+      t && Array.isArray(t.steps) ? t.steps : [],
+    ),
+    ...(Array.isArray(job.steps) ? job.steps : []),
+  ];
+  const out = [];
+  for (const s of steps) {
+    if (s && s.goalId && !out.includes(s.goalId)) out.push(s.goalId);
+  }
+  return out;
+}
+
+module.exports = { openCheckGoals, endedJobGoals };
