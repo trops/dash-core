@@ -618,9 +618,12 @@ function createJobTracker({
   /**
    * Run a finished job again (DASH-165): its steps so far become its
    * earlier try, and it opens again with none, as its next try; its first
-   * bot's run starts it. Its work item, workspace and picks stay (the same
-   * work), and so does what its first bot was asked (`firstAsk`, kept the
-   * first time). `note`: the user's, for every bot of the new try
+   * bot's run starts it. Its work item and picks stay (the same work), and
+   * so does what its first bot was asked (`firstAsk`, kept the first time).
+   * Its workspace doesn't: it goes with the earlier try, and the new try's
+   * bots name it again when they rebuild it. A kept one, removed after the
+   * failure, failed every folder check of the bots before the one that
+   * rebuilds it ("the job's workspace isn't there"). `note`: the user's, for every bot of the new try
    * (`rerunNote`). Only a failed or stopped job.
    * @returns {object|null} the job, or null
    */
@@ -644,8 +647,10 @@ function createJobTracker({
           }
         : {}),
       steps,
+      ...(job.workspace ? { workspace: { ...job.workspace } } : {}),
       ...(job.test ? { skippedInTest: job.skippedInTest || [] } : {}),
     };
+    delete job.workspace;
     job.tries = [...(job.tries || []), earlier].slice(-MAX_TRIES);
     job.try = (job.try || 1) + 1;
     job.steps = [];
