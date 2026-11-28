@@ -19,7 +19,8 @@
  *
  * FACTORY_HELPERS are the helpers offered for it (Bots › Checks and the
  * guides): did the bot do only what it planned (dash-check's "Factory
- * checks"). Any other library helper works too.
+ * checks"), and is the plan ready to code (its "Plan checks", which read
+ * only the handoff and need no folder). Any other library helper works too.
  */
 "use strict";
 
@@ -37,6 +38,8 @@ const FACTORY_HELPERS = [
   "git.noNewMatches",
   "files.maxGrowth",
   "node.testScriptIsReal",
+  "plan.evidenceForAcceptance",
+  "plan.noOpenDecisions",
 ];
 const HANDOFF_FROM = ["answer", "handed"];
 const MAX_TEXT = 300;

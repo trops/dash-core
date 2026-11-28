@@ -180,7 +180,7 @@ export const BUILT_IN_CHOICES = [
 
 /**
  * The factory helpers a helper check offers (DASH-160): @trops/dash-check
- * 0.2.0's, as electron/checks/kinds/helper.js lists them.
+ * 0.3.0's, as electron/checks/kinds/helper.js lists them.
  */
 export const FACTORY_HELPERS = [
   {
@@ -196,6 +196,14 @@ export const FACTORY_HELPERS = [
   { value: "git.noNewMatches", label: "No added line matches a pattern" },
   { value: "files.maxGrowth", label: "No file grows too big" },
   { value: "node.testScriptIsReal", label: "The test script is real" },
+  {
+    value: "plan.evidenceForAcceptance",
+    label: "It checked the work isn't already done",
+  },
+  {
+    value: "plan.noOpenDecisions",
+    label: "Nothing is left for the user to decide",
+  },
 ];
 
 /** Which AUTO_KINDS card a check step is on (null for a reviewer or you). */

@@ -16,7 +16,12 @@ const { execFileSync } = require("child_process");
 const { tempDir } = require("../testUtils/tempDir");
 const { runCheck, workFolderProblem } = require("./checkRunner");
 const { folderProblem } = require("./workspaceGuard");
-const { FACTORY_HELPERS } = require("./kinds/helper");
+const { FACTORY_HELPERS: OFFERED } = require("./kinds/helper");
+
+// The offered helpers that work in the job's folder (git, node, files);
+// the plan.* ones read only the handoff.
+const FACTORY_HELPERS = OFFERED.filter((u) => /^(git|node|files)\./.test(u));
+const PLAN_HELPERS = OFFERED.filter((u) => u.startsWith("plan."));
 
 let root;
 let gone;
@@ -168,6 +173,65 @@ describe("a folder that isn't a git repo (DASH-165)", () => {
   it("a git repo passes the guard", () => {
     assert.equal(folderProblem(inWs(repo), null, { git: true }), null);
   });
+});
+
+describe("plan helpers need no folder", () => {
+  const plan = {
+    input: {
+      answer:
+        "Plan.\n\n```json\n" +
+        JSON.stringify({
+          status: "ok",
+          acceptance: ["A"],
+          notYetDone: {
+            searchedDone: 'text ~ "a": none',
+            missing: [{ acceptance: "A", read: "a.js: run", why: "it logs" }],
+          },
+          openDecisions: [],
+        }) +
+        "\n```",
+    },
+  };
+
+  it("are offered, and the guard leaves them alone", () => {
+    assert.deepEqual(PLAN_HELPERS, [
+      "plan.evidenceForAcceptance",
+      "plan.noOpenDecisions",
+    ]);
+    for (const use of PLAN_HELPERS) {
+      assert.equal(
+        workFolderProblem({ kind: "helper", use }, inWs(gone), plain),
+        null,
+        use,
+      );
+      assert.equal(
+        workFolderProblem({ kind: "helper", use }, plan, null),
+        null,
+        use,
+      );
+    }
+  });
+
+  for (const use of PLAN_HELPERS) {
+    it(`helper ${use} runs with no workspace and no folder`, async () => {
+      const r = await runCheck({ kind: "helper", use }, plan, {});
+      assert.equal(r.pass, true, r.reason);
+    });
+
+    it(`helper ${use} still judges the plan when the workspace is gone`, async () => {
+      const r = await runCheck(
+        { kind: "helper", use },
+        {
+          ...plan,
+          ...inWs(gone),
+          input: { answer: '```json\n{"status":"ok"}\n```' },
+        },
+        { cwd: plain, tmpDir: root },
+      );
+      assert.equal(r.pass, false);
+      assert.doesNotMatch(r.reason, GONE);
+    });
+  }
 });
 
 describe("no folder at all (DASH-165)", () => {

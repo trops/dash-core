@@ -23,8 +23,8 @@ describe("a helper check in the checks window (DASH-160)", () => {
     );
   });
 
-  it("offers dash-check's ten factory helpers", () => {
-    expect(FACTORY_HELPERS).toHaveLength(10);
+  it("offers dash-check's ten factory helpers and two plan helpers", () => {
+    expect(FACTORY_HELPERS).toHaveLength(12);
     expect(FACTORY_HELPERS.map((h) => h.value)).toContain(
       "git.validateLeavesTreeClean",
     );

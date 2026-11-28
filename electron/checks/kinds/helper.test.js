@@ -93,8 +93,8 @@ describe("a helper check's settings", () => {
     assert.equal(checksError(ok), null);
   });
 
-  it("offers dash-check 0.2.0's factory helpers, all of them there", () => {
-    assert.equal(FACTORY_HELPERS.length, 10);
+  it("offers dash-check 0.3.0's factory and plan helpers, all of them there", () => {
+    assert.equal(FACTORY_HELPERS.length, 12);
     for (const id of FACTORY_HELPERS) assert.ok(isBuiltInHelper(id), id);
   });
 
