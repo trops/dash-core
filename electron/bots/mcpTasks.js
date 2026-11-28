@@ -276,6 +276,18 @@ function createMcpTasks({
     },
 
     /**
+     * Its job runs again (DASH-145, DASH-165): running once more, the last
+     * try's end and error gone; its job's end says how it ends.
+     */
+    reopened(id) {
+      return update(id, {
+        status: "running",
+        error: undefined,
+        endedAt: undefined,
+      });
+    },
+
+    /**
      * Finished. `needsYou`: what's left for the user in Dash (a bot that
      * was paused, so it never ran) — done, but not all of it. `handOns`:
      * what the bots it set off said, apart from the lead's answer (DASH-33).

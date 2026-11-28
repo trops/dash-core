@@ -29,6 +29,7 @@ import {
   JOB_STATUS,
   STEP_STATUS,
   canRunAgain,
+  triesText,
   filterJobs,
   searchJobs,
   groupByDashboard,
@@ -358,6 +359,11 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
         ) : null}
         {/* A self-test's summary (DASH-121): what it skipped. */}
         <SelfTestSummary job={job} />
+        {triesText(job) ? (
+          <span className={`text-xs ${muted}`} data-testid="job-tries">
+            {triesText(job)}
+          </span>
+        ) : null}
         {job.item && job.item.url ? (
           <button
             type="button"
@@ -413,11 +419,11 @@ export const JobDetail = ({ job: listed, dashboardName = null }) => {
             }}
           />
         ) : null}
-        {canRunAgain(job) && !confirmDelete ? (
+        {/* A failed job's header has Run the job again (DASH-165): in the
+            same job, from its first bot. This one starts it as a new job. */}
+        {canRunAgain(job) && !confirmDelete && !(failure && failure.rerun) ? (
           <Button
-            title={
-              failure && failure.rerun ? "Run the whole job again" : "Run again"
-            }
+            title="Run again"
             size="sm"
             onClick={async () => {
               const api = botsApi();

@@ -25,6 +25,7 @@ import {
   ordinalText,
   queueText,
   startedByText,
+  triesText,
   whyText,
 } from "./jobText";
 
@@ -181,6 +182,28 @@ describe("jobText", () => {
       ["Woodworking Projects", 2],
       ["Morning Brief", 1],
     ]);
+  });
+});
+
+describe("a job run again (DASH-165)", () => {
+  it("says which try it is and how the one before ended", () => {
+    expect(triesText({ try: 1 })).toBe("");
+    expect(triesText({})).toBe("");
+    expect(
+      triesText({
+        try: 2,
+        tries: [
+          {
+            try: 1,
+            status: "failed",
+            failedAt: { botName: "Coder", summary: "No workspace" },
+          },
+        ],
+      }),
+    ).toBe("Try 2 · try 1 failed at Coder: No workspace");
+    expect(triesText({ try: 3, tries: [{ try: 2, status: "stopped" }] })).toBe(
+      "Try 3 · try 2 was stopped",
+    );
   });
 });
 
@@ -365,17 +388,17 @@ describe("Search and Run again", () => {
     const calls = withApi();
     render(<JobsPage workspaces={WORKSPACES} />);
     fireEvent.click(await screen.findByText("Daily brief"));
-    // Its failure header offers its failed step; this runs the whole job.
+    // One Run the job again, in its failure header (DASH-165); an app
+    // without its handler asks the lead the same thing as a new job.
+    expect(screen.queryByRole("button", { name: "Run again" })).toBeNull();
     fireEvent.click(
-      await screen.findByRole("button", { name: "Run the whole job again" }),
+      await screen.findByRole("button", { name: "Run the job again" }),
     );
-    await waitFor(() =>
-      expect(calls.asked).toEqual([
-        "lead2",
-        "Write today's brief from my inbox.",
-      ]),
-    );
-    expect(screen.getByText(/starting on it again/)).toBeInTheDocument();
+    await waitFor(() => expect(calls.asked[0]).toBe("lead2"));
+    expect(calls.asked[1]).toMatch(/^Write today's brief from my inbox\./);
+    expect(
+      await screen.findByText(/starting again — it shows as a new job/),
+    ).toBeInTheDocument();
   });
 
   it("a running job can't be run again", async () => {

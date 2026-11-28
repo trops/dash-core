@@ -2,8 +2,9 @@
  * FailureHeader — the top of a failed job (DASH-122): "Failed at <bot>:
  * <plain reason>", one line more, and the button that fixes it, picked by
  * the kind of failure (failureView.js): that bot's settings, Check setup,
- * Turn on a package's check, Raise budget, or Run again from that step /
- * Send back to its bot with a note. A failing check's output on request.
+ * Turn on a package's check, Raise budget, or Run the job again (DASH-165:
+ * the whole chain from its first bot, in the same job, as its next try),
+ * with a note if you like. A failing check's output on request.
  * The header is the first failure; bots that failed after it (an On
  * Failure listener, say) get a line each: "Then Reporter failed too: …".
  */
@@ -32,18 +33,34 @@ const fire = (name, detail) => {
 
 const NO_HANDLER = /No handler registered/i;
 
+/** The job's first bot: the one its chain starts from. */
+const firstStep = (job) =>
+  ((job && job.steps) || []).find((s) => s && s.botId) || null;
+
 /**
- * Run the job again from its failed step, in the same job. An app without
- * that yet (its handler) starts the step's bot, or the lead, as a new job.
+ * Run the whole job again (DASH-165): its chain restarts from its first
+ * bot, in the same job, as its next try. bots-rerun-step is the IPC
+ * (rerunJob, or rerunStep in an older preload: both restart the job). An
+ * app without its handler starts the first bot, or the lead, as a new job.
  */
 async function runAgain(job, view, note) {
   const api = botsApi();
   if (!api) return { error: "This version of Dash can't run it again." };
-  if (api.rerunStep) {
+  const restart = api.rerunJob
+    ? () => api.rerunJob(job.id, note)
+    : api.rerunStep
+      ? () => api.rerunStep(job.id, view.stepId, note)
+      : null;
+  if (restart) {
     try {
-      const r = await api.rerunStep(job.id, view.stepId, note);
+      const r = await restart();
       if (r && r.ok) {
-        return { note: `${view.botName} is running again, in this job.` };
+        const first = firstStep(job);
+        return {
+          note: `The job is running again from ${
+            (r && r.firstBot) || (first && first.botName) || "its first bot"
+          }, in this job.`,
+        };
       }
       return { error: (r && r.error) || "It couldn't be run again." };
     } catch (e) {
@@ -52,17 +69,18 @@ async function runAgain(job, view, note) {
       }
     }
   }
-  const extra = [`Your last try failed: ${view.reason}.`, note]
+  const extra = [`The last try failed: ${view.reason}.`, note]
     .filter(Boolean)
     .join("\n\n");
-  if (view.botId === job.leadId && api.askLead) {
+  const first = firstStep(job);
+  if (job.leadId && api.askLead) {
     await api.askLead(job.leadId, `${job.request || job.title}\n\n${extra}`);
-  } else if (api.run) {
-    await api.run(view.botId, `${job.title || ""}\n\n${extra}`.trim());
+  } else if (first && api.run) {
+    await api.run(first.botId, `${job.title || ""}\n\n${extra}`.trim());
   } else {
     return { error: "This version of Dash can't run it again." };
   }
-  return { note: `${view.botName} is starting again — it shows as a new job.` };
+  return { note: "The job is starting again — it shows as a new job." };
 }
 
 export const FailureHeader = ({ job, view, onGo }) => {
@@ -168,7 +186,7 @@ export const FailureHeader = ({ job, view, onGo }) => {
       ) : null}
       {sending ? (
         <TextArea
-          label={`A note for ${view.botName}: it gets this with its next try.`}
+          label="A note for the team: every bot gets it with the job's next try."
           rows={2}
           value={text}
           onChange={(v) => setText(v)}
@@ -178,7 +196,7 @@ export const FailureHeader = ({ job, view, onGo }) => {
         {sending ? (
           <>
             <Button
-              title={`Send back to ${view.botName}`}
+              title="Run the job again"
               size="sm"
               disabled={busy || !text.trim()}
               onClick={() => again(text.trim())}
@@ -205,14 +223,14 @@ export const FailureHeader = ({ job, view, onGo }) => {
             {view.rerun ? (
               action.type === "rerun" ? (
                 <Button
-                  title={`Run again from ${view.botName}`}
+                  title="Run the job again"
                   size="sm"
                   disabled={busy}
                   onClick={() => again()}
                 />
               ) : (
                 <Button2
-                  title={`Run again from ${view.botName}`}
+                  title="Run the job again"
                   size="sm"
                   disabled={busy}
                   onClick={() => again()}
@@ -221,7 +239,7 @@ export const FailureHeader = ({ job, view, onGo }) => {
             ) : null}
             {view.rerun ? (
               <Button3
-                title={`Send back to ${view.botName} with a note`}
+                title="Run again with a note"
                 size="sm"
                 disabled={busy}
                 onClick={() => setSending(true)}

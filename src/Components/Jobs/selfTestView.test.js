@@ -199,6 +199,23 @@ describe("selfTestSummary", () => {
     );
   });
 
+  it("never passed while a step of it failed or stopped (DASH-165)", () => {
+    const job = testJob();
+    for (const status of ["failed", "stopped"]) {
+      const v = selfTestSummary({
+        ...job,
+        steps: [...job.steps, { id: "s4", botName: "Coder", status }],
+      });
+      expect(v.passed).toBe(false);
+      expect(v.title).not.toMatch(/passed/);
+    }
+  });
+
+  it("reads the job's own status: a failed job never passes", () => {
+    expect(selfTestSummary(testJob({ status: "failed" })).passed).toBe(false);
+    expect(selfTestSummary(testJob({ status: "stopped" })).passed).toBe(false);
+  });
+
   it("nothing for a running or a real job", () => {
     expect(selfTestSummary(testJob({ status: "running" }))).toBeNull();
     expect(selfTestSummary(testJob({ test: false }))).toBeNull();

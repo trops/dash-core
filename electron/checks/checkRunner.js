@@ -23,6 +23,37 @@ const { FACTORY_KINDS, runFactoryCheck } = require("./kinds/factory");
 const { runRecipeCheck } = require("./kinds/recipe");
 const { runHelperCheck } = require("./kinds/helper");
 const { handoffCheck } = require("../bots/botHandoff");
+const { folderProblem } = require("./workspaceGuard");
+
+// Kinds that work in the job's folder (DASH-165): each fails when it isn't
+// there. The built-in git kinds say so themselves (factory.js gitDir).
+const FOLDER_KINDS = ["command", "repo", "package", "recipe", "helper"];
+const FOLDER_HELPER = /^(git|node|files)\./;
+
+/** The dash-check helpers a recipe or helper check uses. */
+function helpersUsed(check) {
+  if (!check) return [];
+  if (check.kind === "helper") return [String(check.use || "")];
+  const steps =
+    check.recipe && Array.isArray(check.recipe.steps) ? check.recipe.steps : [];
+  return steps.map((s) => String((s && s.use) || "")).filter(Boolean);
+}
+
+/**
+ * Why this check can't run where it would (DASH-165), or null. A recipe or
+ * helper needs the folder only for its git, node and files helpers, and
+ * then a git repo: they judge what the work changed.
+ */
+function workFolderProblem(check, input, cwd) {
+  const kind = check && check.kind;
+  if (!FOLDER_KINDS.includes(kind)) return null;
+  if (kind === "recipe" || kind === "helper") {
+    const used = helpersUsed(check);
+    if (!used.some((u) => FOLDER_HELPER.test(u))) return null;
+    return folderProblem(input, cwd, { git: true });
+  }
+  return folderProblem(input, cwd);
+}
 
 const KIND_LABELS = {
   rules: "Rules",
@@ -55,7 +86,10 @@ async function runCheck(check, input, deps = {}) {
   const kind = check && check.kind;
   let res;
   try {
-    if (kind === "rules") {
+    const gone = workFolderProblem(check, input, deps.cwd);
+    if (gone) {
+      res = { pass: false, reason: gone, details: { workspaceMissing: true } };
+    } else if (kind === "rules") {
       res = await runRules(check, input, { fetchStatus: deps.fetchStatus });
     } else if (kind === "command") {
       res = await runCommand(check, input, {
@@ -203,4 +237,4 @@ async function runCheck(check, input, deps = {}) {
   };
 }
 
-module.exports = { runCheck, KIND_LABELS };
+module.exports = { runCheck, KIND_LABELS, workFolderProblem };

@@ -106,8 +106,9 @@ describe("failureView", () => {
       label: "Open Workspace Bot's settings",
       botId: "wb",
     });
-    // A Setup check step isn't run again: its fix is the setup.
-    expect(v.rerun).toBe(false);
+    // Its fix is the setup; then the whole job runs again (DASH-165),
+    // its setup checked again first.
+    expect(v.rerun).toBe(true);
   });
 
   it("a bot's own setting (DASH-136): its words, its bot's settings", () => {
@@ -303,7 +304,7 @@ describe("failureView", () => {
       output: "FAIL formatDate",
       exitCode: null,
     });
-    expect(v.action).toEqual({ type: "rerun", label: "Run again from Coder" });
+    expect(v.action).toEqual({ type: "rerun", label: "Run the job again" });
     expect(v.rerun).toBe(true);
   });
 
@@ -442,7 +443,28 @@ describe("failureView", () => {
     expect(v.action.label).toBe("Open Coder's settings");
   });
 
-  it("anything else: its first sentence, and Run again from <bot>", () => {
+  it('a handoff that said "status": "failed": its own reason in the header (DASH-165)', () => {
+    const v = failureView(
+      job([
+        {
+          id: "s1",
+          botId: "c",
+          botName: "Coder",
+          status: "failed",
+          failed:
+            "Didn't pass \"Handoff\" on try 1: It said it couldn't do it: My workspace ~/W/DASH-147 is gone.",
+        },
+      ]),
+    );
+    expect(v.kind).toBe("bot-failed");
+    expect(failureTitle(v)).toBe(
+      "Failed at Coder: it couldn't do its work: My workspace ~/W/DASH-147 is gone",
+    );
+    expect(v.action).toEqual({ type: "rerun", label: "Run the job again" });
+    expect(v.rerun).toBe(true);
+  });
+
+  it("anything else: its first sentence, and Run the job again", () => {
     const v = failureView(
       job([
         { id: "s0", botId: "p", botName: "Planner", status: "done" },

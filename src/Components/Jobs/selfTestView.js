@@ -321,7 +321,12 @@ const plural = (n) =>
 export function selfTestSummary(job) {
   if (!job || !job.test) return null;
   const items = skippedList(job);
-  if (job.status === "done") {
+  // Passed only from the job's own status, and only when no step of this
+  // try failed or stopped (DASH-165): a step that did nothing can't pass.
+  const bad = (job.steps || []).some(
+    (s) => s && (s.status === "failed" || s.status === "stopped"),
+  );
+  if (job.status === "done" && !bad) {
     return {
       passed: true,
       title: items.length
@@ -331,7 +336,7 @@ export function selfTestSummary(job) {
       tail: FOR_REAL_TEXT,
     };
   }
-  if (job.status === "failed" || job.status === "stopped") {
+  if (job.status === "failed" || job.status === "stopped" || bad) {
     return {
       passed: false,
       title: items.length

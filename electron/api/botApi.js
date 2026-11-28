@@ -420,6 +420,11 @@ const botApi = {
   /** Delete a finished job (only the user deletes jobs). */
   deleteJob: (jobId) => ipcRenderer.invoke(BOTS_DELETE_JOB, { jobId }),
   // Run a failed job again from a step, with a note (DASH-122).
+  // Run the whole job again from its first bot (DASH-165). The IPC keeps
+  // its DASH-122 name, so an app's handler (botController.rerunStep)
+  // needs no change: it restarts the job whatever step it's given.
+  rerunJob: (jobId, note = "") =>
+    ipcRenderer.invoke(BOTS_RERUN_STEP, { jobId, stepId: null, note }),
   rerunStep: (jobId, stepId, note = "") =>
     ipcRenderer.invoke(BOTS_RERUN_STEP, { jobId, stepId, note }),
   /** The Dash Lead's routing log, newest first. */

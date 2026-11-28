@@ -17,6 +17,8 @@
  *                           off, so the step waits for you
  *              budget       it's over its budget
  *              checks       its checks still fail, out of tries
+ *              bot-failed   its handoff said "status": "failed", with why
+ *                           (DASH-165)
  *              other        anything else
  *   reason   the plain reason after "Failed at <bot>: "
  *   detail   one line more: the failing check's reason, the fix
@@ -25,7 +27,8 @@
  *              type: "settings" (that bot's Settings tab, at `section`),
  *              "check-setup", "turn-on" (the bot's checks), "budget" (its
  *              Spending tab), "rerun"
- *   rerun    the step can be run again (Run again from / Send back to)
+ *   rerun    the job can be run again (DASH-165): Run the job again, from
+ *            its first bot, in the same job (its next try)
  *   output   the failing check's printed output: { name, output, exitCode }
  *   then     failures after the first one, set off by it (a bot that runs
  *            On Failure, or any later step that failed): [{ stepId, botId,
@@ -67,6 +70,19 @@ const itsCheck = (name) =>
 // A checks job's own failure line (checkJobs failReason):
 // 'Didn't pass "Tests pass" on try 2: 3 tests fail'.
 const DIDNT_PASS_RE = /^Didn't pass "(.+?)" on try (\d+)(?::\s*([\s\S]*))?$/;
+// A handoff that said "status": "failed" (DASH-165, botHandoff.js BOT_FAILED).
+const BOT_FAILED_RE = /^It said it couldn't do it:\s*([\s\S]*)$/;
+
+/** The bot said it couldn't do its work: { kind, reason }, or null. */
+function botSaidFailed(text) {
+  const m = str(text).match(BOT_FAILED_RE);
+  if (!m) return null;
+  const why = str(m[1]).replace(/\.$/, "");
+  return {
+    kind: "bot-failed",
+    reason: why ? `it couldn't do its work: ${why}` : "it couldn't do its work",
+  };
+}
 
 /** "Work folder ({workFolder})" → "Work folder"; "{workFolder}" → "workFolder". */
 export function settingLabel(text) {
@@ -196,8 +212,9 @@ function problemsFromText(text) {
 /**
  * A job's failed steps, in the order they ran: `first` made the job fail;
  * `then` failed after it (a bot that runs On Failure, set off by it, or
- * any later step). A step run again (Run again from) starts a new try:
- * failures that ended before it last started belong to the try before.
+ * any later step). A job run again (DASH-165) keeps only its current
+ * try's steps (the earlier ones are in job.tries); a step that was retried
+ * in place (an older job) counts only failures since it last started.
  */
 export function failedSteps(job) {
   const steps = (job && job.steps) || [];
@@ -298,7 +315,8 @@ function actionFor(kind, { botId, botName, section, check, command }) {
   if (kind === "budget") {
     return { type: "budget", label: "Raise budget", botId };
   }
-  return { type: "rerun", label: `Run again from ${botName || "this step"}` };
+  // The whole job runs again from its first bot (DASH-165).
+  return { type: "rerun", label: "Run the job again" };
 }
 
 /** A bot named in a job: its id from one of the job's steps. */
@@ -351,6 +369,9 @@ function whyFailed(job, step, goal) {
 
   // Its checks failed it out.
   const checks = checksOut(goal);
+  // …or its handoff said it couldn't do it (DASH-165): its own reason.
+  const saidFailed = checks && botSaidFailed(checks.reason);
+  if (saidFailed) return saidFailed;
   if (checks) {
     const c = checks;
     const what = c.reviewer
@@ -370,6 +391,8 @@ function whyFailed(job, step, goal) {
   }
   // Its checks job isn't loaded: its own line says which check and try.
   const said = str(step.failed).match(DIDNT_PASS_RE);
+  const bot = said && botSaidFailed(said[3]);
+  if (bot) return bot;
   if (said) {
     const tries = Number(said[2]) || 1;
     return {
@@ -435,12 +458,9 @@ export function failureView(job, { goal = null } = {}) {
       check: v.check,
       command: v.command,
     });
-    // Run again from this step: a real bot's step of an ended job.
-    out.rerun =
-      job.status === "failed" &&
-      step.botName !== SETUP_STEP &&
-      !step.problems &&
-      !!step.botId;
+    // Run the job again (DASH-165): the whole chain, from its first bot —
+    // a Setup check's too, once the setup is fixed (it's checked again).
+    out.rerun = job.status === "failed" && !!step.botId;
     return out;
   };
 

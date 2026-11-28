@@ -20,6 +20,7 @@ const os = require("os");
 const path = require("path");
 
 const {
+  BOT_FAILED,
   lastJsonBlock,
   readHandoff,
   handoffProblems,
@@ -142,7 +143,7 @@ describe("the Handoff check", () => {
   it("fails an unknown status, an ask with no question, a split with no items", () => {
     assert.match(
       handoffCheck(block({ status: "maybe" }), ctx).reason,
-      /"status" is "maybe"; it must be one of ok, none, ask, split/,
+      /"status" is "maybe"; it must be one of ok, none, ask, split, failed/,
     );
     assert.match(
       handoffCheck(block({ status: "ask" }), ctx).reason,
@@ -152,6 +153,30 @@ describe("the Handoff check", () => {
       handoffCheck(block({ status: "split" }), ctx).reason,
       /list the new items in "items"/,
     );
+  });
+
+  it('"status": "failed" with a reason fails the step at once, no retry (DASH-165)', () => {
+    const r = handoffCheck(
+      block({ status: "failed", reason: "My workspace ~/W/DASH-147 is gone." }),
+      ctx,
+    );
+    assert.equal(r.pass, false);
+    assert.equal(r.stop, true);
+    assert.equal(r.failed, true);
+    assert.equal(r.reason, `${BOT_FAILED} My workspace ~/W/DASH-147 is gone.`);
+    // Its summary does as a reason; with neither it goes back to say why.
+    assert.match(
+      handoffCheck(block({ status: "failed", summary: "No folder." }), ctx)
+        .reason,
+      /No folder\.$/,
+    );
+    const none = handoffCheck(block({ status: "failed" }), ctx);
+    assert.equal(none.stop, undefined);
+    assert.match(none.reason, /say why you couldn't do it in "reason"/);
+    // "reason" is Dash's key, not data for the next bot.
+    const h = readHandoff(block({ status: "failed", reason: "x" }));
+    assert.equal(h.reason, "x");
+    assert.equal(h.data.reason, undefined);
   });
 
   it("stops on a changed work item id: no retry (DASH-140)", () => {
@@ -541,6 +566,22 @@ describe("end to end", () => {
     const stop = task().history.find((r) => r.stepId === "step_handoff");
     assert.equal(stop.stopped, true);
     assert.match(stop.summary, /^Stopped: the bot worked on DASH-94/);
+  });
+
+  it('"status": "failed": the step fails with its reason, no retry, the Reporter runs (DASH-165)', async () => {
+    userRun(
+      "tb",
+      block({ status: "failed", reason: "The workspace is gone." }),
+    );
+    assert.ok(await until(() => task() && task().status === "closed"));
+    assert.equal(started.length, 0, "not sent back to claim ok");
+    assert.equal(completed().length, 0, "nothing handed on");
+    assert.equal(failed().length, 1);
+    const n = notices.find((x) => x.failed);
+    assert.match(
+      n.reason,
+      /^Didn't pass "Handoff" on try 1: It said it couldn't do it: The workspace is gone\.$/,
+    );
   });
 
   it("none: the job ends with nothing handed on", async () => {
