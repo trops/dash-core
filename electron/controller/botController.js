@@ -43,7 +43,7 @@ const { PausedQueue, drainBot } = require("../bots/pausedQueue");
 const { BusyQueue } = require("../bots/busyQueue");
 const { startsChain, chainStartedBy } = require("../jobs/chainJobs");
 const { rerunNote, firstStep } = require("../jobs/rerunJob");
-const { openCheckGoals } = require("../jobs/openChecks");
+const { openCheckGoals, endedJobGoals } = require("../jobs/openChecks");
 const {
   stopBotRun,
   whenIdle: waitUntilIdle,
@@ -755,6 +755,9 @@ const botController = {
             });
           }
         }
+        // An ended job leaves no check open (an approval it was waiting
+        // on): nothing may say it needs you after it ends.
+        this._closeEndedJobChecks(job);
         this._broadcast(BOT_JOBS_CHANGED, {
           jobId: job.id,
           workspaceId: job.workspaceId,
@@ -763,6 +766,12 @@ const botController = {
       },
     });
     this._jobs.interruptLeftovers();
+    // And the ones ended jobs left open before this was done: a moment
+    // after start, once the goals ledger is open with the app's own key.
+    const sweep = setTimeout(() => {
+      for (const job of this._jobs.list()) this._closeEndedJobChecks(job);
+    }, 10000);
+    if (typeof sweep.unref === "function") sweep.unref();
     // Check packages installed on this computer (DASH-106).
     this._checkPackages = createPackageStore({
       root: path.join(path.dirname(this._botsRoot), "check-packages"),
@@ -3575,6 +3584,18 @@ const botController = {
   /** Resolves with the job once its whole chain has finished. */
   waitForJob(jobId) {
     return this._jobs ? this._jobs.waitForEnd(jobId) : Promise.resolve(null);
+  },
+
+  /** Close the check jobs an ended job left open (see endedJobGoals). */
+  _closeEndedJobChecks(job) {
+    for (const goalId of endedJobGoals(job)) {
+      try {
+        const g = goalController.get(goalId);
+        if (g && !g.closed) goalController.close(goalId);
+      } catch (_e) {
+        // Best effort: the ledger may not be ready yet.
+      }
+    }
   },
 
   /** Stop every bot still running in the job. */
