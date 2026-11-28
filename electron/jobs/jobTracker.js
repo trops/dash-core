@@ -13,6 +13,12 @@
  *   A finished step's summary is its answer's prose (Markdown) and its
  *   handoff the JSON object the answer ended with (stepAnswer.js).
  *
+ * Run again (DASH-165): a failed or stopped job runs again from its first
+ * bot as its next try, in the same job. Its steps so far move to `tries`
+ * ({ try, status, endedAt, failedAt?, steps }, the last MAX_TRIES), `try`
+ * counts up, and the job's status is its current try's: a try that ends
+ * with every step done is done, whatever the one before did.
+ *
  * Step statuses: queued (a hand-on about to start), running, checking (its
  * checks are trying the work), needs-you (waiting on the user: a paused
  * bot, checks that need a look), done, failed, stopped, skipped.
@@ -41,6 +47,8 @@ const MAX_TITLE = 200;
 const MAX_SUMMARY = 600;
 // What was asked, kept so the job can be run again.
 const MAX_REQUEST = 4000;
+// Earlier tries kept on a job run again (DASH-165).
+const MAX_TRIES = 5;
 
 // A team's queue (DASH-81): most jobs that may wait, and how long a job let
 // out of the queue may go without a step before it's stopped (nothing ran it,
@@ -608,29 +616,74 @@ function createJobTracker({
   }
 
   /**
-   * Run a step of a finished job again (DASH-122): the job opens again and
-   * the step waits (queued) for its bot's run, which startStep takes up.
-   * Only a failed or stopped step of a failed or stopped job.
+   * Run a finished job again (DASH-165): its steps so far become its
+   * earlier try, and it opens again with none, as its next try; its first
+   * bot's run starts it. Its work item, workspace and picks stay (the same
+   * work), and so does what its first bot was asked (`firstAsk`, kept the
+   * first time). `note`: the user's, for every bot of the new try
+   * (`rerunNote`). Only a failed or stopped job.
+   * @returns {object|null} the job, or null
    */
-  function retryStep(jobId, stepId) {
+  function restartJob(jobId, { firstAsk = "", note = "" } = {}) {
     const job = jobOf(jobId);
     if (!job || !(job.status === "failed" || job.status === "stopped")) {
       return null;
     }
-    const step = job.steps.find((s) => s.id === stepId);
-    if (!step || !(step.status === "failed" || step.status === "stopped")) {
-      return null;
+    const steps = job.steps || [];
+    const failed = steps.find((st) => st && st.status === "failed") || null;
+    const earlier = {
+      try: job.try || 1,
+      status: job.status,
+      endedAt: job.endedAt || iso(),
+      ...(failed
+        ? {
+            failedAt: {
+              botName: failed.botName || "",
+              summary: clip(failed.failed || failed.summary || "", 300),
+            },
+          }
+        : {}),
+      steps,
+      ...(job.test ? { skippedInTest: job.skippedInTest || [] } : {}),
+    };
+    job.tries = [...(job.tries || []), earlier].slice(-MAX_TRIES);
+    job.try = (job.try || 1) + 1;
+    job.steps = [];
+    job.restartedAt = iso();
+    if (!job.firstAsk && firstAsk) {
+      job.firstAsk = String(firstAsk).slice(0, MAX_REQUEST);
     }
-    step.status = "queued";
-    step.waiting = "retry";
-    step.endedAt = null;
-    step.retries = (step.retries || 0) + 1;
-    for (const k of ["refusal", "problems", "failed", "handoff"]) {
-      delete step[k];
+    if (job.test) job.skippedInTest = [];
+    // The user's note with "Run again": every bot of this try gets it.
+    const said = clip(note, 2000);
+    if (said) job.rerunNote = said;
+    else delete job.rerunNote;
+    // Its old steps' checks belong to the earlier try now.
+    for (const st of steps) {
+      if (st && st.goalId && byGoal) byGoal.delete(st.goalId);
     }
     unsettle(job.id);
     commit(job);
-    return step;
+    // Its first bot's run takes it up; one that never starts can't leave
+    // the job open (and its team waiting) for good.
+    const n = job.try;
+    const pickup = setTimer(() => {
+      const now = store.get(job.id);
+      if (!now || now.try !== n || FINAL.has(now.status) || now.steps.length) {
+        return;
+      }
+      const st = addStep(now, {
+        botId: (steps[0] && steps[0].botId) || now.leadId,
+        botName: (steps[0] && steps[0].botName) || now.leadName,
+        status: "stopped",
+        why: now.startedBy,
+        summary: "It was run again, but its first bot didn't start.",
+      });
+      if (st) st.endedAt = iso();
+      commit(now);
+    }, pickupMs);
+    if (pickup && typeof pickup.unref === "function") pickup.unref();
+    return job;
   }
 
   /** The job a goal's work belongs to (a check retry joins it). */
@@ -920,7 +973,7 @@ function createJobTracker({
     skipStep,
     endStep,
     checksMoved,
-    retryStep,
+    restartJob,
     jobForGoal,
     handedTo,
     isOpen,

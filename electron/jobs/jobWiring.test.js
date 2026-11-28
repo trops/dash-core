@@ -113,6 +113,10 @@ function fakeCtl() {
   ctl._asUserRun = (botId, start) => start();
   ctl.getJob = botController.getJob.bind(ctl);
   ctl.rerunStep = botController.rerunStep.bind(ctl);
+  ctl.rerunJob = botController.rerunJob.bind(ctl);
+  ctl._firstAsk = botController._firstAsk.bind(ctl);
+  ctl._followTaskRerun = botController._followTaskRerun.bind(ctl);
+  ctl.askLead = botController.askLead.bind(ctl);
   return ctl;
 }
 const tick = () => new Promise((r) => setImmediate(r));
@@ -262,76 +266,258 @@ describe("jobs in the real _run", () => {
   });
 });
 
-describe("running a failed job again from a step (DASH-122)", () => {
-  it("the step's bot runs again in the same job, told why it failed and the note", async () => {
-    const ctl = fakeCtl();
-    const job = ctl._jobs.startJob({
-      workspaceId: "ws1",
-      leadId: "lead",
-      title: "Walnut U desk",
+describe("running a failed job again (DASH-165)", () => {
+  /** A lead job: lead → Designer → Drafter, the Drafter failing. */
+  async function failedJob(ctl) {
+    const leadRun = ctl._run("lead", {
+      prompt: "Walnut U desk",
+      trigger: "ask",
+      via: "mcp-task:slack",
     });
-    const first = ctl._run("dra", {
+    const [job] = ctl._jobs.list();
+    const desRun = ctl._run("des", {
+      prompt: "Design it",
+      trigger: "ask",
+      via: "lead:lead",
+      leadRequest: true,
+      jobId: job.id,
+    });
+    ctl.finish("lead", "Asked the Designer.");
+    await leadRun;
+    ctl.finish(
+      "des",
+      'Designed: 3 parts.\n\n```json\n{"prUrl": "https://github.com/o/r/pull/7"}\n```',
+    );
+    await desRun;
+    await tick();
+    const draRun = ctl._run("dra", {
       prompt: "Draw it",
       trigger: "event",
       cause: { chain: [], depth: 0, jobId: job.id },
       source: { originBotId: "des" },
     });
-    ctl.finish("dra", null, { status: "failed", error: "No paper." });
-    await first;
+    ctl.finish("dra", null, {
+      status: "failed",
+      error: "No paper.",
+      startedAt: "t-dra",
+    });
+    await draRun;
     await tick();
     settle();
-    const failed = ctl._jobs.get(job.id);
-    assert.equal(failed.status, "failed");
-    const stepId = failed.steps[0].id;
-    // Not a step that didn't fail, nor while its bot is busy.
-    assert.equal(ctl.rerunStep(job.id, "nope").ok, false);
-    const busy = ctl._run("dra", { prompt: "other", trigger: "schedule" });
-    assert.match(ctl.rerunStep(job.id, stepId).error, /Drafter is busy/);
-    ctl.finish("dra", "ok");
-    await busy;
+    return job.id;
+  }
+
+  function spyPrompts(ctl) {
     const prompts = [];
     const run = ctl._runner.run;
     ctl._runner.run = (botId, opts) => {
-      prompts.push(opts && opts.prompt);
+      prompts.push({ botId, prompt: opts && opts.prompt });
       return run(botId, opts);
     };
-    assert.deepEqual(ctl.rerunStep(job.id, stepId, "Use A4."), { ok: true });
+    return prompts;
+  }
+
+  it("restarts the chain from its first bot, in the same job, as its next try", async () => {
+    const ctl = fakeCtl();
+    const jobId = await failedJob(ctl);
+    assert.equal(ctl._jobs.get(jobId).status, "failed");
+    const prompts = spyPrompts(ctl);
+    const r = ctl.rerunJob(jobId, "Use A4.");
+    assert.equal(r.ok, true, r.error);
+    assert.equal(r.try, 2);
+    assert.equal(r.firstBot, "Woodworking Lead");
     await tick();
-    const again = ctl._jobs.get(job.id);
+    const again = ctl._jobs.get(jobId);
     assert.equal(again.status, "running");
+    assert.equal(again.try, 2);
+    assert.equal(again.tries.length, 1);
+    assert.equal(again.tries[0].status, "failed");
+    assert.equal(again.tries[0].failedAt.botName, "Drafter");
+    assert.equal(again.tries[0].steps.length, 3);
+    // Its first bot, the lead, is asked what it was asked first…
     assert.equal(again.steps.length, 1);
-    assert.equal(again.steps[0].status, "running");
-    assert.match(JSON.stringify(prompts), /Your last try failed: No paper\./);
-    assert.match(JSON.stringify(prompts), /A note from the user: Use A4\./);
-    ctl.finish("dra", "Drawn.");
+    assert.equal(again.steps[0].botId, "lead");
+    assert.equal(prompts[0].botId, "lead");
+    assert.match(prompts[0].prompt, /^Walnut U desk\n\n/);
+    // …told it's a rerun, what the earlier try did, and the note.
+    assert.match(
+      prompts[0].prompt,
+      /this is try 2\. Try 1 failed at Drafter: No paper\./,
+    );
+    assert.match(
+      prompts[0].prompt,
+      /Designer: done — Designed: 3 parts\. \(links: https:\/\/github\.com\/o\/r\/pull\/7\)/,
+    );
+    assert.match(
+      prompts[0].prompt,
+      /A note from the user for this try: Use A4\./,
+    );
+    // The rest of the chain runs again too, each bot told the same.
+    ctl.finish("lead", "Asked the Designer.");
     await tick();
+    const desRun = ctl._run("des", {
+      prompt: "Design it",
+      trigger: "ask",
+      via: "lead:lead",
+      leadRequest: true,
+      jobId,
+    });
+    assert.match(prompts[1].prompt, /^Design it\n\nThis job is running again/);
+    assert.match(
+      prompts[1].prompt,
+      /What you did in that try:\n- Its done step/,
+    );
+    assert.match(prompts[1].prompt, /Its handoff: .*pull\/7/);
+    ctl.finish("des", "Designed again.");
+    await desRun;
+    await tick();
+    const draRun = ctl._run("dra", {
+      prompt: "Draw it",
+      trigger: "event",
+      cause: { chain: [], depth: 0, jobId },
+      source: { originBotId: "des" },
+    });
+    assert.match(prompts[2].prompt, /Why it failed: No paper\./);
+    ctl.finish("dra", "Drawn.");
+    await draRun;
     await tick();
     settle();
-    assert.equal(ctl._jobs.get(job.id).status, "done");
-    assert.equal(ctl._jobs.get(job.id).steps[0].retries, 1);
+    // Done: this try's steps all are, whatever the one before did.
+    const done = ctl._jobs.get(jobId);
+    assert.equal(done.status, "done");
+    assert.deepEqual(
+      done.steps.map((s) => [s.botName, s.status]),
+      [
+        ["Woodworking Lead", "done"],
+        ["Designer", "done"],
+        ["Drafter", "done"],
+      ],
+    );
   });
 
-  it("a Setup check step can't: its fix is the setup", () => {
+  it("every bot's run in the new try goes to its checks (nothing is skipped)", async () => {
     const ctl = fakeCtl();
+    const jobId = await failedJob(ctl);
+    const held = [];
+    ctl._checkJobs = {
+      holdsRun: () => false,
+      afterRun: ({ botId, opts, jobId: j }) => {
+        held.push({ botId, trigger: opts.trigger, jobId: j });
+        return false;
+      },
+    };
+    ctl.rerunJob(jobId);
+    await tick();
+    ctl.finish("lead", "ok");
+    await tick();
+    await tick();
+    await tick();
+    const desRun = ctl._run("des", {
+      prompt: "Design it",
+      trigger: "ask",
+      via: "lead:lead",
+      leadRequest: true,
+      jobId,
+    });
+    ctl.finish("des", "ok");
+    await desRun;
+    await tick();
+    // A fresh run, not a check's retry ("flow"): its checks start over
+    // (a lead's own answers have none).
+    assert.deepEqual(
+      held.map((h) => [h.botId, h.trigger !== "flow", h.jobId === jobId]),
+      [["des", true, true]],
+    );
+  });
+
+  it("a chain's first bot (a self-test's) is asked the same again", async () => {
+    const ctl = fakeCtl();
+    const item = { id: "SANDBOX-1", title: "Test ticket" };
+    const job = ctl._jobs.startJob({
+      workspaceId: "ws1",
+      leadId: null,
+      leadName: "Designer",
+      title: "Test: Designer on SANDBOX-1",
+      item,
+      test: true,
+    });
+    const first = ctl._run("des", {
+      prompt: "Work on the test item SANDBOX-1",
+      trigger: "you",
+      jobId: job.id,
+    });
+    ctl.finish("des", null, { status: "failed", error: "Refused." });
+    await first;
+    await tick();
+    settle();
+    const prompts = spyPrompts(ctl);
+    assert.equal(ctl.rerunJob(job.id).ok, true);
+    await tick();
+    assert.equal(prompts[0].botId, "des");
+    assert.match(prompts[0].prompt, /SANDBOX-1/);
+    assert.match(
+      prompts[0].prompt,
+      /It's the same work item: SANDBOX-1 · Test ticket\. Work on it, never pick another\./,
+    );
+    const again = ctl._jobs.get(job.id);
+    assert.equal(again.test, true);
+    assert.deepEqual(again.skippedInTest, []);
+  });
+
+  it("bots-rerun-step's old call restarts the whole job, whatever step it names", async () => {
+    const ctl = fakeCtl();
+    const jobId = await failedJob(ctl);
+    const dra = ctl._jobs.get(jobId).steps[2].id;
+    const r = ctl.rerunStep(jobId, dra, "");
+    assert.equal(r.ok, true);
+    await tick();
+    assert.equal(ctl._jobs.get(jobId).steps[0].botId, "lead");
+  });
+
+  it("not a job that's going, nor while its first bot is busy", async () => {
+    const ctl = fakeCtl();
+    const jobId = await failedJob(ctl);
+    const busy = ctl._run("lead", { prompt: "other", trigger: "schedule" });
+    assert.match(ctl.rerunJob(jobId).error, /Woodworking Lead is busy/);
+    ctl.finish("lead", "ok");
+    await busy;
+    assert.equal(ctl.rerunJob(jobId).ok, true);
+    assert.match(ctl.rerunJob(jobId).error, /Only a job that ended/);
+    assert.match(ctl.rerunJob("nope").error, /gone/);
+  });
+
+  it("a task given over MCP follows the new try: done when it is (DASH-145)", async () => {
+    const ctl = fakeCtl();
+    const tasks = { calls: [] };
+    ctl._mcpTasks = {
+      reopened: (id) => tasks.calls.push(["reopened", id]),
+      done: (id, v) => tasks.calls.push(["done", id, v.summary]),
+      failed: (id, e) => tasks.calls.push(["failed", id, e]),
+    };
+    ctl.waitForJob = botController.waitForJob.bind(ctl);
     const job = ctl._jobs.startJob({
       workspaceId: "ws1",
       leadId: "lead",
-      title: "x",
+      leadName: "Woodworking Lead",
+      title: "Walnut U desk",
+      request: "Walnut U desk",
+      startedBy: { kind: "task", label: "slack", taskId: "task_1" },
     });
-    ctl._jobs.startStep(job.id, { botId: "dra", botName: "Setup check" });
-    ctl._jobs.endStep(job.id, {
-      botId: "dra",
-      record: {
-        status: "failed",
-        error: "setup",
-        problems: [
-          { kind: "setting", message: "Drafter uses {x}, which has no value" },
-        ],
-      },
-    });
+    const first = ctl._run("lead", { prompt: "Walnut U desk", jobId: job.id });
+    ctl.finish("lead", null, { status: "failed", error: "Refused." });
+    await first;
+    await tick();
     settle();
-    const stepId = ctl._jobs.get(job.id).steps[0].id;
-    assert.match(ctl.rerunStep(job.id, stepId).error, /setup/);
+    assert.equal(ctl.rerunJob(job.id).ok, true);
+    assert.deepEqual(tasks.calls, [["reopened", "task_1"]]);
+    await tick();
+    ctl.finish("lead", "All done.");
+    await tick();
+    await tick();
+    settle();
+    await tick();
+    assert.equal(ctl._jobs.get(job.id).status, "done");
+    assert.deepEqual(tasks.calls[1], ["done", "task_1", "All done."]);
   });
 });
 

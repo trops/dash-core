@@ -42,7 +42,7 @@ const { createJobTracker } = require("../jobs/jobTracker");
 const { PausedQueue, drainBot } = require("../bots/pausedQueue");
 const { BusyQueue } = require("../bots/busyQueue");
 const { startsChain, chainStartedBy } = require("../jobs/chainJobs");
-const { rerunPrompt } = require("../jobs/rerunStep");
+const { rerunNote, firstStep } = require("../jobs/rerunJob");
 const {
   stopBotRun,
   whenIdle: waitUntilIdle,
@@ -3495,6 +3495,10 @@ const botController = {
       steps: (j.steps || []).map(({ summary, handoff, ...st }) =>
         st.status === "needs-you" ? { ...st, summary } : st,
       ),
+      // Its earlier tries (DASH-165): how each ended, not their steps.
+      ...(Array.isArray(j.tries)
+        ? { tries: j.tries.map(({ steps, skippedInTest, ...t }) => t) }
+        : {}),
     }));
   },
 
@@ -3593,32 +3597,32 @@ const botController = {
   },
 
   /**
-   * Run a failed job again from one of its steps (DASH-122): that step's
-   * bot runs again in the same job, told what it was handed, why its last
-   * try failed and the user's note. A Setup check step can't: its fix is
-   * the setup.
-   * @returns {{ ok: true } | { ok: false, error: string }}
+   * Run a finished job again (DASH-165): its whole chain restarts from its
+   * first bot, for the same work item, in the same job, as its next try.
+   * Every bot runs again and every check runs again (nothing is skipped),
+   * and each bot is told it's a rerun and what the earlier try did
+   * (rerunJob.js), so it reuses what's there. A team with the standard
+   * handoff has its setup checked first, as for a new job. A task given
+   * over MCP follows the new try (DASH-145).
+   * @returns {{ ok: true, try: number, firstBot: string } |
+   *           { ok: false, error: string }}
    */
-  rerunStep(jobId, stepId, note = "") {
+  rerunJob(jobId, note = "") {
     const job = this.getJob(jobId);
     if (!job) return { ok: false, error: "That job is gone." };
     if (job.status !== "failed" && job.status !== "stopped") {
       return { ok: false, error: "Only a job that ended can be run again." };
     }
-    const step = (job.steps || []).find((s) => s.id === stepId);
-    if (!step || (step.status !== "failed" && step.status !== "stopped")) {
-      return { ok: false, error: "That step didn't fail." };
-    }
-    if (step.problems) {
+    const first = firstStep(job.steps);
+    if (!first) {
       return {
         ok: false,
-        error: "Fix the team's setup, then run the job again.",
+        error: "Nothing in it ran, so there's nothing to run again.",
       };
     }
-    const bot = this._store.get(step.botId);
-    if (!bot) {
-      return { ok: false, error: `${step.botName || "That bot"} is gone.` };
-    }
+    const bot = this._store.get(first.botId);
+    const name = (bot && bot.name) || first.botName || "Its first bot";
+    if (!bot) return { ok: false, error: `${name} is gone.` };
     if (this._runner.listActive().includes(bot.id)) {
       return {
         ok: false,
@@ -3631,29 +3635,162 @@ const botController = {
         error: "Its team has another job going: run this again when it ends.",
       };
     }
-    const prompt = rerunPrompt({
-      job,
-      step,
+    const lead = !!job.leadId && bot.id === job.leadId;
+    const ask = this._firstAsk(job, first, { lead });
+    const restarted = this._jobs.restartJob(job.id, {
+      firstAsk: ask,
       note: typeof note === "string" ? note.slice(0, 2000) : "",
     });
-    if (!this._jobs.retryStep(job.id, step.id)) {
-      return { ok: false, error: "That step can't be run again." };
-    }
-    Promise.resolve(
-      this._asUserRun(bot.id, () =>
+    if (!restarted) return { ok: false, error: "That job can't be run again." };
+    const prompt = restarted.firstAsk || ask;
+    const warn = (err) =>
+      console.warn(
+        `[jobs] ${job.id}: running it again failed: ${(err && err.message) || err}`,
+      );
+    const start = () => {
+      if (lead) {
+        return this.askLead(bot.id, prompt, { jobId: job.id });
+      }
+      return this._asUserRun(bot.id, () =>
         this._run(bot.id, {
           ...userRunOptions(bot, { prompt }),
+          ...(restarted.test ? { trigger: "you" } : {}),
           jobId: job.id,
+          preflighted: true,
         }),
-      ),
-    ).catch((err) => {
-      console.warn(
-        `[jobs] ${job.id}: running ${bot.name} again failed: ${
-          (err && err.message) || err
-        }`,
       );
-    });
-    return { ok: true };
+    };
+    // Its setup, checked again as for a new job (DASH-108): a bad one
+    // fails this try with a Setup check step.
+    const checked =
+      !lead &&
+      typeof this._setupBeforeJob === "function" &&
+      typeof this.usesHandoffs === "function" &&
+      this.usesHandoffs(bot.workspaceId)
+        ? Promise.resolve(this._setupBeforeJob(bot.workspaceId)).then(
+            (setup) => {
+              if (!setup || setup.ok !== false) return start();
+              this._jobs.startStep(job.id, {
+                botId: bot.id,
+                botName: "Setup check",
+                why: "Before the job starts, Dash checks the team's setup.",
+              });
+              this._jobs.endStep(job.id, {
+                botId: bot.id,
+                record: {
+                  status: "failed",
+                  error: preflightText(setup.problems),
+                  problems: setup.problems,
+                },
+              });
+              return null;
+            },
+          )
+        : Promise.resolve().then(start);
+    checked.catch(warn);
+    this._followTaskRerun(restarted);
+    return { ok: true, try: restarted.try, firstBot: bot.name };
+  },
+
+  /**
+   * The old name (DASH-122's "Run again from <bot>", IPC bots-rerun-step):
+   * kept so a Dash app that calls it works unchanged. It runs the whole
+   * job again (DASH-165); which step was clicked doesn't matter.
+   */
+  rerunStep(jobId, _stepId, note = "") {
+    return this.rerunJob(jobId, note);
+  },
+
+  /**
+   * What a job's first bot was asked, so a rerun asks it the same: kept on
+   * the job the first time (later tries' prompts carry their rerun note).
+   */
+  _firstAsk(job, first, { lead = false } = {}) {
+    if (job.firstAsk) return job.firstAsk;
+    if (job.test && job.item) return testPrompt(job.item);
+    if (lead) return String(job.request || job.title || "");
+    let record = null;
+    try {
+      const runs =
+        this._store && typeof this._store.getRuns === "function"
+          ? this._store.getRuns(first.botId) || []
+          : [];
+      record =
+        (first.runAt && runs.find((r) => r && r.startedAt === first.runAt)) ||
+        null;
+    } catch (_e) {
+      record = null;
+    }
+    return String(
+      (record && typeof record.prompt === "string" && record.prompt) ||
+        job.request ||
+        job.title ||
+        "",
+    );
+  },
+
+  /** The tools a job step's run called: its run record's (rerunJob.js). */
+  _stepTools(step) {
+    if (!step || !step.runAt || !this._store) return [];
+    try {
+      if (typeof this._store.getRuns !== "function") return [];
+      const r = (this._store.getRuns(step.botId) || []).find(
+        (x) => x && x.startedAt === step.runAt,
+      );
+      return (r && Array.isArray(r.toolCalls) && r.toolCalls) || [];
+    } catch (_e) {
+      return [];
+    }
+  },
+
+  /**
+   * A task given over MCP whose job runs again (DASH-145): running again,
+   * and done or failed as the new try ends, so get_task_status says how
+   * it really went.
+   */
+  _followTaskRerun(job) {
+    const taskId =
+      job && job.startedBy && job.startedBy.kind === "task"
+        ? job.startedBy.taskId
+        : null;
+    if (!taskId || !this._mcpTasks || !this._mcpTasks.reopened) return;
+    try {
+      this._mcpTasks.reopened(taskId);
+    } catch (_e) {
+      return;
+    }
+    const n = job.try;
+    Promise.resolve(this.waitForJob(job.id))
+      .then((ended) => {
+        if (!ended || ended.try !== n) return;
+        if (ended.status === "done") {
+          const steps = ended.steps || [];
+          const lead = steps.find(
+            (st) => st.botId === ended.leadId && st.status === "done",
+          );
+          this._mcpTasks.done(taskId, {
+            summary: (lead && lead.summary) || "",
+            handOns: steps
+              .filter((st) => st.botId !== ended.leadId && st.summary)
+              .map((st) => ({ bot: st.botName, summary: st.summary })),
+          });
+          return;
+        }
+        const bad = (ended.steps || []).find(
+          (st) => st.status === "failed" || st.status === "stopped",
+        );
+        this._mcpTasks.failed(
+          taskId,
+          bad
+            ? `${bad.botName} ${bad.status === "failed" ? "failed" : "was stopped"}${
+                bad.failed || bad.summary
+                  ? `: ${bad.failed || bad.summary}`
+                  : "."
+              }`
+            : `The job ${ended.status}.`,
+        );
+      })
+      .catch(() => {});
   },
 
   /** Delete a job — only ever because the user asked. Not while it runs. */
@@ -5913,6 +6050,22 @@ const botController = {
             : null,
       });
     }
+    // A job run again (DASH-165): each of its bots is told so, and what
+    // the earlier try did, after what it was asked.
+    let prompt = opts.prompt;
+    if (jobStep && this._jobs.get) {
+      const now = this._jobs.get(jobId);
+      if (now && now.try > 1) {
+        const extra = rerunNote({
+          job: now,
+          botId,
+          toolsOf: (st) =>
+            typeof this._stepTools === "function" ? this._stepTools(st) : [],
+          note: now.rerunNote || "",
+        });
+        if (extra) prompt = prompt ? `${prompt}\n\n${extra}` : extra;
+      }
+    }
     // Who started the bot's current run — a lead asked from outside Dash
     // can't run its bots (leadAsk.js). Only a run that will start counts.
     let viaEntry = null;
@@ -5941,7 +6094,7 @@ const botController = {
       this._runGoals.set(botId, goal);
     }
     const p = this._runner.run(botId, {
-      prompt: opts.prompt,
+      prompt,
       trigger: opts.trigger,
       // What triggered an event run, for the run record (Bots view).
       source: opts.source || null,

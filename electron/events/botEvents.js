@@ -74,7 +74,8 @@ const BOTS_LIST_JOBS = "bots-list-jobs";
 const BOTS_GET_JOB = "bots-get-job";
 const BOTS_STOP_JOB = "bots-stop-job";
 const BOTS_DELETE_JOB = "bots-delete-job";
-// Run a failed job again from one of its steps (DASH-122).
+// Run a failed job again (DASH-122 name; DASH-165: the whole job, from its
+// first bot — the step it names is ignored).
 const BOTS_RERUN_STEP = "bots-rerun-step";
 const BOTS_LIST_MCP_ROUTES = "bots-list-mcp-routes";
 const BOTS_LIST_MCP_TASK_TEAMS = "bots-list-mcp-task-teams";

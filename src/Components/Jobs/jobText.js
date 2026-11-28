@@ -254,6 +254,29 @@ export function searchJobs(jobs, query) {
   );
 }
 
+/**
+ * A job run again (DASH-165): "Try 2 · try 1 failed at Coder: …", or "".
+ * Its steps are this try's; the earlier ones are in job.tries.
+ */
+export function triesText(job) {
+  const n = Number(job && job.try) || 1;
+  if (n < 2) return "";
+  const list = (job && Array.isArray(job.tries) && job.tries) || [];
+  const prev = list[list.length - 1];
+  if (!prev) return `Try ${n}`;
+  const how =
+    prev.status === "failed"
+      ? prev.failedAt && prev.failedAt.botName
+        ? `failed at ${prev.failedAt.botName}${
+            prev.failedAt.summary ? `: ${prev.failedAt.summary}` : ""
+          }`
+        : "failed"
+      : prev.status === "stopped"
+        ? "was stopped"
+        : prev.status || "ended";
+  return `Try ${n} · try ${prev.try || n - 1} ${how}`;
+}
+
 /** Can it be run again: it ended without finishing, and we know what was asked. */
 export function canRunAgain(job) {
   return (

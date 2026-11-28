@@ -126,7 +126,7 @@ const coderStep = {
 };
 
 describe("FailureHeader on the Jobs page", () => {
-  it("failed checks: where, why, the tries inline, Run again from the bot", async () => {
+  it("failed checks: where, why, the tries inline, Run the job again", async () => {
     const calls = withApi(base([coderStep]), { goal: GOAL });
     render(<JobsPage workspaces={[{ id: "1", name: "Factory" }]} />);
     const header = await screen.findByTestId("job-failure");
@@ -145,45 +145,73 @@ describe("FailureHeader on the Jobs page", () => {
       within(step).getByText("No tries left, so the job failed."),
     ).toBeInTheDocument();
     fireEvent.click(
-      within(header).getByRole("button", { name: "Run again from Coder" }),
+      within(header).getByRole("button", { name: "Run the job again" }),
     );
+    // An older preload's rerunStep: the same IPC, the whole job (DASH-165).
     await waitFor(() => expect(calls.rerun).toEqual([["job_f", "s2", ""]]));
     expect(
-      await screen.findByText("Coder is running again, in this job."),
+      await screen.findByText(
+        "The job is running again from Coder, in this job.",
+      ),
+    ).toBeInTheDocument();
+    // The Jobs page's own Run again (a new job) isn't offered beside it.
+    expect(screen.queryByRole("button", { name: "Run again" })).toBeNull();
+  });
+
+  it("rerunJob when the preload has it, naming the first bot", async () => {
+    const job = base([coderStep]);
+    withApi(job, { goal: GOAL, rerun: false });
+    const calls = [];
+    window.mainApi.bots.rerunJob = jest.fn(async (...a) => {
+      calls.push(a);
+      return { ok: true, try: 2, firstBot: "Ticket Bot" };
+    });
+    render(<JobsPage workspaces={[]} />);
+    const header = await screen.findByTestId("job-failure");
+    fireEvent.click(
+      within(header).getByRole("button", { name: "Run the job again" }),
+    );
+    await waitFor(() => expect(calls).toEqual([["job_f", ""]]));
+    expect(
+      await screen.findByText(
+        "The job is running again from Ticket Bot, in this job.",
+      ),
     ).toBeInTheDocument();
   });
 
-  it("Send back with a note runs the step again with it", async () => {
+  it("Run again with a note runs the job again with it", async () => {
     const calls = withApi(base([coderStep]), { goal: GOAL });
     render(<JobsPage workspaces={[]} />);
     const header = await screen.findByTestId("job-failure");
     fireEvent.click(
       within(header).getByRole("button", {
-        name: "Send back to Coder with a note",
+        name: "Run again with a note",
       }),
     );
     fireEvent.change(within(header).getByRole("textbox"), {
       target: { value: "Mind the null date" },
     });
     fireEvent.click(
-      within(header).getByRole("button", { name: "Send back to Coder" }),
+      within(header).getByRole("button", { name: "Run the job again" }),
     );
     await waitFor(() =>
       expect(calls.rerun).toEqual([["job_f", "s2", "Mind the null date"]]),
     );
   });
 
-  it("an app without the rerun handler starts the bot as a new job", async () => {
-    const calls = withApi(base([coderStep]), { rerun: "no-handler" });
+  it("an app without the rerun handler starts the first bot as a new job", async () => {
+    const calls = withApi(base([coderStep], { leadId: null }), {
+      rerun: "no-handler",
+    });
     render(<JobsPage workspaces={[]} />);
     const header = await screen.findByTestId("job-failure");
     fireEvent.click(
-      within(header).getByRole("button", { name: "Run again from Coder" }),
+      within(header).getByRole("button", { name: "Run the job again" }),
     );
     await waitFor(() => expect(calls.run).toHaveLength(1));
     expect(calls.run[0][0]).toBe("coder");
     expect(calls.run[0][1]).toMatch(
-      /Your last try failed: its check “validate” still fails after 2 tries/,
+      /The last try failed: its check “validate” still fails after 2 tries/,
     );
     expect(await screen.findByText(/shows as a new job/)).toBeInTheDocument();
   });
@@ -217,10 +245,11 @@ describe("FailureHeader on the Jobs page", () => {
     expect(within(header).getByTestId("job-failure-title")).toHaveTextContent(
       "Failed at Workspace Bot: its Work folder has no value",
     );
-    // No Run again from a Setup check: its fix is the setup.
+    // Its fix is the setup; Run the job again is there for after (its
+    // setup is checked again first), but not as the main button.
     expect(
-      within(header).queryByRole("button", { name: /Run again from/ }),
-    ).toBeNull();
+      within(header).getByRole("button", { name: "Run the job again" }),
+    ).toBeInTheDocument();
     fireEvent.click(
       within(header).getByRole("button", {
         name: "Open Workspace Bot's settings",

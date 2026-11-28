@@ -5,11 +5,12 @@
  * it one way everywhere (lastJsonBlock): the whole answer when it's JSON,
  * else the last ```json (or bare ```) block. A few keys are Dash's:
  *
- *   status     "ok" (the default), "none", "ask" or "split"
+ *   status     "ok" (the default), "none", "ask", "split" or "failed"
  *   item       the work item { id, title?, url?, source? } (DASH-100)
  *   workspace  { dir, branch? } (DASH-100)
  *   question   with status "ask": what the bot needs a person to answer
  *   items      with status "split": the new items (ids, or { id, title })
+ *   reason     with status "failed": why the bot couldn't do its work
  *   summary    one line for the job view and the next bot
  *   <table>    a team table's pick, e.g. "repo": "dash-core" (DASH-84)
  *
@@ -20,6 +21,9 @@
  *   none   nothing to do: the job ends quietly, nothing is handed on
  *   ask    the job waits for a person; their answer goes back to the bot
  *   split  the work became other items: the job ends, nothing handed on
+ *   failed the bot couldn't do its work (DASH-165): its step fails with
+ *          the reason, no retry, nothing handed on (the honest answer when,
+ *          say, its workspace is gone, instead of claiming "ok")
  *
  * (Not the lead's <handoff> to the Dash team: that's handoff.js.)
  *
@@ -36,7 +40,7 @@ const {
   insideFolders,
 } = require("../jobs/jobContext");
 
-const STATUSES = ["ok", "none", "ask", "split"];
+const STATUSES = ["ok", "none", "ask", "split", "failed"];
 const RESERVED = [
   "status",
   "item",
@@ -44,11 +48,15 @@ const RESERVED = [
   "question",
   "items",
   "summary",
+  "reason",
 ];
 const MAX_SUMMARY = 300;
 const MAX_QUESTION = 1000;
+const MAX_REASON = 1000;
 const MAX_ITEMS = 20;
 const MAX_DATA = 6000;
+// How a handoff's "status": "failed" reads on the job (failureView reads it).
+const BOT_FAILED = "It said it couldn't do it:";
 
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const line = (v, n) => {
@@ -81,6 +89,7 @@ function readHandoff(text, { tables = [], home = null } = {}) {
     workspace: null,
     workspaceGiven: false,
     question: "",
+    reason: "",
     items: [],
     summary: "",
     picks: {},
@@ -114,6 +123,7 @@ function readHandoff(text, { tables = [], home = null } = {}) {
     out.workspace = cleanWorkspace(v.workspace, { home });
   }
   out.question = line(v.question, MAX_QUESTION);
+  out.reason = line(v.reason, MAX_REASON);
   out.items = splitItems(v.items);
   out.summary = line(v.summary, MAX_SUMMARY);
   const reserved = new Set([...RESERVED, ...tables]);
@@ -164,6 +174,11 @@ function handoffProblems(
   if (h.status === "ask" && !h.question) {
     problems.push('With "status": "ask", say what you need in "question".');
   }
+  if (h.status === "failed" && !h.reason && !h.summary) {
+    problems.push(
+      'With "status": "failed", say why you couldn\'t do it in "reason".',
+    );
+  }
   if (h.status === "split" && !h.items.length) {
     problems.push(
       'With "status": "split", list the new items in "items" (their ids, or { "id", "title" }).',
@@ -208,7 +223,8 @@ function handoffProblems(
  *   none   passes, nothing handed on (ended: "none")
  *   split  passes, nothing handed on (ended: "split", items)
  *   ask    neither: the job waits for a person (ask: the question)
- *   stop   fails with no retry (stop: true): it named another work item
+ *   stop   fails with no retry (stop: true): it named another work item,
+ *          or it said "status": "failed" (failed: true, with its reason)
  */
 function handoffCheck(answer, ctx = {}) {
   const { handoff: h, problems, wrongItem } = handoffProblems(answer, ctx);
@@ -218,6 +234,18 @@ function handoffCheck(answer, ctx = {}) {
       stop: true,
       reason: `Stopped: the bot worked on ${wrongItem.gave}, but this job is about ${wrongItem.job}. It may already have changed ${wrongItem.gave}: check it before rerunning.`,
       details: { problems, wrongItem },
+    };
+  }
+  // The bot says it couldn't do its work (DASH-165): believed at once. The
+  // step fails with its reason; a retry wouldn't bring back what's missing.
+  if (h.status === "failed" && (h.reason || h.summary)) {
+    const why = h.reason || h.summary;
+    return {
+      pass: false,
+      stop: true,
+      failed: true,
+      reason: `${BOT_FAILED} ${why}`,
+      details: { reason: why },
     };
   }
   if (problems.length) {
@@ -323,6 +351,7 @@ function handOnPrompt({
   lines.push(
     "",
     "Dash carries the work item, workspace and picks for you, so leave them out of your handoff. Follow your instructions, and end your answer with your handoff (one ```json block).",
+    'If you can\'t do your work (say, the workspace isn\'t there), don\'t claim it\'s done: end with { "status": "failed", "reason": "…" }.',
   );
   const n = typeof note === "string" ? note.trim() : "";
   if (n) {
@@ -335,6 +364,7 @@ function handOnPrompt({
 }
 
 module.exports = {
+  BOT_FAILED,
   STATUSES,
   RESERVED,
   lastJsonBlock,

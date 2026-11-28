@@ -492,9 +492,11 @@ describe("a failed job's why and running it again (DASH-122)", () => {
     assert.match(got.steps[0].failed, /validate/);
   });
 
-  it("retryStep opens the job again and the step waits for its bot's run", () => {
+  it("restartJob: its steps become try 1, and its status is try 2's (DASH-165)", () => {
     const t = make();
     const job = t.startJob({ workspaceId: "ws1", leadId: "l", title: "x" });
+    t.startStep(job.id, { botId: "l", botName: "Lead" });
+    t.endStep(job.id, { botId: "l", record: done("Asked Coder.") });
     t.startStep(job.id, { botId: "c", botName: "Coder" });
     t.endStep(job.id, {
       botId: "c",
@@ -502,20 +504,47 @@ describe("a failed job's why and running it again (DASH-122)", () => {
     });
     settle();
     assert.equal(t.get(job.id).status, "failed");
-    const stepId = t.get(job.id).steps[0].id;
-    // Only a failed or stopped step of an ended job.
-    assert.equal(t.retryStep(job.id, "nope"), null);
-    const step = t.retryStep(job.id, stepId);
-    assert.equal(step.status, "queued");
-    assert.equal(step.retries, 1);
-    assert.equal(t.get(job.id).status, "running");
-    assert.equal(t.get(job.id).endedAt, null);
-    assert.equal(t.retryStep(job.id, stepId), null);
-    // Its bot's run takes the same step up, and the job ends done.
+    const again = t.restartJob(job.id, { firstAsk: "Do x", note: "Use A4." });
+    assert.equal(again.try, 2);
+    assert.equal(again.status, "running");
+    assert.equal(again.endedAt, null);
+    assert.deepEqual(again.steps, []);
+    assert.equal(again.tries[0].try, 1);
+    assert.equal(again.tries[0].status, "failed");
+    assert.deepEqual(again.tries[0].failedAt, {
+      botName: "Coder",
+      summary: "boom",
+    });
+    assert.equal(again.tries[0].steps.length, 2);
+    assert.equal(again.firstAsk, "Do x");
+    assert.equal(again.rerunNote, "Use A4.");
+    // Only an ended job.
+    assert.equal(t.restartJob(job.id), null);
+    // The whole chain again: every step new, and done is done.
+    t.startStep(job.id, { botId: "l", botName: "Lead" });
+    t.endStep(job.id, { botId: "l", record: done("Asked Coder.") });
     t.startStep(job.id, { botId: "c", botName: "Coder" });
-    assert.equal(t.get(job.id).steps.length, 1);
     t.endStep(job.id, { botId: "c", record: done("Fixed.") });
     settle();
-    assert.equal(t.get(job.id).status, "done");
+    const ended = t.get(job.id);
+    assert.equal(ended.status, "done");
+    assert.equal(ended.steps.length, 2);
+    // Try 3 keeps what it was first asked, and a note only if given.
+    const third = t.restartJob(job.id, { firstAsk: "something else" });
+    assert.equal(third, null, "a done job isn't run again");
+  });
+
+  it("restartJob: a try whose first bot never starts is stopped, not left open", () => {
+    const t = make();
+    const job = t.startJob({ workspaceId: "ws1", leadId: "l", title: "x" });
+    t.startStep(job.id, { botId: "l", botName: "Lead" });
+    t.endStep(job.id, { botId: "l", record: { status: "failed", error: "x" } });
+    settle();
+    t.restartJob(job.id);
+    assert.equal(t.get(job.id).status, "running");
+    settle();
+    const got = t.get(job.id);
+    assert.equal(got.status, "stopped");
+    assert.match(got.steps[0].summary, /first bot didn't start/);
   });
 });

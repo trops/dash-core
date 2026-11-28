@@ -31,6 +31,7 @@
 const fs = require("fs");
 const { execFile } = require("child_process");
 const { readHandoff } = require("../../bots/botHandoff");
+const { goneText } = require("../workspaceGuard");
 
 /** The library, loaded when first used. */
 const core = () => require("@trops/dash-check");
@@ -136,6 +137,9 @@ function git(args, cwd, exec = execFile) {
 
 async function gitDir(input, deps) {
   const dir = workspaceOf(input, deps);
+  // The job's workspace, gone (DASH-165): said plainly, never a pass.
+  const ws = input && input.workspace && input.workspace.dir;
+  if (ws && ws === dir && !fs.existsSync(dir)) return { error: goneText(dir) };
   if (!dir || !fs.existsSync(dir)) {
     return { error: dir ? `${dir} isn't there` : "The job has no workspace" };
   }
