@@ -144,3 +144,16 @@ describe("WhatItCanDo", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("WhatItCanDo — tools as wrapping chips (DASH-171)", () => {
+  it("puts the provider's name above its tools, never breaking a tool name", () => {
+    render(<WhatItCanDo bot={worker} />);
+    const gh = screen.getByTestId("can-do-provider-github");
+    const tool = within(gh).getByText("push");
+    expect(tool.className).not.toContain("break-all");
+    expect(tool.className).toContain("truncate");
+    expect(tool).toHaveAttribute("title", "push");
+    expect(tool.parentElement.className).toContain("flex-wrap");
+    expect(within(gh).getByText("GitHub").parentElement).toBe(gh);
+  });
+});

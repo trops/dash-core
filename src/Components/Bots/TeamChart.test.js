@@ -735,3 +735,111 @@ describe("TeamChart — the panel and the diagram scroll on their own", () => {
     expect(screen.getByTestId("connections-panel").style.overflowY).toBe("");
   });
 });
+
+describe("TeamChart — a wider, resizable bot panel (DASH-171)", () => {
+  const KEY = "dash:teamChart:botPanelWidth";
+  let innerWidth;
+  beforeEach(() => {
+    window.localStorage.clear();
+    innerWidth = window.innerWidth;
+    window.innerWidth = 1600;
+  });
+  afterEach(() => {
+    window.innerWidth = innerWidth;
+    window.localStorage.clear();
+  });
+
+  it("side by side: about a third of the window, at least 480px", () => {
+    setup({ selectedId: "reader", fill: true });
+    const panel = screen.getByTestId("connections-panel");
+    expect(panel.style.width).toBe("533px");
+    expect(panel.style.maxWidth).toBe("");
+    expect(
+      screen.getByRole("separator", { name: "Resize bot panel" }),
+    ).toHaveAttribute("aria-valuenow", "533");
+  });
+
+  it("dragging its edge resizes it, and the width is kept after reopening", () => {
+    const { rerender, onSelect, onOpen } = setup({
+      selectedId: "reader",
+      fill: true,
+    });
+    const handle = screen.getByRole("separator", { name: "Resize bot panel" });
+    // Its left edge: ← makes it wider.
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(screen.getByTestId("connections-panel").style.width).toBe("549px");
+    expect(window.localStorage.getItem(KEY)).toBe("549");
+    const chart = (selectedId) => (
+      <TeamChart
+        lead={lead}
+        members={[checker, reader, planner]}
+        selectedId={selectedId}
+        onSelect={onSelect}
+        onOpen={onOpen}
+        width={1000}
+        fill
+      />
+    );
+    rerender(chart(null));
+    expect(screen.queryByTestId("connections-panel")).toBeNull();
+    rerender(chart("checker"));
+    expect(screen.getByTestId("connections-panel").style.width).toBe("549px");
+    // Double-click resets to the default.
+    fireEvent.doubleClick(
+      screen.getByRole("separator", { name: "Resize bot panel" }),
+    );
+    expect(screen.getByTestId("connections-panel").style.width).toBe("533px");
+    expect(window.localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it("its own width: the bot page beside the diagram keeps its key", () => {
+    window.localStorage.setItem("dash:botsView:panelWidth", "900");
+    setup({ selectedId: "reader", fill: true });
+    expect(screen.getByTestId("connections-panel").style.width).toBe("533px");
+  });
+
+  it("not side by side: no handle", () => {
+    setup({ selectedId: "reader" });
+    expect(
+      screen.queryByRole("separator", { name: "Resize bot panel" }),
+    ).toBeNull();
+  });
+
+  it("check rows are one line, with their kind and cost on the right", () => {
+    const withChecks = {
+      ...reader,
+      checks: {
+        steps: [
+          {
+            id: "c1",
+            kind: "check",
+            name: "The plan has a cause, a fix and a test that proves it",
+            check: { kind: "rules" },
+          },
+          { id: "c2", kind: "you", name: "Approve the plan" },
+        ],
+      },
+    };
+    render(
+      <TeamChart
+        lead={lead}
+        members={[checker, withChecks, planner]}
+        selectedId="reader"
+        width={1000}
+        fill
+      />,
+    );
+    const row = screen.getByTestId("check-row-c1");
+    const name = within(row).getByText(/The plan has a cause/);
+    expect(name.className).toContain("truncate");
+    expect(name).toHaveAttribute("title", withChecks.checks.steps[0].name);
+    expect(within(row).getByText("Free · instant rule").className).toContain(
+      "whitespace-nowrap",
+    );
+    expect(
+      within(screen.getByTestId("check-row-c2")).getByText(
+        "Free · waits for you",
+      ),
+    ).toBeInTheDocument();
+  });
+});
